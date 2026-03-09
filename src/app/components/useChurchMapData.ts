@@ -555,8 +555,7 @@ export function useChurchMapData({
       const church = churches.find((c) => c.id === routeChurchId);
       if (church) {
         setSelectedChurch(church);
-        setCenter([church.lng, church.lat]);
-        setZoom((z) => Math.max(z, 8));
+        moveToView([church.lng, church.lat], Math.max(ds.zoom, 8));
       }
     }
   }, [routeChurchId, churches, selectedChurch?.id, focusedState]);
