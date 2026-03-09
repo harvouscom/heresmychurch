@@ -35,7 +35,6 @@ export function ChurchMapPage() {
     [nav]
   );
   const navigateToNational = useCallback(() => nav("/"), [nav]);
-  const navigateBack = useCallback(() => nav(-1), [nav]);
 
   return (
     <ChurchMap
@@ -44,7 +43,6 @@ export function ChurchMapPage() {
       navigateToState={navigateToState}
       navigateToChurch={navigateToChurch}
       navigateToNational={navigateToNational}
-      navigateBack={navigateBack}
     />
   );
 }

@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { Search, X, ChevronRight, Loader2, MapPin, ChevronDown } from "lucide-react";
+import { Search, X, ChevronRight, Loader2, MapPin, ChevronDown, Plus } from "lucide-react";
 import type { Church, StateInfo } from "./church-data";
 import { getSizeCategory } from "./church-data";
 import { searchChurches } from "./api";
@@ -28,6 +28,9 @@ interface MapSearchBarProps {
   focusedStateName: string;
   navigateToChurch: (stateAbbrev: string, churchId: string) => void;
   onPreloadChurch?: (church: Church) => void;
+  collapsed?: boolean;
+  onExpand?: () => void;
+  onAddChurch?: () => void;
 }
 
 const MAX_RESULTS = 8;
@@ -40,6 +43,9 @@ export function MapSearchBar({
   focusedStateName,
   navigateToChurch,
   onPreloadChurch,
+  collapsed,
+  onExpand,
+  onAddChurch,
 }: MapSearchBarProps) {
   const [query, setQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -81,6 +87,15 @@ export function MapSearchBar({
     setStateFilter(null);
     setShowStateDropdown(false);
   }, [focusedState]);
+
+  // Blur search when collapsed externally (e.g. clicking map background)
+  useEffect(() => {
+    if (collapsed) {
+      setIsFocused(false);
+      setShowStateDropdown(false);
+      inputRef.current?.blur();
+    }
+  }, [collapsed]);
 
   // Populated states sorted alphabetically for the dropdown
   const populatedStates = useMemo(() => {
@@ -218,8 +233,20 @@ export function MapSearchBar({
   return (
     <div
       ref={containerRef}
-      className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 w-[min(380px,calc(100vw-7rem))]"
+      className="absolute bottom-[72px] left-1/2 -translate-x-1/2 z-20 w-[min(440px,calc(100vw-5rem))]"
     >
+      {/* Collapsed state — just a search icon button */}
+      {collapsed ? (
+        <button
+          onClick={onExpand}
+          className="mx-auto flex items-center gap-2 px-5 py-3 rounded-full shadow-lg transition-all hover:shadow-xl"
+          style={{ backgroundColor: "rgba(30, 16, 64, 0.92)" }}
+        >
+          <Search size={17} className="text-purple-400" />
+          <span className="text-white/40 text-sm font-medium">Search churches…</span>
+        </button>
+      ) : (
+        <>
       {/* State filter dropdown — rendered above the results */}
       {showStateDropdown && isNational && hasMultiplePopulated && (
         <div
@@ -271,8 +298,23 @@ export function MapSearchBar({
           {focusedState && (
             <>
               {localResults.length === 0 ? (
-                <div className="px-4 py-3 text-xs text-white/40 text-center">
-                  No churches found for &ldquo;{query}&rdquo;
+                <div className="px-4 py-4 text-center">
+                  <p className="text-xs text-white/40">
+                    No churches found for &ldquo;{query}&rdquo;
+                  </p>
+                  {onAddChurch && (
+                    <button
+                      onClick={() => {
+                        setQuery("");
+                        setIsFocused(false);
+                        onAddChurch();
+                      }}
+                      className="mt-2.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-purple-500/20 text-purple-300 text-xs font-medium hover:bg-purple-500/30 transition-colors"
+                    >
+                      <Plus size={13} />
+                      Add your church
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="py-1">
@@ -326,10 +368,25 @@ export function MapSearchBar({
                   <span className="text-xs text-white/40">Searching…</span>
                 </div>
               ) : remoteSearched && remoteResults.length === 0 ? (
-                <div className="px-4 py-3 text-xs text-white/40 text-center">
-                  {!hasPopulated
-                    ? "Explore a state first to enable search"
-                    : <>No churches found for &ldquo;{query}&rdquo;</>}
+                <div className="px-4 py-4 text-center">
+                  <p className="text-xs text-white/40">
+                    {!hasPopulated
+                      ? "Explore a state first to enable search"
+                      : <>No churches found for &ldquo;{query}&rdquo;</>}
+                  </p>
+                  {onAddChurch && hasPopulated && (
+                    <button
+                      onClick={() => {
+                        setQuery("");
+                        setIsFocused(false);
+                        onAddChurch();
+                      }}
+                      className="mt-2.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-purple-500/20 text-purple-300 text-xs font-medium hover:bg-purple-500/30 transition-colors"
+                    >
+                      <Plus size={13} />
+                      Add your church
+                    </button>
+                  )}
                 </div>
               ) : remoteResults.length > 0 ? (
                 <div className="py-1">
@@ -384,7 +441,7 @@ export function MapSearchBar({
 
       {/* Search input */}
       <div
-        className={`flex items-center gap-2 rounded-full shadow-lg px-3 py-2.5 transition-all ${
+        className={`flex items-center gap-2.5 rounded-full shadow-lg px-4 py-3 transition-all ${
           isFocused ? "ring-2 ring-purple-500/40 shadow-xl" : ""
         }`}
         style={{ backgroundColor: "rgba(30, 16, 64, 0.92)" }}
@@ -393,7 +450,7 @@ export function MapSearchBar({
         {isNational && hasMultiplePopulated && (
           <button
             onClick={() => setShowStateDropdown((v) => !v)}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium flex-shrink-0 transition-colors ${
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 transition-colors ${
               stateFilter
                 ? "bg-purple-500/30 text-purple-200 hover:bg-purple-500/40"
                 : "bg-white/8 text-white/40 hover:bg-white/12 hover:text-white/60"
@@ -403,7 +460,7 @@ export function MapSearchBar({
             <ChevronDown size={10} className={`transition-transform ${showStateDropdown ? "rotate-180" : ""}`} />
           </button>
         )}
-        <Search size={15} className="text-purple-400 flex-shrink-0" />
+        <Search size={17} className="text-purple-400 flex-shrink-0" />
         <input
           ref={inputRef}
           type="text"
@@ -418,7 +475,7 @@ export function MapSearchBar({
               ? `Search in ${STATE_NAMES[stateFilter] || stateFilter}…`
               : "Find a church…"
           }
-          className="flex-1 bg-transparent text-white text-sm placeholder:text-white/30 outline-none min-w-0"
+          className="flex-1 bg-transparent text-white text-[15px] placeholder:text-white/30 outline-none min-w-0"
         />
         {(query || stateFilter) && (
           <button
@@ -432,10 +489,12 @@ export function MapSearchBar({
             }}
             className="text-white/30 hover:text-white/60 transition-colors"
           >
-            <X size={14} />
+            <X size={15} />
           </button>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }

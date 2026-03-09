@@ -1343,7 +1343,7 @@ const SUGGESTION_THRESHOLD = 3; // Min unique IPs needed for consensus
 
 interface Suggestion {
   ip: string;
-  field: "website" | "address" | "attendance" | "denomination";
+  field: "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email";
   value: string;
   timestamp: number;
 }
@@ -1363,7 +1363,7 @@ function getClientIp(c: any): string {
 
 // Compute consensus from submissions
 function computeConsensus(submissions: Suggestion[]) {
-  const fields = ["website", "address", "attendance", "denomination"] as const;
+  const fields = ["website", "address", "attendance", "denomination", "serviceTimes", "languages", "ministries", "pastorName", "phone", "email"] as const;
   const result: Record<string, {
     approved: boolean;
     value: string | null;
@@ -1454,7 +1454,7 @@ app.post("/make-server-283d8046/suggestions", async (c) => {
       return c.json({ error: "Missing churchId, field, or value" }, 400);
     }
 
-    const validFields = ["website", "address", "attendance", "denomination"];
+    const validFields = ["website", "address", "attendance", "denomination", "serviceTimes", "languages", "ministries", "pastorName", "phone", "email"];
     if (!validFields.includes(field)) {
       return c.json({ error: `Invalid field: ${field}. Must be one of: ${validFields.join(", ")}` }, 400);
     }
@@ -1585,6 +1585,12 @@ interface PendingChurch {
   denomination: string;
   attendance: number;
   website: string;
+  serviceTimes?: string;
+  languages?: string[];
+  ministries?: string[];
+  pastorName?: string;
+  phone?: string;
+  email?: string;
   submittedByIp: string;
   submittedAt: number;
   approved: boolean;
@@ -1602,7 +1608,7 @@ app.post("/make-server-283d8046/churches/add", async (c) => {
   try {
     const ip = getClientIp(c);
     const body = await c.req.json();
-    const { name, address, city, state, lat, lng, denomination, attendance, website } = body;
+    const { name, address, city, state, lat, lng, denomination, attendance, website, serviceTimes, languages, ministries, pastorName, phone, email } = body;
 
     if (!name || !state || typeof name !== "string" || name.trim().length < 2) {
       return c.json({ error: "Church name is required (min 2 characters)" }, 400);
@@ -1668,6 +1674,12 @@ app.post("/make-server-283d8046/churches/add", async (c) => {
       denomination: (denomination || "Unknown").trim(),
       attendance: parsedAttendance,
       website: (website || "").trim(),
+      serviceTimes: (serviceTimes || "").trim() || undefined,
+      languages: Array.isArray(languages) && languages.length > 0 ? languages : undefined,
+      ministries: Array.isArray(ministries) && ministries.length > 0 ? ministries : undefined,
+      pastorName: (pastorName || "").trim() || undefined,
+      phone: (phone || "").trim() || undefined,
+      email: (email || "").trim() || undefined,
       submittedByIp: ip,
       submittedAt: Date.now(),
       approved: false,

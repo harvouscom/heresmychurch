@@ -1,5 +1,5 @@
 import type { Church } from "./church-data";
-import { DENOMINATION_GROUPS } from "./church-data";
+import { DENOMINATION_GROUPS, COMMON_LANGUAGES, COMMON_MINISTRIES } from "./church-data";
 import type { SuggestionConsensus } from "./api";
 import { fetchSuggestions, submitSuggestion } from "./api";
 import {
@@ -12,22 +12,30 @@ import {
   Church as ChurchIcon,
   AlertCircle,
   Loader2,
+  Clock,
+  Languages,
+  Heart,
+  User,
+  Phone,
+  Mail,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
+import { ServiceTimesInput } from "./ServiceTimesInput";
 
 interface SuggestEditFormProps {
   church: Church;
   onClose: () => void;
 }
 
-type EditableField = "website" | "address" | "attendance" | "denomination";
+type EditableField = "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email";
 
 const FIELD_CONFIG: {
   key: EditableField;
   label: string;
   icon: typeof Globe;
   placeholder: string;
-  type: "text" | "number" | "select";
+  type: "text" | "number" | "select" | "chips-languages" | "chips-ministries";
+  group: "core" | "extended";
 }[] = [
   {
     key: "website",
@@ -35,6 +43,7 @@ const FIELD_CONFIG: {
     icon: Globe,
     placeholder: "https://www.example.com",
     type: "text",
+    group: "core",
   },
   {
     key: "address",
@@ -42,6 +51,7 @@ const FIELD_CONFIG: {
     icon: MapPin,
     placeholder: "123 Main St, City, State",
     type: "text",
+    group: "core",
   },
   {
     key: "attendance",
@@ -49,6 +59,7 @@ const FIELD_CONFIG: {
     icon: Users,
     placeholder: "Enter estimated weekly attendance",
     type: "number",
+    group: "core",
   },
   {
     key: "denomination",
@@ -56,6 +67,55 @@ const FIELD_CONFIG: {
     icon: ChurchIcon,
     placeholder: "Select denomination",
     type: "select",
+    group: "core",
+  },
+  {
+    key: "serviceTimes",
+    label: "Service Times",
+    icon: Clock,
+    placeholder: "e.g., Sunday 9am, 11am; Wed 7pm",
+    type: "text",
+    group: "extended",
+  },
+  {
+    key: "languages",
+    label: "Languages",
+    icon: Languages,
+    placeholder: "Select languages offered",
+    type: "chips-languages",
+    group: "extended",
+  },
+  {
+    key: "ministries",
+    label: "Ministries",
+    icon: Heart,
+    placeholder: "Select ministries offered",
+    type: "chips-ministries",
+    group: "extended",
+  },
+  {
+    key: "pastorName",
+    label: "Lead Pastor",
+    icon: User,
+    placeholder: "Pastor John Smith",
+    type: "text",
+    group: "extended",
+  },
+  {
+    key: "phone",
+    label: "Phone",
+    icon: Phone,
+    placeholder: "(555) 123-4567",
+    type: "text",
+    group: "extended",
+  },
+  {
+    key: "email",
+    label: "Email",
+    icon: Mail,
+    placeholder: "info@church.org",
+    type: "text",
+    group: "extended",
   },
 ];
 
@@ -114,6 +174,22 @@ function VoteProgress({
   );
 }
 
+// Helper to determine if a field is "empty" on the church — these get highlighted
+function isFieldEmpty(church: Church, field: EditableField): boolean {
+  switch (field) {
+    case "website": return !church.website;
+    case "address": return !church.address;
+    case "attendance": return !church.attendance || church.attendance === 0;
+    case "denomination": return !church.denomination || church.denomination === "Unknown" || church.denomination === "Other";
+    case "serviceTimes": return !church.serviceTimes;
+    case "languages": return !church.languages || church.languages.length === 0;
+    case "ministries": return !church.ministries || church.ministries.length === 0;
+    case "pastorName": return !church.pastorName;
+    case "phone": return !church.phone;
+    case "email": return !church.email;
+  }
+}
+
 export function SuggestEditForm({ church, onClose }: SuggestEditFormProps) {
   const [consensus, setConsensus] = useState<Record<
     string,
@@ -131,7 +207,29 @@ export function SuggestEditForm({ church, onClose }: SuggestEditFormProps) {
       .join(", "),
     attendance: String(church.attendance),
     denomination: church.denomination,
+    serviceTimes: church.serviceTimes || "",
+    languages: (church.languages || []).join(", "),
+    ministries: (church.ministries || []).join(", "),
+    pastorName: church.pastorName || "",
+    phone: church.phone || "",
+    email: church.email || "",
   });
+
+  // Track chip selections for languages/ministries
+  const [chipLanguages, setChipLanguages] = useState<Set<string>>(
+    new Set(church.languages || [])
+  );
+  const [chipMinistries, setChipMinistries] = useState<Set<string>>(
+    new Set(church.ministries || [])
+  );
+
+  // Sync chip state to values
+  useEffect(() => {
+    setValues(v => ({ ...v, languages: Array.from(chipLanguages).join(", ") }));
+  }, [chipLanguages]);
+  useEffect(() => {
+    setValues(v => ({ ...v, ministries: Array.from(chipMinistries).join(", ") }));
+  }, [chipMinistries]);
 
   const loadSuggestions = useCallback(async () => {
     try {
@@ -180,6 +278,9 @@ export function SuggestEditForm({ church, onClose }: SuggestEditFormProps) {
     }
   };
 
+  // Count empty fields to show badge
+  const emptyCount = FIELD_CONFIG.filter(f => isFieldEmpty(church, f.key)).length;
+
   return (
     <div
       className="h-full flex flex-col overflow-hidden"
@@ -207,6 +308,11 @@ export function SuggestEditForm({ church, onClose }: SuggestEditFormProps) {
               Suggest corrections below. Changes are applied when{" "}
               <span className="text-purple-400 font-semibold">3 people</span>{" "}
               agree on the same value.
+              {emptyCount > 0 && (
+                <span className="text-pink-400/80">
+                  {" "}This church is missing {emptyCount} {emptyCount === 1 ? "field" : "fields"} — help fill them in!
+                </span>
+              )}
             </p>
           </div>
           <button
@@ -226,105 +332,54 @@ export function SuggestEditForm({ church, onClose }: SuggestEditFormProps) {
           </div>
         ) : (
           <>
-            {FIELD_CONFIG.map(({ key, label, icon: Icon, placeholder, type }) => {
-              const fieldConsensus = consensus?.[key];
-              const hasVoted = !!myVotes[key];
-              const isSubmitting = submitting === key;
-              const justSubmitted = submitted.has(key);
+            {/* Core fields */}
+            {FIELD_CONFIG.filter(f => f.group === "core").map((fieldConfig) => (
+              <FieldRow
+                key={fieldConfig.key}
+                fieldConfig={fieldConfig}
+                values={values}
+                setValues={setValues}
+                consensus={consensus}
+                myVotes={myVotes}
+                submitting={submitting}
+                submitted={submitted}
+                handleSubmit={handleSubmit}
+                isEmpty={isFieldEmpty(church, fieldConfig.key)}
+                chipLanguages={chipLanguages}
+                setChipLanguages={setChipLanguages}
+                chipMinistries={chipMinistries}
+                setChipMinistries={setChipMinistries}
+              />
+            ))}
 
-              return (
-                <div
-                  key={key}
-                  className="rounded-xl p-3.5 bg-white/5 border border-white/5"
-                >
-                  <div className="flex items-center gap-2 mb-2.5">
-                    <Icon size={13} className="text-purple-400" />
-                    <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
-                      {label}
-                    </span>
-                    {fieldConsensus?.approved && (
-                      <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 font-semibold">
-                        APPROVED
-                      </span>
-                    )}
-                    {hasVoted && !fieldConsensus?.approved && (
-                      <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-400 font-semibold">
-                        VOTED
-                      </span>
-                    )}
-                  </div>
+            {/* Divider for extended fields */}
+            <div className="flex items-center gap-3 py-1">
+              <div className="flex-1 h-px bg-white/8" />
+              <span className="text-[9px] uppercase tracking-wider text-white/25 font-semibold">
+                Service Details & Contact
+              </span>
+              <div className="flex-1 h-px bg-white/8" />
+            </div>
 
-                  <div className="flex gap-2">
-                    {type === "select" ? (
-                      <select
-                        value={values[key]}
-                        onChange={(e) =>
-                          setValues((v) => ({ ...v, [key]: e.target.value }))
-                        }
-                        className="flex-1 bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors appearance-none"
-                      >
-                        <option value="" className="bg-[#1E1040]">
-                          Select...
-                        </option>
-                        {DENOMINATION_GROUPS.filter(
-                          (g) => g.label !== "Other"
-                        ).map((g) => (
-                          <option
-                            key={g.label}
-                            value={g.label}
-                            className="bg-[#1E1040]"
-                          >
-                            {g.label}
-                          </option>
-                        ))}
-                        <option value="Unknown" className="bg-[#1E1040]">
-                          Unknown / Other
-                        </option>
-                      </select>
-                    ) : (
-                      <input
-                        type={type}
-                        value={values[key]}
-                        onChange={(e) =>
-                          setValues((v) => ({ ...v, [key]: e.target.value }))
-                        }
-                        placeholder={placeholder}
-                        min={type === "number" ? 1 : undefined}
-                        max={type === "number" ? 50000 : undefined}
-                        className="flex-1 bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/20"
-                      />
-                    )}
-                    <button
-                      onClick={() => handleSubmit(key)}
-                      disabled={
-                        isSubmitting ||
-                        !values[key]?.trim() ||
-                        justSubmitted
-                      }
-                      className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-all disabled:opacity-30"
-                      style={{
-                        backgroundColor: justSubmitted
-                          ? "rgba(34, 197, 94, 0.3)"
-                          : "rgba(168, 85, 247, 0.3)",
-                      }}
-                    >
-                      {isSubmitting ? (
-                        <Loader2
-                          size={14}
-                          className="text-purple-300 animate-spin"
-                        />
-                      ) : justSubmitted ? (
-                        <Check size={14} className="text-green-400" />
-                      ) : (
-                        <Send size={14} className="text-purple-300" />
-                      )}
-                    </button>
-                  </div>
-
-                  <VoteProgress consensus={fieldConsensus} />
-                </div>
-              );
-            })}
+            {/* Extended fields */}
+            {FIELD_CONFIG.filter(f => f.group === "extended").map((fieldConfig) => (
+              <FieldRow
+                key={fieldConfig.key}
+                fieldConfig={fieldConfig}
+                values={values}
+                setValues={setValues}
+                consensus={consensus}
+                myVotes={myVotes}
+                submitting={submitting}
+                submitted={submitted}
+                handleSubmit={handleSubmit}
+                isEmpty={isFieldEmpty(church, fieldConfig.key)}
+                chipLanguages={chipLanguages}
+                setChipLanguages={setChipLanguages}
+                chipMinistries={chipMinistries}
+                setChipMinistries={setChipMinistries}
+              />
+            ))}
 
             {error && (
               <div className="flex items-center gap-2 rounded-lg p-3 bg-red-500/10 border border-red-500/20">
@@ -344,6 +399,271 @@ export function SuggestEditForm({ church, onClose }: SuggestEditFormProps) {
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Extracted field row component
+function FieldRow({
+  fieldConfig,
+  values,
+  setValues,
+  consensus,
+  myVotes,
+  submitting,
+  submitted,
+  handleSubmit,
+  isEmpty,
+  chipLanguages,
+  setChipLanguages,
+  chipMinistries,
+  setChipMinistries,
+}: {
+  fieldConfig: (typeof FIELD_CONFIG)[number];
+  values: Record<string, string>;
+  setValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  consensus: Record<string, SuggestionConsensus> | null;
+  myVotes: Record<string, string>;
+  submitting: string | null;
+  submitted: Set<string>;
+  handleSubmit: (field: EditableField) => void;
+  isEmpty: boolean;
+  chipLanguages: Set<string>;
+  setChipLanguages: React.Dispatch<React.SetStateAction<Set<string>>>;
+  chipMinistries: Set<string>;
+  setChipMinistries: React.Dispatch<React.SetStateAction<Set<string>>>;
+}) {
+  const { key, label, icon: Icon, placeholder, type } = fieldConfig;
+  const fieldConsensus = consensus?.[key];
+  const hasVoted = !!myVotes[key];
+  const isSubmitting = submitting === key;
+  const justSubmitted = submitted.has(key);
+
+  return (
+    <div
+      className={`rounded-xl p-3.5 border ${
+        isEmpty
+          ? "bg-pink-500/5 border-pink-500/15"
+          : "bg-white/5 border-white/5"
+      }`}
+    >
+      <div className="flex items-center gap-2 mb-2.5">
+        <Icon size={13} className={isEmpty ? "text-pink-400" : "text-purple-400"} />
+        <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
+          {label}
+        </span>
+        {isEmpty && !fieldConsensus?.approved && !hasVoted && (
+          <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-pink-500/15 text-pink-400 font-semibold">
+            MISSING
+          </span>
+        )}
+        {fieldConsensus?.approved && (
+          <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 font-semibold">
+            APPROVED
+          </span>
+        )}
+        {hasVoted && !fieldConsensus?.approved && (
+          <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-400 font-semibold">
+            VOTED
+          </span>
+        )}
+      </div>
+
+      {type === "chips-languages" ? (
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-1.5">
+            {COMMON_LANGUAGES.map((lang) => (
+              <button
+                key={lang}
+                onClick={() => {
+                  setChipLanguages(prev => {
+                    const next = new Set(prev);
+                    if (next.has(lang)) next.delete(lang);
+                    else next.add(lang);
+                    return next;
+                  });
+                }}
+                className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border ${
+                  chipLanguages.has(lang)
+                    ? "bg-purple-500/30 border-purple-500/50 text-purple-300"
+                    : "bg-white/5 border-white/8 text-white/40 hover:text-white/60"
+                }`}
+              >
+                {chipLanguages.has(lang) && <Check size={8} className="inline mr-0.5" />}
+                {lang}
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-end">
+            <button
+              onClick={() => handleSubmit(key)}
+              disabled={isSubmitting || chipLanguages.size === 0 || justSubmitted}
+              className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-all disabled:opacity-30"
+              style={{
+                backgroundColor: justSubmitted
+                  ? "rgba(34, 197, 94, 0.3)"
+                  : "rgba(168, 85, 247, 0.3)",
+              }}
+            >
+              {isSubmitting ? (
+                <Loader2 size={14} className="text-purple-300 animate-spin" />
+              ) : justSubmitted ? (
+                <Check size={14} className="text-green-400" />
+              ) : (
+                <Send size={14} className="text-purple-300" />
+              )}
+            </button>
+          </div>
+        </div>
+      ) : type === "chips-ministries" ? (
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-1.5">
+            {COMMON_MINISTRIES.map((ministry) => (
+              <button
+                key={ministry}
+                onClick={() => {
+                  setChipMinistries(prev => {
+                    const next = new Set(prev);
+                    if (next.has(ministry)) next.delete(ministry);
+                    else next.add(ministry);
+                    return next;
+                  });
+                }}
+                className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border ${
+                  chipMinistries.has(ministry)
+                    ? "bg-purple-500/30 border-purple-500/50 text-purple-300"
+                    : "bg-white/5 border-white/8 text-white/40 hover:text-white/60"
+                }`}
+              >
+                {chipMinistries.has(ministry) && <Check size={8} className="inline mr-0.5" />}
+                {ministry}
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-end">
+            <button
+              onClick={() => handleSubmit(key)}
+              disabled={isSubmitting || chipMinistries.size === 0 || justSubmitted}
+              className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-all disabled:opacity-30"
+              style={{
+                backgroundColor: justSubmitted
+                  ? "rgba(34, 197, 94, 0.3)"
+                  : "rgba(168, 85, 247, 0.3)",
+              }}
+            >
+              {isSubmitting ? (
+                <Loader2 size={14} className="text-purple-300 animate-spin" />
+              ) : justSubmitted ? (
+                <Check size={14} className="text-green-400" />
+              ) : (
+                <Send size={14} className="text-purple-300" />
+              )}
+            </button>
+          </div>
+        </div>
+      ) : key === "serviceTimes" ? (
+        <div className="space-y-2">
+          <ServiceTimesInput
+            value={values[key]}
+            onChange={(val) =>
+              setValues((v) => ({ ...v, [key]: val }))
+            }
+            compact
+          />
+          <div className="flex justify-end">
+            <button
+              onClick={() => handleSubmit(key)}
+              disabled={isSubmitting || !values[key]?.trim() || justSubmitted}
+              className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-all disabled:opacity-30"
+              style={{
+                backgroundColor: justSubmitted
+                  ? "rgba(34, 197, 94, 0.3)"
+                  : "rgba(168, 85, 247, 0.3)",
+              }}
+            >
+              {isSubmitting ? (
+                <Loader2 size={14} className="text-purple-300 animate-spin" />
+              ) : justSubmitted ? (
+                <Check size={14} className="text-green-400" />
+              ) : (
+                <Send size={14} className="text-purple-300" />
+              )}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          {type === "select" ? (
+            <select
+              value={values[key]}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, [key]: e.target.value }))
+              }
+              className="flex-1 bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors appearance-none"
+            >
+              <option value="" className="bg-[#1E1040]">
+                Select...
+              </option>
+              {DENOMINATION_GROUPS.filter(
+                (g) => g.label !== "Other" && g.label !== "Non-denominational"
+              ).map((g) => (
+                <option
+                  key={g.label}
+                  value={g.label}
+                  className="bg-[#1E1040]"
+                >
+                  {g.label}
+                </option>
+              ))}
+              <option value="Non-denominational" className="bg-[#1E1040]">
+                Non-denominational
+              </option>
+              <option value="Unknown" className="bg-[#1E1040]">
+                Unknown / Other
+              </option>
+            </select>
+          ) : (
+            <input
+              type={type}
+              value={values[key]}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, [key]: e.target.value }))
+              }
+              placeholder={placeholder}
+              min={type === "number" ? 1 : undefined}
+              max={type === "number" ? 50000 : undefined}
+              className="flex-1 bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/20"
+            />
+          )}
+          <button
+            onClick={() => handleSubmit(key)}
+            disabled={
+              isSubmitting ||
+              !values[key]?.trim() ||
+              justSubmitted
+            }
+            className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-all disabled:opacity-30"
+            style={{
+              backgroundColor: justSubmitted
+                ? "rgba(34, 197, 94, 0.3)"
+                : "rgba(168, 85, 247, 0.3)",
+            }}
+          >
+            {isSubmitting ? (
+              <Loader2
+                size={14}
+                className="text-purple-300 animate-spin"
+              />
+            ) : justSubmitted ? (
+              <Check size={14} className="text-green-400" />
+            ) : (
+              <Send size={14} className="text-purple-300" />
+            )}
+          </button>
+        </div>
+      )}
+
+      <VoteProgress consensus={fieldConsensus} />
     </div>
   );
 }

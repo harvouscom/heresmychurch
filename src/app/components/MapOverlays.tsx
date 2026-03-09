@@ -1,0 +1,213 @@
+import { motion, AnimatePresence } from "motion/react";
+import { Loader2, X } from "lucide-react";
+import { getSizeCategory } from "./church-data";
+import type { Church } from "./church-data";
+import { WAITING_SAYINGS } from "./map-constants";
+
+// --- Loading Overlay ---
+export function LoadingOverlay({
+  loadingStateName,
+  sayingIndex,
+}: {
+  loadingStateName: string;
+  sayingIndex: number | null;
+}) {
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 backdrop-blur-sm">
+      <div
+        className="flex flex-col items-center gap-3 px-8 py-6 rounded-2xl shadow-2xl"
+        style={{ backgroundColor: "rgba(30, 16, 64, 0.95)" }}
+      >
+        <Loader2 size={28} className="text-purple-400 animate-spin" />
+        <span className="text-white text-sm font-medium">
+          {loadingStateName
+            ? `Loading churches in ${loadingStateName}...`
+            : `Loading churches...`}
+        </span>
+        <div className="mt-2 pt-3 border-t border-white/10 max-w-[280px] text-center relative overflow-hidden" style={{ minHeight: 72 }}>
+          <AnimatePresence mode="wait">
+            {sayingIndex !== null && (
+              <motion.div
+                key={sayingIndex}
+                initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                exit={{ opacity: 0, y: -12, filter: "blur(4px)" }}
+                transition={{ duration: 0.5, ease: "easeInOut" }}
+              >
+                <p className="text-white/50 text-xs italic leading-relaxed">
+                  "{WAITING_SAYINGS[sayingIndex].text}"
+                </p>
+                <p className="text-purple-400/60 text-[10px] mt-1.5 font-medium">
+                  -- {WAITING_SAYINGS[sayingIndex].ref}
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Error Overlay (full screen, no churches loaded) ---
+export function ErrorOverlay({
+  focusedStateName,
+  error,
+  onRetry,
+  onGoBack,
+}: {
+  focusedStateName: string;
+  error: string;
+  onRetry: () => void;
+  onGoBack: () => void;
+}) {
+  return (
+    <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+      <div
+        className="flex flex-col items-center gap-4 px-8 py-6 rounded-2xl shadow-2xl pointer-events-auto max-w-[340px]"
+        style={{ backgroundColor: "rgba(30, 16, 64, 0.95)" }}
+      >
+        <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+          <X size={20} className="text-red-400" />
+        </div>
+        <div className="text-center">
+          <div className="text-white font-semibold text-sm">
+            Couldn't load {focusedStateName}
+          </div>
+          <div className="text-white/50 text-xs mt-1.5 leading-relaxed">
+            {error}
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={onRetry}
+            className="px-5 py-2 rounded-full text-white text-sm font-medium shadow-lg hover:shadow-xl transition-all"
+            style={{
+              background:
+                "linear-gradient(135deg, #6B21A8 0%, #A855F7 100%)",
+            }}
+          >
+            Try Again
+          </button>
+          <button
+            onClick={onGoBack}
+            className="px-5 py-2 rounded-full text-white/60 text-sm border border-white/15 hover:bg-white/5 transition-all"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Error Banner (non-critical, churches still loaded) ---
+export function ErrorBanner({
+  error,
+  onDismiss,
+}: {
+  error: string;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20">
+      <div
+        className="flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg text-xs"
+        style={{ backgroundColor: "rgba(180, 40, 60, 0.9)" }}
+      >
+        <span className="text-white">{error}</span>
+        <button
+          onClick={onDismiss}
+          className="text-white/60 hover:text-white"
+        >
+          <X size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// --- State Tooltip (national view hover) ---
+export function StateTooltip({
+  hoveredState,
+  states,
+  tooltipPos,
+}: {
+  hoveredState: string;
+  states: { abbrev: string; name: string; isPopulated: boolean; churchCount: number }[];
+  tooltipPos: { x: number; y: number };
+}) {
+  const info = states.find((s) => s.abbrev === hoveredState);
+  return (
+    <div
+      className="fixed z-50 pointer-events-none rounded-lg shadow-xl px-4 py-2.5"
+      style={{
+        left: tooltipPos.x + 16,
+        top: tooltipPos.y - 40,
+        backgroundColor: "rgba(30, 16, 64, 0.95)",
+      }}
+    >
+      <div className="text-sm font-semibold text-white">
+        {info?.name || hoveredState}
+      </div>
+      <div className="text-xs text-purple-300 mt-0.5">
+        {info?.isPopulated
+          ? `${info.churchCount.toLocaleString()} churches`
+          : "Click to explore"}
+      </div>
+    </div>
+  );
+}
+
+// --- Church Tooltip (hover over dot) ---
+export function ChurchTooltip({
+  church,
+  tooltipPos,
+}: {
+  church: Church;
+  tooltipPos: { x: number; y: number };
+}) {
+  return (
+    <div
+      className="fixed z-50 pointer-events-none rounded-xl shadow-xl px-4 py-3 max-w-[300px]"
+      style={{
+        left: tooltipPos.x + 16,
+        top: tooltipPos.y - 70,
+        backgroundColor: "rgba(30, 16, 64, 0.96)",
+      }}
+    >
+      <div className="text-sm font-semibold text-white">
+        {church.name}
+      </div>
+      {(church.city || church.address) && (
+        <div className="text-xs text-white/50 mt-0.5">
+          {church.address && (
+            <span>{church.address}, </span>
+          )}
+          {church.city && <span>{church.city}, </span>}
+          {church.state}
+        </div>
+      )}
+      <div className="flex items-center gap-3 mt-2">
+        <div className="flex items-center gap-1.5">
+          <div
+            className="w-2.5 h-2.5 rounded-full"
+            style={{
+              backgroundColor: getSizeCategory(church.attendance).color,
+            }}
+          />
+          <span className="text-xs text-purple-300">
+            ~{church.attendance.toLocaleString()} attending
+          </span>
+        </div>
+      </div>
+      <div className="text-xs text-white/40 mt-1.5 flex items-center gap-1.5">
+        <span
+          className="inline-block w-1.5 h-1.5 rounded-full"
+          style={{ backgroundColor: "#A855F7" }}
+        />
+        {church.denomination === "Other" || church.denomination === "Unknown" ? "Non-denominational" : church.denomination}
+      </div>
+    </div>
+  );
+}

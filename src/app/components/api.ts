@@ -177,7 +177,7 @@ export async function fetchSuggestions(
 
 export async function submitSuggestion(
   churchId: string,
-  field: "website" | "address" | "attendance" | "denomination",
+  field: "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email",
   value: string
 ): Promise<SubmitSuggestionResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/suggestions`, {
@@ -257,6 +257,12 @@ export async function addChurch(data: {
   denomination?: string;
   attendance?: number;
   website?: string;
+  serviceTimes?: string;
+  languages?: string[];
+  ministries?: string[];
+  pastorName?: string;
+  phone?: string;
+  email?: string;
 }): Promise<AddChurchResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/churches/add`, {
     method: "POST",

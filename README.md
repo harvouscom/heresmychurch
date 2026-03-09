@@ -1,7 +1,7 @@
 
-  # Interactive Church Map
+  # Here's My Church
 
-  This is a code bundle for Interactive Church Map. The original project is available at https://www.figma.com/design/DDx89YVARqkAInuPhDGvFY/Interactive-Church-Map.
+  This is a code bundle for Here's My Church. The original project is available at https://www.figma.com/design/DDx89YVARqkAInuPhDGvFY/Here-s-My-Church.
 
   ## Running the code
 

@@ -11,10 +11,17 @@ import {
   Loader2,
   ShieldCheck,
   Clock,
+  Phone,
+  Mail,
+  User,
+  Languages,
+  Heart,
+  ChevronDown,
 } from "lucide-react";
-import { DENOMINATION_GROUPS } from "./church-data";
+import { DENOMINATION_GROUPS, COMMON_LANGUAGES, COMMON_MINISTRIES } from "./church-data";
 import type { PendingChurchData } from "./api";
 import { addChurch, fetchPendingChurches, verifyChurch } from "./api";
+import { ServiceTimesInput } from "./ServiceTimesInput";
 
 interface AddChurchFormProps {
   stateAbbrev: string;
@@ -36,8 +43,9 @@ export function AddChurchForm({
   const [verifying, setVerifying] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [showExtended, setShowExtended] = useState(false);
 
-  // Form fields
+  // Core form fields
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
@@ -46,6 +54,14 @@ export function AddChurchForm({
   const [denomination, setDenomination] = useState("");
   const [attendance, setAttendance] = useState("");
   const [website, setWebsite] = useState("");
+
+  // Extended form fields
+  const [serviceTimes, setServiceTimes] = useState("");
+  const [selectedLanguages, setSelectedLanguages] = useState<Set<string>>(new Set());
+  const [selectedMinistries, setSelectedMinistries] = useState<Set<string>>(new Set());
+  const [pastorName, setPastorName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
 
   const loadPending = useCallback(async () => {
     try {
@@ -104,6 +120,12 @@ export function AddChurchForm({
         denomination: denomination || undefined,
         attendance: attendance ? parseInt(attendance) : undefined,
         website: website.trim() || undefined,
+        serviceTimes: serviceTimes.trim() || undefined,
+        languages: selectedLanguages.size > 0 ? Array.from(selectedLanguages) : undefined,
+        ministries: selectedMinistries.size > 0 ? Array.from(selectedMinistries) : undefined,
+        pastorName: pastorName.trim() || undefined,
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
       });
 
       if (result.isDuplicate) {
@@ -125,6 +147,13 @@ export function AddChurchForm({
       setDenomination("");
       setAttendance("");
       setWebsite("");
+      setServiceTimes("");
+      setSelectedLanguages(new Set());
+      setSelectedMinistries(new Set());
+      setPastorName("");
+      setPhone("");
+      setEmail("");
+      setShowExtended(false);
 
       // Refresh pending list
       await loadPending();
@@ -169,8 +198,31 @@ export function AddChurchForm({
     }
   };
 
+  const toggleLanguage = (lang: string) => {
+    setSelectedLanguages(prev => {
+      const next = new Set(prev);
+      if (next.has(lang)) next.delete(lang);
+      else next.add(lang);
+      return next;
+    });
+  };
+
+  const toggleMinistry = (ministry: string) => {
+    setSelectedMinistries(prev => {
+      const next = new Set(prev);
+      if (next.has(ministry)) next.delete(ministry);
+      else next.add(ministry);
+      return next;
+    });
+  };
+
   const remainingNeeded = (ch: PendingChurchData) =>
     Math.max(0, ch.needed - ch.verificationCount);
+
+  const inputClass =
+    "w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/20";
+  const labelClass =
+    "text-[10px] uppercase tracking-wider text-white/40 font-semibold";
 
   return (
     <div
@@ -410,16 +462,14 @@ export function AddChurchForm({
               <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                 <div className="flex items-center gap-2 mb-2">
                   <ChurchIcon size={13} className="text-purple-400" />
-                  <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
-                    Church Name *
-                  </span>
+                  <span className={labelClass}>Church Name *</span>
                 </div>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g., Grace Community Church"
-                  className="w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/20"
+                  className={inputClass}
                 />
               </div>
 
@@ -428,31 +478,27 @@ export function AddChurchForm({
                 <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                   <div className="flex items-center gap-2 mb-2">
                     <MapPin size={13} className="text-purple-400" />
-                    <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
-                      Address
-                    </span>
+                    <span className={labelClass}>Address</span>
                   </div>
                   <input
                     type="text"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
                     placeholder="123 Main St"
-                    className="w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/20"
+                    className={inputClass}
                   />
                 </div>
                 <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                   <div className="flex items-center gap-2 mb-2">
                     <MapPin size={13} className="text-purple-400" />
-                    <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
-                      City
-                    </span>
+                    <span className={labelClass}>City</span>
                   </div>
                   <input
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     placeholder="Springfield"
-                    className="w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/20"
+                    className={inputClass}
                   />
                 </div>
               </div>
@@ -461,9 +507,7 @@ export function AddChurchForm({
               <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                 <div className="flex items-center gap-2 mb-1.5">
                   <MapPin size={13} className="text-purple-400" />
-                  <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
-                    Coordinates *
-                  </span>
+                  <span className={labelClass}>Coordinates *</span>
                 </div>
                 <p className="text-[10px] text-white/25 mb-2">
                   Right-click any location on Google Maps and copy the
@@ -475,14 +519,14 @@ export function AddChurchForm({
                     value={lat}
                     onChange={(e) => setLat(e.target.value)}
                     placeholder="Latitude (e.g., 33.749)"
-                    className="w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/20"
+                    className={inputClass}
                   />
                   <input
                     type="text"
                     value={lng}
                     onChange={(e) => setLng(e.target.value)}
                     placeholder="Longitude (e.g., -84.388)"
-                    className="w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/20"
+                    className={inputClass}
                   />
                 </div>
               </div>
@@ -492,19 +536,17 @@ export function AddChurchForm({
                 <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                   <div className="flex items-center gap-2 mb-2">
                     <ChurchIcon size={13} className="text-purple-400" />
-                    <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
-                      Denomination
-                    </span>
+                    <span className={labelClass}>Denomination</span>
                   </div>
                   <select
                     value={denomination}
                     onChange={(e) => setDenomination(e.target.value)}
-                    className="w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors appearance-none"
+                    className={`${inputClass} appearance-none`}
                   >
                     <option value="" className="bg-[#1A0E38]">
                       Select...
                     </option>
-                    {DENOMINATION_GROUPS.filter((g) => g.label !== "Other").map(
+                    {DENOMINATION_GROUPS.filter((g) => g.label !== "Other" && g.label !== "Non-denominational").map(
                       (g) => (
                         <option
                           key={g.label}
@@ -515,6 +557,9 @@ export function AddChurchForm({
                         </option>
                       )
                     )}
+                    <option value="Non-denominational" className="bg-[#1A0E38]">
+                      Non-denominational
+                    </option>
                     <option value="Unknown" className="bg-[#1A0E38]">
                       Unknown / Other
                     </option>
@@ -523,9 +568,7 @@ export function AddChurchForm({
                 <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                   <div className="flex items-center gap-2 mb-2">
                     <Users size={13} className="text-purple-400" />
-                    <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
-                      Attendance
-                    </span>
+                    <span className={labelClass}>Attendance</span>
                   </div>
                   <input
                     type="number"
@@ -534,7 +577,7 @@ export function AddChurchForm({
                     placeholder="Est. weekly"
                     min={1}
                     max={50000}
-                    className="w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/20"
+                    className={inputClass}
                   />
                 </div>
               </div>
@@ -543,18 +586,144 @@ export function AddChurchForm({
               <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                 <div className="flex items-center gap-2 mb-2">
                   <Globe size={13} className="text-purple-400" />
-                  <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
-                    Website
-                  </span>
+                  <span className={labelClass}>Website</span>
                 </div>
                 <input
                   type="text"
                   value={website}
                   onChange={(e) => setWebsite(e.target.value)}
                   placeholder="https://www.example.com"
-                  className="w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/20"
+                  className={inputClass}
                 />
               </div>
+
+              {/* Extended fields toggle */}
+              <button
+                onClick={() => setShowExtended(!showExtended)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/10 hover:border-purple-500/30 hover:bg-white/[0.02] transition-all text-white/40 hover:text-white/60 text-xs"
+              >
+                {showExtended ? "Hide" : "Add"} Service Details, Languages & More
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-200 ${showExtended ? "rotate-180" : ""}`}
+                />
+              </button>
+
+              {showExtended && (
+                <div className="space-y-3.5">
+                  {/* Service Times */}
+                  <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Clock size={13} className="text-purple-400" />
+                      <span className={labelClass}>Service Times</span>
+                    </div>
+                    <ServiceTimesInput
+                      value={serviceTimes}
+                      onChange={setServiceTimes}
+                    />
+                  </div>
+
+                  {/* Languages */}
+                  <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Languages size={13} className="text-purple-400" />
+                      <span className={labelClass}>
+                        Languages{selectedLanguages.size > 0 ? ` (${selectedLanguages.size})` : ""}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {COMMON_LANGUAGES.map((lang) => (
+                        <button
+                          key={lang}
+                          onClick={() => toggleLanguage(lang)}
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-all border ${
+                            selectedLanguages.has(lang)
+                              ? "bg-purple-500/30 border-purple-500/50 text-purple-300"
+                              : "bg-white/5 border-white/8 text-white/40 hover:text-white/60 hover:border-white/15"
+                          }`}
+                        >
+                          {selectedLanguages.has(lang) && (
+                            <Check size={9} className="inline mr-0.5" />
+                          )}
+                          {lang}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Ministries */}
+                  <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Heart size={13} className="text-purple-400" />
+                      <span className={labelClass}>
+                        Ministries{selectedMinistries.size > 0 ? ` (${selectedMinistries.size})` : ""}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {COMMON_MINISTRIES.map((ministry) => (
+                        <button
+                          key={ministry}
+                          onClick={() => toggleMinistry(ministry)}
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-all border ${
+                            selectedMinistries.has(ministry)
+                              ? "bg-purple-500/30 border-purple-500/50 text-purple-300"
+                              : "bg-white/5 border-white/8 text-white/40 hover:text-white/60 hover:border-white/15"
+                          }`}
+                        >
+                          {selectedMinistries.has(ministry) && (
+                            <Check size={9} className="inline mr-0.5" />
+                          )}
+                          {ministry}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Pastor + Contact row */}
+                  <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <User size={13} className="text-purple-400" />
+                      <span className={labelClass}>Lead Pastor</span>
+                    </div>
+                    <input
+                      type="text"
+                      value={pastorName}
+                      onChange={(e) => setPastorName(e.target.value)}
+                      placeholder="Pastor John Smith"
+                      className={inputClass}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Phone size={13} className="text-purple-400" />
+                        <span className={labelClass}>Phone</span>
+                      </div>
+                      <input
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="(555) 123-4567"
+                        className={inputClass}
+                      />
+                    </div>
+                    <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Mail size={13} className="text-purple-400" />
+                        <span className={labelClass}>Email</span>
+                      </div>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="info@church.org"
+                        className={inputClass}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Submit button */}
               <button
