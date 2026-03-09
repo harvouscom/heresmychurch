@@ -668,7 +668,7 @@ export function ChurchListModal({
                             className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                             style={{ backgroundColor: "#A855F7" }}
                           />
-                          <span className="truncate">{church.denomination === "Other" || church.denomination === "Unknown" ? "Non-denominational" : church.denomination}</span>
+                          <span className="truncate">{church.denomination === "Other" || church.denomination === "Unknown" ? "Unspecified" : church.denomination}</span>
                         </span>
                       </div>
 

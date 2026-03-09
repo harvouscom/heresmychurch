@@ -111,7 +111,13 @@ export async function fetchStates(): Promise<StatesResponse> {
     console.error("Error fetching states:", text);
     throw new Error(`Failed to fetch states: ${res.status}`);
   }
-  return res.json();
+  const data = await res.json();
+  // Defensive: ensure states is always an array
+  return {
+    states: Array.isArray(data.states) ? data.states : [],
+    totalChurches: data.totalChurches ?? 0,
+    populatedStates: data.populatedStates ?? 0,
+  };
 }
 
 export async function fetchChurches(
@@ -126,7 +132,15 @@ export async function fetchChurches(
     console.error(`Error fetching churches for ${stateAbbrev}:`, text);
     throw new Error(`Failed to fetch churches: ${res.status}`);
   }
-  return res.json();
+  const data = await res.json();
+  // Defensive: ensure churches is always an array
+  return {
+    churches: Array.isArray(data.churches) ? data.churches : [],
+    state: data.state || { abbrev: stateAbbrev, name: stateAbbrev, lat: 0, lng: 0 },
+    count: data.count,
+    fromCache: data.fromCache,
+    message: data.message,
+  };
 }
 
 export async function populateState(
@@ -160,6 +174,21 @@ export async function fetchDenominations(): Promise<DenominationsResponse> {
   return res.json();
 }
 
+// Helper to normalize consensus fields — ensures submissions is always an array
+function normalizeConsensus(raw: Record<string, any>): Record<string, SuggestionConsensus> {
+  const result: Record<string, SuggestionConsensus> = {};
+  for (const [key, val] of Object.entries(raw)) {
+    result[key] = {
+      approved: val?.approved ?? false,
+      value: val?.value ?? null,
+      votes: val?.votes ?? 0,
+      needed: val?.needed ?? 3,
+      submissions: Array.isArray(val?.submissions) ? val.submissions : [],
+    };
+  }
+  return result;
+}
+
 export async function fetchSuggestions(
   churchId: string
 ): Promise<SuggestionsResponse> {
@@ -172,7 +201,13 @@ export async function fetchSuggestions(
     console.error(`Error fetching suggestions for ${churchId}:`, text);
     throw new Error(`Failed to fetch suggestions: ${res.status}`);
   }
-  return res.json();
+  const data = await res.json();
+  return {
+    churchId: data.churchId ?? churchId,
+    consensus: data.consensus ? normalizeConsensus(data.consensus) : {},
+    myVotes: data.myVotes ?? {},
+    totalSubmissions: data.totalSubmissions ?? 0,
+  };
 }
 
 export async function submitSuggestion(
@@ -190,7 +225,20 @@ export async function submitSuggestion(
     console.error(`Error submitting suggestion:`, text);
     throw new Error(`Failed to submit suggestion: ${res.status}`);
   }
-  return res.json();
+  const data = await res.json();
+  return {
+    success: data.success,
+    field: data.field ?? field,
+    consensus: {
+      approved: data.consensus?.approved ?? false,
+      value: data.consensus?.value ?? null,
+      votes: data.consensus?.votes ?? 0,
+      needed: data.consensus?.needed ?? 3,
+      submissions: Array.isArray(data.consensus?.submissions) ? data.consensus.submissions : [],
+    },
+    allFields: data.allFields ? normalizeConsensus(data.allFields) : {},
+    error: data.error,
+  };
 }
 
 // ── Community-added churches ──
@@ -292,6 +340,44 @@ export async function verifyChurch(
   return res.json();
 }
 
+// ── Pending Suggestions (corrections needing more votes) ──
+
+export interface PendingSuggestionField {
+  votes: number;
+  needed: number;
+  topValue: string;
+  submissions: { value: string; count: number }[];
+}
+
+export interface PendingSuggestion {
+  churchId: string;
+  fields: Record<string, PendingSuggestionField>;
+}
+
+export interface PendingSuggestionsResponse {
+  state: string;
+  pending: PendingSuggestion[];
+}
+
+export async function fetchPendingSuggestions(
+  stateAbbrev: string
+): Promise<PendingSuggestionsResponse> {
+  const res = await fetchWithRetry(
+    `${BASE_URL}/suggestions/pending/${stateAbbrev.toUpperCase()}`,
+    { headers }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    console.error(`Error fetching pending suggestions for ${stateAbbrev}:`, text);
+    throw new Error(`Failed to fetch pending suggestions: ${res.status}`);
+  }
+  const data = await res.json();
+  return {
+    state: data.state ?? stateAbbrev.toUpperCase(),
+    pending: Array.isArray(data.pending) ? data.pending : [],
+  };
+}
+
 // ── State Population ──
 
 export interface SearchResult {
@@ -327,7 +413,15 @@ export async function searchChurches(
     console.error("Error searching churches:", text);
     throw new Error(`Search failed: ${res.status}`);
   }
-  return res.json();
+  const data = await res.json();
+  // Defensive: ensure results is always an array
+  return {
+    results: Array.isArray(data.results) ? data.results : [],
+    query: data.query ?? query,
+    statesSearched: data.statesSearched,
+    stateFilter: data.stateFilter,
+    message: data.message,
+  };
 }
 
 export interface PopulationResponse {

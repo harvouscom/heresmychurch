@@ -1,13 +1,6 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useMemo, useEffect, useRef, useReducer } from "react";
 import { geoContains } from "d3-geo";
 import { feature } from "topojson-client";
-import {
-  sizeCategories,
-  getSizeCategory,
-  DENOMINATION_GROUPS,
-  getDenominationGroup,
-  estimateBilingualProbability,
-} from "./church-data";
 import type { Church, StateInfo } from "./church-data";
 import {
   fetchStates,
@@ -16,12 +9,15 @@ import {
   fetchStatePopulations,
 } from "./api";
 import {
-  WAITING_SAYINGS,
   GEO_URL,
   FIPS_TO_STATE,
   filterToStateBounds,
   getStateZoom,
 } from "./map-constants";
+
+import { useLoadingOverlay } from "./hooks/useLoadingOverlay";
+import { useUIState } from "./hooks/useUIState";
+import { useChurchFilters } from "./hooks/useChurchFilters";
 
 interface UseChurchMapDataArgs {
   routeStateAbbrev: string | null;
@@ -31,6 +27,19 @@ interface UseChurchMapDataArgs {
   navigateToNational: () => void;
 }
 
+// ── Module-level pure function (was useCallback with [] deps) ──
+function filterToStatePolygon(
+  rawChurches: Church[],
+  stateAbbrev: string,
+  stateFeatures: Map<string, any>,
+): Church[] {
+  const feat = stateFeatures.get(stateAbbrev.toUpperCase());
+  if (feat) {
+    return rawChurches.filter((ch) => geoContains(feat, [ch.lng, ch.lat]));
+  }
+  return filterToStateBounds(rawChurches, stateAbbrev) as Church[];
+}
+
 export function useChurchMapData({
   routeStateAbbrev,
   routeChurchId,
@@ -38,205 +47,357 @@ export function useChurchMapData({
   navigateToChurch,
   navigateToNational,
 }: UseChurchMapDataArgs) {
-  // Map state
-  const [zoom, setZoom] = useState(1);
-  const [center, setCenter] = useState<[number, number]>([-96, 38]);
+  // ── Core data + map-view state (consolidated reducer — absorbs old useMapView) ──
+  const [ds, dd] = useReducer(dataReducer, initialDataState);
 
-  // Data state
-  const [states, setStates] = useState<StateInfo[]>([]);
-  const [totalChurches, setTotalChurches] = useState(0);
-  const [focusedState, setFocusedState] = useState<string | null>(null);
-  const [focusedStateName, setFocusedStateName] = useState<string>("");
-  const [churches, setChurches] = useState<Church[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [populating, setPopulating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Convenience aliases
+  const {
+    states, totalChurches, focusedState, focusedStateName, churches,
+    loading, populating, error, selectedChurch, statePopulations,
+    detectedState, loadingStateName, zoom, center,
+  } = ds;
 
-  // Refs to avoid stale closures in async loadStateData
-  const focusedStateRef = useRef<string | null>(null);
-  const loadVersionRef = useRef(0);
-  useEffect(() => { focusedStateRef.current = focusedState; }, [focusedState]);
+  // Setter helpers — dd (dispatch) is guaranteed stable by React
+  const setStates = (v: StateInfo[] | ((p: StateInfo[]) => StateInfo[])) => dd({ type: "SET_STATES", value: v });
+  const setTotalChurches = (v: number | ((p: number) => number)) => dd({ type: "SET_TOTAL_CHURCHES", value: v });
+  const setFocusedState = (v: string | null) => dd({ type: "SET_FOCUSED_STATE", value: v });
+  const setFocusedStateName = (v: string) => dd({ type: "SET_FOCUSED_STATE_NAME", value: v });
+  const setChurches = (v: Church[] | ((p: Church[]) => Church[])) => dd({ type: "SET_CHURCHES", value: v });
+  const setLoading = (v: boolean) => dd({ type: "SET_LOADING", value: v });
+  const setPopulating = (v: boolean) => dd({ type: "SET_POPULATING", value: v });
+  const setError = (v: string | null) => dd({ type: "SET_ERROR", value: v });
+  const setSelectedChurch = (v: Church | null) => dd({ type: "SET_SELECTED_CHURCH", value: v });
+  const setStatePopulations = (v: Record<string, number>) => dd({ type: "SET_STATE_POPULATIONS", value: v });
+  const setDetectedState = (v: string | null) => dd({ type: "SET_DETECTED_STATE", value: v });
+  const setLoadingStateName = (v: string) => dd({ type: "SET_LOADING_STATE_NAME", value: v });
+  const setZoom = (v: number | ((p: number) => number)) => dd({ type: "SET_ZOOM", value: v });
+  const setCenter = (v: [number, number]) => dd({ type: "SET_CENTER", value: v });
 
-  // Derived: are all states populated?
-  const allStatesLoaded = useMemo(() => states.length > 0 && states.every((s) => s.isPopulated), [states]);
+  // ── Sub-hook: loading overlay ──
+  const overlay = useLoadingOverlay(loading, populating);
 
-  // Tooltip
-  const [hoveredChurch, setHoveredChurch] = useState<Church | null>(null);
-  const [hoveredState, setHoveredState] = useState<string | null>(null);
-  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  // ── Sub-hook: UI state (filters, tooltips, modals) ──
+  const ui = useUIState(focusedState);
 
-  // Filters
-  const [showFilterPanel, setShowFilterPanel] = useState(false);
-  const [searchCollapsed, setSearchCollapsed] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
-  const [activeSize, setActiveSize] = useState<Set<string>>(
-    new Set(sizeCategories.map((c) => c.label))
+  // ── Sub-hook: filtered churches + derived stats ──
+  const filters = useChurchFilters(
+    churches,
+    ui.activeSize,
+    ui.activeDenominations,
+    ui.languageFilter,
+    focusedState,
+    states,
+    statePopulations,
   );
-  const [activeDenominations, setActiveDenominations] = useState<Set<string>>(
-    new Set(DENOMINATION_GROUPS.map((g) => g.label))
-  );
-  const [showSizeFilters, setShowSizeFilters] = useState(true);
-  const [showDenomFilters, setShowDenomFilters] = useState(true);
-  const [showLanguageFilters, setShowLanguageFilters] = useState(false);
-  const [languageFilter, setLanguageFilter] = useState<string>("all");
 
-  // Church list modal
-  const [showListModal, setShowListModal] = useState(false);
+  // ── Consolidated refs (single useRef — was 9+, saves ~8 hooks) ──
+  const refs = useRef({
+    focusedState: null as string | null,
+    loadVersion: 0,
+    preloadedChurch: null as Church | null,
+    stateFeatures: new Map<string, any>(),
+    churchCache: new Map<string, Church[]>(),
+    pendingTransition: null as {
+      abbrev: string;
+      name: string;
+      lat: number;
+      lng: number;
+      churches: Church[];
+    } | null,
+    prevRouteState: null as string | null,
+    prevRouteChurch: null as string | null,
+    statesLoaded: false,
+    moveEndSuppressedUntil: 0,
+  });
 
-  // Selected church for detail panel
-  const [selectedChurch, setSelectedChurch] = useState<Church | null>(null);
+  // Keep ref in sync (no useEffect needed — direct assignment every render)
+  refs.current.focusedState = focusedState;
+  if (states.length > 0) refs.current.statesLoaded = true;
 
-  // Preloaded church
-  const preloadedChurchRef = useRef<Church | null>(null);
-
-  // Pending state transition
-  const [loadingStateName, setLoadingStateName] = useState("");
-  const pendingTransitionRef = useRef<{
-    abbrev: string;
-    name: string;
-    lat: number;
-    lng: number;
-    churches: Church[];
-  } | null>(null);
-
-  // Add church form
-  const [showAddChurchFromSummary, setShowAddChurchFromSummary] = useState(false);
-
-  // Summary dropdown
-  const [showSummary, setShowSummary] = useState(false);
-  const summaryRef = useRef<HTMLDivElement>(null);
-  const [showLegend, setShowLegend] = useState(false);
-
-  // State populations
-  const [statePopulations, setStatePopulations] = useState<Record<string, number>>({});
-
-  // Point-in-polygon filtering: actual state boundary from topojson
-  const stateFeaturesRef = useRef<Map<string, any>>(new Map());
-
-  // In-memory session cache: stateAbbrev -> filtered Church[]
-  const churchCacheRef = useRef<Map<string, Church[]>>(new Map());
-
-  // Bible saying cycling for loading states
-  const MIN_VERSES = 3;
-  const [sayingIndex, setSayingIndex] = useState<number | null>(null);
-  const [forceLoadingVisible, setForceLoadingVisible] = useState(false);
-  const versesShownRef = useRef(0);
-  const loadingRef = useRef(false);
-  const populatingRef = useRef(false);
-
-  useEffect(() => { loadingRef.current = loading; }, [loading]);
-  useEffect(() => { populatingRef.current = populating; }, [populating]);
-
-  // Guard: suppress onMoveEnd briefly after programmatic view changes
-  const moveEndSuppressedUntilRef = useRef(0);
-
-  // Smooth zoom
-  const moveToView = useCallback((targetCenter: [number, number], targetZoom: number) => {
-    moveEndSuppressedUntilRef.current = Date.now() + 400; // ignore onMoveEnd for 400ms
+  // ── moveToView helper (replaces old useCallback from useMapView) ──
+  const moveToView = (targetCenter: [number, number], targetZoom: number) => {
+    refs.current.moveEndSuppressedUntil = Date.now() + 900;
     setCenter(targetCenter);
     setZoom(targetZoom);
-  }, []);
+  };
 
-  // Filter churches using the actual state polygon
-  const filterToStatePolygon = useCallback((rawChurches: Church[], stateAbbrev: string): Church[] => {
-    const feat = stateFeaturesRef.current.get(stateAbbrev.toUpperCase());
-    if (feat) {
-      return rawChurches.filter(ch => geoContains(feat, [ch.lng, ch.lat]));
-    }
-    return filterToStateBounds(rawChurches, stateAbbrev) as Church[];
-  }, []);
+  const allStatesLoaded = useMemo(
+    () => states.length > 0 && states.every((s) => s.isPopulated),
+    [states]
+  );
 
-  // Close summary dropdown when clicking outside
-  useEffect(() => {
-    if (!showSummary) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (summaryRef.current && !summaryRef.current.contains(e.target as Node)) {
-        setShowSummary(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showSummary]);
+  // ── Ref for load functions (avoids useCallback + stabilizes effect deps) ──
+  const loadFnsRef = useRef<{
+    loadStateData: ((s: string) => Promise<void>) | null;
+    loadStateDataSilent: ((s: string, c: Church) => Promise<void>) | null;
+  }>({ loadStateData: null, loadStateDataSilent: null });
 
-  // Close summary when navigating
-  useEffect(() => {
-    setShowSummary(false);
-  }, [focusedState]);
-
-  // When loading starts, reset verse counter and force visibility
-  useEffect(() => {
-    if (loading || populating) {
-      versesShownRef.current = 0;
-      setForceLoadingVisible(true);
-      setSayingIndex(null);
-    }
-  }, [loading, populating]);
-
-  // Cycle verses while loading overlay is showing
-  useEffect(() => {
-    const isActive = loading || populating || forceLoadingVisible;
-    if (!isActive) {
-      setSayingIndex(null);
+  // ── Load state data (plain function, stored in ref) ──
+  const loadStateData = async (stateAbbrev: string) => {
+    const stateInfo = states.find((s) => s.abbrev === stateAbbrev);
+    if (!stateInfo) {
+      console.error(`[ChurchMap] loadStateData: no stateInfo found for "${stateAbbrev}"`);
       return;
     }
 
-    const showTimer = setTimeout(() => {
-      const first = Math.floor(Math.random() * WAITING_SAYINGS.length);
-      setSayingIndex(first);
-      versesShownRef.current = 1;
-    }, 1000);
-
-    const cycleTimer = setInterval(() => {
-      setSayingIndex((prev) => {
-        let next;
-        do {
-          next = Math.floor(Math.random() * WAITING_SAYINGS.length);
-        } while (next === prev && WAITING_SAYINGS.length > 1);
-        return next;
-      });
-      versesShownRef.current += 1;
-      if (!loadingRef.current && !populatingRef.current && versesShownRef.current >= MIN_VERSES) {
-        setForceLoadingVisible(false);
-      }
-    }, 3500);
-
-    return () => {
-      clearTimeout(showTimer);
-      clearInterval(cycleTimer);
-    };
-  }, [loading, populating, forceLoadingVisible]);
-
-  // Dismiss once data finishes and enough verses shown
-  useEffect(() => {
-    if (!loading && !populating && forceLoadingVisible && versesShownRef.current >= MIN_VERSES) {
-      setForceLoadingVisible(false);
+    // Session cache hit: instant revisit
+    const cached = refs.current.churchCache.get(stateAbbrev);
+    if (cached && cached.length > 0) {
+      console.log(`[ChurchMap] Cache hit for ${stateAbbrev} (${cached.length} churches) — instant load`);
+      refs.current.loadVersion++;
+      setFocusedState(stateAbbrev);
+      setFocusedStateName(stateInfo.name);
+      setChurches(cached);
+      setSelectedChurch(null);
+      setError(null);
+      setLoading(false);
+      setPopulating(false);
+      refs.current.pendingTransition = null;
+      setLoadingStateName("");
+      overlay.setForceLoadingVisible(false);
+      moveToView([stateInfo.lng, stateInfo.lat], getStateZoom(stateAbbrev));
+      return;
     }
-  }, [loading, populating, forceLoadingVisible]);
 
-  // Apply pending state transition once loading overlay fully dismisses
+    const version = ++refs.current.loadVersion;
+    const isStale = () => refs.current.loadVersion !== version;
+
+    console.log(`[ChurchMap] Loading state: ${stateAbbrev} (${stateInfo.name}) [v${version}]`);
+
+    setFocusedState(null);
+    setFocusedStateName("");
+    setChurches([]);
+    setSelectedChurch(null);
+    setLoadingStateName(stateInfo.name);
+    refs.current.pendingTransition = {
+      abbrev: stateAbbrev,
+      name: stateInfo.name,
+      lat: stateInfo.lat,
+      lng: stateInfo.lng,
+      churches: [],
+    };
+    setLoading(true);
+    setError(null);
+
+    try {
+      const data = await fetchChurches(stateAbbrev);
+      if (isStale()) {
+        console.log(`[ChurchMap] Discarding stale load for ${stateAbbrev} [v${version}]`);
+        return;
+      }
+
+      if (data.churches && data.churches.length > 0) {
+        const isTruncated = data.churches.length === 2000;
+        const filtered = filterToStatePolygon(data.churches, stateAbbrev, refs.current.stateFeatures);
+
+        if (isTruncated) {
+          console.log(`${stateInfo.name} has exactly 2000 churches (likely truncated) -- refreshing...`);
+          setLoading(false);
+          setPopulating(true);
+
+          try {
+            const result = await populateState(stateAbbrev, true);
+            if (isStale()) return;
+            if (!result.error) {
+              const freshData = await fetchChurches(stateAbbrev);
+              if (isStale()) return;
+              if (freshData.churches && freshData.churches.length > 0) {
+                const freshFiltered = filterToStatePolygon(freshData.churches, stateAbbrev, refs.current.stateFeatures);
+                if (refs.current.pendingTransition?.abbrev === stateAbbrev) {
+                  refs.current.pendingTransition.churches = freshFiltered;
+                }
+              }
+              const statesData = await fetchStates();
+              if (!isStale()) {
+                setStates(statesData.states);
+                setTotalChurches(statesData.totalChurches);
+              }
+            } else {
+              if (refs.current.pendingTransition?.abbrev === stateAbbrev) {
+                refs.current.pendingTransition.churches = filtered;
+              }
+            }
+          } catch (refreshErr) {
+            console.warn(`Background refresh failed for ${stateInfo.name}:`, refreshErr);
+            if (!isStale() && refs.current.pendingTransition?.abbrev === stateAbbrev) {
+              refs.current.pendingTransition.churches = filtered;
+            }
+          } finally {
+            if (!isStale()) setPopulating(false);
+          }
+        } else {
+          if (refs.current.pendingTransition?.abbrev === stateAbbrev) {
+            refs.current.pendingTransition.churches = filtered;
+          }
+          setLoading(false);
+        }
+        return;
+      }
+
+      // No cached data -- auto-populate
+      setPopulating(true);
+      setLoading(false);
+
+      const result = await populateState(stateAbbrev);
+      if (isStale()) return;
+      if (result.error) {
+        setError(result.error);
+        setFocusedState(stateAbbrev);
+        setFocusedStateName(stateInfo.name);
+        moveToView([stateInfo.lng, stateInfo.lat], getStateZoom(stateAbbrev));
+        refs.current.pendingTransition = null;
+        setLoadingStateName("");
+        overlay.setForceLoadingVisible(false);
+        setPopulating(false);
+        return;
+      }
+
+      const freshData = await fetchChurches(stateAbbrev);
+      if (isStale()) return;
+      const freshFiltered = filterToStatePolygon(freshData.churches || [], stateAbbrev, refs.current.stateFeatures);
+      if (refs.current.pendingTransition?.abbrev === stateAbbrev) {
+        refs.current.pendingTransition.churches = freshFiltered;
+      }
+
+      const statesData = await fetchStates();
+      if (!isStale()) {
+        setStates(statesData.states);
+        setTotalChurches(statesData.totalChurches);
+      }
+    } catch (err) {
+      if (isStale()) return;
+      console.error(`Failed to load churches for ${stateAbbrev}:`, err);
+      setError(
+        `Failed to load churches for ${stateInfo.name}. This might be due to API rate limits -- try again in a moment.`
+      );
+      setFocusedState(stateAbbrev);
+      setFocusedStateName(stateInfo.name);
+      moveToView([stateInfo.lng, stateInfo.lat], getStateZoom(stateAbbrev));
+      refs.current.pendingTransition = null;
+      setLoadingStateName("");
+      overlay.setForceLoadingVisible(false);
+    } finally {
+      if (!isStale()) {
+        setLoading(false);
+        setPopulating(false);
+      }
+    }
+  };
+
+  // ── Silent background load (plain function, stored in ref) ──
+  const loadStateDataSilent = async (stateAbbrev: string, preloadedChurch: Church) => {
+    const stateInfo = states.find((s) => s.abbrev === stateAbbrev);
+    if (!stateInfo) return;
+
+    const version = ++refs.current.loadVersion;
+    const isStale = () => refs.current.loadVersion !== version;
+
+    console.log(`[ChurchMap] Instant church: "${preloadedChurch.name}" in ${stateAbbrev} [v${version}]`);
+
+    setFocusedState(stateAbbrev);
+    setFocusedStateName(stateInfo.name);
+    setChurches([preloadedChurch]);
+    setSelectedChurch(preloadedChurch);
+    setCenter([preloadedChurch.lng, preloadedChurch.lat]);
+    setZoom(8);
+    setError(null);
+    setLoading(false);
+    setPopulating(false);
+    refs.current.pendingTransition = null;
+    setLoadingStateName("");
+    overlay.setForceLoadingVisible(false);
+
+    try {
+      const data = await fetchChurches(stateAbbrev);
+      if (isStale()) return;
+
+      if (data.churches && data.churches.length > 0) {
+        const filtered = filterToStatePolygon(data.churches, stateAbbrev, refs.current.stateFeatures);
+        setChurches(filtered);
+
+        const full = filtered.find((c) => c.id === preloadedChurch.id);
+        if (full) setSelectedChurch(full);
+
+        if (data.churches.length === 2000) {
+          try {
+            const result = await populateState(stateAbbrev, true);
+            if (isStale()) return;
+            if (!result.error) {
+              const fresh = await fetchChurches(stateAbbrev);
+              if (isStale()) return;
+              if (fresh.churches?.length) {
+                const ff = filterToStatePolygon(fresh.churches, stateAbbrev, refs.current.stateFeatures);
+                setChurches(ff);
+                const fc = ff.find((c) => c.id === preloadedChurch.id);
+                if (fc) setSelectedChurch(fc);
+              }
+              const sd = await fetchStates();
+              if (!isStale()) {
+                setStates(sd.states);
+                setTotalChurches(sd.totalChurches);
+              }
+            }
+          } catch (e) {
+            console.warn(`Background refresh failed for ${stateAbbrev}:`, e);
+          }
+        }
+      } else {
+        setPopulating(true);
+        try {
+          const result = await populateState(stateAbbrev);
+          if (isStale()) return;
+          if (!result.error) {
+            const fresh = await fetchChurches(stateAbbrev);
+            if (isStale()) return;
+            const ff = filterToStatePolygon(fresh.churches || [], stateAbbrev, refs.current.stateFeatures);
+            setChurches(ff);
+            const fc = ff.find((c) => c.id === preloadedChurch.id);
+            if (fc) setSelectedChurch(fc);
+            const sd = await fetchStates();
+            if (!isStale()) {
+              setStates(sd.states);
+              setTotalChurches(sd.totalChurches);
+            }
+          }
+        } catch (e) {
+          console.warn(`Background population failed for ${stateAbbrev}:`, e);
+        } finally {
+          if (!isStale()) setPopulating(false);
+        }
+      }
+    } catch (err) {
+      if (isStale()) return;
+      console.warn(`[ChurchMap] Background load failed for ${stateAbbrev}:`, err);
+    }
+  };
+
+  // Store latest versions in ref (avoids useCallback, stabilizes effect deps)
+  loadFnsRef.current.loadStateData = loadStateData;
+  loadFnsRef.current.loadStateDataSilent = loadStateDataSilent;
+
+  // ── Apply pending state transition once loading overlay fully dismisses ──
   useEffect(() => {
-    if (!forceLoadingVisible && !loading && !populating && pendingTransitionRef.current) {
-      const p = pendingTransitionRef.current;
-      pendingTransitionRef.current = null;
+    if (!overlay.forceLoadingVisible && !loading && !populating && refs.current.pendingTransition) {
+      const p = refs.current.pendingTransition;
+      refs.current.pendingTransition = null;
       setFocusedState(p.abbrev);
       setFocusedStateName(p.name);
       setChurches(p.churches);
       setLoadingStateName("");
       moveToView([p.lng, p.lat], getStateZoom(p.abbrev));
     }
-  }, [forceLoadingVisible, loading, populating, moveToView]);
+  }, [overlay.forceLoadingVisible, loading, populating]);
 
-  // Sync local state churchCount with actual polygon-filtered count
+  // ── Sync local state churchCount with actual polygon-filtered count ──
   useEffect(() => {
     if (focusedState && churches.length > 0) {
-      // Update session cache whenever we have final church data for a state
-      churchCacheRef.current.set(focusedState, churches);
-
-      setStates(prev => {
-        const existing = prev.find(s => s.abbrev === focusedState);
+      refs.current.churchCache.set(focusedState, churches);
+      setStates((prev) => {
+        const existing = prev.find((s) => s.abbrev === focusedState);
         if (existing && existing.churchCount !== churches.length) {
           const delta = churches.length - existing.churchCount;
-          setTotalChurches(t => t + delta);
-          return prev.map(s =>
+          setTotalChurches((t) => t + delta);
+          return prev.map((s) =>
             s.abbrev === focusedState ? { ...s, churchCount: churches.length } : s
           );
         }
@@ -245,14 +406,15 @@ export function useChurchMapData({
     }
   }, [focusedState, churches.length]);
 
-  // Load states and populations on mount
+  // ── Load states and populations on mount ──
   useEffect(() => {
     console.log("[ChurchMap] Fetching states on mount...");
     fetchStates()
       .then((data) => {
-        console.log(`[ChurchMap] Loaded ${data.states.length} states, ${data.totalChurches} total churches`);
-        setStates(data.states);
-        setTotalChurches(data.totalChurches);
+        const safeStates = Array.isArray(data.states) ? data.states : [];
+        console.log(`[ChurchMap] Loaded ${safeStates.length} states, ${data.totalChurches} total churches`);
+        setStates(safeStates);
+        setTotalChurches(data.totalChurches || 0);
       })
       .catch((err) => {
         console.error("[ChurchMap] Failed to load states:", err);
@@ -260,389 +422,82 @@ export function useChurchMapData({
       });
 
     fetch(GEO_URL)
-      .then(res => res.json())
+      .then((res) => res.json())
       .then((topology: any) => {
+        if (!topology || !topology.objects) {
+          console.warn("[ChurchMap] Invalid topology data");
+          return;
+        }
         const geojson = feature(topology, topology.objects.states) as any;
         const featureMap = new Map<string, any>();
-        for (const f of geojson.features) {
-          const abbrev = FIPS_TO_STATE[String(f.id).padStart(2, "0")];
-          if (abbrev) featureMap.set(abbrev, f);
+        if (geojson && Array.isArray(geojson.features)) {
+          for (const f of geojson.features) {
+            const abbrev = FIPS_TO_STATE[String(f.id).padStart(2, "0")];
+            if (abbrev) featureMap.set(abbrev, f);
+          }
         }
-        stateFeaturesRef.current = featureMap;
+        refs.current.stateFeatures = featureMap;
         console.log(`[ChurchMap] Loaded topojson features for ${featureMap.size} states`);
       })
-      .catch(err => console.warn("[ChurchMap] Failed to load topojson for polygon filtering:", err));
+      .catch((err) =>
+        console.warn("[ChurchMap] Failed to load topojson for polygon filtering:", err)
+      );
 
     fetchStatePopulations()
       .then((data) => {
         setStatePopulations(data.populations);
-        console.log(`[ChurchMap] Loaded populations for ${Object.keys(data.populations).length} states (source: ${data.source})`);
+        console.log(
+          `[ChurchMap] Loaded populations for ${Object.keys(data.populations).length} states (source: ${data.source})`
+        );
       })
       .catch((err) => {
         console.warn("[ChurchMap] Failed to load state populations:", err);
       });
+
+    // Detect user's state via IP geolocation
+    fetch("https://ipapi.co/json/", { signal: AbortSignal.timeout(5000) })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.country_code === "US" && data?.region_code) {
+          const abbrev = data.region_code.toUpperCase();
+          const valid = new Set([
+            "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY",
+          ]);
+          if (valid.has(abbrev)) {
+            console.log(`[ChurchMap] Detected user state via IP: ${abbrev}`);
+            setDetectedState(abbrev);
+          }
+        }
+      })
+      .catch(() => {
+        // Silently ignore — geolocation is optional UX sugar
+      });
   }, []);
 
-  // Filter churches
-  const filteredChurches = useMemo(() => {
-    return churches.filter((church) => {
-      const sizeCat = getSizeCategory(church.attendance);
-      const denomGroup = getDenominationGroup(church.denomination);
-      if (!activeSize.has(sizeCat.label) || !activeDenominations.has(denomGroup)) return false;
-
-      if (languageFilter !== "all") {
-        const bilingual = estimateBilingualProbability(church);
-        if (languageFilter === "bilingual") {
-          const hasMultipleLanguages = church.languages && church.languages.length >= 2;
-          return hasMultipleLanguages || bilingual.probability >= 0.15;
-        } else {
-          const hasConfirmed = church.languages?.includes(languageFilter);
-          if (hasConfirmed) return true;
-          return bilingual.detectedLanguage === languageFilter && bilingual.probability >= 0.25;
-        }
-      }
-
-      return true;
-    });
-  }, [churches, activeSize, activeDenominations, languageFilter]);
-
-  // Language/bilingual stats for filter panel
-  const languageStats = useMemo(() => {
-    let bilingualCount = 0;
-    const langCounts: Record<string, number> = {};
-    const detectedLangs: Record<string, number> = {};
-
-    churches.forEach((ch) => {
-      const bilingual = estimateBilingualProbability(ch);
-      const hasMultipleLanguages = ch.languages && ch.languages.length >= 2;
-      if (hasMultipleLanguages || bilingual.probability >= 0.15) {
-        bilingualCount++;
-      }
-      if (ch.languages) {
-        ch.languages.forEach((lang) => {
-          langCounts[lang] = (langCounts[lang] || 0) + 1;
-        });
-      }
-      if (bilingual.detectedLanguage && bilingual.probability >= 0.25) {
-        detectedLangs[bilingual.detectedLanguage] = (detectedLangs[bilingual.detectedLanguage] || 0) + 1;
-      }
-    });
-
-    const mergedLangs: Record<string, { confirmed: number; estimated: number }> = {};
-    const allLangs = new Set([...Object.keys(langCounts), ...Object.keys(detectedLangs)]);
-    allLangs.forEach((lang) => {
-      if (lang === "English" || lang === "Bilingual" || lang === "Multilingual") return;
-      mergedLangs[lang] = {
-        confirmed: langCounts[lang] || 0,
-        estimated: detectedLangs[lang] || 0,
-      };
-    });
-
-    const sortedLangs = Object.entries(mergedLangs)
-      .map(([lang, counts]) => ({ lang, total: counts.confirmed + counts.estimated, ...counts }))
-      .filter((l) => l.total > 0)
-      .sort((a, b) => b.total - a.total);
-
-    return { bilingualCount, sortedLangs };
-  }, [churches]);
-
-  // Denomination counts
-  const denomCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    churches.forEach((ch) => {
-      const group = getDenominationGroup(ch.denomination);
-      counts[group] = (counts[group] || 0) + 1;
-    });
-    return counts;
-  }, [churches]);
-
-  // Size category counts
-  const sizeCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    filteredChurches.forEach((ch) => {
-      const cat = getSizeCategory(ch.attendance);
-      counts[cat.label] = (counts[cat.label] || 0) + 1;
-    });
-    return counts;
-  }, [filteredChurches]);
-
-  // Summary stats
-  const summaryStats = useMemo(() => {
-    if (focusedState && churches.length > 0) {
-      return computeStateSummary(churches, denomCounts, sizeCounts);
-    } else {
-      return computeNationalSummary(states, statePopulations);
-    }
-  }, [focusedState, churches, states, denomCounts, sizeCounts, statePopulations]);
-
-  // Load state data
-  const loadStateData = useCallback(
-    async (stateAbbrev: string) => {
-      const stateInfo = states.find((s) => s.abbrev === stateAbbrev);
-      if (!stateInfo) {
-        console.error(`[ChurchMap] loadStateData: no stateInfo found for "${stateAbbrev}"`);
-        return;
-      }
-
-      // ── Session cache hit: instant revisit ──
-      const cached = churchCacheRef.current.get(stateAbbrev);
-      if (cached && cached.length > 0) {
-        console.log(`[ChurchMap] Cache hit for ${stateAbbrev} (${cached.length} churches) — instant load`);
-        loadVersionRef.current++;
-        setFocusedState(stateAbbrev);
-        setFocusedStateName(stateInfo.name);
-        setChurches(cached);
-        setSelectedChurch(null);
-        setError(null);
-        setLoading(false);
-        setPopulating(false);
-        pendingTransitionRef.current = null;
-        setLoadingStateName("");
-        setForceLoadingVisible(false);
-        moveToView([stateInfo.lng, stateInfo.lat], getStateZoom(stateAbbrev));
-        return;
-      }
-
-      const version = ++loadVersionRef.current;
-      const isStale = () => loadVersionRef.current !== version;
-
-      console.log(`[ChurchMap] Loading state: ${stateAbbrev} (${stateInfo.name}) [v${version}]`);
-
-      setFocusedState(null);
-      setFocusedStateName("");
-      setChurches([]);
-      setSelectedChurch(null);
-      setLoadingStateName(stateInfo.name);
-      pendingTransitionRef.current = {
-        abbrev: stateAbbrev,
-        name: stateInfo.name,
-        lat: stateInfo.lat,
-        lng: stateInfo.lng,
-        churches: [],
-      };
-      setLoading(true);
-      setError(null);
-
-      try {
-        const data = await fetchChurches(stateAbbrev);
-        if (isStale()) { console.log(`[ChurchMap] Discarding stale load for ${stateAbbrev} [v${version}]`); return; }
-
-        if (data.churches && data.churches.length > 0) {
-          const isTruncated = data.churches.length === 2000;
-          const filtered = filterToStatePolygon(data.churches, stateAbbrev);
-
-          if (isTruncated) {
-            console.log(`${stateInfo.name} has exactly 2000 churches (likely truncated) -- refreshing...`);
-            setLoading(false);
-            setPopulating(true);
-
-            try {
-              const result = await populateState(stateAbbrev, true);
-              if (isStale()) return;
-              if (!result.error) {
-                const freshData = await fetchChurches(stateAbbrev);
-                if (isStale()) return;
-                if (freshData.churches && freshData.churches.length > 0) {
-                  const freshFiltered = filterToStatePolygon(freshData.churches, stateAbbrev);
-                  if (pendingTransitionRef.current?.abbrev === stateAbbrev) {
-                    pendingTransitionRef.current.churches = freshFiltered;
-                  }
-                }
-                const statesData = await fetchStates();
-                if (!isStale()) {
-                  setStates(statesData.states);
-                  setTotalChurches(statesData.totalChurches);
-                }
-              } else {
-                if (pendingTransitionRef.current?.abbrev === stateAbbrev) {
-                  pendingTransitionRef.current.churches = filtered;
-                }
-              }
-            } catch (refreshErr) {
-              console.warn(`Background refresh failed for ${stateInfo.name}:`, refreshErr);
-              if (!isStale() && pendingTransitionRef.current?.abbrev === stateAbbrev) {
-                pendingTransitionRef.current.churches = filtered;
-              }
-            } finally {
-              if (!isStale()) setPopulating(false);
-            }
-          } else {
-            if (pendingTransitionRef.current?.abbrev === stateAbbrev) {
-              pendingTransitionRef.current.churches = filtered;
-            }
-            setLoading(false);
-          }
-          return;
-        }
-
-        // No cached data -- auto-populate
-        setPopulating(true);
-        setLoading(false);
-
-        const result = await populateState(stateAbbrev);
-        if (isStale()) return;
-        if (result.error) {
-          setError(result.error);
-          setFocusedState(stateAbbrev);
-          setFocusedStateName(stateInfo.name);
-          moveToView([stateInfo.lng, stateInfo.lat], getStateZoom(stateAbbrev));
-          pendingTransitionRef.current = null;
-          setLoadingStateName("");
-          setForceLoadingVisible(false);
-          setPopulating(false);
-          return;
-        }
-
-        const freshData = await fetchChurches(stateAbbrev);
-        if (isStale()) return;
-        const freshFiltered = filterToStatePolygon(freshData.churches || [], stateAbbrev);
-        if (pendingTransitionRef.current?.abbrev === stateAbbrev) {
-          pendingTransitionRef.current.churches = freshFiltered;
-        }
-
-        const statesData = await fetchStates();
-        if (!isStale()) {
-          setStates(statesData.states);
-          setTotalChurches(statesData.totalChurches);
-        }
-      } catch (err) {
-        if (isStale()) return;
-        console.error(`Failed to load churches for ${stateAbbrev}:`, err);
-        setError(
-          `Failed to load churches for ${stateInfo.name}. This might be due to API rate limits -- try again in a moment.`
-        );
-        setFocusedState(stateAbbrev);
-        setFocusedStateName(stateInfo.name);
-        moveToView([stateInfo.lng, stateInfo.lat], getStateZoom(stateAbbrev));
-        pendingTransitionRef.current = null;
-        setLoadingStateName("");
-        setForceLoadingVisible(false);
-      } finally {
-        if (!isStale()) {
-          setLoading(false);
-          setPopulating(false);
-        }
-      }
-    },
-    [states, moveToView, filterToStatePolygon]
-  );
-
-  // Silent background load
-  const loadStateDataSilent = useCallback(
-    async (stateAbbrev: string, preloadedChurch: Church) => {
-      const stateInfo = states.find((s) => s.abbrev === stateAbbrev);
-      if (!stateInfo) return;
-
-      const version = ++loadVersionRef.current;
-      const isStale = () => loadVersionRef.current !== version;
-
-      console.log(`[ChurchMap] Instant church: "${preloadedChurch.name}" in ${stateAbbrev} [v${version}]`);
-
-      setFocusedState(stateAbbrev);
-      setFocusedStateName(stateInfo.name);
-      setChurches([preloadedChurch]);
-      setSelectedChurch(preloadedChurch);
-      setCenter([preloadedChurch.lng, preloadedChurch.lat]);
-      setZoom(8);
-      setError(null);
-      setLoading(false);
-      setPopulating(false);
-      pendingTransitionRef.current = null;
-      setLoadingStateName("");
-      setForceLoadingVisible(false);
-
-      try {
-        const data = await fetchChurches(stateAbbrev);
-        if (isStale()) return;
-
-        if (data.churches && data.churches.length > 0) {
-          const filtered = filterToStatePolygon(data.churches, stateAbbrev);
-          setChurches(filtered);
-
-          const full = filtered.find((c) => c.id === preloadedChurch.id);
-          if (full) setSelectedChurch(full);
-
-          if (data.churches.length === 2000) {
-            try {
-              const result = await populateState(stateAbbrev, true);
-              if (isStale()) return;
-              if (!result.error) {
-                const fresh = await fetchChurches(stateAbbrev);
-                if (isStale()) return;
-                if (fresh.churches?.length) {
-                  const ff = filterToStatePolygon(fresh.churches, stateAbbrev);
-                  setChurches(ff);
-                  const fc = ff.find((c) => c.id === preloadedChurch.id);
-                  if (fc) setSelectedChurch(fc);
-                }
-                const sd = await fetchStates();
-                if (!isStale()) { setStates(sd.states); setTotalChurches(sd.totalChurches); }
-              }
-            } catch (e) { console.warn(`Background refresh failed for ${stateAbbrev}:`, e); }
-          }
-        } else {
-          setPopulating(true);
-          try {
-            const result = await populateState(stateAbbrev);
-            if (isStale()) return;
-            if (!result.error) {
-              const fresh = await fetchChurches(stateAbbrev);
-              if (isStale()) return;
-              const ff = filterToStatePolygon(fresh.churches || [], stateAbbrev);
-              setChurches(ff);
-              const fc = ff.find((c) => c.id === preloadedChurch.id);
-              if (fc) setSelectedChurch(fc);
-              const sd = await fetchStates();
-              if (!isStale()) { setStates(sd.states); setTotalChurches(sd.totalChurches); }
-            }
-          } catch (e) { console.warn(`Background population failed for ${stateAbbrev}:`, e);
-          } finally { if (!isStale()) setPopulating(false); }
-        }
-      } catch (err) {
-        if (isStale()) return;
-        console.warn(`[ChurchMap] Background load failed for ${stateAbbrev}:`, err);
-      }
-    },
-    [states, filterToStatePolygon]
-  );
-
-  // Callback for search bar / modal to preload a church before navigating
-  const preloadChurch = useCallback((church: Church) => {
-    preloadedChurchRef.current = church;
-  }, []);
-
-  // URL Sync: Route -> Internal State
-  const prevRouteStateRef = useRef<string | null>(null);
-  const prevRouteChurchRef = useRef<string | null>(null);
-  const statesLoadedRef = useRef(false);
-
+  // ── URL Sync: Route -> Internal State ──
+  // Sync state route param (uses ref-stored loadFns to avoid unstable deps)
   useEffect(() => {
-    if (states.length > 0) statesLoadedRef.current = true;
-  }, [states]);
+    if (!refs.current.statesLoaded || states.length === 0) return;
 
-  // Sync state route param
-  useEffect(() => {
-    if (!statesLoadedRef.current || states.length === 0) return;
-
-    if (routeStateAbbrev === prevRouteStateRef.current) return;
-    prevRouteStateRef.current = routeStateAbbrev;
+    if (routeStateAbbrev === refs.current.prevRouteState) return;
+    refs.current.prevRouteState = routeStateAbbrev;
 
     if (!routeStateAbbrev) {
-      loadVersionRef.current++;
-      setFocusedState(null);
-      setFocusedStateName("");
-      setChurches([]);
-      setError(null);
-      setLoading(false);
-      setPopulating(false);
-      setShowFilterPanel(false);
-      setShowListModal(false);
-      setSelectedChurch(null);
-      setLanguageFilter("all");
-      setLoadingStateName("");
-      pendingTransitionRef.current = null;
-      setForceLoadingVisible(false);
-      moveToView([-96, 38], 1);
+      refs.current.loadVersion++;
+      dd({ type: "RESET_TO_NATIONAL" });
+      ui.setShowFilterPanel(false);
+      ui.setShowListModal(false);
+      ui.setLanguageFilter("all");
+      overlay.setForceLoadingVisible(false);
+      refs.current.pendingTransition = null;
+      refs.current.moveEndSuppressedUntil = Date.now() + 900;
+      // Safety net: re-assert national view after ZoomableGroup animation settles
+      setTimeout(() => {
+        if (!refs.current.focusedState) {
+          dd({ type: "SET_CENTER", value: [-96, 38] as [number, number] });
+          dd({ type: "SET_ZOOM", value: 1 });
+        }
+      }, 1000);
       return;
     }
 
@@ -653,24 +508,26 @@ export function useChurchMapData({
       return;
     }
 
-    if (focusedStateRef.current !== routeStateAbbrev) {
-      const preloaded = preloadedChurchRef.current;
-      preloadedChurchRef.current = null;
+    if (refs.current.focusedState !== routeStateAbbrev) {
+      const preloaded = refs.current.preloadedChurch;
+      refs.current.preloadedChurch = null;
       if (preloaded && preloaded.state === routeStateAbbrev) {
-        loadStateDataSilent(routeStateAbbrev, preloaded);
+        loadFnsRef.current.loadStateDataSilent?.(routeStateAbbrev, preloaded);
       } else {
-        loadStateData(routeStateAbbrev);
+        loadFnsRef.current.loadStateData?.(routeStateAbbrev);
       }
     }
-  }, [routeStateAbbrev, states, loadStateData, loadStateDataSilent, moveToView, navigateToNational]);
+  }, [routeStateAbbrev, states]);
 
-  // Sync church route param
+  // Sync church route param + deferred selection (merged — saves 1 hook)
   useEffect(() => {
-    if (routeChurchId === prevRouteChurchRef.current) return;
-    prevRouteChurchRef.current = routeChurchId;
+    const isNewRoute = routeChurchId !== refs.current.prevRouteChurch;
+    if (isNewRoute) {
+      refs.current.prevRouteChurch = routeChurchId;
+    }
 
     if (!routeChurchId) {
-      if (selectedChurch) {
+      if (isNewRoute && selectedChurch) {
         setSelectedChurch(null);
         if (focusedState) {
           const si = states.find((s) => s.abbrev === focusedState);
@@ -680,7 +537,8 @@ export function useChurchMapData({
       return;
     }
 
-    if (churches.length > 0) {
+    // Deferred + direct selection
+    if (churches.length > 0 && (!selectedChurch || selectedChurch.id !== routeChurchId)) {
       const church = churches.find((c) => c.id === routeChurchId);
       if (church) {
         setSelectedChurch(church);
@@ -688,19 +546,7 @@ export function useChurchMapData({
         setZoom((z) => Math.max(z, 8));
       }
     }
-  }, [routeChurchId, churches, selectedChurch, focusedState, states, moveToView]);
-
-  // Deferred church selection
-  useEffect(() => {
-    if (routeChurchId && churches.length > 0 && !selectedChurch) {
-      const church = churches.find((c) => c.id === routeChurchId);
-      if (church) {
-        setSelectedChurch(church);
-        setCenter([church.lng, church.lat]);
-        setZoom((z) => Math.max(z, 8));
-      }
-    }
-  }, [churches, routeChurchId, selectedChurch]);
+  }, [routeChurchId, churches, selectedChurch?.id, focusedState]);
 
   // Update page title
   useEffect(() => {
@@ -713,8 +559,8 @@ export function useChurchMapData({
     }
   }, [selectedChurch, focusedState, focusedStateName]);
 
-  // Populate state from Overpass API (manual retry)
-  const handlePopulate = useCallback(async () => {
+  // ── Plain handler functions (no useCallback — only used from return object) ──
+  const handlePopulate = async () => {
     if (!focusedState) return;
     setPopulating(true);
     setError(null);
@@ -728,7 +574,7 @@ export function useChurchMapData({
       }
 
       const data = await fetchChurches(focusedState);
-      setChurches(filterToStatePolygon(data.churches || [], focusedState));
+      setChurches(filterToStatePolygon(data.churches || [], focusedState, refs.current.stateFeatures));
 
       const statesData = await fetchStates();
       setStates(statesData.states);
@@ -741,247 +587,202 @@ export function useChurchMapData({
     } finally {
       setPopulating(false);
     }
-  }, [focusedState, focusedStateName, filterToStatePolygon]);
+  };
 
-  // Reset to national view
-  const handleResetView = useCallback(() => {
-    navigateToNational();
-  }, [navigateToNational]);
+  const handleResetView = () => navigateToNational();
+  const handleZoomIn = () => setZoom((z) => Math.min(z * 1.5, 120));
+  const handleZoomOut = () => setZoom((z) => Math.max(z / 1.5, 1));
+  const preloadChurch = (church: Church) => { refs.current.preloadedChurch = church; };
 
-  const handleZoomIn = useCallback(() => setZoom((z) => Math.min(z * 1.5, 120)), []);
-  const handleZoomOut = useCallback(() => setZoom((z) => Math.max(z / 1.5, 1)), []);
-
-  const toggleSize = useCallback((label: string) => {
-    setActiveSize((prev) => {
-      const next = new Set(prev);
-      next.has(label) ? next.delete(label) : next.add(label);
-      return next;
-    });
-  }, []);
-
-  const toggleDenom = useCallback((label: string) => {
-    setActiveDenominations((prev) => {
-      const next = new Set(prev);
-      next.has(label) ? next.delete(label) : next.add(label);
-      return next;
-    });
-  }, []);
-
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      setTooltipPos({ x: e.clientX, y: e.clientY });
-    },
-    []
-  );
-
-  const handleChurchDotClick = useCallback((church: Church) => {
-    setHoveredChurch(null);
+  const handleChurchDotClick = (church: Church) => {
+    ui.setHoveredChurch(null);
     if (focusedState) {
       navigateToChurch(focusedState, church.id);
     }
-  }, [focusedState, navigateToChurch]);
+  };
 
   return {
-    // Map state
-    zoom, setZoom, center, setCenter,
+    // Map state (was in useMapView, now in data reducer)
+    zoom, setZoom,
+    center, setCenter,
+    moveEndSuppressedUntilRef: refs as { current: { moveEndSuppressedUntil: number } },
     // Data
-    states, totalChurches, focusedState, focusedStateName, churches,
-    loading, populating, error, setError, allStatesLoaded,
-    // UI state
-    hoveredChurch, setHoveredChurch, hoveredState, setHoveredState, tooltipPos,
-    showFilterPanel, setShowFilterPanel, searchCollapsed, setSearchCollapsed,
-    activeSize, toggleSize, showSizeFilters, setShowSizeFilters,
-    activeDenominations, toggleDenom, showDenomFilters, setShowDenomFilters,
-    showLanguageFilters, setShowLanguageFilters, languageFilter, setLanguageFilter,
-    showListModal, setShowListModal,
-    selectedChurch, setSelectedChurch,
-    showAddChurchFromSummary, setShowAddChurchFromSummary,
-    showSummary, setShowSummary, summaryRef, showLegend, setShowLegend,
+    states,
+    totalChurches,
+    focusedState,
+    focusedStateName,
+    churches,
+    loading,
+    populating,
+    error,
+    setError,
+    allStatesLoaded,
+    // UI state (forwarded from useUIState)
+    hoveredChurch: ui.hoveredChurch,
+    setHoveredChurch: ui.setHoveredChurch,
+    hoveredState: ui.hoveredState,
+    setHoveredState: ui.setHoveredState,
+    tooltipPos: ui.tooltipPos,
+    showFilterPanel: ui.showFilterPanel,
+    setShowFilterPanel: ui.setShowFilterPanel,
+    searchCollapsed: ui.searchCollapsed,
+    setSearchCollapsed: ui.setSearchCollapsed,
+    activeSize: ui.activeSize,
+    toggleSize: ui.toggleSize,
+    showSizeFilters: ui.showSizeFilters,
+    setShowSizeFilters: ui.setShowSizeFilters,
+    activeDenominations: ui.activeDenominations,
+    toggleDenom: ui.toggleDenom,
+    showDenomFilters: ui.showDenomFilters,
+    setShowDenomFilters: ui.setShowDenomFilters,
+    showLanguageFilters: ui.showLanguageFilters,
+    setShowLanguageFilters: ui.setShowLanguageFilters,
+    languageFilter: ui.languageFilter,
+    setLanguageFilter: ui.setLanguageFilter,
+    showListModal: ui.showListModal,
+    setShowListModal: ui.setShowListModal,
+    selectedChurch,
+    setSelectedChurch,
+    showAddChurchFromSummary: ui.showAddChurchFromSummary,
+    setShowAddChurchFromSummary: ui.setShowAddChurchFromSummary,
+    showSummary: ui.showSummary,
+    setShowSummary: ui.setShowSummary,
+    summaryRef: ui.summaryRef,
+    showLegend: ui.showLegend,
+    setShowLegend: ui.setShowLegend,
     statePopulations,
+    detectedState,
     // Loading overlay
-    sayingIndex, forceLoadingVisible, loadingStateName,
-    // Move-end suppression guard (for race-condition prevention)
-    moveEndSuppressedUntilRef,
+    sayingIndex: overlay.sayingIndex,
+    forceLoadingVisible: overlay.forceLoadingVisible,
+    loadingStateName,
     // Computed
-    filteredChurches, languageStats, denomCounts, sizeCounts, summaryStats,
+    filteredChurches: filters.filteredChurches,
+    languageStats: filters.languageStats,
+    denomCounts: filters.denomCounts,
+    sizeCounts: filters.sizeCounts,
+    summaryStats: filters.summaryStats,
     // Actions
-    loadStateData, preloadChurch, handlePopulate, handleResetView,
-    handleZoomIn, handleZoomOut, handleMouseMove, handleChurchDotClick,
+    loadStateData,
+    preloadChurch,
+    handlePopulate,
+    handleResetView,
+    handleZoomIn,
+    handleZoomOut,
+    handleMouseMove: ui.handleMouseMove,
+    handleChurchDotClick,
   };
 }
 
-// --- Helper: compute state-level summary stats ---
-interface InterestingFact {
-  icon: string;
-  label: string;
-  primary: string;
-  secondary: string;
-  abbrev?: string;
-}
+// ── Data reducer (includes map-view state: zoom + center) ──
+type DataState = {
+  states: StateInfo[];
+  totalChurches: number;
+  focusedState: string | null;
+  focusedStateName: string;
+  churches: Church[];
+  loading: boolean;
+  populating: boolean;
+  error: string | null;
+  selectedChurch: Church | null;
+  statePopulations: Record<string, number>;
+  detectedState: string | null;
+  loadingStateName: string;
+  zoom: number;
+  center: [number, number];
+};
 
-function computeStateSummary(
-  churches: Church[],
-  denomCounts: Record<string, number>,
-  sizeCounts: Record<string, number>,
-) {
-  const totalAttendance = churches.reduce((sum, ch) => sum + ch.attendance, 0);
-  const avgAttendance = Math.round(totalAttendance / churches.length);
-  const topDenoms = Object.entries(denomCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6);
-  const topSizes = sizeCategories.map((cat) => ({
-    label: cat.label,
-    color: cat.color,
-    count: sizeCounts[cat.label] || 0,
-  }));
+type DataAction =
+  | { type: "SET_STATES"; value: StateInfo[] | ((p: StateInfo[]) => StateInfo[]) }
+  | { type: "SET_TOTAL_CHURCHES"; value: number | ((p: number) => number) }
+  | { type: "SET_FOCUSED_STATE"; value: string | null }
+  | { type: "SET_FOCUSED_STATE_NAME"; value: string }
+  | { type: "SET_CHURCHES"; value: Church[] | ((p: Church[]) => Church[]) }
+  | { type: "SET_LOADING"; value: boolean }
+  | { type: "SET_POPULATING"; value: boolean }
+  | { type: "SET_ERROR"; value: string | null }
+  | { type: "SET_SELECTED_CHURCH"; value: Church | null }
+  | { type: "SET_STATE_POPULATIONS"; value: Record<string, number> }
+  | { type: "SET_DETECTED_STATE"; value: string | null }
+  | { type: "SET_LOADING_STATE_NAME"; value: string }
+  | { type: "SET_ZOOM"; value: number | ((p: number) => number) }
+  | { type: "SET_CENTER"; value: [number, number] }
+  | { type: "RESET_TO_NATIONAL" };
 
-  const facts: InterestingFact[] = [];
+const initialDataState: DataState = {
+  states: [],
+  totalChurches: 0,
+  focusedState: null,
+  focusedStateName: "",
+  churches: [],
+  loading: false,
+  populating: false,
+  error: null,
+  selectedChurch: null,
+  statePopulations: {},
+  detectedState: null,
+  loadingStateName: "",
+  zoom: 1,
+  center: [-96, 38] as [number, number],
+};
 
-  const largest = [...churches].sort((a, b) => b.attendance - a.attendance)[0];
-  if (largest) {
-    facts.push({
-      icon: "trending",
-      label: "Largest congregation",
-      primary: largest.name,
-      secondary: `~${largest.attendance.toLocaleString()} weekly`,
-    });
+function dataReducer(state: DataState, action: DataAction): DataState {
+  switch (action.type) {
+    case "SET_STATES":
+      return {
+        ...state,
+        states: typeof action.value === "function" ? action.value(state.states) : action.value,
+      };
+    case "SET_TOTAL_CHURCHES":
+      return {
+        ...state,
+        totalChurches: typeof action.value === "function" ? action.value(state.totalChurches) : action.value,
+      };
+    case "SET_FOCUSED_STATE":
+      return { ...state, focusedState: action.value };
+    case "SET_FOCUSED_STATE_NAME":
+      return { ...state, focusedStateName: action.value };
+    case "SET_CHURCHES":
+      return {
+        ...state,
+        churches: typeof action.value === "function" ? action.value(state.churches) : action.value,
+      };
+    case "SET_LOADING":
+      return state.loading === action.value ? state : { ...state, loading: action.value };
+    case "SET_POPULATING":
+      return state.populating === action.value ? state : { ...state, populating: action.value };
+    case "SET_ERROR":
+      return { ...state, error: action.value };
+    case "SET_SELECTED_CHURCH":
+      return { ...state, selectedChurch: action.value };
+    case "SET_STATE_POPULATIONS":
+      return { ...state, statePopulations: action.value };
+    case "SET_DETECTED_STATE":
+      return { ...state, detectedState: action.value };
+    case "SET_LOADING_STATE_NAME":
+      return { ...state, loadingStateName: action.value };
+    case "SET_ZOOM":
+      return {
+        ...state,
+        zoom: typeof action.value === "function" ? action.value(state.zoom) : action.value,
+      };
+    case "SET_CENTER":
+      return { ...state, center: action.value };
+    case "RESET_TO_NATIONAL":
+      return {
+        ...state,
+        focusedState: null,
+        focusedStateName: "",
+        churches: [],
+        error: null,
+        loading: false,
+        populating: false,
+        selectedChurch: null,
+        loadingStateName: "",
+        zoom: 1,
+        center: [-96, 38] as [number, number],
+      };
+    default:
+      return state;
   }
-
-  if (topDenoms.length > 0) {
-    const [topDenom, topCount] = topDenoms[0];
-    const pct = Math.round((topCount / churches.length) * 100);
-    facts.push({
-      icon: "book",
-      label: "Most common denomination",
-      primary: topDenom,
-      secondary: `${topCount.toLocaleString()} churches (${pct}%)`,
-    });
-  }
-
-  facts.push({
-    icon: "chart",
-    label: "Average weekly attendance",
-    primary: `~${avgAttendance.toLocaleString()} per church`,
-    secondary: `~${totalAttendance.toLocaleString()} total`,
-  });
-
-  const denomAttendance: Record<string, { total: number; count: number }> = {};
-  for (const ch of churches) {
-    const d = getDenominationGroup(ch.denomination);
-    if (!denomAttendance[d]) denomAttendance[d] = { total: 0, count: 0 };
-    denomAttendance[d].total += ch.attendance;
-    denomAttendance[d].count += 1;
-  }
-  const denomAvgs = Object.entries(denomAttendance)
-    .filter(([, v]) => v.count >= 5)
-    .map(([d, v]) => ({ denom: d, avg: Math.round(v.total / v.count), count: v.count }))
-    .sort((a, b) => b.avg - a.avg);
-  if (denomAvgs.length > 0) {
-    const top = denomAvgs[0];
-    facts.push({
-      icon: "users",
-      label: "Highest-attending denomination",
-      primary: top.denom,
-      secondary: `~${top.avg.toLocaleString()} avg weekly across ${top.count.toLocaleString()} churches`,
-    });
-  }
-
-  const cityCounts: Record<string, number> = {};
-  for (const ch of churches) {
-    const city = ch.city?.trim();
-    if (city) cityCounts[city] = (cityCounts[city] || 0) + 1;
-  }
-  const topCity = Object.entries(cityCounts).sort((a, b) => b[1] - a[1])[0];
-  if (topCity) {
-    const pctOfState = Math.round((topCity[1] / churches.length) * 100);
-    facts.push({
-      icon: "mapPin",
-      label: "Church capital",
-      primary: topCity[0],
-      secondary: `${topCity[1].toLocaleString()} churches (${pctOfState}% of state)`,
-    });
-  }
-
-  return { type: "state" as const, totalAttendance, topDenoms, topSizes, interestingFacts: facts };
-}
-
-function computeNationalSummary(
-  states: StateInfo[],
-  statePopulations: Record<string, number>,
-) {
-  const populated = states.filter((s) => s.isPopulated && s.churchCount > 0);
-  const unpopulated = states.length - populated.length;
-  const topStates = [...populated]
-    .sort((a, b) => b.churchCount - a.churchCount)
-    .slice(0, 3);
-
-  const facts: InterestingFact[] = [];
-
-  const hasPop = Object.keys(statePopulations).length > 0;
-  if (hasPop && populated.length > 0) {
-    const withPerCapita = populated
-      .filter((s) => statePopulations[s.abbrev] && statePopulations[s.abbrev] > 0)
-      .map((s) => ({
-        ...s,
-        perCapita: s.churchCount / statePopulations[s.abbrev],
-        peoplePer: Math.round(statePopulations[s.abbrev] / s.churchCount),
-      }));
-    if (withPerCapita.length > 0) {
-      const densest = [...withPerCapita].sort((a, b) => b.perCapita - a.perCapita)[0];
-      facts.push({
-        icon: "users",
-        label: "Most churches per capita",
-        primary: densest.name,
-        secondary: `1 per ${densest.peoplePer.toLocaleString()} people`,
-        abbrev: densest.abbrev,
-      });
-
-      const sparsest = [...withPerCapita].sort((a, b) => a.perCapita - b.perCapita)[0];
-      if (sparsest.abbrev !== densest.abbrev) {
-        facts.push({
-          icon: "building",
-          label: "Fewest churches per capita",
-          primary: sparsest.name,
-          secondary: `1 per ${sparsest.peoplePer.toLocaleString()} people`,
-          abbrev: sparsest.abbrev,
-        });
-      }
-    }
-  }
-
-  const allLoaded = states.length > 0 && states.every((s) => s.isPopulated);
-  if (!allLoaded && populated.length >= 3) {
-    const smallest = [...populated].sort((a, b) => a.churchCount - b.churchCount)[0];
-    if (!topStates.find((s) => s.abbrev === smallest.abbrev)) {
-      facts.push({
-        icon: "search",
-        label: "Fewest churches so far",
-        primary: smallest.name,
-        secondary: `${smallest.churchCount.toLocaleString()} churches`,
-        abbrev: smallest.abbrev,
-      });
-    }
-  }
-
-  if (hasPop && populated.length >= 2) {
-    const totalChurchCount = populated.reduce((sum, s) => sum + s.churchCount, 0);
-    const totalPop = populated.reduce((sum, s) => sum + (statePopulations[s.abbrev] || 0), 0);
-    if (totalPop > 0) {
-      const peoplePer = Math.round(totalPop / totalChurchCount);
-      facts.push({
-        icon: "chart",
-        label: "National ratio",
-        primary: `1 church per ${peoplePer.toLocaleString()} people`,
-        secondary: `${totalChurchCount.toLocaleString()} churches across ${populated.length} states`,
-      });
-    }
-  }
-
-  return {
-    type: "national" as const,
-    populated: populated.length,
-    unpopulated,
-    topStates,
-    interestingFacts: facts.slice(0, 4),
-  };
 }

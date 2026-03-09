@@ -18,6 +18,7 @@ import {
   User,
   Phone,
   Mail,
+  ShieldCheck,
 } from "lucide-react";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { SuggestEditForm } from "./SuggestEditForm";
@@ -28,6 +29,10 @@ interface ChurchDetailPanelProps {
   allChurches: Church[];
   onClose: () => void;
   onChurchClick: (church: Church) => void;
+  pendingCorrectionCount?: number;
+  onReviewCorrections?: () => void;
+  externalShowEditForm?: boolean;
+  onEditFormClosed?: () => void;
 }
 
 // Haversine distance in miles
@@ -182,6 +187,10 @@ export function ChurchDetailPanel({
   allChurches,
   onClose,
   onChurchClick,
+  pendingCorrectionCount,
+  onReviewCorrections,
+  externalShowEditForm,
+  onEditFormClosed,
 }: ChurchDetailPanelProps) {
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
@@ -241,6 +250,14 @@ export function ChurchDetailPanel({
     }
   }, [church.id]);
 
+  // React to external trigger to show edit form
+  useEffect(() => {
+    if (externalShowEditForm) {
+      setShowEditForm(true);
+      onEditFormClosed?.();
+    }
+  }, [externalShowEditForm]);
+
   if (showEditForm) {
     return (
       <SuggestEditForm
@@ -266,7 +283,7 @@ export function ChurchDetailPanel({
       <div className="flex-shrink-0 px-5 pt-5 pb-4 border-b border-white/10">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <h2 className="text-white font-bold text-lg leading-tight truncate">
+            <h2 className="text-white font-semibold text-lg leading-tight truncate">
               {church.name}
             </h2>
             {fullAddress && (
@@ -294,21 +311,6 @@ export function ChurchDetailPanel({
             <Navigation size={12} />
             Directions
           </a>
-          {fullAddress && (
-            <button
-              onClick={handleCopyAddress}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-white/70 bg-white/8 hover:bg-white/12 transition-colors"
-            >
-              {copiedAddress ? (
-                <Check size={12} className="text-green-400" />
-              ) : (
-                <Copy size={12} />
-              )}
-              {copiedAddress ? "Copied" : "Copy Address"}
-            </button>
-          )}
-        </div>
-        <div className="mt-2">
           {church.website ? (
             <a
               href={
@@ -347,7 +349,7 @@ export function ChurchDetailPanel({
             <div className="flex items-center gap-2 mb-2">
               <Users size={14} className="text-purple-400" />
               <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
-                Est. Weekly Attendance
+                Est. Avg. Weekly Attendance
               </span>
             </div>
             <div className="text-white text-xl font-bold">
@@ -373,7 +375,7 @@ export function ChurchDetailPanel({
               </span>
             </div>
             <div className="text-white text-sm font-bold leading-snug">
-              {church.denomination === "Other" || church.denomination === "Unknown" ? "Non-denominational" : church.denomination}
+              {church.denomination === "Other" || church.denomination === "Unknown" ? "Unspecified" : church.denomination}
             </div>
             <div className="text-white/40 text-[11px] mt-1.5">
               {sameDenomCount.toLocaleString()} similar in state
@@ -470,21 +472,40 @@ export function ChurchDetailPanel({
           )}
         </div>
 
-        {/* Suggest a Correction */}
-        <button
-          onClick={() => setShowEditForm(true)}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/20 transition-colors group"
-        >
-          <Pencil size={13} className="text-purple-400 group-hover:text-purple-300 transition-colors" />
-          <span className="text-purple-300 text-xs font-semibold group-hover:text-purple-200 transition-colors">
-            Suggest a Correction
-          </span>
-          {missingFieldCount > 0 && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-pink-500/20 text-pink-400 font-semibold">
-              {missingFieldCount} missing
-            </span>
+        {/* Action buttons */}
+        <div className="flex flex-col gap-2">
+          {/* Review pending corrections — pink button */}
+          {pendingCorrectionCount != null && pendingCorrectionCount > 0 && onReviewCorrections && (
+            <button
+              onClick={onReviewCorrections}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-pink-500/15 hover:bg-pink-500/25 border border-pink-500/20 transition-colors group"
+            >
+              <ShieldCheck size={13} className="text-pink-400 group-hover:text-pink-300 transition-colors" />
+              <span className="text-pink-300 text-xs font-semibold group-hover:text-pink-200 transition-colors">
+                Review pending corrections
+              </span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-pink-500/20 text-pink-400 font-semibold">
+                {pendingCorrectionCount}
+              </span>
+            </button>
           )}
-        </button>
+
+          {/* Suggest a Correction */}
+          <button
+            onClick={() => setShowEditForm(true)}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/20 transition-colors group"
+          >
+            <Pencil size={13} className="text-purple-400 group-hover:text-purple-300 transition-colors" />
+            <span className="text-purple-300 text-xs font-semibold group-hover:text-purple-200 transition-colors">
+              Suggest a Correction
+            </span>
+            {missingFieldCount > 0 && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-pink-500/20 text-pink-400 font-semibold">
+                {missingFieldCount} missing
+              </span>
+            )}
+          </button>
+        </div>
 
         {/* Denomination fact */}
         {DENOMINATION_FACTS[denomGroup] && (
@@ -533,7 +554,7 @@ export function ChurchDetailPanel({
                         {nc.name}
                       </div>
                       <div className="text-white/40 text-[10px] mt-0.5">
-                        {nc.denomination === "Other" || nc.denomination === "Unknown" ? "Non-denominational" : nc.denomination}
+                        {nc.denomination === "Other" || nc.denomination === "Unknown" ? "Unspecified" : nc.denomination}
                         {nc.city ? ` \u00b7 ${nc.city}` : ""}
                       </div>
                     </div>

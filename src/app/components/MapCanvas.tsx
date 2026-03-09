@@ -124,7 +124,7 @@ const StateGeographies = memo(function StateGeographies({
   return (
     <Geographies geography={GEO_URL}>
       {({ geographies }: { geographies: any[] }) =>
-        geographies.map((geo) => {
+        (geographies || []).map((geo) => {
           const fipsId = geo.id;
           const stateAbbrev = FIPS_TO_STATE[fipsId];
           const stateInfo = states.find((s) => s.abbrev === stateAbbrev);
@@ -181,7 +181,7 @@ const CountyGeographies = memo(function CountyGeographies({
   return (
     <Geographies geography={COUNTIES_GEO_URL}>
       {({ geographies }: { geographies: any[] }) =>
-        geographies
+        (geographies || [])
           .filter((geo) => String(geo.id).padStart(5, "0").substring(0, 2) === stateFips)
           .map((geo) => (
             <Geography

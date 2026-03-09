@@ -41,26 +41,10 @@ export function MapLegend({
           }
         }}
       >
-        <div className="flex items-center gap-3 px-4 py-2.5">
+        <div className="flex items-center justify-between px-4 py-2.5">
           <span className="text-xs font-bold text-white uppercase tracking-widest whitespace-nowrap">
             Map Key
           </span>
-          {!showLegend && (
-            <div className="flex items-center gap-1">
-              {(focusedState
-                ? sizeCategories.map((c) => c.color)
-                : STATE_COUNT_TIERS.filter(
-                    (t) => !(t.min === 0 && t.max === 0)
-                  ).map((t) => t.color)
-              ).map((color, i) => (
-                <div
-                  key={i}
-                  className="w-3 h-3 rounded-full flex-shrink-0 border border-white/20"
-                  style={{ backgroundColor: color }}
-                />
-              ))}
-            </div>
-          )}
           <ChevronDown
             size={14}
             className={`text-white/50 transition-transform duration-200 flex-shrink-0 ${

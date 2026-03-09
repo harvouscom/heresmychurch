@@ -546,7 +546,7 @@ export function AddChurchForm({
                     <option value="" className="bg-[#1A0E38]">
                       Select...
                     </option>
-                    {DENOMINATION_GROUPS.filter((g) => g.label !== "Other" && g.label !== "Non-denominational").map(
+                    {DENOMINATION_GROUPS.filter((g) => g.label !== "Unspecified").map(
                       (g) => (
                         <option
                           key={g.label}
@@ -557,11 +557,8 @@ export function AddChurchForm({
                         </option>
                       )
                     )}
-                    <option value="Non-denominational" className="bg-[#1A0E38]">
-                      Non-denominational
-                    </option>
                     <option value="Unknown" className="bg-[#1A0E38]">
-                      Unknown / Other
+                      I don't know
                     </option>
                   </select>
                 </div>

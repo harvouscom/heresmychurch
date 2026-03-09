@@ -206,7 +206,7 @@ export function ChurchTooltip({
           className="inline-block w-1.5 h-1.5 rounded-full"
           style={{ backgroundColor: "#A855F7" }}
         />
-        {church.denomination === "Other" || church.denomination === "Unknown" ? "Non-denominational" : church.denomination}
+        {church.denomination === "Other" || church.denomination === "Unknown" ? "Unspecified" : church.denomination}
       </div>
     </div>
   );

@@ -31,6 +31,7 @@ interface MapSearchBarProps {
   collapsed?: boolean;
   onExpand?: () => void;
   onAddChurch?: () => void;
+  detectedState?: string | null;
 }
 
 const MAX_RESULTS = 8;
@@ -46,6 +47,7 @@ export function MapSearchBar({
   collapsed,
   onExpand,
   onAddChurch,
+  detectedState,
 }: MapSearchBarProps) {
   const [query, setQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -57,6 +59,8 @@ export function MapSearchBar({
   const [stateFilter, setStateFilter] = useState<string | null>(null);
   const [showStateDropdown, setShowStateDropdown] = useState(false);
   const stateDropdownRef = useRef<HTMLDivElement>(null);
+  const detectedStateAppliedRef = useRef(false);
+  const prevFocusedStateRef = useRef<string | null | undefined>(undefined);
 
   // Server-side search state (national view)
   const [remoteResults, setRemoteResults] = useState<SearchResult[]>([]);
@@ -80,13 +84,27 @@ export function MapSearchBar({
 
   // Reset query when switching views
   useEffect(() => {
+    // Skip initial mount (prevFocusedStateRef is undefined)
+    if (prevFocusedStateRef.current === undefined) {
+      prevFocusedStateRef.current = focusedState;
+      return;
+    }
+    // Only reset if focusedState actually changed
+    if (prevFocusedStateRef.current === focusedState) return;
+    prevFocusedStateRef.current = focusedState;
+
     setQuery("");
     setSelectedIndex(-1);
     setRemoteResults([]);
     setRemoteSearched(false);
-    setStateFilter(null);
     setShowStateDropdown(false);
-  }, [focusedState]);
+    // When returning to national view, restore detected state; otherwise clear
+    if (!focusedState && detectedState) {
+      setStateFilter(detectedState);
+    } else {
+      setStateFilter(null);
+    }
+  }, [focusedState, detectedState]);
 
   // Blur search when collapsed externally (e.g. clicking map background)
   useEffect(() => {
@@ -96,6 +114,14 @@ export function MapSearchBar({
       inputRef.current?.blur();
     }
   }, [collapsed]);
+
+  // Apply detected state filter if available
+  useEffect(() => {
+    if (detectedState && !detectedStateAppliedRef.current) {
+      setStateFilter(detectedState);
+      detectedStateAppliedRef.current = true;
+    }
+  }, [detectedState]);
 
   // Populated states sorted alphabetically for the dropdown
   const populatedStates = useMemo(() => {
@@ -238,7 +264,10 @@ export function MapSearchBar({
       {/* Collapsed state — just a search icon button */}
       {collapsed ? (
         <button
-          onClick={onExpand}
+          onClick={() => {
+            onExpand?.();
+            setTimeout(() => inputRef.current?.focus(), 0);
+          }}
           className="mx-auto flex items-center gap-2 px-5 py-3 rounded-full shadow-lg transition-all hover:shadow-xl"
           style={{ backgroundColor: "rgba(30, 16, 64, 0.92)" }}
         >
@@ -340,7 +369,7 @@ export function MapSearchBar({
                           <div className="text-xs text-white/40 truncate">
                             {ch.city && <span>{ch.city} · </span>}
                             {ch.denomination === "Other" || ch.denomination === "Unknown"
-                              ? "Non-denominational"
+                              ? "Unspecified"
                               : ch.denomination}
                             {" · "}~{ch.attendance.toLocaleString()}
                           </div>
@@ -414,7 +443,7 @@ export function MapSearchBar({
                             <span className="text-purple-300/70">{STATE_NAMES[r.state] || r.state}</span>
                             {" · "}
                             {r.denomination === "Other" || r.denomination === "Unknown"
-                              ? "Non-denom."
+                              ? "Unspecified"
                               : r.denomination}
                           </div>
                         </div>

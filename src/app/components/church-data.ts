@@ -88,7 +88,8 @@ export const DENOMINATION_GROUPS: { label: string; matches: string[] }[] = [
   { label: "Unitarian", matches: ["Unitarian", "Universalist"] },
   { label: "Salvation Army", matches: ["Salvation Army"] },
   { label: "Christian Science", matches: ["Christian Science", "Scientist"] },
-  { label: "Non-denominational", matches: ["Other", "Unknown"] }, // catch-all
+  { label: "Non-denominational", matches: ["Non-denominational", "Nondenominational", "Non denominational"] },
+  { label: "Unspecified", matches: ["Other", "Unknown"] }, // catch-all
 ];
 
 export function getDenominationGroup(denomination: string): string {
@@ -97,7 +98,7 @@ export function getDenominationGroup(denomination: string): string {
       return group.label;
     }
   }
-  return "Non-denominational";
+  return "Unspecified";
 }
 
 // ── Bilingual probability estimation ──

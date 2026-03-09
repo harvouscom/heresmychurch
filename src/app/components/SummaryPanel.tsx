@@ -9,6 +9,7 @@ import {
   BookOpen,
   BarChart3,
   MapPin,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import { sizeCategories } from "./church-data";
@@ -62,6 +63,7 @@ interface SummaryPanelProps {
   onNavigateToState: (abbrev: string) => void;
   onShowListModal: () => void;
   onShowAddChurch: () => void;
+  onShowVerification?: () => void;
 }
 
 export function SummaryPanel({
@@ -76,6 +78,7 @@ export function SummaryPanel({
   onNavigateToState,
   onShowListModal,
   onShowAddChurch,
+  onShowVerification,
 }: SummaryPanelProps) {
   return (
     <motion.div
@@ -136,19 +139,30 @@ export function SummaryPanel({
 
       {/* Action buttons — pinned bottom (state view only) */}
       {summaryStats.type === "state" && (
-        <div className="px-5 pb-4 pt-3 border-t border-white/8 flex-shrink-0 flex gap-2">
-          <button
-            onClick={onShowListModal}
-            className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-purple-300 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/20 transition-colors cursor-pointer"
-          >
-            View Church List
-          </button>
-          <button
-            onClick={onShowAddChurch}
-            className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-purple-300 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/20 transition-colors cursor-pointer"
-          >
-            + Add Your Church
-          </button>
+        <div className="px-5 pb-4 pt-3 border-t border-white/8 flex-shrink-0 space-y-2">
+          <div className="flex gap-2">
+            <button
+              onClick={onShowListModal}
+              className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-purple-300 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/20 transition-colors cursor-pointer"
+            >
+              View Church List
+            </button>
+            <button
+              onClick={onShowAddChurch}
+              className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-purple-300 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/20 transition-colors cursor-pointer"
+            >
+              + Add Your Church
+            </button>
+          </div>
+          {onShowVerification && (
+            <button
+              onClick={() => { onClose(); onShowVerification(); }}
+              className="w-full py-2.5 rounded-xl text-xs font-semibold text-pink-300 bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/15 transition-colors cursor-pointer flex items-center justify-center gap-2"
+            >
+              <ShieldCheck size={13} />
+              Review Pending Submissions
+            </button>
+          )}
         </div>
       )}
     </motion.div>

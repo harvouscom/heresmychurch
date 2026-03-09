@@ -45,7 +45,8 @@ export const ChurchDots = memo(function ChurchDots({
   onChurchClick,
   onChurchHover,
 }: ChurchDotsProps) {
-  const { projection } = useMapContext();
+  const context = useMapContext();
+  const projection = context?.projection;
 
   // ── O(1) lookup for event delegation ──
   const churchById = useMemo(() => {
@@ -56,6 +57,7 @@ export const ChurchDots = memo(function ChurchDots({
 
   // ── Project all churches (stable unless churches array changes) ──
   const projected = useMemo(() => {
+    if (!projection) return [];
     const result: ProjectedChurch[] = [];
     for (const ch of churches) {
       const coords = projection([ch.lng, ch.lat]);
@@ -75,6 +77,7 @@ export const ChurchDots = memo(function ChurchDots({
 
   // ── Viewport cull (runs when center/zoom changes after pan ends) ──
   const visible = useMemo(() => {
+    if (!projection || projected.length === 0) return projected;
     // At zoom ≤ 1.5 the whole US is visible — skip culling
     if (zoom <= 1.5) return projected;
 
@@ -123,6 +126,9 @@ export const ChurchDots = memo(function ChurchDots({
   const handleMouseOut = useCallback(() => {
     onChurchHover(null);
   }, [onChurchHover]);
+
+  // If context/projection not ready yet, render nothing
+  if (!projection || visible.length === 0) return null;
 
   // ── Find selected entry for top-layer overlay ──
   const selectedEntry = selectedChurchId
