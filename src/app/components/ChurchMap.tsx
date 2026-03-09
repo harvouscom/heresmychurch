@@ -31,7 +31,7 @@ import { useChurchMapData } from "./useChurchMapData";
 import { useReducer, useEffect, useMemo } from "react";
 import { fetchPendingChurches, fetchPendingSuggestions } from "./api";
 import type { PendingChurchData, PendingSuggestion } from "./api";
-import logoImg from "figma:asset/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
+import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 
 /* eslint-disable @refresh/only-export-components -- force clean re-mount after hook changes */
 
