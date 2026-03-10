@@ -6,7 +6,8 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "prebuild": "node scripts/generate-sitemap.mjs"
+    "prebuild": "node scripts/generate-sitemap.mjs",
+    "cleanup-blocked": "node scripts/cleanup-blocked-denominations.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

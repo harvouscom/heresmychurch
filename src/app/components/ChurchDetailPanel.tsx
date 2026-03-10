@@ -292,7 +292,10 @@ export function ChurchDetailPanel({
     ).length;
   }, [church, allChurches, denomGroup]);
 
-  const fullAddress = formatFullAddress(church.address, church.city, church.state) || getFallbackLocation(church) || "";
+  const hasAddressOrCity = church.address?.trim() || church.city?.trim();
+  const fullAddress = hasAddressOrCity
+    ? formatFullAddress(church.address, church.city, church.state)
+    : (getFallbackLocation(church) || "");
 
   const handleCopyAddress = () => {
     if (fullAddress) {
@@ -414,7 +417,7 @@ export function ChurchDetailPanel({
 
   return (
     <div
-      className="h-full flex flex-col overflow-hidden"
+      className="h-full flex flex-col overflow-hidden rounded-[20px]"
       style={{
         backgroundColor: "#1E1040",
         fontFamily: "'Livvic', sans-serif",
@@ -448,6 +451,7 @@ export function ChurchDetailPanel({
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium text-white bg-purple-700/60 hover:bg-purple-700/80 transition-colors"
+            style={{ boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 0 rgba(0, 0, 0, 0.1)" }}
           >
             <Navigation size={14} />
             Directions
@@ -462,6 +466,7 @@ export function ChurchDetailPanel({
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium text-white/70 bg-white/8 hover:bg-white/12 transition-colors"
+              style={{ boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 0 rgba(0, 0, 0, 0.1)" }}
             >
               <Globe size={14} />
               Website
@@ -473,6 +478,7 @@ export function ChurchDetailPanel({
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium text-white/70 bg-white/8 hover:bg-white/12 transition-colors"
+              style={{ boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 0 rgba(0, 0, 0, 0.1)" }}
             >
               <Search size={14} />
               Find Website
@@ -560,7 +566,7 @@ export function ChurchDetailPanel({
                     : "not_for_me";
               const message =
                 total === 0
-                  ? "No reactions yet — share how you feel above."
+                  ? "No reactions yet"
                   : dominant === "love"
                     ? "Overall people love this church."
                     : dominant === "like"
@@ -568,7 +574,7 @@ export function ChurchDetailPanel({
                       : "Reactions are mixed.";
               return (
                 <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/10">
-                  <p className="text-white/70 text-sm font-medium">{message}</p>
+                  <p className="text-white/70 text-sm font-medium text-center">{message}</p>
                 </div>
               );
             })()}

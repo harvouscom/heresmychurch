@@ -184,7 +184,7 @@ export function getSizeCategory(attendance: number) {
   );
 }
 
-// Major denomination groups for filtering
+// Major denomination groups for filtering (order matters: first match wins)
 export const DENOMINATION_GROUPS: { label: string; matches: string[] }[] = [
   { label: "Catholic", matches: ["Catholic"] },
   { label: "Baptist", matches: ["Baptist"] },
@@ -192,13 +192,14 @@ export const DENOMINATION_GROUPS: { label: string; matches: string[] }[] = [
   { label: "Lutheran", matches: ["Lutheran"] },
   { label: "Presbyterian", matches: ["Presbyterian"] },
   { label: "Episcopal", matches: ["Episcopal", "Anglican"] },
-  { label: "Pentecostal", matches: ["Pentecostal", "Foursquare"] },
-  { label: "Assemblies of God", matches: ["Assemblies of God"] },
+  // Pentecostal before "Church of God" so "Church of God in Christ" maps here
+  { label: "Pentecostal", matches: ["Pentecostal", "Foursquare", "Full Gospel", "Apostolic", "Church of God in Christ", "COGIC"] },
+  { label: "Assemblies of God", matches: ["Assemblies of God", "Assembly of God"] },
   { label: "Church of Christ", matches: ["Church of Christ"] },
   { label: "Church of God", matches: ["Church of God"] },
   { label: "Orthodox", matches: ["Orthodox", "Coptic", "Antiochian"] },
   { label: "Seventh-day Adventist", matches: ["Seventh-day Adventist"] },
-  { label: "Evangelical", matches: ["Evangelical", "Alliance", "Moravian"] },
+  { label: "Evangelical", matches: ["Evangelical", "Alliance", "Moravian", "Evangelical Free", "EFCA", "Free Church"] },
   { label: "Nazarene", matches: ["Nazarene"] },
   { label: "Congregational", matches: ["Congregational"] },
   { label: "Disciples of Christ", matches: ["Disciples of Christ"] },
@@ -208,7 +209,7 @@ export const DENOMINATION_GROUPS: { label: string; matches: string[] }[] = [
   { label: "Quaker", matches: ["Quaker", "Friends"] },
   { label: "Covenant", matches: ["Covenant"] },
   { label: "Salvation Army", matches: ["Salvation Army"] },
-  { label: "Non-denominational", matches: ["Non-denominational", "Nondenominational", "Non denominational"] },
+  { label: "Non-denominational", matches: ["Non-denominational", "Nondenominational", "Non denominational", "Calvary Chapel", "Vineyard", "Bible Church", "Bible Fellowship", "Community Church", "Independent"] },
   { label: "Unspecified", matches: ["Other", "Unknown"] }, // catch-all
 ];
 

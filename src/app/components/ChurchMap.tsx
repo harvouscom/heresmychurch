@@ -1,4 +1,4 @@
-import { AnimatePresence } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import {
   Church as ChurchIcon,
   ArrowLeft,
@@ -19,6 +19,7 @@ import type { SummaryStats } from "./SummaryPanel";
 import { FilterPanel } from "./FilterPanel";
 import { MapLegend } from "./MapLegend";
 import { MapControls } from "./MapControls";
+import { HelpModal } from "./HelpModal";
 import { MapCanvas } from "./MapCanvas";
 import { VerificationModal } from "./VerificationModal";
 import { StateFlag } from "./StateFlag";
@@ -102,6 +103,7 @@ export function ChurchMap({
     pendingReviewCount: 0,
     forceEditForm: false,
     showAbout: !hasSeenAbout && !routeStateAbbrev,
+    showHelp: false,
   });
 
   const dismissAbout = () => {
@@ -123,6 +125,8 @@ export function ChurchMap({
     localDispatch({ type: "SET", key: "showVerificationModal", value: true });
   };
   const onShowAbout = () => localDispatch({ type: "SET", key: "showAbout", value: true });
+  const onShowHelp = () => localDispatch({ type: "SET", key: "showHelp", value: true });
+  const onDismissHelp = () => localDispatch({ type: "SET", key: "showHelp", value: false });
 
   // Refetch state churches when opening the verification modal so stats use latest API data (incl. merged corrections)
   useEffect(() => {
@@ -136,6 +140,17 @@ export function ChurchMap({
   useEffect(() => {
     if (typeof window !== "undefined") setIsLocalhost(window.location.hostname === "localhost");
   }, []);
+
+  const isStateOrChurchView = !!d.focusedState || !!d.selectedChurch;
+  useEffect(() => {
+    const color = isStateOrChurchView ? "#EDE4F3" : "#F5F0E8";
+    document.documentElement.style.backgroundColor = color;
+    document.body.style.backgroundColor = color;
+    return () => {
+      document.documentElement.style.backgroundColor = "";
+      document.body.style.backgroundColor = "";
+    };
+  }, [isStateOrChurchView]);
 
   return (
     <div
@@ -159,6 +174,9 @@ export function ChurchMap({
         showAbout={local.showAbout}
         onDismissAbout={dismissAbout}
         onShowAbout={onShowAbout}
+        showHelp={local.showHelp}
+        onDismissHelp={onDismissHelp}
+        onShowHelp={onShowHelp}
         activePeople={activePeople}
         activeBots={activeBots}
         isLocalhost={isLocalhost}
@@ -221,24 +239,36 @@ export function ChurchMap({
         />
       )}
 
-      {d.selectedChurch && (
-        <div className="h-[55vh] md:h-full md:w-[380px] flex-shrink-0 overflow-hidden">
-          <ChurchDetailPanel
-            church={d.selectedChurch}
-            allChurches={d.filteredChurches}
-            onClose={() => {
-              if (d.focusedState) navigateToState(d.focusedState);
-              else navigateToNational();
-            }}
-            onChurchClick={(church: Church) => {
-              if (d.focusedState) navigateToChurch(d.focusedState, getChurchUrlSegment(church, d.focusedState));
-            }}
-            externalShowEditForm={local.forceEditForm}
-            onEditFormClosed={() => localDispatch({ type: "SET", key: "forceEditForm", value: false })}
-            onChurchUpdated={d.refetchCurrentStateChurches}
-          />
-        </div>
-      )}
+      <AnimatePresence>
+        {d.selectedChurch && (
+          <motion.div
+            key="church-detail-panel"
+            className="flex-shrink-0 overflow-hidden"
+            style={{ backgroundColor: "#EDE4F3" }}
+            initial={{ width: isMobile ? "100%" : 0, height: isMobile ? 0 : "100%" }}
+            animate={{ width: isMobile ? "100%" : 396, height: isMobile ? "55vh" : "100%" }}
+            exit={{ width: isMobile ? "100%" : 0, height: isMobile ? 0 : "100%" }}
+            transition={{ type: "spring", damping: 28, stiffness: 300 }}
+          >
+            <div className="pr-4 pb-4 pt-0 pl-0 md:pl-0 md:pt-4 md:pr-4 md:pb-4" style={{ width: isMobile ? "100%" : 396, height: isMobile ? "55vh" : "100%" }}>
+              <ChurchDetailPanel
+                church={d.selectedChurch}
+                allChurches={d.filteredChurches}
+                onClose={() => {
+                  if (d.focusedState) navigateToState(d.focusedState);
+                  else navigateToNational();
+                }}
+                onChurchClick={(church: Church) => {
+                  if (d.focusedState) navigateToChurch(d.focusedState, getChurchUrlSegment(church, d.focusedState));
+                }}
+                externalShowEditForm={local.forceEditForm}
+                onEditFormClosed={() => localDispatch({ type: "SET", key: "forceEditForm", value: false })}
+                onChurchUpdated={d.refetchCurrentStateChurches}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -249,6 +279,7 @@ type LocalState = {
   pendingReviewCount: number;
   forceEditForm: boolean;
   showAbout: boolean;
+  showHelp: boolean;
 };
 type LocalAction = { type: "SET"; key: keyof LocalState; value: any };
 function localReducer(state: LocalState, action: LocalAction): LocalState {
@@ -272,6 +303,9 @@ function MapArea({
   showAbout,
   onDismissAbout,
   onShowAbout,
+  showHelp,
+  onDismissHelp,
+  onShowHelp,
   activePeople,
   activeBots,
   isLocalhost,
@@ -291,6 +325,9 @@ function MapArea({
   showAbout: boolean;
   onDismissAbout: () => void;
   onShowAbout: () => void;
+  showHelp: boolean;
+  onDismissHelp: () => void;
+  onShowHelp: () => void;
   activePeople: number;
   activeBots: number;
   isLocalhost: boolean;
@@ -324,6 +361,7 @@ function MapArea({
             <button
               onClick={onShowAbout}
               className="mt-1.5 flex items-center gap-1.5 px-3 py-1 rounded-full transition-all hover:opacity-70"
+              style={{ boxShadow: "none" }}
             >
               <Info size={11} className="text-[rgba(30,16,64,0.92)]" />
               <span className="text-[rgba(30,16,64,0.92)] text-[11px] font-normal">
@@ -365,6 +403,9 @@ function MapArea({
 
       {/* About Modal */}
       {showAbout && <AboutModal onClose={onDismissAbout} />}
+
+      {/* Help Modal */}
+      {showHelp && <HelpModal onClose={onDismissHelp} />}
 
       {/* Map canvas */}
       <MapCanvas
@@ -460,6 +501,7 @@ function MapArea({
                 d.setSearchCollapsed(true);
               }
             }}
+            onShowHelp={onShowHelp}
             zoom={d.zoom}
             compact
           />
@@ -502,10 +544,10 @@ function MapArea({
       )}
 
       {!isLoadingVisible && !d.showFilterPanel && !d.showLegend && (
-        <div className="absolute bottom-[24px] left-6 right-6 md:left-12 md:right-12 z-20 flex flex-col items-center gap-2.5">
+        <div className="absolute bottom-3 md:bottom-8 left-6 right-6 md:left-12 md:right-12 z-20 flex flex-col items-center gap-2.5">
           {/* Active now — 10px above search; search list z-index is above this */}
           {((activePeople + activeBots) > 1 || (isLocalhost && (activePeople + activeBots) >= 1)) && (
-            <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full min-w-0 truncate bg-green-500/5 border border-green-500/10">
+            <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full min-w-0 truncate bg-green-500/5 border border-green-500/10 backdrop-blur-md" style={{ boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 0 rgba(0, 0, 0, 0.1)" }}>
               <span
                 className="relative flex h-1.5 w-1.5 flex-shrink-0"
                 aria-hidden
@@ -542,6 +584,7 @@ function MapArea({
           />
         </div>
       )}
+
 
     </div>
   );

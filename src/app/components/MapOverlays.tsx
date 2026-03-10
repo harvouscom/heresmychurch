@@ -203,6 +203,10 @@ export function ChurchTooltip({
   church: Church;
   tooltipPos: { x: number; y: number };
 }) {
+  const hasAddressOrCity = church.address?.trim() || church.city?.trim();
+  const displayLocation = hasAddressOrCity
+    ? formatFullAddress(church.address, church.city, church.state)
+    : getFallbackLocation(church);
   return (
     <div
       className="fixed z-50 pointer-events-none rounded-xl shadow-xl px-4 py-3 max-w-[300px]"
@@ -215,9 +219,9 @@ export function ChurchTooltip({
       <div className="text-sm font-semibold text-white">
         {church.name}
       </div>
-      {(church.address?.trim() || church.city?.trim() || getFallbackLocation(church)) && (
+      {displayLocation && (
         <div className="text-xs text-white/50 mt-0.5">
-          {formatFullAddress(church.address, church.city, church.state) || getFallbackLocation(church)}
+          {displayLocation}
         </div>
       )}
       <div className="flex items-center gap-3 mt-2">

@@ -298,7 +298,7 @@ export function MapSearchBar({
             onExpand?.();
             setTimeout(() => inputRef.current?.focus(), 0);
           }}
-          className="mx-auto flex items-center gap-2 pl-5 pr-[32px] py-3 rounded-full shadow-lg transition-all hover:shadow-xl"
+          className="mx-auto flex items-center gap-2 pl-5 pr-[32px] py-3 rounded-full shadow-lg transition-all hover:shadow-xl backdrop-blur-md"
           style={{ backgroundColor: "rgba(30, 16, 64, 0.92)" }}
         >
           <Search size={17} className="text-purple-400" />
@@ -542,10 +542,10 @@ export function MapSearchBar({
 
       {/* Search input */}
       <div
-        className={`flex items-center gap-2.5 rounded-full shadow-lg px-4 py-3 transition-all ${
+        className={`flex items-center gap-2.5 rounded-full shadow-lg px-4 py-3 transition-all backdrop-blur-md ${
           isFocused ? "ring-2 ring-purple-500/40 shadow-xl" : ""
         }`}
-        style={{ backgroundColor: "rgba(30, 16, 64, 0.92)" }}
+        style={{ backgroundColor: "rgba(30, 16, 64, 0.92)", "--tw-inset-shadow": "inset 0 1px 0 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 0 rgba(0, 0, 0, 0.1)" } as React.CSSProperties}
       >
         {/* State filter chip — national view only */}
         {isNational && hasMultiplePopulated && (

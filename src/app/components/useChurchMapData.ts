@@ -738,7 +738,11 @@ export function useChurchMapData({
     if (!routeStateAbbrev) {
       refs.current.loadVersion++;
       const version = ++refs.current.transitionVersion;
-      dd({ type: "SET_TRANSITIONING", value: true });
+      const fromChurchView = !!ds.selectedChurch;
+
+      if (!fromChurchView) {
+        dd({ type: "SET_TRANSITIONING", value: true });
+      }
       dd({ type: "RESET_TO_NATIONAL" });
       ui.setShowFilterPanel(false);
       ui.setShowListModal(false);
@@ -756,7 +760,7 @@ export function useChurchMapData({
           dd({ type: "SET_CENTER", value: [-96, 38] as [number, number] });
           dd({ type: "SET_ZOOM", value: 1 });
         }
-      }, 1050);
+      }, fromChurchView ? 100 : 1050);
       return;
     }
 

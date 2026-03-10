@@ -4,6 +4,7 @@ import {
   RotateCcw,
   Filter,
   Key,
+  CircleHelp,
 } from "lucide-react";
 
 export function MapControls({
@@ -15,6 +16,7 @@ export function MapControls({
   onResetView,
   onToggleFilter,
   onToggleLegend,
+  onShowHelp,
   zoom,
   compact = false,
 }: {
@@ -26,6 +28,7 @@ export function MapControls({
   onResetView: () => void;
   onToggleFilter: () => void;
   onToggleLegend: () => void;
+  onShowHelp: () => void;
   zoom: number;
   compact?: boolean;
 }) {
@@ -85,6 +88,15 @@ export function MapControls({
         }}
       >
         <Key size={iconSize} color={showLegend ? "#fff" : "#C9A0DC"} />
+      </button>
+      <button
+        onClick={onShowHelp}
+        title="Help"
+        aria-label="Help"
+        className={`${sizeClass} rounded-full flex items-center justify-center shadow-md transition-colors`}
+        style={{ backgroundColor: "rgba(30,16,64,0.9)" }}
+      >
+        <CircleHelp size={iconSize} color="#C9A0DC" />
       </button>
     </div>
   );

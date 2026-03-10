@@ -1,0 +1,181 @@
+import { useState } from "react";
+import { X, Mail, Copy, Check } from "lucide-react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "./ui/accordion";
+import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
+
+const EMAIL = "hey@heresmychurch.com";
+
+function XLogoIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
+
+export function HelpModal({ onClose }: { onClose: () => void }) {
+  const [copiedEmail, setCopiedEmail] = useState(false);
+
+  const handleCopyEmail = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard.writeText(EMAIL);
+    setCopiedEmail(true);
+    setTimeout(() => setCopiedEmail(false), 2000);
+  };
+
+  return (
+    <div
+      className="absolute inset-0 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 backdrop-blur-sm" />
+
+      <div
+        className="relative w-full max-w-md rounded-2xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+        style={{ backgroundColor: "#1E1040" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="relative flex flex-col items-center text-center px-6 pt-6 pb-4 border-b border-white/10 flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors"
+          >
+            <X size={16} className="text-white/50" />
+          </button>
+          <div className="w-16 h-16 rounded-xl overflow-hidden mb-3">
+            <img src={logoImg} alt="Here's My Church" className="w-full h-full object-cover" />
+          </div>
+          <h2 className="text-white font-medium text-[22px] leading-tight">Need Help?</h2>
+          <p className="text-white/60 text-sm leading-relaxed mt-3 text-balance">
+            Get in touch or check the answers below.
+          </p>
+        </div>
+
+        <div className="px-6 py-5 overflow-y-auto flex-1 min-h-0">
+          <p className="text-white/40 text-[11px] uppercase tracking-wider font-medium mb-3">
+            Contact
+          </p>
+          <div className="flex flex-wrap gap-2 mb-5">
+            <div
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium text-white/70 bg-white/8 hover:bg-white/12 transition-colors"
+            >
+              <Mail size={14} className="flex-shrink-0" />
+              <a
+                href={`mailto:${EMAIL}`}
+                className="hover:text-white/90 transition-colors min-w-0 truncate"
+              >
+                {EMAIL}
+              </a>
+              <button
+                type="button"
+                onClick={handleCopyEmail}
+                aria-label="Copy email"
+                className="flex-shrink-0 p-0.5 rounded hover:bg-white/10 transition-colors text-white/40 hover:text-white/70"
+              >
+                {copiedEmail ? (
+                  <Check size={12} aria-hidden />
+                ) : (
+                  <Copy size={12} aria-hidden />
+                )}
+              </button>
+            </div>
+            <a
+              href="https://x.com/heresmychurch"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium text-white/70 bg-white/8 hover:bg-white/12 transition-colors"
+            >
+              <XLogoIcon size={14} />
+              @heresmychurch
+            </a>
+          </div>
+
+          <p className="text-white/40 text-[11px] uppercase tracking-wider font-medium mb-3">
+            Common questions
+          </p>
+          <Accordion type="single" collapsible className="border-white/10">
+            <AccordionItem value="add-church" className="border-white/10">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+                How do I add a church?
+              </AccordionTrigger>
+              <AccordionContent className="text-white/70 space-y-2">
+                <p>
+                  Click any state on the map to zoom in, then use the &quot;Add a Church&quot; button
+                  in the state summary panel. You can also start a search and you&apos;ll see the
+                  option to add your church. No account is required.
+                </p>
+                <p className="text-white/50 text-xs italic">
+                  We encourage you to find your church first; if it&apos;s already listed, please
+                  update the information instead of adding a duplicate.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="data-source" className="border-white/10">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+                Where does the data come from?
+              </AccordionTrigger>
+              <AccordionContent className="text-white/70">
+                We use OpenStreetMap church data with denomination matching, ARDA (Association of
+                Religion Data Archives) reference data, U.S. Census population data, and
+                community-submitted churches and corrections.
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="open-source" className="border-white/10">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+                Is this open source?
+              </AccordionTrigger>
+              <AccordionContent className="text-white/70">
+                Yes. The project is open source under the MIT license. You can find the code on{" "}
+                <a
+                  href="https://github.com/harvouscom/Heresmychurch"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-white/90 transition-colors"
+                >
+                  GitHub
+                </a>
+                .
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="expand-us" className="border-white/10">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+                Are there plans to expand beyond the U.S.?
+              </AccordionTrigger>
+              <AccordionContent className="text-white/70">
+                Yes. We plan to expand to other countries in the future.
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </div>
+
+        <div className="px-6 pb-5 flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="w-full py-3 rounded-xl text-white text-sm font-medium transition-colors"
+            style={{ backgroundColor: "rgba(107, 33, 168, 0.9)" }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.backgroundColor = "rgba(107, 33, 168, 1)")
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.backgroundColor = "rgba(107, 33, 168, 0.9)")
+            }
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
