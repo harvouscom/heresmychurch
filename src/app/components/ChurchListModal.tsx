@@ -667,7 +667,7 @@ export function ChurchListModal({
 
                       {/* Address */}
                       <div className="text-xs text-white/50 self-center truncate">
-                        {church.address || church.city || "\u2014"}
+                        {(church.address || church.city) || ""}
                       </div>
 
                       {/* Denomination */}

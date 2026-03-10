@@ -95,7 +95,7 @@ export function SummaryPanel({
     >
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-white/8 flex-shrink-0">
-        <span className="text-xs font-bold text-white uppercase tracking-widest">
+        <span className="text-xs font-medium text-white uppercase tracking-widest">
           {focusedState ? `${focusedStateName} Summary` : "Summary"}
         </span>
         <button
@@ -161,7 +161,7 @@ export function SummaryPanel({
           {onShowVerification && (
             <button
               onClick={() => { onClose(); onShowVerification(); }}
-              className="w-full py-2.5 rounded-xl text-xs font-semibold text-pink-300 bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/15 transition-colors cursor-pointer flex items-center justify-center gap-2"
+              className="w-full py-2.5 rounded-xl text-xs font-semibold text-white bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/15 transition-colors cursor-pointer flex items-center justify-center gap-2"
             >
               <ShieldCheck size={13} />
               Review Pending Submissions
@@ -189,11 +189,11 @@ function StateSummaryContent({
   return (
     <>
       <p className="text-white/70 text-xs leading-relaxed">
-        There are <span className="font-bold text-white">{churchCount.toLocaleString()} churches</span> in{" "}
-        <span className="font-bold text-purple-300">{focusedStateName}</span> with an estimated combined weekly attendance of{" "}
-        <span className="font-bold text-white">~{stats.totalAttendance.toLocaleString()}</span>.
+        There are <span className="font-medium text-white">{churchCount.toLocaleString()} churches</span> in{" "}
+        <span className="font-medium text-purple-300">{focusedStateName}</span> with an estimated combined weekly attendance of{" "}
+        <span className="font-medium text-white">~{stats.totalAttendance.toLocaleString()}</span>.
         {statePopulation && (
-          <> That&apos;s roughly <span className="font-bold text-white">1 church per {Math.round(statePopulation / churchCount).toLocaleString()} people</span>.</>
+          <> That&apos;s roughly <span className="font-medium text-white">1 church per {Math.round(statePopulation / churchCount).toLocaleString()} people</span>.</>
         )}
       </p>
 
@@ -205,7 +205,7 @@ function StateSummaryContent({
 
       {/* Top denominations */}
       <div>
-        <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-bold block mb-1.5">
+        <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-medium block mb-1.5">
           Top Denominations
         </span>
         <div className="space-y-0.5">
@@ -232,7 +232,7 @@ function StateSummaryContent({
 
       {/* Size breakdown */}
       <div>
-        <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-bold block mb-2">
+        <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-medium block mb-2">
           By Attendance Size
         </span>
         <div className="space-y-1">
@@ -268,8 +268,8 @@ function NationalSummaryContent({
       <p className="text-white/70 text-xs leading-relaxed">
         {stats.populated > 0 ? (
           <>
-            Currently tracking <span className="font-bold text-white">{totalChurches.toLocaleString()} churches</span> across{" "}
-            <span className="font-bold text-purple-300">
+            Currently tracking <span className="font-medium text-white">{totalChurches.toLocaleString()} churches</span> across{" "}
+            <span className="font-medium text-purple-300">
               {allStatesLoaded ? "all 50 states" : `${stats.populated} states`}
             </span>.
             {!allStatesLoaded && stats.unpopulated > 0 && (
@@ -284,7 +284,7 @@ function NationalSummaryContent({
       {/* Top 3 states by church count */}
       {stats.topStates.length > 0 && (
         <div>
-          <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-bold block mb-2">
+          <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-medium block mb-2">
             Most Churches
           </span>
           <div className="space-y-1">
@@ -343,30 +343,24 @@ function CommunityStatsCard() {
   useEffect(() => {
     fetchCommunityStats().then(setStats).catch(() => {});
   }, []);
-  if (!stats || (stats.totalCorrections === 0 && stats.totalConfirmations === 0)) return null;
+  if (!stats || (stats.totalCorrections === 0 && stats.churchesImproved === 0)) return null;
   return (
     <div className="rounded-lg bg-green-500/5 border border-green-500/10 px-3 py-2.5">
       <div className="flex items-center gap-2 mb-1.5">
-        <ShieldCheck size={12} className="text-green-400" />
-        <span className="text-[10px] uppercase tracking-wider text-green-400/70 font-bold">Community Impact</span>
+        <ShieldCheck size={14} className="text-green-400 flex-shrink-0" />
+        <span className="text-[10px] uppercase tracking-wider text-green-400/70 font-medium">Community Impact</span>
       </div>
-      <div className="flex items-center gap-3 text-[11px]">
+      <div className="flex items-center gap-3 text-[11px] flex-wrap">
         {stats.totalCorrections > 0 && (
-          <span className="flex items-center gap-1 text-white/50">
-            <Check size={9} className="text-green-400/60" />
+          <span className="flex items-center gap-1.5 text-white/50 whitespace-nowrap flex-shrink-0">
+            <Check size={14} className="text-green-400/60 flex-shrink-0" />
             <span className="text-white/70 font-medium">{stats.totalCorrections}</span> corrections
           </span>
         )}
         {stats.churchesImproved > 0 && (
-          <span className="flex items-center gap-1 text-white/50">
-            <ChurchIcon size={9} className="text-green-400/60" />
+          <span className="flex items-center gap-1.5 text-white/50 whitespace-nowrap flex-shrink-0">
+            <ChurchIcon size={14} className="text-green-400/60 flex-shrink-0" />
             <span className="text-white/70 font-medium">{stats.churchesImproved}</span> churches improved
-          </span>
-        )}
-        {stats.totalConfirmations > 0 && (
-          <span className="flex items-center gap-1 text-white/50">
-            <ShieldCheck size={9} className="text-green-400/60" />
-            <span className="text-white/70 font-medium">{stats.totalConfirmations}</span> confirmed
           </span>
         )}
       </div>
@@ -385,7 +379,7 @@ function FactsList({
 
   return (
     <div>
-      <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-bold block mb-2">
+      <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-medium block mb-2">
         Interesting Finds
       </span>
       <div className="space-y-1.5">

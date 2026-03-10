@@ -14,6 +14,20 @@ import {
   filterToStateBounds,
   getStateZoom,
 } from "./map-constants";
+import { getChurchUrlSegment } from "./url-utils";
+
+/** Match church by route segment (legacy id or numeric shortId). */
+function churchMatchesRouteSegment(
+  church: Church,
+  segment: string,
+  stateAbbrev: string
+): boolean {
+  return (
+    church.id === segment ||
+    church.shortId === segment ||
+    getChurchUrlSegment(church, stateAbbrev) === segment
+  );
+}
 
 import { useLoadingOverlay } from "./hooks/useLoadingOverlay";
 import { useUIState } from "./hooks/useUIState";
@@ -389,7 +403,7 @@ export function useChurchMapData({
 
     const cached = refs.current.churchCache.get(stateAbbrev);
     if (cached && cached.length > 0) {
-      const church = cached.find((c) => c.id === churchId);
+      const church = cached.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
       if (church) {
         refs.current.loadVersion++;
         setFocusedState(stateAbbrev);
@@ -430,7 +444,7 @@ export function useChurchMapData({
         const filtered = filterToStatePolygon(data.churches, stateAbbrev, refs.current.stateFeatures);
         setChurches(filtered);
 
-        const church = filtered.find((c) => c.id === churchId);
+        const church = filtered.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
         if (church) {
           setSelectedChurch(church);
           moveToView([church.lng, church.lat], Math.max(ds.zoom, 8));
@@ -446,7 +460,7 @@ export function useChurchMapData({
               if (fresh.churches?.length) {
                 const ff = filterToStatePolygon(fresh.churches, stateAbbrev, refs.current.stateFeatures);
                 setChurches(ff);
-                const fc = ff.find((c) => c.id === churchId);
+                const fc = ff.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
                 if (fc) {
                   setSelectedChurch(fc);
                   moveToView([fc.lng, fc.lat], Math.max(ds.zoom, 8));
@@ -481,7 +495,7 @@ export function useChurchMapData({
         if (isStale()) return;
         const freshFiltered = filterToStatePolygon(freshData.churches || [], stateAbbrev, refs.current.stateFeatures);
         setChurches(freshFiltered);
-        const church = freshFiltered.find((c) => c.id === churchId);
+        const church = freshFiltered.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
         if (church) {
           setSelectedChurch(church);
           moveToView([church.lng, church.lat], Math.max(ds.zoom, 8));
@@ -715,9 +729,9 @@ export function useChurchMapData({
         setSelectedChurch(church);
         moveToView([church.lng, church.lat], Math.max(ds.zoom, 8));
       }
-      // Redirect legacy URL to canonical once we have the church (and thus shortId)
-      if (routeLegacyChurchId && focusedState && church.shortId) {
-        navigateToChurch(focusedState, church.shortId, { replace: true });
+      // Redirect legacy URL to canonical (numeric segment)
+      if (routeLegacyChurchId && focusedState) {
+        navigateToChurch(focusedState, getChurchUrlSegment(church, focusedState), { replace: true });
       }
     }
   }, [routeChurchShortId, routeLegacyChurchId, routeChurchKey, churches, selectedChurch?.id, focusedState, navigateToChurch]);
@@ -738,7 +752,7 @@ export function useChurchMapData({
   useEffect(() => {
     let el = document.getElementById(CHURCH_JSONLD_ID) as HTMLScriptElement | null;
     if (selectedChurch && focusedState) {
-      const url = `https://heresmychurch.com/state/${focusedState}/${selectedChurch.shortId ?? selectedChurch.id}`;
+      const url = `https://heresmychurch.com/state/${focusedState}/${getChurchUrlSegment(selectedChurch, focusedState)}`;
       const address =
         selectedChurch.address
           ? { "@type": "PostalAddress" as const, streetAddress: selectedChurch.address, addressLocality: selectedChurch.city || undefined, addressRegion: selectedChurch.state || undefined }
@@ -809,8 +823,8 @@ export function useChurchMapData({
 
   const handleChurchDotClick = (church: Church) => {
     ui.setHoveredChurch(null);
-    if (focusedState && (church.shortId ?? church.id)) {
-      navigateToChurch(focusedState, church.shortId ?? church.id);
+    if (focusedState) {
+      navigateToChurch(focusedState, getChurchUrlSegment(church, focusedState));
     }
   };
 

@@ -61,7 +61,7 @@ export function VerificationModal({
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-white/8 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-pink-500/15 flex items-center justify-center">
-              <AlertTriangle size={18} className="text-pink-400" />
+              <AlertTriangle size={18} className="text-white" />
             </div>
             <div>
               <h2 className="text-white font-medium text-base leading-tight">
@@ -208,7 +208,7 @@ function IncompleteChurchesList({
                       {missing.map((field) => (
                         <span
                           key={field}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-pink-500/8 border border-pink-500/15 text-pink-400/70 text-[10px] font-medium"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-pink-500/8 border border-pink-500/15 text-white text-[10px] font-medium"
                         >
                           <AlertTriangle size={8} className="flex-shrink-0" />
                           {field}

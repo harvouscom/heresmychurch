@@ -28,8 +28,12 @@ import {
   ChurchTooltip,
 } from "./MapOverlays";
 import { useChurchMapData } from "./useChurchMapData";
+import { getChurchUrlSegment } from "./url-utils";
 import { useReducer, useEffect, useMemo } from "react";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
+
+/** Set to true to temporarily hide All States button, Map Key, and action controls (zoom/filter). */
+const HIDE_MAP_UI = false;
 
 /* eslint-disable @refresh/only-export-components -- force clean re-mount after hook changes */
 
@@ -146,7 +150,7 @@ export function ChurchMap({
           onClose={() => d.setShowListModal(false)}
           onChurchClick={(church: Church) => {
             d.setShowListModal(false);
-            if (d.focusedState) navigateToChurch(d.focusedState, church.shortId ?? church.id);
+            if (d.focusedState) navigateToChurch(d.focusedState, getChurchUrlSegment(church, d.focusedState));
           }}
         />
       )}
@@ -167,7 +171,7 @@ export function ChurchMap({
           onClose={() => localDispatch({ type: "SET", key: "showVerificationModal", value: false })}
           onChurchClick={(church: Church) => {
             localDispatch({ type: "SET", key: "showVerificationModal", value: false });
-            if (d.focusedState) navigateToChurch(d.focusedState, church.shortId ?? church.id);
+            if (d.focusedState) navigateToChurch(d.focusedState, getChurchUrlSegment(church, d.focusedState));
             // Defer so the new ChurchDetailPanel mounts before the flag is set
             setTimeout(() => localDispatch({ type: "SET", key: "forceEditForm", value: true }), 50);
           }}
@@ -188,7 +192,7 @@ export function ChurchMap({
               else navigateToNational();
             }}
             onChurchClick={(church: Church) => {
-              if (d.focusedState) navigateToChurch(d.focusedState, church.shortId ?? church.id);
+              if (d.focusedState) navigateToChurch(d.focusedState, getChurchUrlSegment(church, d.focusedState));
             }}
             externalShowEditForm={local.forceEditForm}
             onEditFormClosed={() => localDispatch({ type: "SET", key: "forceEditForm", value: false })}
@@ -247,84 +251,72 @@ function MapArea({
 }) {
   return (
     <div className={`${d.selectedChurch ? 'h-[45vh] md:h-full md:flex-1' : 'flex-1'} relative`} style={{ backgroundColor: "#F5F0E8" }}>
-      {/* Top header pill + summary dropdown — pushed down on mobile when back button is visible */}
-      <div className={`absolute left-1/2 -translate-x-1/2 z-30 flex flex-col items-center md:max-w-[75vw] ${d.focusedState ? 'top-16 md:top-4' : 'top-4'}`} ref={d.summaryRef}>
-        <HeaderPill
-          focusedState={d.focusedState}
-          focusedStateName={d.focusedStateName}
-          filteredCount={d.filteredChurches.length}
-          totalChurches={d.totalChurches}
-          allStatesLoaded={d.allStatesLoaded}
-          populatedCount={d.states.filter((s) => s.isPopulated).length}
-          showSummary={d.showSummary}
-          pendingReviewCount={pendingReviewCount}
-          onShowVerification={onShowVerification}
-          onToggle={() => {
-            d.setShowSummary((v) => {
-              if (!v) { d.setShowFilterPanel(false); d.setShowLegend(false); }
-              return !v;
-            });
-          }}
-        />
+      {/* Top row: header pill only (secondary controls moved to bottom-left cluster) */}
+      <div className="absolute top-4 left-4 right-4 z-30 flex flex-row items-center justify-center">
+        <div className="flex flex-col items-center justify-center min-w-0 overflow-hidden max-w-full" ref={d.summaryRef}>
+          <HeaderPill
+            focusedState={d.focusedState}
+            focusedStateName={d.focusedStateName}
+            filteredCount={d.filteredChurches.length}
+            totalChurches={d.totalChurches}
+            allStatesLoaded={d.allStatesLoaded}
+            populatedCount={d.states.filter((s) => s.isPopulated).length}
+            showSummary={d.showSummary}
+            pendingReviewCount={pendingReviewCount}
+            onShowVerification={onShowVerification}
+            onToggle={() => {
+              d.setShowSummary((v) => {
+                if (!v) { d.setShowFilterPanel(false); d.setShowLegend(false); }
+                return !v;
+              });
+            }}
+          />
 
-        {/* About blurb — national view only */}
-        {!d.focusedState && !d.showSummary && (
-          <button
-            onClick={onShowAbout}
-            className="mt-1.5 flex items-center gap-1.5 px-3 py-1 rounded-full transition-all hover:opacity-70"
-          >
-            <Info size={11} className="text-[rgba(30,16,64,0.92)]" />
-            <span className="text-[rgba(30,16,64,0.92)] text-[11px] font-normal">
-              An open-source map of every U.S. church
-            </span>
-          </button>
-        )}
-
-        <AnimatePresence>
-          {d.showSummary && (
-            <SummaryPanel
-              summaryStats={d.summaryStats as SummaryStats}
-              focusedState={d.focusedState}
-              focusedStateName={d.focusedStateName}
-              churches={d.churches}
-              totalChurches={d.totalChurches}
-              allStatesLoaded={d.allStatesLoaded}
-              statePopulations={d.statePopulations}
-              onClose={() => d.setShowSummary(false)}
-              onNavigateToState={(abbrev) => {
-                d.setShowSummary(false);
-                navigateToState(abbrev);
-              }}
-              onShowListModal={() => {
-                d.setShowSummary(false);
-                d.setShowListModal(true);
-              }}
-              onShowAddChurch={() => {
-                d.setShowSummary(false);
-                d.setShowAddChurchFromSummary(true);
-              }}
-              onShowVerification={onShowVerification}
-            />
+          {/* About blurb — national view only */}
+          {!d.focusedState && !d.showSummary && (
+            <button
+              onClick={onShowAbout}
+              className="mt-1.5 flex items-center gap-1.5 px-3 py-1 rounded-full transition-all hover:opacity-70"
+            >
+              <Info size={11} className="text-[rgba(30,16,64,0.92)]" />
+              <span className="text-[rgba(30,16,64,0.92)] text-[11px] font-normal">
+                An open-source map of every U.S. church
+              </span>
+            </button>
           )}
-        </AnimatePresence>
+
+          <AnimatePresence>
+            {d.showSummary && (
+              <SummaryPanel
+                summaryStats={d.summaryStats as SummaryStats}
+                focusedState={d.focusedState}
+                focusedStateName={d.focusedStateName}
+                churches={d.churches}
+                totalChurches={d.totalChurches}
+                allStatesLoaded={d.allStatesLoaded}
+                statePopulations={d.statePopulations}
+                onClose={() => d.setShowSummary(false)}
+                onNavigateToState={(abbrev) => {
+                  d.setShowSummary(false);
+                  navigateToState(abbrev);
+                }}
+                onShowListModal={() => {
+                  d.setShowSummary(false);
+                  d.setShowListModal(true);
+                }}
+                onShowAddChurch={() => {
+                  d.setShowSummary(false);
+                  d.setShowAddChurchFromSummary(true);
+                }}
+                onShowVerification={onShowVerification}
+              />
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       {/* About Modal */}
       {showAbout && <AboutModal onClose={onDismissAbout} />}
-
-      {/* Back button */}
-      {d.focusedState && (
-        <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
-          <button
-            onClick={d.handleResetView}
-            className="flex items-center gap-2 px-4 py-2 rounded-full shadow-lg text-white text-xs font-normal transition-colors hover:bg-purple-700"
-            style={{ backgroundColor: "rgba(107, 33, 168, 0.9)" }}
-          >
-            <ArrowLeft size={14} />
-            All States
-          </button>
-        </div>
-      )}
 
       {/* Map canvas */}
       <MapCanvas
@@ -379,20 +371,45 @@ function MapArea({
       )}
 
       {!isLoadingVisible && (
-        <MapControls
-          focusedState={d.focusedState}
-          showFilterPanel={d.showFilterPanel}
-          onZoomIn={d.handleZoomIn}
-          onZoomOut={d.handleZoomOut}
-          onResetView={d.handleResetView}
-          onToggleFilter={() => {
-            d.setShowFilterPanel((v) => {
-              if (!v) { d.setShowSummary(false); d.setShowLegend(false); d.setSearchCollapsed(true); }
-              return !v;
-            });
-          }}
-          zoom={d.zoom}
-        />
+        <div className="absolute left-4 bottom-6 z-20 flex flex-col gap-2 items-start">
+          {d.focusedState && (
+            <button
+              onClick={d.handleResetView}
+              title="All States"
+              aria-label="All States"
+              className="w-8 h-8 rounded-lg flex items-center justify-center shadow-md transition-colors hover:opacity-90"
+              style={{ backgroundColor: "rgba(107, 33, 168, 0.9)" }}
+            >
+              <ArrowLeft size={14} color="#fff" />
+            </button>
+          )}
+          <MapControls
+            focusedState={d.focusedState}
+            showFilterPanel={d.showFilterPanel}
+            onZoomIn={d.handleZoomIn}
+            onZoomOut={d.handleZoomOut}
+            onResetView={d.handleResetView}
+            onToggleFilter={() => {
+              d.setShowFilterPanel((v) => {
+                if (!v) { d.setShowSummary(false); d.setShowLegend(false); d.setSearchCollapsed(true); }
+                return !v;
+              });
+            }}
+            zoom={d.zoom}
+            compact
+          />
+          <MapLegend
+            focusedState={d.focusedState}
+            showLegend={d.showLegend}
+            setShowLegend={(v) => d.setShowLegend(v)}
+            setShowSummary={(v) => d.setShowSummary(v)}
+            setShowFilterPanel={(v) => d.setShowFilterPanel(v)}
+            allStatesLoaded={d.allStatesLoaded}
+            states={d.states}
+            filteredChurches={d.filteredChurches}
+            sizeCounts={d.sizeCounts}
+          />
+        </div>
       )}
 
       {d.showFilterPanel && (
@@ -431,19 +448,6 @@ function MapArea({
         />
       )}
 
-      {!isLoadingVisible && (
-        <MapLegend
-          focusedState={d.focusedState}
-          showLegend={d.showLegend}
-          setShowLegend={(v) => d.setShowLegend(v)}
-          setShowSummary={(v) => d.setShowSummary(v)}
-          setShowFilterPanel={(v) => d.setShowFilterPanel(v)}
-          allStatesLoaded={d.allStatesLoaded}
-          states={d.states}
-          filteredChurches={d.filteredChurches}
-          sizeCounts={d.sizeCounts}
-        />
-      )}
     </div>
   );
 }
@@ -474,17 +478,17 @@ function HeaderPill({
 }) {
   return (
     <div
-      className="flex flex-col items-center rounded-full shadow-lg transition-all hover:shadow-xl cursor-pointer min-w-[85vw] md:min-w-0 overflow-hidden"
+      className="flex flex-col items-center rounded-full shadow-lg transition-all hover:shadow-xl cursor-pointer w-auto overflow-hidden"
       style={{ backgroundColor: "rgba(30, 16, 64, 0.92)" }}
     >
       {/* Main row — toggles summary */}
       <div
         onClick={onToggle}
-        className="flex items-center justify-center gap-3 px-5 py-2.5 w-full"
+        className="flex items-center justify-center gap-3 px-5 py-2.5 w-full min-w-0"
       >
-        <ChurchIcon size={18} className="text-purple-300" />
+        <ChurchIcon size={18} className="text-purple-300 flex-shrink-0" />
         {focusedState ? (
-          <span className="text-white text-sm text-balance">
+          <span className="text-white text-sm text-balance min-w-0 truncate">
             <span className="font-medium">
               {filteredCount.toLocaleString()} churches
             </span>{" "}
@@ -494,7 +498,7 @@ function HeaderPill({
             </span>
           </span>
         ) : (
-          <span className="text-white text-sm text-balance">
+          <span className="text-white text-sm text-balance min-w-0 truncate">
             <span className="font-medium">
               {totalChurches.toLocaleString()} churches
             </span>{" "}
@@ -506,7 +510,7 @@ function HeaderPill({
         )}
         <ChevronDown
           size={16}
-          className={`text-white/40 transition-transform duration-200 ${showSummary ? "rotate-180" : ""}`}
+          className={`text-white/40 transition-transform duration-200 flex-shrink-0 ${showSummary ? "rotate-180" : ""}`}
         />
       </div>
 
@@ -514,9 +518,9 @@ function HeaderPill({
       {focusedState && pendingReviewCount > 0 && (
         <div
           onClick={(e) => { e.stopPropagation(); onShowVerification(); }}
-          className="flex items-center justify-center gap-1.5 w-full px-5 pb-1.5 -mt-1.5 hover:opacity-80 transition-opacity"
+          className="flex items-center justify-center gap-1.5 w-full min-w-0 px-5 pb-1.5 -mt-1.5 hover:opacity-80 transition-opacity"
         >
-          <span className="text-pink-300/90 text-[11px] font-medium">
+          <span className="text-pink-300 text-[11px] font-medium min-w-0 truncate">
             {pendingReviewCount.toLocaleString()} need review
           </span>
         </div>

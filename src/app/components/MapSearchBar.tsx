@@ -3,6 +3,7 @@ import { Search, X, ChevronRight, Loader2, MapPin, ChevronDown, Plus } from "luc
 import type { Church, StateInfo } from "./church-data";
 import { searchChurches } from "./api";
 import type { SearchResult } from "./api";
+import { getChurchUrlSegment } from "./url-utils";
 
 // Full state name lookup for search results
 const STATE_NAMES: Record<string, string> = {
@@ -193,7 +194,7 @@ export function MapSearchBar({
   const handleSelectLocal = useCallback(
     (church: Church) => {
       if (focusedState) {
-        navigateToChurch(focusedState, church.shortId ?? church.id);
+        navigateToChurch(focusedState, getChurchUrlSegment(church, focusedState));
       }
       setQuery("");
       setIsFocused(false);
@@ -218,7 +219,7 @@ export function MapSearchBar({
           address: result.address || "",
         });
       }
-      navigateToChurch(result.state, result.shortId ?? result.id);
+      navigateToChurch(result.state, getChurchUrlSegment(result, result.state));
       setQuery("");
       setIsFocused(false);
       inputRef.current?.blur();
@@ -258,7 +259,7 @@ export function MapSearchBar({
   return (
     <div
       ref={containerRef}
-      className="absolute bottom-[72px] left-1/2 -translate-x-1/2 z-20 w-[min(440px,calc(100vw-5rem))]"
+      className="absolute bottom-[24px] left-1/2 -translate-x-1/2 z-20 w-[min(440px,70svw)]"
     >
       {/* Collapsed state — just a search icon button */}
       {collapsed ? (
@@ -267,11 +268,11 @@ export function MapSearchBar({
             onExpand?.();
             setTimeout(() => inputRef.current?.focus(), 0);
           }}
-          className="mx-auto flex items-center gap-2 px-5 py-3 rounded-full shadow-lg transition-all hover:shadow-xl"
+          className="mx-auto flex items-center gap-2 pl-5 pr-[32px] py-3 rounded-full shadow-lg transition-all hover:shadow-xl"
           style={{ backgroundColor: "rgba(30, 16, 64, 0.92)" }}
         >
           <Search size={17} className="text-purple-400" />
-          <span className="text-white/40 text-sm font-medium">Search churches…</span>
+          <span className="text-white text-sm font-medium">Search churches…</span>
         </button>
       ) : (
         <>
@@ -359,9 +360,11 @@ export function MapSearchBar({
                         <div className="text-sm text-white font-medium truncate">
                           {ch.name}
                         </div>
-                        <div className="text-xs text-white/40 truncate">
-                          {[ch.city, ch.address].filter(Boolean).join(" · ") || "\u2014"}
-                        </div>
+                        {(ch.address || ch.city) && (
+                          <div className="text-xs text-white/40 truncate">
+                            {ch.address || ch.city}
+                          </div>
+                        )}
                       </div>
                       <ChevronRight size={14} className="text-white/20 flex-shrink-0" />
                     </button>
@@ -420,9 +423,11 @@ export function MapSearchBar({
                         <div className="text-sm text-white font-medium truncate">
                           {r.name}
                         </div>
-                        <div className="text-xs text-white/40 truncate">
-                          {[r.city, STATE_NAMES[r.state] || r.state, r.address].filter(Boolean).join(" · ") || "\u2014"}
-                        </div>
+                        {(r.address || r.city || r.state) && (
+                          <div className="text-xs text-white/40 truncate">
+                            {r.address || r.city || (STATE_NAMES[r.state] || r.state)}
+                          </div>
+                        )}
                       </div>
                       <ChevronRight size={14} className="text-white/20 flex-shrink-0" />
                     </button>
@@ -480,7 +485,7 @@ export function MapSearchBar({
               ? `Search in ${STATE_NAMES[stateFilter] || stateFilter}…`
               : "Find a church…"
           }
-          className="flex-1 bg-transparent text-white text-[15px] placeholder:text-white/30 outline-none min-w-0"
+          className="flex-1 bg-transparent text-white text-[15px] placeholder:text-white outline-none min-w-0"
         />
         {(query || stateFilter) && (
           <button

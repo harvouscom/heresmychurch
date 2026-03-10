@@ -399,6 +399,12 @@ app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
 // ── Community routes ──
 const THR=1;
 function cip(c:any):string{return c.req.header("x-forwarded-for")?.split(",")[0]?.trim()||c.req.header("x-real-ip")||"unknown";}
+function normalizePhone(s:string):string{
+  const digits=(s??"").replace(/\D/g,"");
+  if(digits.length===11&&digits[0]==="1")return digits.slice(1);
+  if(digits.length<10)return "";
+  return digits;
+}
 const VF=["website","address","attendance","denomination","serviceTimes","languages","ministries","pastorName","phone","email"];
 function consensus(subs:any[]){
   const res:Record<string,any>={};
@@ -429,6 +435,23 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>):
       for(const[f,v]of Object.entries(corrections)){
         if(f==="attendance"){ch.attendance=parseInt(v)||ch.attendance;}
         else if(f==="languages"||f==="ministries"){ch[f]=String(v).split(",").map((s:string)=>s.trim()).filter(Boolean);}
+        else if(f==="address"){
+          const val=String(v).trim();
+          if(val.startsWith("{")){
+            try{
+              const o=JSON.parse(val) as Record<string,string>;
+              (ch as any).address=(o.address??"").trim();
+              (ch as any).city=(o.city??"").trim();
+              (ch as any).state=(o.state??"").trim().toUpperCase().slice(0,2);
+            }catch{ (ch as any).address=val; }
+          }else{
+            const parts=val.split(",").map((s:string)=>s.trim());
+            (ch as any).address=parts[0]??"";
+            (ch as any).city=parts[1]??"";
+            (ch as any).state=(parts[2]??"").toUpperCase().slice(0,2);
+          }
+        }
+        else if(f==="phone"){(ch as any).phone=normalizePhone(String(v))||undefined;}
         else{(ch as any)[f]=v;}
       }
       ch.lastVerified=Date.now();updated=true;break;
@@ -455,11 +478,13 @@ app.post(`${P}/suggestions`,async(c)=>{
     if(!VF.includes(field))return c.json({error:"Invalid field"},400);
     if(field==="denomination"&&isBlockedDenomination(String(value)))return c.json({error:"Denomination not supported"},400);
     if(field==="attendance"){const n=parseInt(value);if(isNaN(n)||n<1||n>50000)return c.json({error:"Attendance 1-50000"},400);}
+    let storeValue=String(value).trim();
+    if(field==="phone"){storeValue=normalizePhone(storeValue);if(!storeValue)return c.json({error:"Invalid phone number"},400);}
     const k=`suggestions:${churchId}`;const ex=(await kv.get(k))||{churchId,submissions:[]};
     // Ensure churchId is stored in the value for getByPrefix lookups
     if(!ex.churchId)ex.churchId=churchId;
     const day=Date.now()-86400000;const r=ex.submissions.find((s:any)=>s.ip===ip&&s.field===field&&s.timestamp>day);
-    if(r){r.value=String(value).trim();r.timestamp=Date.now();}else ex.submissions.push({ip,field,value:String(value).trim(),timestamp:Date.now()});
+    if(r){r.value=storeValue;r.timestamp=Date.now();}else ex.submissions.push({ip,field,value:storeValue,timestamp:Date.now()});
     await kv.set(k,ex);const con=consensus(ex.submissions);
     const applied=await applyApprovedCorrections(churchId,con);
     return c.json({success:true,field,consensus:con[field],allFields:con,applied});
@@ -539,7 +564,7 @@ app.post(`${P}/churches/add`,async(c)=>{
     const k=`pending-churches:${st}`;const store=(await kv.get(k))||{churches:[]};
     const dup=store.churches.find((ch:any)=>ch.name.trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs(ch.lat-pLat)<0.001&&Math.abs(ch.lng-pLng)<0.001);
     if(dup){if(!dup.verifications.some((v:any)=>v.ip===ip)){dup.verifications.push({ip,timestamp:Date.now()});if(dup.verifications.length>=THR)dup.approved=true;await kv.set(k,store);}return c.json({success:true,church:dup,isDuplicate:true});}
-    const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:(phone||"").trim()||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
+    const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:normalizePhone(phone||"")||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
     store.churches.push(nc);await kv.set(k,store);
     const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,state:st,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
     if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);}

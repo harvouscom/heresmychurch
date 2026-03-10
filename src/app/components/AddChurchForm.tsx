@@ -20,6 +20,7 @@ import {
 import { DENOMINATION_GROUPS, COMMON_LANGUAGES, COMMON_MINISTRIES } from "./church-data";
 import { addChurch } from "./api";
 import { ServiceTimesInput } from "./ServiceTimesInput";
+import { normalizePhone } from "./ui/utils";
 
 interface AddChurchFormProps {
   stateAbbrev: string;
@@ -100,7 +101,7 @@ export function AddChurchForm({
         languages: selectedLanguages.size > 0 ? Array.from(selectedLanguages) : undefined,
         ministries: selectedMinistries.size > 0 ? Array.from(selectedMinistries) : undefined,
         pastorName: pastorName.trim() || undefined,
-        phone: phone.trim() || undefined,
+        phone: normalizePhone(phone) || undefined,
         email: email.trim() || undefined,
       });
 

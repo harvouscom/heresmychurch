@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Loader2, X } from "lucide-react";
 import { getSizeCategory } from "./church-data";
 import type { Church } from "./church-data";
+import { formatFullAddress } from "./AddressInput";
 import { WAITING_SAYINGS } from "./map-constants";
 
 // --- Loading Overlay ---
@@ -179,13 +180,9 @@ export function ChurchTooltip({
       <div className="text-sm font-semibold text-white">
         {church.name}
       </div>
-      {(church.city || church.address) && (
+      {formatFullAddress(church.address, church.city, church.state) && (
         <div className="text-xs text-white/50 mt-0.5">
-          {church.address && (
-            <span>{church.address}, </span>
-          )}
-          {church.city && <span>{church.city}, </span>}
-          {church.state}
+          {formatFullAddress(church.address, church.city, church.state)}
         </div>
       )}
       <div className="flex items-center gap-3 mt-2">

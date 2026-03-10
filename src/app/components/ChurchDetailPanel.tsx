@@ -23,6 +23,9 @@ import {
 import { useState, useMemo, useEffect, useRef } from "react";
 import { SuggestEditForm } from "./SuggestEditForm";
 import { groupServiceTimesByDay, parseServiceTimesForDisplay } from "./ServiceTimesInput";
+import { formatFullAddress } from "./AddressInput";
+import { formatPhoneDisplay } from "./ui/utils";
+import { withSiteRef } from "./url-utils";
 import { confirmChurchData, fetchCorrectionHistory } from "./api";
 import type { CorrectionHistoryEntry } from "./api";
 
@@ -109,18 +112,18 @@ const DENOMINATION_FACTS: Record<string, string> = {
     "Founded in 1865 by William Booth in London, the Salvation Army is known for its charitable work and military-style organization.",
 };
 
-// Helper to render service times in a grouped format
+// Helper to render service times in a grouped format (primary block)
 function ServiceTimesCard({ serviceTimes }: { serviceTimes: string }) {
   const grouped = groupServiceTimesByDay(parseServiceTimesForDisplay(serviceTimes));
   return (
-    <div className="rounded-xl p-4 bg-white/5 border border-white/5">
+    <div className="rounded-xl p-3 bg-white/5 border border-white/5">
       <div className="flex items-center gap-2 mb-2">
         <Clock size={16} className="text-purple-400" />
         <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
           Service Times
         </span>
         {grouped.length > 1 && (
-          <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400/70 font-semibold">
+          <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400/70 font-medium">
             {grouped.reduce((sum, g) => sum + g.services.length, 0)} services
           </span>
         )}
@@ -246,9 +249,7 @@ export function ChurchDetailPanel({
     ).length;
   }, [church, allChurches, denomGroup]);
 
-  const fullAddress = [church.address, church.city, church.state]
-    .filter(Boolean)
-    .join(", ");
+  const fullAddress = formatFullAddress(church.address, church.city, church.state);
 
   const handleCopyAddress = () => {
     if (fullAddress) {
@@ -359,11 +360,11 @@ export function ChurchDetailPanel({
           </a>
           {church.website ? (
             <a
-              href={
+              href={withSiteRef(
                 church.website.startsWith("http")
                   ? church.website
                   : `https://${church.website}`
-              }
+              )}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium text-white/70 bg-white/8 hover:bg-white/12 transition-colors"
@@ -387,138 +388,103 @@ export function ChurchDetailPanel({
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-        {/* Stats cards */}
-        <div className="grid grid-cols-2 gap-4">
-          {/* Attendance */}
-          <div className="rounded-xl p-4 bg-white/5 border border-white/5 group/card">
-            <div className="flex items-center gap-2 mb-2">
-              <Users size={16} className="text-purple-400" />
-              <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
-                Est. Avg. Weekly Attendance
-              </span>
-              <button onClick={() => openEditForField("attendance")} className="ml-auto p-1 rounded hover:bg-white/10 transition-colors opacity-0 group-hover/card:opacity-100"><Pencil size={11} className="text-white/30" /></button>
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        {/* Primary: Service Times first */}
+        {church.serviceTimes && (
+          <ServiceTimesCard serviceTimes={church.serviceTimes} />
+        )}
+
+        {/* Primary: Core stats — 2-col grid for attendance + denomination */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/5 group/card">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Users size={13} className="text-purple-400 flex-shrink-0" />
+              <span className="text-[10px] uppercase tracking-wider text-white/35 font-semibold">Attendance</span>
+              <button onClick={() => openEditForField("attendance")} className="ml-auto p-0.5 rounded hover:bg-white/10 transition-colors opacity-0 group-hover/card:opacity-100"><Pencil size={10} className="text-white/30" /></button>
             </div>
-            <div className="text-white text-xl font-semibold">
-              ~{church.attendance.toLocaleString()}
-            </div>
-            <div className="flex items-center gap-1.5 mt-1.5">
-              <div
-                className="w-2 h-2 rounded-full"
-                style={{ backgroundColor: sizeCat.color }}
-              />
-              <span className="text-white/50 text-xs">
-                {sizeCat.label}
-              </span>
+            <div className="text-white text-base font-semibold">~{church.attendance.toLocaleString()}</div>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: sizeCat.color }} />
+              <span className="text-white/50 text-xs">{sizeCat.label}</span>
             </div>
           </div>
-
-          {/* Denomination */}
-          <div className="rounded-xl p-4 bg-white/5 border border-white/5 group/card">
-            <div className="flex items-center gap-2 mb-2">
-              <ChurchIcon size={16} className="text-purple-400" />
-              <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
-                Denomination
-              </span>
-              <button onClick={() => openEditForField("denomination")} className="ml-auto p-1 rounded hover:bg-white/10 transition-colors opacity-0 group-hover/card:opacity-100"><Pencil size={11} className="text-white/30" /></button>
+          <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/5 group/card">
+            <div className="flex items-center gap-1.5 mb-1">
+              <ChurchIcon size={13} className="text-purple-400 flex-shrink-0" />
+              <span className="text-[10px] uppercase tracking-wider text-white/35 font-semibold">Denomination</span>
+              <button onClick={() => openEditForField("denomination")} className="ml-auto p-0.5 rounded hover:bg-white/10 transition-colors opacity-0 group-hover/card:opacity-100"><Pencil size={10} className="text-white/30" /></button>
             </div>
-            <div className="text-white text-base font-semibold leading-snug">
-              {church.denomination === "Other" || church.denomination === "Unknown" ? "Unspecified" : church.denomination}
-            </div>
-            <div className="text-white/40 text-xs mt-1.5">
-              {sameDenomCount.toLocaleString()} similar in state
-            </div>
+            <div className="text-white text-sm font-semibold">{church.denomination === "Other" || church.denomination === "Unknown" ? "Unspecified" : church.denomination}</div>
+            <div className="text-white/40 text-xs mt-0.5">{sameDenomCount.toLocaleString()} similar in state</div>
           </div>
         </div>
 
-        {/* Service Details & Language Estimate */}
-        <div className="space-y-3">
-          {/* Service Times */}
-          {church.serviceTimes && (
-            <ServiceTimesCard serviceTimes={church.serviceTimes} />
-          )}
-
-          {/* Confirmed Languages */}
-          {church.languages && church.languages.length > 0 && (
-            <div className="rounded-xl p-4 bg-white/5 border border-white/5">
-              <div className="flex items-center gap-2 mb-2">
-                <Languages size={16} className="text-purple-400" />
-                <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
-                  Languages
+        {/* Languages — full-width row when confirmed */}
+        {church.languages && church.languages.length > 0 && (
+          <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/5 group/card flex items-center gap-2">
+            <Languages size={14} className="text-purple-400 flex-shrink-0" />
+            <div className="flex flex-wrap gap-1.5 min-w-0 flex-1">
+              {church.languages.map((lang) => (
+                <span key={lang} className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/15 text-purple-300 border border-purple-500/20">
+                  {lang}
                 </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {church.languages.map((lang) => (
-                  <span key={lang} className="px-3 py-1.5 rounded-full text-xs font-medium bg-purple-500/15 text-purple-300 border border-purple-500/20">
-                    {lang}
-                  </span>
-                ))}
-              </div>
+              ))}
             </div>
-          )}
+            <button onClick={() => openEditForField("languages")} className="p-1 rounded hover:bg-white/10 transition-colors opacity-0 group-hover/card:opacity-100 flex-shrink-0"><Pencil size={11} className="text-white/30" /></button>
+          </div>
+        )}
 
-          {/* Language Estimate — always shown */}
+        {/* Bilingual estimate — only when language not confirmed */}
+        {!bilingualInfo.confirmed && (
           <LanguageEstimateCard bilingualInfo={bilingualInfo} />
+        )}
 
-          {/* Ministries */}
-          {church.ministries && church.ministries.length > 0 && (
-            <div className="rounded-xl p-4 bg-white/5 border border-white/5">
-              <div className="flex items-center gap-2 mb-2">
-                <Heart size={16} className="text-purple-400" />
-                <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
-                  Ministries
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {church.ministries.map((m) => (
-                  <span key={m} className="px-3 py-1.5 rounded-full text-xs font-medium bg-white/8 text-white/60 border border-white/8">
-                    {m}
-                  </span>
-                ))}
-              </div>
+        {/* Secondary: Ministries (compact) */}
+        {church.ministries && church.ministries.length > 0 && (
+          <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/5">
+            <div className="flex items-center gap-2 mb-1.5">
+              <Heart size={14} className="text-purple-400 flex-shrink-0" />
+              <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">Ministries</span>
             </div>
-          )}
+            <div className="flex flex-wrap gap-1.5">
+              {church.ministries.map((m) => (
+                <span key={m} className="px-2 py-0.5 rounded-full text-xs font-medium bg-white/8 text-white/60 border border-white/8">
+                  {m}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
-          {/* Pastor & Contact */}
-          {(church.pastorName || church.phone || church.email) && (
-            <div className="rounded-xl p-4 bg-white/5 border border-white/5">
-              <div className="flex items-center gap-2 mb-2.5">
-                <User size={16} className="text-purple-400" />
-                <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
-                  Contact
-                </span>
-              </div>
-              <div className="space-y-2">
-                {church.pastorName && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-white/50 text-sm">Lead Pastor</span>
-                    <span className="text-white text-sm font-medium">{church.pastorName}</span>
-                  </div>
-                )}
-                {church.phone && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-white/50 text-sm flex items-center gap-1">
-                      <Phone size={12} /> Phone
-                    </span>
-                    <a href={`tel:${church.phone}`} className="text-purple-300 text-sm font-medium hover:text-purple-200 transition-colors">
-                      {church.phone}
-                    </a>
-                  </div>
-                )}
-                {church.email && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-white/50 text-sm flex items-center gap-1">
-                      <Mail size={12} /> Email
-                    </span>
-                    <a href={`mailto:${church.email}`} className="text-purple-300 text-sm font-medium hover:text-purple-200 transition-colors">
-                      {church.email}
-                    </a>
-                  </div>
-                )}
-              </div>
+        {/* Secondary: Contact (compact) */}
+        {(church.pastorName || church.phone || church.email) && (
+          <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/5">
+            <div className="flex items-center gap-2 mb-1.5">
+              <User size={14} className="text-purple-400 flex-shrink-0" />
+              <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">Contact</span>
             </div>
-          )}
-        </div>
+            <div className="space-y-1">
+              {church.pastorName && (
+                <div className="flex justify-between items-center gap-2">
+                  <span className="text-white/50 text-xs">Lead Pastor</span>
+                  <span className="text-white text-sm font-medium truncate">{church.pastorName}</span>
+                </div>
+              )}
+              {church.phone && (
+                <div className="flex justify-between items-center gap-2">
+                  <span className="text-white/50 text-xs flex items-center gap-1"><Phone size={11} /> Phone</span>
+                  <a href={`tel:${church.phone}`} className="text-purple-300 text-sm font-medium hover:text-purple-200 transition-colors truncate">{formatPhoneDisplay(church.phone)}</a>
+                </div>
+              )}
+              {church.email && (
+                <div className="flex justify-between items-center gap-2">
+                  <span className="text-white/50 text-xs flex items-center gap-1"><Mail size={11} /> Email</span>
+                  <a href={`mailto:${church.email}`} className="text-purple-300 text-sm font-medium hover:text-purple-200 transition-colors truncate">{church.email}</a>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Action buttons */}
         <div className="flex flex-col gap-2">
@@ -553,7 +519,7 @@ export function ChurchDetailPanel({
               Update Church Info
             </span>
             {missingFieldCount > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pink-500/20 text-pink-400 font-semibold">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pink-500/20 text-white font-medium">
                 {missingFieldCount} missing
               </span>
             )}

@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { ServiceTimesInput } from "./ServiceTimesInput";
+import { AddressInput, serializeAddress, parseAddressValue } from "./AddressInput";
+import { normalizePhone } from "./ui/utils";
 
 interface SuggestEditFormProps {
   church: Church;
@@ -36,11 +38,11 @@ const FIELD_CONFIG: {
   label: string;
   icon: typeof Globe;
   placeholder: string;
-  type: "text" | "number" | "select" | "chips-languages" | "chips-ministries";
+  type: "text" | "number" | "select" | "address" | "chips-languages" | "chips-ministries";
   group: "core" | "extended";
 }[] = [
   { key: "website", label: "Website", icon: Globe, placeholder: "https://www.example.com", type: "text", group: "core" },
-  { key: "address", label: "Address", icon: MapPin, placeholder: "123 Main St, City, State", type: "text", group: "core" },
+  { key: "address", label: "Address", icon: MapPin, placeholder: "Street, city, state", type: "address", group: "core" },
   { key: "attendance", label: "Est. Avg. Weekly Attendance", icon: Users, placeholder: "Enter estimated weekly attendance", type: "number", group: "core" },
   { key: "denomination", label: "Denomination", icon: ChurchIcon, placeholder: "Select denomination", type: "select", group: "core" },
   { key: "serviceTimes", label: "Service Times", icon: Clock, placeholder: "e.g., Sunday 9am, 11am; Wed 7pm", type: "text", group: "extended" },
@@ -67,11 +69,15 @@ function isFieldEmpty(church: Church, field: EditableField): boolean {
   }
 }
 
-// Get the current display value for a field
+// Get the current display value for a field (for address, serialized JSON for AddressInput)
 function getCurrentValue(church: Church, field: EditableField): string {
   switch (field) {
     case "website": return church.website || "";
-    case "address": return [church.address, church.city, church.state].filter(Boolean).join(", ");
+    case "address": return serializeAddress({
+      address: church.address || "",
+      city: church.city || "",
+      state: church.state || "",
+    });
     case "attendance": return church.attendance ? String(church.attendance) : "";
     case "denomination": return church.denomination || "";
     case "serviceTimes": return church.serviceTimes || "";
@@ -114,8 +120,12 @@ export function SuggestEditForm({ church, onClose, focusField, onChurchUpdated }
   }, [focusField]);
 
   const handleSubmit = async (field: EditableField, value?: string) => {
-    const val = (value ?? values[field])?.trim();
+    let val = (value ?? values[field])?.trim();
     if (!val) return;
+    if (field === "phone") {
+      val = normalizePhone(val);
+      if (!val) return;
+    }
 
     setSubmitting(field);
     setError(null);
@@ -167,7 +177,7 @@ export function SuggestEditForm({ church, onClose, focusField, onChurchUpdated }
             <p className="text-white/40 text-[11px] mt-1.5 leading-relaxed">
               Help keep this church&apos;s information accurate and up to date.
               {emptyCount > 0 && (
-                <span className="text-pink-400/80">
+                <span className="text-white">
                   {" "}This church is missing {emptyCount} {emptyCount === 1 ? "field" : "fields"} — help fill them in!
                 </span>
               )}
@@ -315,6 +325,11 @@ function FieldCard({
   const justSubmitted = submitted.has(key);
   const empty = isFieldEmpty(church, key);
   const currentValue = getCurrentValue(church, key);
+  const displayValue = key === "address" ? [church.address, church.city, church.state].filter(Boolean).join(", ") : currentValue;
+  const canSubmitAddress = key !== "address" || (() => {
+    const p = parseAddressValue(values[key] ?? "");
+    return !!(p.address.trim() && p.city.trim() && p.state.trim());
+  })();
 
   return (
     <div
@@ -327,22 +342,22 @@ function FieldCard({
     >
       {/* Field header */}
       <div className="flex items-center gap-2 mb-2">
-        <Icon size={13} className={empty ? "text-pink-400" : "text-purple-400"} />
+        <Icon size={13} className={empty ? "text-white" : "text-purple-400"} />
         <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
           {label}
         </span>
         {empty && (
-          <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-pink-500/15 text-pink-400 font-semibold">
+          <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-pink-500/15 text-white font-medium">
             MISSING
           </span>
         )}
       </div>
 
       {/* Current value display */}
-      {currentValue && !empty && (
+      {displayValue && !empty && (
         <div className="mb-2.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04]">
           <p className="text-[10px] text-white/30 mb-0.5">Current value</p>
-          <p className="text-white/60 text-xs truncate">{currentValue}</p>
+          <p className="text-white/60 text-xs truncate">{displayValue}</p>
         </div>
       )}
 
@@ -385,7 +400,7 @@ function FieldCard({
               <div className="flex items-center gap-2">
                 <button
                   onClick={onSubmitEdit}
-                  disabled={isSubmitting || !values[key]?.trim()}
+                  disabled={isSubmitting || (key === "address" ? !canSubmitAddress : !values[key]?.trim())}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-300 text-[11px] font-medium hover:bg-purple-500/30 transition-colors disabled:opacity-30 cursor-pointer"
                 >
                   {isSubmitting ? (
@@ -486,6 +501,16 @@ function EditInput({
           </button>
         ))}
       </div>
+    );
+  }
+
+  if (fieldKey === "address") {
+    return (
+      <AddressInput
+        value={values[fieldKey] || ""}
+        onChange={(val) => setValues((v) => ({ ...v, [fieldKey]: val }))}
+        compact
+      />
     );
   }
 

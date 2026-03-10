@@ -55,7 +55,7 @@ export function FilterPanel({
 }: FilterPanelProps) {
   return (
     <div
-      className="absolute left-16 bottom-6 z-20 rounded-xl shadow-2xl p-4 w-[260px] max-h-[70vh] overflow-y-auto"
+      className="absolute left-[7.5rem] bottom-6 z-20 rounded-xl shadow-2xl p-4 w-[260px] max-h-[70vh] overflow-y-auto"
       style={{ backgroundColor: "rgba(30, 16, 64, 0.96)" }}
     >
       <div className="flex items-center justify-between mb-3">
@@ -127,7 +127,7 @@ export function FilterPanel({
           <Languages size={12} />
           Languages
           {languageFilter !== "all" && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-semibold normal-case tracking-normal">
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-medium normal-case tracking-normal">
               active
             </span>
           )}

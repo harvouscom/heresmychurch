@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Key } from "lucide-react";
 import { sizeCategories } from "./church-data";
 import type { StateInfo } from "./church-data";
 import { STATE_COUNT_TIERS } from "./map-constants";
@@ -26,58 +26,62 @@ export function MapLegend({
   filteredChurches,
   sizeCounts,
 }: MapLegendProps) {
+  const toggle = () => {
+    setShowLegend(!showLegend);
+    if (!showLegend) {
+      setShowSummary(false);
+      setShowFilterPanel(false);
+    }
+  };
+
   return (
-    <div className="absolute bottom-6 right-4 z-20">
-      <div
-        className={`shadow-lg cursor-pointer overflow-hidden ${
-          showLegend ? "rounded-xl" : "rounded-full"
-        }`}
-        style={{ backgroundColor: "rgba(30, 16, 64, 0.93)" }}
-        onClick={() => {
-          setShowLegend(!showLegend);
-          if (!showLegend) {
-            setShowSummary(false);
-            setShowFilterPanel(false);
-          }
-        }}
-      >
-        <div className="flex items-center justify-between px-4 py-2.5">
-          <span className="text-xs font-bold text-white uppercase tracking-widest whitespace-nowrap">
-            Map Key
-          </span>
-          <ChevronDown
-            size={14}
-            className={`text-white/50 transition-transform duration-200 flex-shrink-0 ${
-              showLegend ? "rotate-180" : ""
-            }`}
-          />
-        </div>
-        <div
-          className="grid transition-[grid-template-rows] duration-200 ease-out"
-          style={{ gridTemplateRows: showLegend ? "1fr" : "0fr" }}
+    <div className="w-fit">
+      {!showLegend ? (
+        <button
+          type="button"
+          onClick={toggle}
+          title="Map Key"
+          aria-label="Map Key"
+          className="w-8 h-8 rounded-lg flex items-center justify-center shadow-md transition-colors hover:opacity-90"
+          style={{ backgroundColor: "rgba(30, 16, 64, 0.93)" }}
         >
-          <div className="overflow-hidden">
-            <div className="px-4 pb-3">
-              <div className="pt-2 border-t border-white/10">
-                <span className="text-xs font-semibold text-purple-300 uppercase tracking-wide block mb-2">
-                  {focusedState ? "Attendance" : "Churches per State"}
-                </span>
-                {focusedState ? (
-                  <AttendanceLegend
-                    filteredChurchCount={filteredChurches.length}
-                    sizeCounts={sizeCounts}
-                  />
-                ) : (
-                  <StateLegend
-                    allStatesLoaded={allStatesLoaded}
-                    states={states}
-                  />
-                )}
-              </div>
+          <Key size={14} color="#C9A0DC" />
+        </button>
+      ) : (
+        <div
+          className="shadow-lg overflow-hidden rounded-xl w-fit min-w-[140px]"
+          style={{ backgroundColor: "rgba(30, 16, 64, 0.93)" }}
+        >
+          <button
+            type="button"
+            onClick={toggle}
+            className="flex flex-nowrap items-center justify-between gap-2 px-3 py-2 w-full text-left"
+          >
+            <span className="text-[11px] font-medium text-white uppercase tracking-wide whitespace-nowrap">
+              Map Key
+            </span>
+            <ChevronDown size={12} className="text-white/50 rotate-180 flex-shrink-0" />
+          </button>
+          <div className="px-3 pb-3">
+            <div className="pt-2 border-t border-white/10">
+              <span className="text-[11px] font-medium text-purple-300 uppercase tracking-wide block mb-2">
+                {focusedState ? "Attendance" : "Churches per State"}
+              </span>
+              {focusedState ? (
+                <AttendanceLegend
+                  filteredChurchCount={filteredChurches.length}
+                  sizeCounts={sizeCounts}
+                />
+              ) : (
+                <StateLegend
+                  allStatesLoaded={allStatesLoaded}
+                  states={states}
+                />
+              )}
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
