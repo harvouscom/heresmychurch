@@ -18,6 +18,7 @@ import { memo, useMemo, useCallback } from "react";
 import { useMapContext } from "react-simple-maps";
 import { getSizeCategory } from "./church-data";
 import type { Church } from "./church-data";
+import { ACTIVE_PIN_FILL } from "./map-constants";
 
 interface ChurchDotsProps {
   churches: Church[];
@@ -148,38 +149,64 @@ export const ChurchDots = memo(function ChurchDots({
       onMouseOut={handleMouseOut}
       style={{ cursor: "pointer" }}
     >
-      {/* Main dots — non-selected churches */}
-      {visible.map((v) =>
-        v.id === selectedChurchId ? null : (
-          <circle
-            key={v.id}
-            data-id={v.id}
-            cx={v.x}
-            cy={v.y}
-            r={v.r / zoomDiv}
-            fill={v.color}
-            fillOpacity={0.8}
-            stroke="rgba(255,255,255,0.6)"
-            strokeWidth={0.8 / zoomDiv}
-            style={{ cursor: "pointer" }}
-          />
-        )
-      )}
+      {/* Other church dots — single <g> transition instead of per-element */}
+      <g
+        opacity={selectedChurchId ? 0 : 1}
+        style={{
+          transition: "opacity 0.35s ease-out",
+          pointerEvents: selectedChurchId ? "none" : "auto",
+        }}
+      >
+        {visible.map((v) =>
+          v.id === selectedChurchId ? null : (
+            <circle
+              key={v.id}
+              data-id={v.id}
+              cx={v.x}
+              cy={v.y}
+              r={v.r / zoomDiv}
+              fill={v.color}
+              fillOpacity={0.8}
+              stroke="rgba(255,255,255,0.6)"
+              strokeWidth={0.8 / zoomDiv}
+              style={{ cursor: "pointer" }}
+            />
+          )
+        )}
+      </g>
 
-      {/* Selected church — always rendered on top */}
-      {selectedEntry && (
-        <circle
-          data-id={selectedEntry.id}
-          cx={selectedEntry.x}
-          cy={selectedEntry.y}
-          r={(selectedEntry.r * 1.6) / zoomDiv}
-          fill="#fff"
-          fillOpacity={1}
-          stroke={selectedEntry.color}
-          strokeWidth={2.5 / zoomDiv}
-          style={{ cursor: "pointer" }}
-        />
-      )}
+      {/* Selected church — Lucide MapPin, drops in from above */}
+      {selectedEntry && (() => {
+        const pinScale = 1.2 / zoomDiv;
+        return (
+          <g
+            key={selectedEntry.id}
+            data-id={selectedEntry.id}
+            transform={`translate(${selectedEntry.x},${selectedEntry.y}) scale(${pinScale})`}
+            style={{ cursor: "pointer" }}
+          >
+            <g className="animate-pin-drop">
+              <g transform="translate(-12,-22)">
+                <path
+                  data-id={selectedEntry.id}
+                  d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0Z"
+                  fill={ACTIVE_PIN_FILL}
+                  stroke="rgba(255,255,255,0.9)"
+                  strokeWidth={1.5}
+                  strokeLinejoin="round"
+                />
+                <circle
+                  data-id={selectedEntry.id}
+                  cx={12}
+                  cy={10}
+                  r={3}
+                  fill="white"
+                />
+              </g>
+            </g>
+          </g>
+        );
+      })()}
     </g>
   );
 });

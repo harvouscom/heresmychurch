@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { Search, X, ChevronRight, Loader2, MapPin, ChevronDown, Plus } from "lucide-react";
+import { Search, ChevronRight, Loader2, MapPin, ChevronDown, Plus } from "lucide-react";
 import { geoAlbersUsa } from "d3-geo";
 import type { Church, StateInfo } from "./church-data";
 import { getFallbackLocation } from "./church-data";
@@ -8,6 +8,7 @@ import type { SearchResult } from "./api";
 import { getChurchUrlSegment } from "./url-utils";
 import { StateFlag } from "./StateFlag";
 import { STATE_NAMES } from "./map-constants";
+import { CloseButton } from "./ui/close-button";
 
 const VIEWPORT_ZOOM_THRESHOLD = 1.5;
 
@@ -582,7 +583,8 @@ export function MapSearchBar({
           className="flex-1 bg-transparent text-white text-[15px] placeholder:text-white outline-none min-w-0"
         />
         {(query || stateFilter) && (
-          <button
+          <CloseButton
+            ariaLabel="Clear search"
             onClick={() => {
               if (query) {
                 setQuery("");
@@ -591,10 +593,7 @@ export function MapSearchBar({
                 setStateFilter(null);
               }
             }}
-            className="text-white/30 hover:text-white/60 transition-colors"
-          >
-            <X size={15} />
-          </button>
+          />
         )}
       </div>
         </>

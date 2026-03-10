@@ -43,6 +43,7 @@ interface UseChurchMapDataArgs {
   navigateToState: (abbrev: string) => void;
   navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => void;
   navigateToNational: () => void;
+  isMobile?: boolean;
 }
 
 // ── Module-level pure function (was useCallback with [] deps) ──
@@ -65,6 +66,7 @@ export function useChurchMapData({
   navigateToState,
   navigateToChurch,
   navigateToNational,
+  isMobile,
 }: UseChurchMapDataArgs) {
   // ── Core data + map-view state (consolidated reducer — absorbs old useMapView) ──
   const [ds, dd] = useReducer(dataReducer, initialDataState);
@@ -201,6 +203,34 @@ export function useChurchMapData({
         dd({ type: "SET_TRANSITIONING", value: false });
       }
     }, 850);
+  };
+
+  // ── Mobile church-view offset: shifts pin above the 55vh detail panel ──
+  const getMobileLatOffset = (targetZoom: number): number => {
+    // The panel covers the bottom 55vh. The map SVG (viewBox 800×600,
+    // geoAlbersUsa scale 1000) renders letterboxed inside the full viewport.
+    // We shift the center south so the pin falls in the middle of the
+    // visible area instead of behind the panel.
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+    const svgScale = Math.min(vw / 800, vh / 600);
+    const renderedH = 600 * svgScale;
+    const mapTop = (vh - renderedH) / 2;
+    const mapCenter = mapTop + renderedH / 2;
+    const panelTop = vh * 0.45;
+    const visibleCenter = (Math.max(mapTop, 0) + Math.min(panelTop, mapTop + renderedH)) / 2;
+    const shiftPx = mapCenter - visibleCenter;
+    // Convert screen-px shift → projected SVG units → latitude degrees
+    // (~16.8 projected units per degree for geoAlbersUsa at scale 1000)
+    return shiftPx / (svgScale * targetZoom * 16.8);
+  };
+
+  const moveToChurchView = (lng: number, lat: number, targetZoom: number) => {
+    if (!isMobile) {
+      moveToView([lng, lat], targetZoom);
+      return;
+    }
+    moveToView([lng, lat - getMobileLatOffset(targetZoom)], targetZoom);
   };
 
   const allStatesLoaded = useMemo(
@@ -381,8 +411,10 @@ export function useChurchMapData({
     setFocusedStateName(stateInfo.name);
     setChurches([preloadedChurch]);
     setSelectedChurch(preloadedChurch);
-    setCenter([preloadedChurch.lng, preloadedChurch.lat]);
-    setZoom(8);
+    const churchZoom = 8;
+    const latOff = isMobile ? getMobileLatOffset(churchZoom) : 0;
+    setCenter([preloadedChurch.lng, preloadedChurch.lat - latOff]);
+    setZoom(churchZoom);
     setError(null);
     setLoading(false);
     setPopulating(false);
@@ -474,7 +506,7 @@ export function useChurchMapData({
         refs.current.pendingTransition = null;
         setLoadingStateName("");
         overlay.setForceLoadingVisible(false);
-        moveToView([church.lng, church.lat], Math.max(ds.zoom, 8));
+        moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8));
         return;
       }
     }
@@ -505,7 +537,7 @@ export function useChurchMapData({
         const church = filtered.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
         if (church) {
           setSelectedChurch(church);
-          moveToView([church.lng, church.lat], Math.max(ds.zoom, 8));
+          moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8));
         }
 
         if (data.churches.length === 2000) {
@@ -521,7 +553,7 @@ export function useChurchMapData({
                 const fc = ff.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
                 if (fc) {
                   setSelectedChurch(fc);
-                  moveToView([fc.lng, fc.lat], Math.max(ds.zoom, 8));
+                  moveToChurchView(fc.lng, fc.lat, Math.max(ds.zoom, 8));
                 }
               }
               const sd = await fetchStates();
@@ -556,7 +588,7 @@ export function useChurchMapData({
         const church = freshFiltered.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
         if (church) {
           setSelectedChurch(church);
-          moveToView([church.lng, church.lat], Math.max(ds.zoom, 8));
+          moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8));
         }
         const statesData = await fetchStates();
         if (!isStale()) {
@@ -812,7 +844,7 @@ export function useChurchMapData({
     if (church) {
       if (!selectedChurch || selectedChurch.id !== church.id) {
         setSelectedChurch(church);
-        moveToView([church.lng, church.lat], Math.max(ds.zoom, 8));
+        moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8));
       }
       // Redirect legacy URL to canonical (numeric segment)
       if (routeLegacyChurchId && focusedState) {

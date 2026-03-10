@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import { motion } from "motion/react";
 import {
-  X,
   AlertTriangle,
   CheckCircle2,
   ChevronRight,
@@ -10,6 +9,7 @@ import {
   Plus,
 } from "lucide-react";
 import type { Church } from "./church-data";
+import { CloseButton } from "./ui/close-button";
 import { churchNeedsReview, getTier1Completeness } from "./church-data";
 
 interface VerificationModalProps {
@@ -94,12 +94,7 @@ export function VerificationModal({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors"
-          >
-            <X size={16} className="text-white/50" />
-          </button>
+          <CloseButton onClick={onClose} size="md" />
         </div>
 
         {/* Content */}

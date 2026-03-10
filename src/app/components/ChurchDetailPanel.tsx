@@ -1,7 +1,6 @@
 import type { Church } from "./church-data";
 import { getSizeCategory, getDenominationGroup, estimateBilingualProbability, getFallbackLocation } from "./church-data";
 import {
-  X,
   Church as ChurchIcon,
   Users,
   Globe,
@@ -25,6 +24,7 @@ import {
 import { useState, useMemo, useEffect, useRef } from "react";
 import { motion } from "motion/react";
 import { SuggestEditForm } from "./SuggestEditForm";
+import { CloseButton } from "./ui/close-button";
 import { groupServiceTimesByDay, parseServiceTimesForDisplay } from "./ServiceTimesInput";
 import { formatFullAddress } from "./AddressInput";
 import { formatPhoneDisplay } from "./ui/utils";
@@ -436,12 +436,7 @@ export function ChurchDetailPanel({
               </p>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors -mt-2"
-          >
-            <X size={20} className="text-white/60" />
-          </button>
+          <CloseButton onClick={onClose} size="lg" className="-mt-2" />
         </div>
 
         {/* Quick action buttons */}

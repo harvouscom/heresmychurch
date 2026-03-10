@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { X, Mail, Copy, Check } from "lucide-react";
+import { Mail, Copy, Check } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "./ui/accordion";
+import { CloseButton } from "./ui/close-button";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 
 const EMAIL = "hey@heresmychurch.com";
@@ -48,12 +49,11 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="relative flex flex-col items-center text-center px-6 pt-6 pb-4 border-b border-white/10 flex-shrink-0">
-          <button
+          <CloseButton
             onClick={onClose}
-            className="absolute top-4 right-4 flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors"
-          >
-            <X size={16} className="text-white/50" />
-          </button>
+            size="md"
+            className="absolute top-4 right-4"
+          />
           <div className="w-16 h-16 rounded-xl overflow-hidden mb-3">
             <img src={logoImg} alt="Here's My Church" className="w-full h-full object-cover" />
           </div>
@@ -106,6 +106,28 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
             Common questions
           </p>
           <Accordion type="single" collapsible className="border-white/10">
+            <AccordionItem value="this-project" className="border-white/10">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+                What is this project?
+              </AccordionTrigger>
+              <AccordionContent className="text-white/70">
+                Here&apos;s My Church is a free, open-source, interactive map that helps people
+                discover Christian churches across all 50 U.S. states. No account needed. You can
+                browse by state, search and filter by denomination, size, or language, view church
+                details (address, website, service times, and more), and contribute by adding
+                churches or suggesting edits.
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="goals" className="border-white/10">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+                What are the goals?
+              </AccordionTrigger>
+              <AccordionContent className="text-white/70">
+                The goal is simple: make it easy for anyone to find a church near them, with data
+                that&apos;s actually up to date. We want every church to be included and kept
+                accurate through community contributions.
+              </AccordionContent>
+            </AccordionItem>
             <AccordionItem value="add-church" className="border-white/10">
               <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
                 How do I add a church?
@@ -122,6 +144,16 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
                 </p>
               </AccordionContent>
             </AccordionItem>
+            <AccordionItem value="suggest-edit" className="border-white/10">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+                How do I suggest an edit or correct information?
+              </AccordionTrigger>
+              <AccordionContent className="text-white/70">
+                Click a church on the map to open its detail panel, then use the &quot;Update Church
+                Info&quot; button to suggest corrections or add missing details (address, service
+                times, website, etc.). Submissions are reviewed and merged to keep the map accurate.
+              </AccordionContent>
+            </AccordionItem>
             <AccordionItem value="data-source" className="border-white/10">
               <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
                 Where does the data come from?
@@ -130,6 +162,16 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
                 We use OpenStreetMap church data with denomination matching, ARDA (Association of
                 Religion Data Archives) reference data, U.S. Census population data, and
                 community-submitted churches and corrections.
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="data-updates" className="border-white/10">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+                How often is the data updated?
+              </AccordionTrigger>
+              <AccordionContent className="text-white/70">
+                Reference data (e.g. OpenStreetMap, ARDA) is refreshed on a regular schedule.
+                Community submissions and corrections are reviewed and merged continuously, so
+                suggested edits can appear on the map after review.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="open-source" className="border-white/10">

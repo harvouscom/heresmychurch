@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   ChevronDown,
   Info,
-  X,
   Check,
   ShieldCheck,
 } from "lucide-react";
@@ -23,6 +22,7 @@ import { HelpModal } from "./HelpModal";
 import { MapCanvas } from "./MapCanvas";
 import { VerificationModal } from "./VerificationModal";
 import { StateFlag } from "./StateFlag";
+import { CloseButton } from "./ui/close-button";
 import { useActiveUsers } from "./hooks/useActiveUsers";
 import {
   LoadingOverlay,
@@ -60,6 +60,8 @@ export function ChurchMap({
   navigateToChurch,
   navigateToNational,
 }: ChurchMapProps) {
+  const isMobile = useIsMobile();
+
   const d = useChurchMapData({
     routeStateAbbrev,
     routeChurchShortId,
@@ -67,13 +69,12 @@ export function ChurchMap({
     navigateToState,
     navigateToChurch,
     navigateToNational,
+    isMobile,
   });
 
   const isLoadingVisible = d.loading || d.populating || d.forceLoadingVisible;
   const showErrorOverlay = d.error && d.focusedState && !d.loading && !d.populating && !d.forceLoadingVisible && d.churches.length === 0;
   const showErrorBanner = d.error && (d.churches.length > 0 || !d.focusedState);
-
-  const isMobile = useIsMobile();
   // When Filter or Map Key panel is open, collapse search (same as filter behavior). Otherwise: state/church view always show full search; national collapsed only on mobile.
   const effectiveSearchCollapsed =
     d.showFilterPanel || d.showLegend
@@ -243,14 +244,14 @@ export function ChurchMap({
         {d.selectedChurch && (
           <motion.div
             key="church-detail-panel"
-            className="flex-shrink-0 overflow-hidden"
-            style={{ backgroundColor: "#EDE4F3" }}
-            initial={{ width: isMobile ? "100%" : 0, height: isMobile ? 0 : "100%" }}
-            animate={{ width: isMobile ? "100%" : 396, height: isMobile ? "55vh" : "100%" }}
-            exit={{ width: isMobile ? "100%" : 0, height: isMobile ? 0 : "100%" }}
+            className={`flex-shrink-0 overflow-hidden ${isMobile ? 'absolute bottom-0 left-0 right-0 z-40' : ''}`}
+            style={{ backgroundColor: "#EDE4F3", ...(isMobile ? { height: "55vh" } : {}) }}
+            initial={isMobile ? { y: "100%" } : { width: 0, height: "100%" }}
+            animate={isMobile ? { y: 0 } : { width: 396, height: "100%" }}
+            exit={isMobile ? { y: "100%" } : { width: 0, height: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
           >
-            <div className="pr-4 pb-4 pt-0 pl-0 md:pl-0 md:pt-4 md:pr-4 md:pb-4" style={{ width: isMobile ? "100%" : 396, height: isMobile ? "55vh" : "100%" }}>
+            <div className="pr-4 pb-4 pt-0 pl-4 md:pl-0 md:pt-4 md:pr-4 md:pb-4" style={{ width: isMobile ? "100%" : 396, height: isMobile ? "55vh" : "100%" }}>
               <ChurchDetailPanel
                 church={d.selectedChurch}
                 allChurches={d.filteredChurches}
@@ -334,9 +335,9 @@ function MapArea({
   searchCollapsed: boolean;
 }) {
   return (
-    <div className={`${d.selectedChurch ? 'h-[45vh] md:h-full md:flex-1' : 'flex-1'} relative`} style={{ backgroundColor: "#F5F0E8" }}>
-      {/* Top row: header pill only (secondary controls moved to bottom-left cluster) */}
-      <div className="absolute top-4 left-4 right-4 z-30 flex flex-row items-center justify-center">
+    <div className="flex-1 relative" style={{ backgroundColor: "#F5F0E8" }}>
+      {/* Top row: header pill only (secondary controls moved to bottom-left cluster); z-40 so summary stacks above All states + MapControls (z-30) */}
+      <div className="absolute top-4 left-4 right-4 z-40 flex flex-row items-center justify-center">
         <div className="flex flex-col items-center justify-center min-w-0 overflow-hidden max-w-full" ref={d.summaryRef}>
           <HeaderPill
             focusedState={d.focusedState}
@@ -686,12 +687,11 @@ function AboutModal({ onClose }: { onClose: () => void }) {
       >
         {/* Header */}
         <div className="relative flex flex-col items-center text-center px-6 pt-6 pb-4 border-b border-white/10 flex-shrink-0">
-          <button
+          <CloseButton
             onClick={onClose}
-            className="absolute top-4 right-4 flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors"
-          >
-            <X size={16} className="text-white/50" />
-          </button>
+            size="md"
+            className="absolute top-4 right-4"
+          />
           <div className="w-16 h-16 rounded-xl overflow-hidden mb-3">
             <img src={logoImg} alt="Here's My Church" className="w-full h-full object-cover" />
           </div>

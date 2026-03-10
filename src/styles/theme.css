@@ -190,6 +190,12 @@
   }
 }
 
+/* Accordion triggers: no inner shadow (override base button style) */
+[data-slot="accordion-trigger"] {
+  --tw-inset-shadow: none;
+  box-shadow: none;
+}
+
 /* react-simple-maps: ensure pointer cursor on clickable map states */
 .rsm-geography {
   cursor: pointer;

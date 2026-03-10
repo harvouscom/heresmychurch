@@ -15,3 +15,27 @@
 .animate-colon-blink {
   animation: colon-blink 1s steps(1) infinite;
 }
+
+@keyframes pin-drop {
+  0% {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+  75% {
+    transform: translateY(1px);
+  }
+  90% {
+    transform: translateY(-0.5px);
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-pin-drop {
+  animation: pin-drop 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
+}

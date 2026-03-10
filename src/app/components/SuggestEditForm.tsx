@@ -2,7 +2,6 @@ import type { Church } from "./church-data";
 import { DENOMINATION_GROUPS, COMMON_LANGUAGES, COMMON_MINISTRIES } from "./church-data";
 import { submitSuggestion } from "./api";
 import {
-  X,
   Send,
   Check,
   Users,
@@ -24,6 +23,7 @@ import { ServiceTimesInput } from "./ServiceTimesInput";
 import { AddressInput, serializeAddress, parseAddressValue } from "./AddressInput";
 import { geocodeAddress } from "./AddChurchForm";
 import { normalizePhone } from "./ui/utils";
+import { CloseButton } from "./ui/close-button";
 
 interface SuggestEditFormProps {
   church: Church;
@@ -179,7 +179,7 @@ export function SuggestEditForm({ church, onClose, focusField, onChurchUpdated }
 
   return (
     <div
-      className="h-full flex flex-col overflow-hidden"
+      className="h-full flex flex-col overflow-hidden rounded-[20px]"
       style={{ backgroundColor: "#1E1040", fontFamily: "'Livvic', sans-serif" }}
     >
       {/* Header */}
@@ -203,12 +203,7 @@ export function SuggestEditForm({ church, onClose, focusField, onChurchUpdated }
               )}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors"
-          >
-            <X size={18} className="text-white/60" />
-          </button>
+          <CloseButton onClick={onClose} size="md" />
         </div>
       </div>
 

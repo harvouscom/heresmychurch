@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { CloseButton } from "./ui/close-button";
 import { sizeCategories } from "./church-data";
 import type { StateInfo } from "./church-data";
 import { STATE_COUNT_TIERS } from "./map-constants";
@@ -43,9 +43,7 @@ export function MapLegend({
     >
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-semibold text-white">Map Key</span>
-        <button onClick={toggle}>
-          <X size={16} color="#C9A0DC" />
-        </button>
+        <CloseButton onClick={toggle} size="md" />
       </div>
 
       <span className="text-xs font-semibold text-purple-300 uppercase tracking-wider block mb-2">

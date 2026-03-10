@@ -1,5 +1,4 @@
 import {
-  X,
   ChevronUp,
   ChevronDown,
   Languages,
@@ -8,6 +7,7 @@ import {
   sizeCategories,
   DENOMINATION_GROUPS,
 } from "./church-data";
+import { CloseButton } from "./ui/close-button";
 
 interface FilterPanelProps {
   // Size
@@ -60,9 +60,7 @@ export function FilterPanel({
     >
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-semibold text-white">Filters</span>
-        <button onClick={onClose}>
-          <X size={16} color="#C9A0DC" />
-        </button>
+        <CloseButton onClick={onClose} size="md" />
       </div>
 
       {/* Size filters */}

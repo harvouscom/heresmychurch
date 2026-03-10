@@ -1,6 +1,5 @@
 import { motion } from "motion/react";
 import {
-  X,
   Church as ChurchIcon,
   Users,
   Building2,
@@ -20,6 +19,7 @@ import type { StateInfo } from "./church-data";
 import { fetchCommunityStats } from "./api";
 import type { CommunityStats } from "./api";
 import { StateFlag } from "./StateFlag";
+import { CloseButton } from "./ui/close-button";
 
 type InterestingFact = {
   icon: string;
@@ -111,12 +111,7 @@ export function SummaryPanel({
           {focusedState && <StateFlag abbrev={focusedState} size="sm" />}
           {focusedState ? `${focusedStateName} Summary` : "Summary"}
         </span>
-        <button
-          onClick={onClose}
-          className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors"
-        >
-          <X size={14} className="text-white/50" />
-        </button>
+        <CloseButton onClick={onClose} />
       </div>
 
       <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1 min-h-0">

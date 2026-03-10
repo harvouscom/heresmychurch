@@ -22,6 +22,7 @@ import { DENOMINATION_GROUPS, COMMON_LANGUAGES, COMMON_MINISTRIES } from "./chur
 import { addChurch } from "./api";
 import { ServiceTimesInput } from "./ServiceTimesInput";
 import { normalizePhone } from "./ui/utils";
+import { CloseButton } from "./ui/close-button";
 
 /** Geocode a US address to lat/lng using Nominatim (OpenStreetMap). Returns null if not found or error. */
 export async function geocodeAddress(
@@ -334,12 +335,7 @@ export function AddChurchForm({
                 Don&apos;t see your church? Add it below and it will appear on the map right away.
               </p>
             </div>
-            <button
-              onClick={onClose}
-              className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors"
-            >
-              <X size={18} className="text-white/60" />
-            </button>
+            <CloseButton onClick={onClose} size="md" />
           </div>
 
         </div>

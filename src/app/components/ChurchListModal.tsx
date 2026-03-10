@@ -16,6 +16,7 @@ import {
   ThumbsDown,
 } from "lucide-react";
 import type { Church } from "./church-data";
+import { CloseButton } from "./ui/close-button";
 import { getFallbackLocation } from "./church-data";
 import { fetchReactionsBulk } from "./api";
 import type { ReactionCounts } from "./api";
@@ -332,7 +333,7 @@ export function ChurchListModal({
         style={{ backgroundColor: "#1A0E38" }}
       >
         {/* Header */}
-        <div className="px-6 pt-5 pb-4 border-b border-white/8 flex-shrink-0">
+        <div className="px-6 pt-5 pb-4 flex-shrink-0">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <div
@@ -357,12 +358,7 @@ export function ChurchListModal({
                 </p>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors"
-            >
-              <X size={18} className="text-white/60" />
-            </button>
+            <CloseButton onClick={onClose} size="md" />
           </div>
 
           {/* State overview stats */}
@@ -746,32 +742,42 @@ export function ChurchListModal({
         <div className="flex-shrink-0 px-6 border-b border-white/6">
           <div className="grid grid-cols-[1fr_100px_1fr_140px_100px] gap-3 py-2.5">
             <button
+              type="button"
               onClick={() => handleSort("name")}
               className="flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
+              style={{ boxShadow: "none" }}
             >
               Church Name <SortIcon field="name" />
             </button>
             <button
+              type="button"
               onClick={() => handleSort("city")}
               className="flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
+              style={{ boxShadow: "none" }}
             >
               City <SortIcon field="city" />
             </button>
             <button
+              type="button"
               onClick={() => handleSort("address")}
               className="flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
+              style={{ boxShadow: "none" }}
             >
               Address <SortIcon field="address" />
             </button>
             <button
+              type="button"
               onClick={() => handleSort("denomination")}
               className="flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
+              style={{ boxShadow: "none" }}
             >
               Denomination <SortIcon field="denomination" />
             </button>
             <button
+              type="button"
               onClick={() => handleSort("attendance")}
               className="flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-right justify-end"
+              style={{ boxShadow: "none" }}
             >
               Attendance <SortIcon field="attendance" />
             </button>

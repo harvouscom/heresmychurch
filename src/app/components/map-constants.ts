@@ -91,6 +91,9 @@ export const STATE_NAMES: Record<string, string> = {
 export const GEO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
 export const COUNTIES_GEO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json";
 
+// "You are here" pin for selected church in church view (matches "All states" button purple)
+export const ACTIVE_PIN_FILL = "#6B21A8";
+
 // Church count tiers for state shading in national view
 export const STATE_COUNT_TIERS = [
   { label: "Not yet explored", min: 0, max: 0, color: "#E8D5F5" },
