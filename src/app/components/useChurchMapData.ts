@@ -739,24 +739,19 @@ export function useChurchMapData({
         console.warn("[ChurchMap] Failed to load state populations:", err);
       });
 
-    // Detect user's state via IP geolocation
-    fetch("https://ipapi.co/json/", { signal: AbortSignal.timeout(5000) })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.country_code === "US" && data?.region_code) {
-          const abbrev = data.region_code.toUpperCase();
-          const valid = new Set([
-            "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY",
-          ]);
-          if (valid.has(abbrev)) {
-            console.log(`[ChurchMap] Detected user state via IP: ${abbrev}`);
-            setDetectedState(abbrev);
-          }
-        }
-      })
-      .catch(() => {
-        // Silently ignore — geolocation is optional UX sugar
-      });
+    // Detect user's state from edge-injected meta (Netlify context.geo; DC → MD)
+    const regionMeta = document.querySelector('meta[name="x-user-region"]');
+    if (regionMeta) {
+      let abbrev = regionMeta.getAttribute("content")?.toUpperCase() ?? "";
+      if (abbrev === "DC") abbrev = "MD";
+      const valid = new Set([
+        "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+      ]);
+      if (valid.has(abbrev)) {
+        console.log(`[ChurchMap] Detected user state via geo: ${abbrev}`);
+        setDetectedState(abbrev);
+      }
+    }
   }, []);
 
   // ── URL Sync: Route -> Internal State ──

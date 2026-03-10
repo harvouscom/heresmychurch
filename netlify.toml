@@ -5,6 +5,11 @@
   publish = "dist"
   command = "pnpm run build"
 
+# Edge function: inject detected US state into HTML for state preselection (uses context.geo)
+[[edge_functions]]
+  function = "geo-inject"
+  path = "/*"
+
 # Edge function: rewrite HTML meta tags for social crawlers so they get per-page OG images
 [[edge_functions]]
   function = "og-rewrite"
