@@ -1,5 +1,5 @@
 import type { Church } from "./church-data";
-import { getSizeCategory, getDenominationGroup, estimateBilingualProbability } from "./church-data";
+import { getSizeCategory, getDenominationGroup, estimateBilingualProbability, getFallbackLocation } from "./church-data";
 import {
   X,
   Church as ChurchIcon,
@@ -274,7 +274,7 @@ export function ChurchDetailPanel({
     ).length;
   }, [church, allChurches, denomGroup]);
 
-  const fullAddress = formatFullAddress(church.address, church.city, church.state);
+  const fullAddress = formatFullAddress(church.address, church.city, church.state) || getFallbackLocation(church) || "";
 
   const handleCopyAddress = () => {
     if (fullAddress) {

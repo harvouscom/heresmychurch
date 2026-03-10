@@ -122,6 +122,13 @@ export function ChurchMap({
   };
   const onShowAbout = () => localDispatch({ type: "SET", key: "showAbout", value: true });
 
+  // Refetch state churches when opening the verification modal so stats use latest API data (incl. merged corrections)
+  useEffect(() => {
+    if (local.showVerificationModal && d.focusedState) {
+      d.refetchCurrentStateChurches();
+    }
+  }, [local.showVerificationModal, d.focusedState]);
+
   const { people: activePeople, bots: activeBots } = useActiveUsers();
   const [isLocalhost, setIsLocalhost] = useState(false);
   useEffect(() => {
@@ -168,6 +175,12 @@ export function ChurchMap({
             d.setShowListModal(false);
             if (d.focusedState) navigateToChurch(d.focusedState, getChurchUrlSegment(church, d.focusedState));
           }}
+          onSelectChurchForEdit={(church: Church) => {
+            d.setShowListModal(false);
+            d.setSelectedChurch(church);
+            if (d.focusedState) navigateToChurch(d.focusedState, getChurchUrlSegment(church, d.focusedState));
+            setTimeout(() => localDispatch({ type: "SET", key: "forceEditForm", value: true }), 50);
+          }}
         />
       )}
 
@@ -176,6 +189,13 @@ export function ChurchMap({
           stateAbbrev={d.focusedState}
           stateName={d.focusedStateName}
           onClose={() => d.setShowAddChurchFromSummary(false)}
+          churches={d.churches}
+          onSelectChurch={(church) => {
+            d.setShowAddChurchFromSummary(false);
+            d.setSelectedChurch(church);
+            if (d.focusedState) navigateToChurch(d.focusedState, getChurchUrlSegment(church, d.focusedState));
+            setTimeout(() => localDispatch({ type: "SET", key: "forceEditForm", value: true }), 50);
+          }}
         />
       )}
 

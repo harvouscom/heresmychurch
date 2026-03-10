@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "motion/react";
 import { Loader2, X } from "lucide-react";
 import { StateFlag } from "./StateFlag";
-import { getSizeCategory } from "./church-data";
+import { getSizeCategory, getFallbackLocation } from "./church-data";
 import type { Church } from "./church-data";
 import { formatFullAddress } from "./AddressInput";
 import { WAITING_SAYINGS } from "./map-constants";
@@ -215,9 +215,9 @@ export function ChurchTooltip({
       <div className="text-sm font-semibold text-white">
         {church.name}
       </div>
-      {(church.address?.trim() || church.city?.trim()) && (
+      {(church.address?.trim() || church.city?.trim() || getFallbackLocation(church)) && (
         <div className="text-xs text-white/50 mt-0.5">
-          {formatFullAddress(church.address, church.city, church.state)}
+          {formatFullAddress(church.address, church.city, church.state) || getFallbackLocation(church)}
         </div>
       )}
       <div className="flex items-center gap-3 mt-2">

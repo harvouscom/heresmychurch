@@ -16,6 +16,7 @@ import {
   ThumbsDown,
 } from "lucide-react";
 import type { Church } from "./church-data";
+import { getFallbackLocation } from "./church-data";
 import { fetchReactionsBulk } from "./api";
 import type { ReactionCounts } from "./api";
 import {
@@ -47,6 +48,8 @@ interface ChurchListModalProps {
   statePopulation?: number | null;
   onClose: () => void;
   onChurchClick?: (church: Church) => void;
+  /** When user chooses to update an existing church from AddChurchForm (similar-church flow). Close list, navigate, open edit form. */
+  onSelectChurchForEdit?: (church: Church) => void;
 }
 
 export function ChurchListModal({
@@ -56,6 +59,7 @@ export function ChurchListModal({
   statePopulation,
   onClose,
   onChurchClick,
+  onSelectChurchForEdit,
 }: ChurchListModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<SortField>("name");
@@ -820,7 +824,7 @@ export function ChurchListModal({
 
                       {/* Address */}
                       <div className="text-xs text-white/50 self-center truncate">
-                        {(church.address || church.city) || ""}
+                        {(church.address || church.city) || getFallbackLocation(church) || ""}
                       </div>
 
                       {/* Denomination */}
@@ -899,6 +903,11 @@ export function ChurchListModal({
           stateAbbrev={stateAbbrev}
           stateName={stateName}
           onClose={() => setShowAddChurch(false)}
+          churches={churches}
+          onSelectChurch={(church) => {
+            setShowAddChurch(false);
+            onSelectChurchForEdit?.(church);
+          }}
         />
       )}
     </div>

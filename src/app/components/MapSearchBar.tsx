@@ -2,28 +2,14 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Search, X, ChevronRight, Loader2, MapPin, ChevronDown, Plus } from "lucide-react";
 import { geoAlbersUsa } from "d3-geo";
 import type { Church, StateInfo } from "./church-data";
+import { getFallbackLocation } from "./church-data";
 import { searchChurches } from "./api";
 import type { SearchResult } from "./api";
 import { getChurchUrlSegment } from "./url-utils";
 import { StateFlag } from "./StateFlag";
+import { STATE_NAMES } from "./map-constants";
 
 const VIEWPORT_ZOOM_THRESHOLD = 1.5;
-
-// Full state name lookup for search results
-const STATE_NAMES: Record<string, string> = {
-  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
-  CO: "Colorado", CT: "Connecticut", DE: "Delaware", DC: "D.C.", FL: "Florida",
-  GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana",
-  IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine",
-  MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota",
-  MS: "Mississippi", MO: "Missouri", MT: "Montana", NE: "Nebraska",
-  NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico",
-  NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio",
-  OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island",
-  SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas",
-  UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington",
-  WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
-};
 
 interface MapSearchBarProps {
   churches: Church[];
@@ -423,9 +409,9 @@ export function MapSearchBar({
                         <div className="text-sm text-white font-medium truncate">
                           {ch.name}
                         </div>
-                        {(ch.address || ch.city) && (
+                        {(ch.address || ch.city || getFallbackLocation(ch)) && (
                           <div className="text-xs text-white/40 truncate">
-                            {ch.address || ch.city}
+                            {ch.address || ch.city || getFallbackLocation(ch)}
                           </div>
                         )}
                       </div>
@@ -449,6 +435,20 @@ export function MapSearchBar({
                       {focusedState && <StateFlag abbrev={focusedState} size="sm" />}
                       <MapPin size={12} className="flex-shrink-0 opacity-70" />
                       Search all of {focusedStateName}
+                    </button>
+                  )}
+                  {onAddChurch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuery("");
+                        setIsFocused(false);
+                        onAddChurch();
+                      }}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-xs text-purple-300 hover:bg-white/5 border-t border-white/5 transition-colors"
+                    >
+                      <Plus size={12} className="flex-shrink-0 opacity-70" />
+                      Add your church
                     </button>
                   )}
                 </div>
@@ -500,9 +500,9 @@ export function MapSearchBar({
                         <div className="text-sm text-white font-medium truncate">
                           {r.name}
                         </div>
-                        {(r.address || r.city || r.state) && (
+                        {(r.address || r.city || r.state || getFallbackLocation(r)) && (
                           <div className="text-xs text-white/40 truncate">
-                            {r.address || r.city || (STATE_NAMES[r.state] || r.state)}
+                            {r.address || r.city || (STATE_NAMES[r.state] || r.state) || getFallbackLocation(r)}
                           </div>
                         )}
                       </div>
@@ -518,6 +518,20 @@ export function MapSearchBar({
                     <div className="px-4 py-1.5 flex items-center justify-center border-t border-white/5">
                       <Loader2 size={12} className="text-purple-400/50 animate-spin" />
                     </div>
+                  )}
+                  {onAddChurch && hasPopulated && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuery("");
+                        setIsFocused(false);
+                        onAddChurch();
+                      }}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-xs text-purple-300 hover:bg-white/5 border-t border-white/5 transition-colors"
+                    >
+                      <Plus size={12} className="flex-shrink-0 opacity-70" />
+                      Don&apos;t see your church? Add it
+                    </button>
                   )}
                 </div>
               ) : null}

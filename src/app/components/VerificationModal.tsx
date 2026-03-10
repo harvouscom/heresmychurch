@@ -57,9 +57,9 @@ export function VerificationModal({
     }
     return {
       total,
-      missingAddressPct: Math.round((missingAddress / total) * 100),
-      missingServiceTimesPct: Math.round((missingServiceTimes / total) * 100),
-      missingDenominationPct: Math.round((missingDenomination / total) * 100),
+      missingAddressPct: total > 0 ? (missingAddress / total) * 100 : 0,
+      missingServiceTimesPct: total > 0 ? (missingServiceTimes / total) * 100 : 0,
+      missingDenominationPct: total > 0 ? (missingDenomination / total) * 100 : 0,
     };
   }, [churchesForStats]);
 
@@ -112,15 +112,15 @@ export function VerificationModal({
               <div className="flex gap-1.5">
                 <div className="flex-1 rounded-lg bg-white/4 border border-white/5 px-2 py-2.5 text-center flex flex-col items-center">
                   <span className="text-white/45 text-[10px] block">Address</span>
-                  <span className="text-white text-[13px] font-semibold tabular-nums mt-0.5">{coreStats.missingAddressPct}%</span>
+                  <span className="text-white text-[13px] font-semibold tabular-nums mt-0.5">{coreStats.missingAddressPct.toFixed(1)}%</span>
                 </div>
                 <div className="flex-1 rounded-lg bg-white/4 border border-white/5 px-2 py-2.5 text-center flex flex-col items-center">
                   <span className="text-white/45 text-[10px] block">Service times</span>
-                  <span className="text-white text-[13px] font-semibold tabular-nums mt-0.5">{coreStats.missingServiceTimesPct}%</span>
+                  <span className="text-white text-[13px] font-semibold tabular-nums mt-0.5">{coreStats.missingServiceTimesPct.toFixed(1)}%</span>
                 </div>
                 <div className="flex-1 rounded-lg bg-white/4 border border-white/5 px-2 py-2.5 text-center flex flex-col items-center">
                   <span className="text-white/45 text-[10px] block">Denomination</span>
-                  <span className="text-white text-[13px] font-semibold tabular-nums mt-0.5">{coreStats.missingDenominationPct}%</span>
+                  <span className="text-white text-[13px] font-semibold tabular-nums mt-0.5">{coreStats.missingDenominationPct.toFixed(1)}%</span>
                 </div>
               </div>
             </div>

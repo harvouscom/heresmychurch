@@ -1,5 +1,7 @@
 // Types and constants for church map
 
+import { STATE_BOUNDS, STATE_NAMES } from "./map-constants";
+
 export interface Church {
   id: string;
   /** 8-digit id for URLs; unique per state */
@@ -77,6 +79,48 @@ function isAddressMeaningful(
   const cityState = [cityNorm, stateNorm].filter(Boolean).join(", ");
   if (cityState && aNorm === cityState) return false;
   return true;
+}
+
+/** Diagonal (degrees) below which we skip quadrant and show only state name. */
+const QUADRANT_MIN_DIAGONAL = 2;
+
+function getQuadrantLabel(
+  lat: number,
+  lng: number,
+  bounds: [number, number, number, number]
+): string {
+  const [south, west, north, east] = bounds;
+  const midLat = (south + north) / 2;
+  const midLng = (west + east) / 2;
+  const ns = lat >= midLat ? "N" : "S";
+  const ew = lng >= midLng ? "E" : "W";
+  return `${ns}${ew}`;
+}
+
+/**
+ * Returns a fallback location string when a church has no complete address/city,
+ * e.g. "Somewhere in NW Iowa". Use when address and city are both missing or not meaningful.
+ * Returns null if city is present (caller should use city as fallback) or state is unknown.
+ */
+export function getFallbackLocation(church: {
+  lat: number;
+  lng: number;
+  state: string;
+  city?: string;
+}): string | null {
+  if (church.city?.trim()) return null;
+  const stateAbbrev = (church.state || "").trim().toUpperCase().slice(0, 2);
+  if (!stateAbbrev) return null;
+  const bounds = STATE_BOUNDS[stateAbbrev];
+  const stateName = STATE_NAMES[stateAbbrev] || stateAbbrev;
+  if (!bounds) return `Somewhere in ${stateName}`;
+  const [south, west, north, east] = bounds;
+  const latSpan = north - south;
+  const lngSpan = east - west;
+  const diagonal = Math.sqrt(latSpan * latSpan + lngSpan * lngSpan);
+  if (diagonal < QUADRANT_MIN_DIAGONAL) return `Somewhere in ${stateName}`;
+  const quadrant = getQuadrantLabel(church.lat, church.lng, bounds);
+  return `Somewhere in ${quadrant} ${stateName}`;
 }
 
 export interface Tier1Completeness {

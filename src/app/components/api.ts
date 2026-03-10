@@ -270,9 +270,11 @@ export interface PendingChurchesResponse {
 
 export interface AddChurchResponse {
   success: boolean;
-  church: PendingChurchData;
+  church?: PendingChurchData;
   message?: string;
   isDuplicate?: boolean;
+  /** When isDuplicate is true and the match was in main (not pending) data. */
+  existingChurch?: { id: string; shortId?: string; name: string; city?: string; state: string };
 }
 
 export interface VerifyChurchResponse {

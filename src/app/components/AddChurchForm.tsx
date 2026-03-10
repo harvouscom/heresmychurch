@@ -17,26 +17,109 @@ import {
   Heart,
   ChevronDown,
 } from "lucide-react";
+import type { Church } from "./church-data";
 import { DENOMINATION_GROUPS, COMMON_LANGUAGES, COMMON_MINISTRIES } from "./church-data";
 import { addChurch } from "./api";
 import { ServiceTimesInput } from "./ServiceTimesInput";
 import { normalizePhone } from "./ui/utils";
 
+const MAX_SIMILAR_MATCHES = 5;
+const MAX_DISTANCE_KM = 1.6; // ~1 mile
+
+function haversineKm(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function tokenize(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/** Name similarity: fraction of input tokens that appear in the church name (or full string contained). */
+function nameSimilarity(inputName: string, churchName: string): number {
+  const input = inputName.trim().toLowerCase();
+  const church = (churchName || "").trim().toLowerCase();
+  if (!input) return 0;
+  if (church.includes(input)) return 1;
+  const inputTokens = tokenize(inputName);
+  const churchTokens = new Set(tokenize(churchName));
+  if (inputTokens.length === 0) return 0;
+  const matchCount = inputTokens.filter((t) => churchTokens.has(t)).length;
+  return matchCount / inputTokens.length;
+}
+
+export function findSimilarChurches(
+  name: string,
+  lat: number,
+  lng: number,
+  city: string,
+  state: string,
+  churches: Church[]
+): Church[] {
+  const nameNorm = name.trim().toLowerCase();
+  if (!nameNorm || churches.length === 0) return [];
+  const cityNorm = city.trim().toLowerCase();
+  const scored = churches
+    .filter((c) => (c.state || "").toUpperCase() === state.toUpperCase())
+    .map((church) => {
+      const nScore = nameSimilarity(name, church.name);
+      const distKm =
+        church.lat != null && church.lng != null
+          ? haversineKm(lat, lng, church.lat, church.lng)
+          : Infinity;
+      const near = distKm <= MAX_DISTANCE_KM;
+      const cityMatch =
+        !!cityNorm &&
+        !!church.city &&
+        church.city.trim().toLowerCase() === cityNorm;
+      const relevance = nScore * (1 + (cityMatch ? 0.3 : 0) + (near ? 0.3 : 0));
+      return { church, nScore, near, cityMatch, relevance };
+    })
+    .filter(({ nScore, near, cityMatch }) => nScore >= 0.4 && (near || cityMatch))
+    .sort((a, b) => b.relevance - a.relevance)
+    .slice(0, MAX_SIMILAR_MATCHES)
+    .map(({ church }) => church);
+  return scored;
+}
+
 interface AddChurchFormProps {
   stateAbbrev: string;
   stateName: string;
   onClose: () => void;
+  churches?: Church[];
+  onSelectChurch?: (church: Church) => void;
 }
 
 export function AddChurchForm({
   stateAbbrev,
   stateName,
   onClose,
+  churches = [],
+  onSelectChurch,
 }: AddChurchFormProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showExtended, setShowExtended] = useState(false);
+  const [similarMatches, setSimilarMatches] = useState<Church[]>([]);
+  const [showSimilarWarning, setShowSimilarWarning] = useState(false);
 
   // Core form fields
   const [name, setName] = useState("");
@@ -55,6 +138,64 @@ export function AddChurchForm({
   const [pastorName, setPastorName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+
+  const submitToApi = async () => {
+    setSubmitting(true);
+    setError(null);
+    setSuccess(null);
+    setShowSimilarWarning(false);
+
+    const parsedLat = parseFloat(lat);
+    const parsedLng = parseFloat(lng);
+
+    try {
+      const result = await addChurch({
+        name: name.trim(),
+        address: address.trim() || undefined,
+        city: city.trim() || undefined,
+        state: stateAbbrev,
+        lat: parsedLat,
+        lng: parsedLng,
+        denomination: denomination || undefined,
+        attendance: attendance ? parseInt(attendance) : undefined,
+        website: website.trim() || undefined,
+        serviceTimes: serviceTimes.trim() || undefined,
+        languages: selectedLanguages.size > 0 ? Array.from(selectedLanguages) : undefined,
+        ministries: selectedMinistries.size > 0 ? Array.from(selectedMinistries) : undefined,
+        pastorName: pastorName.trim() || undefined,
+        phone: normalizePhone(phone) || undefined,
+        email: email.trim() || undefined,
+      });
+
+      if (result.isDuplicate) {
+        setSuccess("This church was already submitted!");
+      } else {
+        setSuccess("Church added to the map!");
+      }
+
+      setName("");
+      setAddress("");
+      setCity("");
+      setLat("");
+      setLng("");
+      setDenomination("");
+      setAttendance("");
+      setWebsite("");
+      setServiceTimes("");
+      setSelectedLanguages(new Set());
+      setSelectedMinistries(new Set());
+      setPastorName("");
+      setPhone("");
+      setEmail("");
+      setShowExtended(false);
+
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      setError(err.message || "Failed to submit church");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!name.trim()) {
@@ -82,64 +223,25 @@ export function AddChurchForm({
       return;
     }
 
-    setSubmitting(true);
     setError(null);
-    setSuccess(null);
 
-    try {
-      const result = await addChurch({
-        name: name.trim(),
-        address: address.trim() || undefined,
-        city: city.trim() || undefined,
-        state: stateAbbrev,
-        lat: parsedLat,
-        lng: parsedLng,
-        denomination: denomination || undefined,
-        attendance: attendance ? parseInt(attendance) : undefined,
-        website: website.trim() || undefined,
-        serviceTimes: serviceTimes.trim() || undefined,
-        languages: selectedLanguages.size > 0 ? Array.from(selectedLanguages) : undefined,
-        ministries: selectedMinistries.size > 0 ? Array.from(selectedMinistries) : undefined,
-        pastorName: pastorName.trim() || undefined,
-        phone: normalizePhone(phone) || undefined,
-        email: email.trim() || undefined,
-      });
-
-      if (result.isDuplicate) {
-        setSuccess(
-          "This church was already submitted!"
-        );
-      } else {
-        setSuccess(
-          "Church added to the map!"
-        );
+    if (churches.length > 0) {
+      const similar = findSimilarChurches(
+        name.trim(),
+        parsedLat,
+        parsedLng,
+        city.trim(),
+        stateAbbrev,
+        churches
+      );
+      if (similar.length > 0) {
+        setSimilarMatches(similar);
+        setShowSimilarWarning(true);
+        return;
       }
-
-      // Reset form
-      setName("");
-      setAddress("");
-      setCity("");
-      setLat("");
-      setLng("");
-      setDenomination("");
-      setAttendance("");
-      setWebsite("");
-      setServiceTimes("");
-      setSelectedLanguages(new Set());
-      setSelectedMinistries(new Set());
-      setPastorName("");
-      setPhone("");
-      setEmail("");
-      setShowExtended(false);
-
-      setTimeout(() => {
-        setSuccess(null);
-      }, 3000);
-    } catch (err: any) {
-      setError(err.message || "Failed to submit church");
-    } finally {
-      setSubmitting(false);
     }
+
+    await submitToApi();
   };
 
   const toggleLanguage = (lang: string) => {
@@ -234,7 +336,79 @@ export function AddChurchForm({
             </div>
           )}
 
-          {(
+          {/* Similar churches warning — suggest updating existing instead of adding */}
+          {showSimilarWarning && similarMatches.length > 0 && (
+            <div className="space-y-4 mb-4">
+              <div className="flex items-center gap-2 rounded-lg p-3 bg-amber-500/10 border border-amber-500/20">
+                <AlertCircle size={14} className="text-amber-400 flex-shrink-0" />
+                <p className="text-amber-200/90 text-sm font-medium">
+                  We found a church that might already be listed
+                </p>
+              </div>
+              <p className="text-white/60 text-xs">
+                If one of these is your church, update its info instead of adding a duplicate.
+              </p>
+              <ul className="space-y-2">
+                {similarMatches.map((ch) => (
+                  <li
+                    key={ch.id}
+                    className="rounded-xl p-3.5 bg-white/5 border border-white/10 flex flex-col gap-2"
+                  >
+                    <div>
+                      <p className="text-white font-medium text-sm">{ch.name}</p>
+                      {(ch.address || ch.city) && (
+                        <p className="text-white/50 text-xs mt-0.5">
+                          {[ch.address, ch.city].filter(Boolean).join(", ")}
+                        </p>
+                      )}
+                      {ch.denomination && (
+                        <p className="text-white/40 text-xs">{ch.denomination}</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowSimilarWarning(false);
+                        setSimilarMatches([]);
+                        onSelectChurch?.(ch);
+                      }}
+                      className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-purple-500/20 text-purple-200 text-xs font-medium hover:bg-purple-500/30 transition-colors"
+                    >
+                      <ChurchIcon size={12} />
+                      Update this church&apos;s info
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => submitToApi()}
+                  disabled={submitting}
+                  className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-white/10 text-white/80 text-xs font-medium hover:bg-white/15 transition-colors disabled:opacity-50"
+                >
+                  {submitting ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Plus size={12} />
+                  )}
+                  This is a different church — add it anyway
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSimilarWarning(false);
+                    setSimilarMatches([]);
+                  }}
+                  className="text-white/50 text-xs hover:text-white/70"
+                >
+                  Back to form
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!showSimilarWarning && (
             /* ── Add church form ── */
             <div className="space-y-3.5">
               {/* Name (required) */}
