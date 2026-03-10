@@ -102,6 +102,7 @@ export interface SubmitSuggestionResponse {
   consensus: SuggestionConsensus;
   allFields: Record<string, SuggestionConsensus>;
   error?: string;
+  applied?: boolean;
 }
 
 export async function fetchStates(): Promise<StatesResponse> {
@@ -238,6 +239,7 @@ export async function submitSuggestion(
     },
     allFields: data.allFields ? normalizeConsensus(data.allFields) : {},
     error: data.error,
+    applied: data.applied,
   };
 }
 
@@ -382,6 +384,7 @@ export async function fetchPendingSuggestions(
 
 export interface SearchResult {
   id: string;
+  shortId?: string;
   name: string;
   city: string;
   state: string;

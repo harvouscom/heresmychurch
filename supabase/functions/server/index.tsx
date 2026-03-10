@@ -212,6 +212,28 @@ async function fetchCh(st:string):Promise<any[]>{
   return ch;
 }
 
+// ── shortId (8-digit, unique per state, for URLs) ──
+function toShortId(id:string,state:string,existingShortId?:string):string{
+  if(existingShortId&&/^\d{8}$/.test(existingShortId))return existingShortId;
+  const st=state.toUpperCase();
+  const statePrefix=`${st}-`;
+  if(id.startsWith(statePrefix)){
+    const numPart=id.slice(statePrefix.length);
+    if(/^\d+$/.test(numPart)){
+      const s=numPart.length>=8?numPart.slice(0,8):numPart.padStart(8,"0");
+      return s;
+    }
+  }
+  if(id.startsWith("community-")){
+    let h=0;for(let i=0;i<id.length;i++)h=((h<<5)-h+id.charCodeAt(i))|0;
+    const n=Math.abs(h)%100000000;
+    return n.toString().padStart(8,"0");
+  }
+  let h=0;for(let i=0;i<id.length;i++)h=((h<<5)-h+id.charCodeAt(i))|0;
+  return Math.abs(h).toString().padStart(8,"0").slice(0,8);
+}
+function addShortIds(ch:any[],st:string):any[]{return ch.map((c:any)=>({...c,shortId:toShortId(c.id,c.state||st,c.shortId)}));}
+
 // ── Search index ──
 function buildIdx(ch:any[]){return ch.map((c:any)=>({id:c.id,n:c.name||"",c:c.city||"",d:c.denomination||"",a:c.attendance||0,ad:c.address||"",la:c.lat||0,lo:c.lng||0}));}
 async function writeIdx(st:string,ch:any[]){await kv.set(`churches:sidx:${st}`,buildIdx(ch));}
@@ -279,7 +301,7 @@ app.get(`${P}/churches/search`,async(c)=>{
         if(search.length){const h=`${n} ${ci} ${d} ${ad}`.toLowerCase();if(!search.every((t:string)=>h.includes(t)))continue;}
         const k=`${n.toLowerCase().replace(/[^a-z0-9]/g,"")}|${ci.toLowerCase().replace(/[^a-z0-9]/g,"")}|${realSt}`;
         if(seen.has(k))continue;seen.add(k);
-        results.push({id:e.id,name:n||"Unknown Church",city:ci,state:realSt,denomination:d||"Unknown",attendance:isIdx?e.a:e.attendance,lat:isIdx?e.la:e.lat,lng:isIdx?e.lo:e.lng,address:ad||""});
+        results.push({id:e.id,shortId:toShortId(e.id,realSt,e.shortId),name:n||"Unknown Church",city:ci,state:realSt,denomination:d||"Unknown",attendance:isIdx?e.a:e.attendance,lat:isIdx?e.la:e.lat,lng:isIdx?e.lo:e.lng,address:ad||""});
       }
     }
     return c.json({results,query:rawQ,statesSearched:target.length,stateFilter:target.length<pop.length?target:undefined});
@@ -293,7 +315,8 @@ app.get(`${P}/churches/:state`,async(c)=>{
     let ch=await kv.get(`churches:${st}`);
     if(!ch||!Array.isArray(ch)||!ch.length)return c.json({churches:[],state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},fromCache:false,message:`No data for ${info.n}. POST /churches/populate/${st} to fetch.`});
     if(st==="MD"){try{const dc=await kv.get("churches:DC");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));for(const x of dc)if(!ids.has(x.id))ch.push({...x,state:"MD"});}}catch(_){}}
-    return c.json({churches:ch,state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},count:ch.length,fromCache:true});
+    const withShort=addShortIds(ch,st);
+    return c.json({churches:withShort,state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},count:withShort.length,fromCache:true});
   }catch(e){return c.json({churches:[],error:`${e}`},500);}
 });
 
@@ -510,14 +533,15 @@ app.post(`${P}/churches/add`,async(c)=>{
     const rawDenom=(denomination??"").trim();
     if(rawDenom&&isBlockedDenomination(rawDenom))return c.json({error:"Denomination not supported"},400);
     const id=`community-${st}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+    const mainKey=`churches:${st}`;const mainChurches=(await kv.get(mainKey))||[];
+    const existingShortIds=new Set((mainChurches as any[]).map((c:any)=>c.shortId||toShortId(c.id,c.state||st)));
+    let shortId:string;do{shortId=Math.floor(10000000+Math.random()*90000000).toString();}while(existingShortIds.has(shortId));
     const k=`pending-churches:${st}`;const store=(await kv.get(k))||{churches:[]};
     const dup=store.churches.find((ch:any)=>ch.name.trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs(ch.lat-pLat)<0.001&&Math.abs(ch.lng-pLng)<0.001);
     if(dup){if(!dup.verifications.some((v:any)=>v.ip===ip)){dup.verifications.push({ip,timestamp:Date.now()});if(dup.verifications.length>=THR)dup.approved=true;await kv.set(k,store);}return c.json({success:true,church:dup,isDuplicate:true});}
-    const nc={id,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:(phone||"").trim()||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
+    const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:(phone||"").trim()||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
     store.churches.push(nc);await kv.set(k,store);
-    // Immediately merge into main churches data so it appears on the map
-    const mainKey=`churches:${st}`;const mainChurches=(await kv.get(mainKey))||[];
-    const churchForMain={id,name:nc.name,address:nc.address,city:nc.city,state:st,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
+    const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,state:st,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
     if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);}
     return c.json({success:true,church:nc});
   }catch(e){return c.json({error:`${e}`},500);}

@@ -26,6 +26,7 @@ interface SuggestEditFormProps {
   church: Church;
   onClose: () => void;
   focusField?: string | null;
+  onChurchUpdated?: () => void;
 }
 
 type EditableField = "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email";
@@ -82,7 +83,7 @@ function getCurrentValue(church: Church, field: EditableField): string {
   }
 }
 
-export function SuggestEditForm({ church, onClose, focusField }: SuggestEditFormProps) {
+export function SuggestEditForm({ church, onClose, focusField, onChurchUpdated }: SuggestEditFormProps) {
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -128,6 +129,7 @@ export function SuggestEditForm({ church, onClose, focusField }: SuggestEditForm
         next.delete(field);
         return next;
       });
+      onChurchUpdated?.();
 
       setTimeout(() => {
         setSubmitted((prev) => {

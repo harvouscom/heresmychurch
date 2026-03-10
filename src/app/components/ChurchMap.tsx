@@ -35,22 +35,25 @@ import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 
 interface ChurchMapProps {
   routeStateAbbrev: string | null;
-  routeChurchId: string | null;
+  routeChurchShortId: string | null;
+  routeLegacyChurchId: string | null;
   navigateToState: (abbrev: string) => void;
-  navigateToChurch: (stateAbbrev: string, churchId: string) => void;
+  navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => void;
   navigateToNational: () => void;
 }
 
 export function ChurchMap({
   routeStateAbbrev,
-  routeChurchId,
+  routeChurchShortId,
+  routeLegacyChurchId,
   navigateToState,
   navigateToChurch,
   navigateToNational,
 }: ChurchMapProps) {
   const d = useChurchMapData({
     routeStateAbbrev,
-    routeChurchId,
+    routeChurchShortId,
+    routeLegacyChurchId,
     navigateToState,
     navigateToChurch,
     navigateToNational,
@@ -143,7 +146,7 @@ export function ChurchMap({
           onClose={() => d.setShowListModal(false)}
           onChurchClick={(church: Church) => {
             d.setShowListModal(false);
-            if (d.focusedState) navigateToChurch(d.focusedState, church.id);
+            if (d.focusedState) navigateToChurch(d.focusedState, church.shortId ?? church.id);
           }}
         />
       )}
@@ -164,7 +167,7 @@ export function ChurchMap({
           onClose={() => localDispatch({ type: "SET", key: "showVerificationModal", value: false })}
           onChurchClick={(church: Church) => {
             localDispatch({ type: "SET", key: "showVerificationModal", value: false });
-            if (d.focusedState) navigateToChurch(d.focusedState, church.id);
+            if (d.focusedState) navigateToChurch(d.focusedState, church.shortId ?? church.id);
             // Defer so the new ChurchDetailPanel mounts before the flag is set
             setTimeout(() => localDispatch({ type: "SET", key: "forceEditForm", value: true }), 50);
           }}
@@ -185,10 +188,11 @@ export function ChurchMap({
               else navigateToNational();
             }}
             onChurchClick={(church: Church) => {
-              if (d.focusedState) navigateToChurch(d.focusedState, church.id);
+              if (d.focusedState) navigateToChurch(d.focusedState, church.shortId ?? church.id);
             }}
             externalShowEditForm={local.forceEditForm}
             onEditFormClosed={() => localDispatch({ type: "SET", key: "forceEditForm", value: false })}
+            onChurchUpdated={d.refetchCurrentStateChurches}
           />
         </div>
       )}
@@ -234,7 +238,7 @@ function MapArea({
   dismissAllOverlays: () => void;
   handleMoveEnd: (coords: [number, number], z: number) => void;
   navigateToState: (abbrev: string) => void;
-  navigateToChurch: (stateAbbrev: string, churchId: string) => void;
+  navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => void;
   onShowVerification: () => void;
   pendingReviewCount: number;
   showAbout: boolean;

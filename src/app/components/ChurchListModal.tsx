@@ -22,7 +22,7 @@ import {
 import { AddChurchForm } from "./AddChurchForm";
 import { FixedSizeList as List } from "react-window";
 
-type SortField = "name" | "attendance" | "denomination" | "city";
+type SortField = "name" | "city" | "address" | "denomination" | "attendance";
 type SortDir = "asc" | "desc";
 
 interface ChurchListModalProps {
@@ -166,14 +166,17 @@ export function ChurchListModal({
         case "name":
           cmp = a.name.localeCompare(b.name);
           break;
-        case "attendance":
-          cmp = a.attendance - b.attendance;
+        case "city":
+          cmp = (a.city || "").localeCompare(b.city || "");
+          break;
+        case "address":
+          cmp = (a.address || "").localeCompare(b.address || "");
           break;
         case "denomination":
           cmp = a.denomination.localeCompare(b.denomination);
           break;
-        case "city":
-          cmp = (a.city || "").localeCompare(b.city || "");
+        case "attendance":
+          cmp = a.attendance - b.attendance;
           break;
       }
       return sortDir === "asc" ? cmp : -cmp;
@@ -584,7 +587,7 @@ export function ChurchListModal({
 
         {/* Table header */}
         <div className="flex-shrink-0 px-6 border-b border-white/6">
-          <div className="grid grid-cols-[1fr_120px_140px_100px] gap-3 py-2.5">
+          <div className="grid grid-cols-[1fr_100px_1fr_140px_100px] gap-3 py-2.5">
             <button
               onClick={() => handleSort("name")}
               className="flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
@@ -596,6 +599,12 @@ export function ChurchListModal({
               className="flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
             >
               City <SortIcon field="city" />
+            </button>
+            <button
+              onClick={() => handleSort("address")}
+              className="flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
+            >
+              Address <SortIcon field="address" />
             </button>
             <button
               onClick={() => handleSort("denomination")}
@@ -638,27 +647,27 @@ export function ChurchListModal({
                     <button
                       key={church.id}
                       onClick={() => onChurchClick?.(church)}
-                      className={`w-full text-left grid grid-cols-[1fr_120px_140px_100px] gap-3 px-6 py-3 transition-colors hover:bg-white/5 h-full ${
+                      className={`w-full text-left grid grid-cols-[1fr_100px_1fr_140px_100px] gap-3 px-6 py-3 transition-colors hover:bg-white/5 h-full ${
                         index !== filteredChurches.length - 1
                           ? "border-b border-white/4"
                           : ""
                       }`}
                     >
-                      {/* Name + address */}
+                      {/* Name */}
                       <div className="min-w-0">
                         <div className="text-sm text-white font-medium truncate">
                           {church.name}
                         </div>
-                        {church.address && (
-                          <div className="text-xs text-white/25 truncate mt-0.5">
-                            {church.address}
-                          </div>
-                        )}
                       </div>
 
                       {/* City */}
                       <div className="text-xs text-white/50 self-center truncate">
                         {church.city || "\u2014"}
+                      </div>
+
+                      {/* Address */}
+                      <div className="text-xs text-white/50 self-center truncate">
+                        {church.address || church.city || "\u2014"}
                       </div>
 
                       {/* Denomination */}

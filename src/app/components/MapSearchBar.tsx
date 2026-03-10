@@ -1,7 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Search, X, ChevronRight, Loader2, MapPin, ChevronDown, Plus } from "lucide-react";
 import type { Church, StateInfo } from "./church-data";
-import { getSizeCategory } from "./church-data";
 import { searchChurches } from "./api";
 import type { SearchResult } from "./api";
 
@@ -26,7 +25,7 @@ interface MapSearchBarProps {
   states: StateInfo[];
   focusedState: string | null;
   focusedStateName: string;
-  navigateToChurch: (stateAbbrev: string, churchId: string) => void;
+  navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => void;
   onPreloadChurch?: (church: Church) => void;
   collapsed?: boolean;
   onExpand?: () => void;
@@ -194,7 +193,7 @@ export function MapSearchBar({
   const handleSelectLocal = useCallback(
     (church: Church) => {
       if (focusedState) {
-        navigateToChurch(focusedState, church.id);
+        navigateToChurch(focusedState, church.shortId ?? church.id);
       }
       setQuery("");
       setIsFocused(false);
@@ -219,7 +218,7 @@ export function MapSearchBar({
           address: result.address || "",
         });
       }
-      navigateToChurch(result.state, result.id);
+      navigateToChurch(result.state, result.shortId ?? result.id);
       setQuery("");
       setIsFocused(false);
       inputRef.current?.blur();
@@ -347,37 +346,26 @@ export function MapSearchBar({
                 </div>
               ) : (
                 <div className="py-1">
-                  {localResults.map((ch, i) => {
-                    const sizeCat = getSizeCategory(ch.attendance);
-                    return (
-                      <button
-                        key={ch.id}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                          i === selectedIndex ? "bg-white/10" : "hover:bg-white/5"
-                        }`}
-                        onMouseEnter={() => setSelectedIndex(i)}
-                        onClick={() => handleSelectLocal(ch)}
-                      >
-                        <div
-                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: sizeCat.color }}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm text-white font-medium truncate">
-                            {ch.name}
-                          </div>
-                          <div className="text-xs text-white/40 truncate">
-                            {ch.city && <span>{ch.city} · </span>}
-                            {ch.denomination === "Other" || ch.denomination === "Unknown"
-                              ? "Unspecified"
-                              : ch.denomination}
-                            {" · "}~{ch.attendance.toLocaleString()}
-                          </div>
+                  {localResults.map((ch, i) => (
+                    <button
+                      key={ch.id}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                        i === selectedIndex ? "bg-white/10" : "hover:bg-white/5"
+                      }`}
+                      onMouseEnter={() => setSelectedIndex(i)}
+                      onClick={() => handleSelectLocal(ch)}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-white font-medium truncate">
+                          {ch.name}
                         </div>
-                        <ChevronRight size={14} className="text-white/20 flex-shrink-0" />
-                      </button>
-                    );
-                  })}
+                        <div className="text-xs text-white/40 truncate">
+                          {[ch.city, ch.address].filter(Boolean).join(" · ") || "\u2014"}
+                        </div>
+                      </div>
+                      <ChevronRight size={14} className="text-white/20 flex-shrink-0" />
+                    </button>
+                  ))}
                   {localResults.length >= MAX_RESULTS && (
                     <div className="px-4 py-2 text-xs text-white/30 text-center border-t border-white/5">
                       Keep typing to narrow results…
@@ -419,38 +407,26 @@ export function MapSearchBar({
                 </div>
               ) : remoteResults.length > 0 ? (
                 <div className="py-1">
-                  {remoteResults.map((r, i) => {
-                    const sizeCat = getSizeCategory(r.attendance);
-                    return (
-                      <button
-                        key={`${r.state}-${r.id}`}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                          i === selectedIndex ? "bg-white/10" : "hover:bg-white/5"
-                        }`}
-                        onMouseEnter={() => setSelectedIndex(i)}
-                        onClick={() => handleSelectRemote(r)}
-                      >
-                        <div
-                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: sizeCat.color }}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm text-white font-medium truncate">
-                            {r.name}
-                          </div>
-                          <div className="text-xs text-white/40 truncate">
-                            {r.city && <span>{r.city}, </span>}
-                            <span className="text-purple-300/70">{STATE_NAMES[r.state] || r.state}</span>
-                            {" · "}
-                            {r.denomination === "Other" || r.denomination === "Unknown"
-                              ? "Unspecified"
-                              : r.denomination}
-                          </div>
+                  {remoteResults.map((r, i) => (
+                    <button
+                      key={`${r.state}-${r.id}`}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                        i === selectedIndex ? "bg-white/10" : "hover:bg-white/5"
+                      }`}
+                      onMouseEnter={() => setSelectedIndex(i)}
+                      onClick={() => handleSelectRemote(r)}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-white font-medium truncate">
+                          {r.name}
                         </div>
-                        <ChevronRight size={14} className="text-white/20 flex-shrink-0" />
-                      </button>
-                    );
-                  })}
+                        <div className="text-xs text-white/40 truncate">
+                          {[r.city, STATE_NAMES[r.state] || r.state, r.address].filter(Boolean).join(" · ") || "\u2014"}
+                        </div>
+                      </div>
+                      <ChevronRight size={14} className="text-white/20 flex-shrink-0" />
+                    </button>
+                  ))}
                   {remoteResults.length >= MAX_RESULTS && (
                     <div className="px-4 py-2 text-xs text-white/30 text-center border-t border-white/5">
                       Keep typing to narrow results…

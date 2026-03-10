@@ -33,6 +33,7 @@ interface ChurchDetailPanelProps {
   onChurchClick: (church: Church) => void;
   externalShowEditForm?: boolean;
   onEditFormClosed?: () => void;
+  onChurchUpdated?: () => void;
 }
 
 function formatTimeAgo(ts: number): string {
@@ -112,14 +113,14 @@ const DENOMINATION_FACTS: Record<string, string> = {
 function ServiceTimesCard({ serviceTimes }: { serviceTimes: string }) {
   const grouped = groupServiceTimesByDay(parseServiceTimesForDisplay(serviceTimes));
   return (
-    <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
+    <div className="rounded-xl p-4 bg-white/5 border border-white/5">
       <div className="flex items-center gap-2 mb-2">
-        <Clock size={14} className="text-purple-400" />
-        <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
+        <Clock size={16} className="text-purple-400" />
+        <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
           Service Times
         </span>
         {grouped.length > 1 && (
-          <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400/70 font-semibold">
+          <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400/70 font-semibold">
             {grouped.reduce((sum, g) => sum + g.services.length, 0)} services
           </span>
         )}
@@ -128,18 +129,18 @@ function ServiceTimesCard({ serviceTimes }: { serviceTimes: string }) {
         <div className="space-y-2">
           {grouped.map((group) => (
             <div key={group.day} className="flex items-baseline gap-2.5">
-              <span className="text-white/50 text-[11px] font-semibold w-12 flex-shrink-0">
+              <span className="text-white/50 text-xs font-semibold w-12 flex-shrink-0">
                 {group.dayFull.slice(0, 3)}
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {group.services.map((svc, i) => (
                   <span
                     key={i}
-                    className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-purple-500/10 text-white/80 border border-purple-500/10"
+                    className="px-2 py-0.5 rounded-md text-xs font-medium bg-purple-500/10 text-white/80 border border-purple-500/10"
                   >
                     {svc.time}
                     {svc.label && (
-                      <span className="text-white/30 ml-1 text-[9px]">
+                      <span className="text-white/30 ml-1 text-[10px]">
                         {svc.label}
                       </span>
                     )}
@@ -150,7 +151,7 @@ function ServiceTimesCard({ serviceTimes }: { serviceTimes: string }) {
           ))}
         </div>
       ) : (
-        <p className="text-white text-xs leading-relaxed">{serviceTimes}</p>
+        <p className="text-white text-sm leading-relaxed">{serviceTimes}</p>
       )}
     </div>
   );
@@ -172,12 +173,12 @@ function LanguageEstimateCard({ bilingualInfo }: { bilingualInfo: { probability:
       : "Possibly bilingual";
 
   return (
-    <div className="rounded-lg px-3 py-2 bg-amber-500/5 border border-amber-500/10">
+    <div className="rounded-lg px-3.5 py-2.5 bg-amber-500/5 border border-amber-500/10">
       <div className="flex items-center gap-2">
-        <Languages size={12} className="text-amber-400 flex-shrink-0" />
-        <span className="text-[10px] text-white/50 font-medium">{label}</span>
-        <span className="text-white/40 text-[10px] font-semibold tabular-nums ml-auto">{pct}%</span>
-        <span className={`text-[8px] px-1 py-px rounded font-semibold ${
+        <Languages size={14} className="text-amber-400 flex-shrink-0" />
+        <span className="text-xs text-white/50 font-medium">{label}</span>
+        <span className="text-white/40 text-xs font-semibold tabular-nums ml-auto">{pct}%</span>
+        <span className={`text-[10px] px-1 py-px rounded font-semibold ${
           bilingualInfo.confirmed
             ? "bg-green-500/15 text-green-400/80"
             : "bg-amber-500/15 text-amber-400/70"
@@ -202,6 +203,7 @@ export function ChurchDetailPanel({
   onChurchClick,
   externalShowEditForm,
   onEditFormClosed,
+  onChurchUpdated,
 }: ChurchDetailPanelProps) {
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
@@ -306,6 +308,7 @@ export function ChurchDetailPanel({
         church={church}
         onClose={() => { setShowEditForm(false); setEditFocusField(null); }}
         focusField={editFocusField}
+        onChurchUpdated={onChurchUpdated}
       />
     );
   }
@@ -326,20 +329,20 @@ export function ChurchDetailPanel({
       <div className="flex-shrink-0 px-5 pt-5 pb-4 border-b border-white/10">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <h2 className="text-white font-semibold text-lg leading-tight truncate">
+            <h2 className="text-white font-semibold text-xl leading-tight truncate">
               {church.name}
             </h2>
             {fullAddress && (
-              <p className="text-white/50 text-xs mt-1.5 leading-relaxed">
+              <p className="text-white/50 text-sm mt-1.5 leading-relaxed">
                 {fullAddress}
               </p>
             )}
           </div>
           <button
             onClick={onClose}
-            className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors"
+            className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors"
           >
-            <X size={18} className="text-white/60" />
+            <X size={20} className="text-white/60" />
           </button>
         </div>
 
@@ -349,9 +352,9 @@ export function ChurchDetailPanel({
             href={googleMapsUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-white bg-purple-700/60 hover:bg-purple-700/80 transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium text-white bg-purple-700/60 hover:bg-purple-700/80 transition-colors"
           >
-            <Navigation size={12} />
+            <Navigation size={14} />
             Directions
           </a>
           {church.website ? (
@@ -363,20 +366,20 @@ export function ChurchDetailPanel({
               }
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-white/70 bg-white/8 hover:bg-white/12 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium text-white/70 bg-white/8 hover:bg-white/12 transition-colors"
             >
-              <Globe size={12} />
+              <Globe size={14} />
               Website
-              <ExternalLink size={10} className="text-white/40" />
+              <ExternalLink size={12} className="text-white/40" />
             </a>
           ) : (
             <a
               href={`https://www.google.com/search?q=${encodeURIComponent(church.name + " " + (church.city || "") + " " + church.state + " church website")}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-white/70 bg-white/8 hover:bg-white/12 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium text-white/70 bg-white/8 hover:bg-white/12 transition-colors"
             >
-              <Search size={12} />
+              <Search size={14} />
               Find Website
             </a>
           )}
@@ -386,17 +389,17 @@ export function ChurchDetailPanel({
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
         {/* Stats cards */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-4">
           {/* Attendance */}
-          <div className="rounded-xl p-3.5 bg-white/5 border border-white/5 group/card">
+          <div className="rounded-xl p-4 bg-white/5 border border-white/5 group/card">
             <div className="flex items-center gap-2 mb-2">
-              <Users size={14} className="text-purple-400" />
-              <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
+              <Users size={16} className="text-purple-400" />
+              <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
                 Est. Avg. Weekly Attendance
               </span>
-              <button onClick={() => openEditForField("attendance")} className="ml-auto p-1 rounded hover:bg-white/10 transition-colors opacity-0 group-hover/card:opacity-100"><Pencil size={9} className="text-white/30" /></button>
+              <button onClick={() => openEditForField("attendance")} className="ml-auto p-1 rounded hover:bg-white/10 transition-colors opacity-0 group-hover/card:opacity-100"><Pencil size={11} className="text-white/30" /></button>
             </div>
-            <div className="text-white text-xl font-bold">
+            <div className="text-white text-xl font-semibold">
               ~{church.attendance.toLocaleString()}
             </div>
             <div className="flex items-center gap-1.5 mt-1.5">
@@ -404,25 +407,25 @@ export function ChurchDetailPanel({
                 className="w-2 h-2 rounded-full"
                 style={{ backgroundColor: sizeCat.color }}
               />
-              <span className="text-white/50 text-[11px]">
+              <span className="text-white/50 text-xs">
                 {sizeCat.label}
               </span>
             </div>
           </div>
 
           {/* Denomination */}
-          <div className="rounded-xl p-3.5 bg-white/5 border border-white/5 group/card">
+          <div className="rounded-xl p-4 bg-white/5 border border-white/5 group/card">
             <div className="flex items-center gap-2 mb-2">
-              <ChurchIcon size={14} className="text-purple-400" />
-              <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
+              <ChurchIcon size={16} className="text-purple-400" />
+              <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
                 Denomination
               </span>
-              <button onClick={() => openEditForField("denomination")} className="ml-auto p-1 rounded hover:bg-white/10 transition-colors opacity-0 group-hover/card:opacity-100"><Pencil size={9} className="text-white/30" /></button>
+              <button onClick={() => openEditForField("denomination")} className="ml-auto p-1 rounded hover:bg-white/10 transition-colors opacity-0 group-hover/card:opacity-100"><Pencil size={11} className="text-white/30" /></button>
             </div>
-            <div className="text-white text-sm font-bold leading-snug">
+            <div className="text-white text-base font-semibold leading-snug">
               {church.denomination === "Other" || church.denomination === "Unknown" ? "Unspecified" : church.denomination}
             </div>
-            <div className="text-white/40 text-[11px] mt-1.5">
+            <div className="text-white/40 text-xs mt-1.5">
               {sameDenomCount.toLocaleString()} similar in state
             </div>
           </div>
@@ -437,16 +440,16 @@ export function ChurchDetailPanel({
 
           {/* Confirmed Languages */}
           {church.languages && church.languages.length > 0 && (
-            <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
+            <div className="rounded-xl p-4 bg-white/5 border border-white/5">
               <div className="flex items-center gap-2 mb-2">
-                <Languages size={14} className="text-purple-400" />
-                <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
+                <Languages size={16} className="text-purple-400" />
+                <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
                   Languages
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {church.languages.map((lang) => (
-                  <span key={lang} className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-purple-500/15 text-purple-300 border border-purple-500/20">
+                  <span key={lang} className="px-3 py-1.5 rounded-full text-xs font-medium bg-purple-500/15 text-purple-300 border border-purple-500/20">
                     {lang}
                   </span>
                 ))}
@@ -459,16 +462,16 @@ export function ChurchDetailPanel({
 
           {/* Ministries */}
           {church.ministries && church.ministries.length > 0 && (
-            <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
+            <div className="rounded-xl p-4 bg-white/5 border border-white/5">
               <div className="flex items-center gap-2 mb-2">
-                <Heart size={14} className="text-purple-400" />
-                <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
+                <Heart size={16} className="text-purple-400" />
+                <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
                   Ministries
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {church.ministries.map((m) => (
-                  <span key={m} className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-white/8 text-white/60 border border-white/8">
+                  <span key={m} className="px-3 py-1.5 rounded-full text-xs font-medium bg-white/8 text-white/60 border border-white/8">
                     {m}
                   </span>
                 ))}
@@ -478,36 +481,36 @@ export function ChurchDetailPanel({
 
           {/* Pastor & Contact */}
           {(church.pastorName || church.phone || church.email) && (
-            <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
+            <div className="rounded-xl p-4 bg-white/5 border border-white/5">
               <div className="flex items-center gap-2 mb-2.5">
-                <User size={14} className="text-purple-400" />
-                <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
+                <User size={16} className="text-purple-400" />
+                <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
                   Contact
                 </span>
               </div>
               <div className="space-y-2">
                 {church.pastorName && (
                   <div className="flex justify-between items-center">
-                    <span className="text-white/50 text-xs">Lead Pastor</span>
-                    <span className="text-white text-xs font-medium">{church.pastorName}</span>
+                    <span className="text-white/50 text-sm">Lead Pastor</span>
+                    <span className="text-white text-sm font-medium">{church.pastorName}</span>
                   </div>
                 )}
                 {church.phone && (
                   <div className="flex justify-between items-center">
-                    <span className="text-white/50 text-xs flex items-center gap-1">
-                      <Phone size={10} /> Phone
+                    <span className="text-white/50 text-sm flex items-center gap-1">
+                      <Phone size={12} /> Phone
                     </span>
-                    <a href={`tel:${church.phone}`} className="text-purple-300 text-xs font-medium hover:text-purple-200 transition-colors">
+                    <a href={`tel:${church.phone}`} className="text-purple-300 text-sm font-medium hover:text-purple-200 transition-colors">
                       {church.phone}
                     </a>
                   </div>
                 )}
                 {church.email && (
                   <div className="flex justify-between items-center">
-                    <span className="text-white/50 text-xs flex items-center gap-1">
-                      <Mail size={10} /> Email
+                    <span className="text-white/50 text-sm flex items-center gap-1">
+                      <Mail size={12} /> Email
                     </span>
-                    <a href={`mailto:${church.email}`} className="text-purple-300 text-xs font-medium hover:text-purple-200 transition-colors">
+                    <a href={`mailto:${church.email}`} className="text-purple-300 text-sm font-medium hover:text-purple-200 transition-colors">
                       {church.email}
                     </a>
                   </div>
@@ -523,17 +526,17 @@ export function ChurchDetailPanel({
           <button
             onClick={handleConfirmData}
             disabled={confirming || confirmed}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-green-500/10 hover:bg-green-500/20 border border-green-500/15 transition-colors group disabled:opacity-70"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-green-500/10 hover:bg-green-500/20 border border-green-500/15 transition-colors group disabled:opacity-70"
           >
             {confirmed ? (
               <>
-                <Check size={13} className="text-green-400" />
-                <span className="text-green-400 text-xs font-semibold">Data confirmed, thank you!</span>
+                <Check size={15} className="text-green-400" />
+                <span className="text-green-400 text-sm font-semibold">Data confirmed, thank you!</span>
               </>
             ) : (
               <>
-                <ShieldCheck size={13} className="text-green-400 group-hover:text-green-300 transition-colors" />
-                <span className="text-green-300 text-xs font-semibold group-hover:text-green-200 transition-colors">
+                <ShieldCheck size={15} className="text-green-400 group-hover:text-green-300 transition-colors" />
+                <span className="text-green-300 text-sm font-semibold group-hover:text-green-200 transition-colors">
                   Data looks correct
                 </span>
               </>
@@ -543,14 +546,14 @@ export function ChurchDetailPanel({
           {/* Update Church Info */}
           <button
             onClick={() => { setEditFocusField(null); setShowEditForm(true); }}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/20 transition-colors group"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/20 transition-colors group"
           >
-            <Pencil size={13} className="text-purple-400 group-hover:text-purple-300 transition-colors" />
-            <span className="text-purple-300 text-xs font-semibold group-hover:text-purple-200 transition-colors">
+            <Pencil size={15} className="text-purple-400 group-hover:text-purple-300 transition-colors" />
+            <span className="text-purple-300 text-sm font-semibold group-hover:text-purple-200 transition-colors">
               Update Church Info
             </span>
             {missingFieldCount > 0 && (
-              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-pink-500/20 text-pink-400 font-semibold">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pink-500/20 text-pink-400 font-semibold">
                 {missingFieldCount} missing
               </span>
             )}
@@ -559,17 +562,17 @@ export function ChurchDetailPanel({
 
         {/* Denomination fact */}
         {DENOMINATION_FACTS[denomGroup] && (
-          <div className="rounded-xl p-3.5 bg-purple-900/30 border border-purple-500/15">
+          <div className="rounded-xl p-4 bg-purple-900/30 border border-purple-500/15">
             <div className="flex items-start gap-2.5">
               <BookOpen
-                size={14}
+                size={16}
                 className="text-purple-400 flex-shrink-0 mt-0.5"
               />
               <div>
-                <span className="text-[10px] uppercase tracking-wider text-purple-400/70 font-semibold block mb-1">
+                <span className="text-xs uppercase tracking-wider text-purple-400/70 font-semibold block mb-1">
                   Did you know?
                 </span>
-                <p className="text-white/60 text-xs leading-relaxed">
+                <p className="text-white/60 text-sm leading-relaxed">
                   {DENOMINATION_FACTS[denomGroup]}
                 </p>
               </div>
@@ -581,17 +584,17 @@ export function ChurchDetailPanel({
         {correctionHistory.length > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <Clock size={13} className="text-purple-400" />
-              <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
+              <Clock size={15} className="text-purple-400" />
+              <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
                 Recent Changes
               </span>
             </div>
             <div className="space-y-1.5">
               {correctionHistory.slice(0, 5).map((entry, i) => (
-                <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white/[0.03]">
-                  <Check size={10} className="text-green-400/60 flex-shrink-0" />
-                  <span className="text-white/50 text-[11px] font-medium capitalize">{entry.field === "serviceTimes" ? "Service Times" : entry.field === "pastorName" ? "Pastor" : entry.field}</span>
-                  <span className="text-white/30 text-[10px] ml-auto">{formatTimeAgo(entry.appliedAt)}</span>
+                <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03]">
+                  <Check size={12} className="text-green-400/60 flex-shrink-0" />
+                  <span className="text-white/50 text-xs font-medium capitalize">{entry.field === "serviceTimes" ? "Service Times" : entry.field === "pastorName" ? "Pastor" : entry.field}</span>
+                  <span className="text-white/30 text-xs ml-auto">{formatTimeAgo(entry.appliedAt)}</span>
                 </div>
               ))}
             </div>
@@ -602,8 +605,8 @@ export function ChurchDetailPanel({
         {nearbyChurches.length > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <Navigation size={13} className="text-purple-400" />
-              <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
+              <Navigation size={15} className="text-purple-400" />
+              <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
                 Nearby Churches
               </span>
             </div>
@@ -614,23 +617,23 @@ export function ChurchDetailPanel({
                   <button
                     key={nc.id}
                     onClick={() => onChurchClick(nc)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/4 hover:bg-white/8 transition-colors text-left group"
+                    className="w-full flex items-center gap-3 px-3.5 py-3 rounded-lg bg-white/4 hover:bg-white/8 transition-colors text-left group"
                   >
                     <div
                       className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                       style={{ backgroundColor: ncCat.color }}
                     />
                     <div className="flex-1 min-w-0">
-                      <div className="text-white text-xs font-medium truncate group-hover:text-purple-300 transition-colors">
+                      <div className="text-white text-sm font-medium truncate group-hover:text-purple-300 transition-colors">
                         {nc.name}
                       </div>
-                      <div className="text-white/40 text-[10px] mt-0.5">
+                      <div className="text-white/40 text-xs mt-0.5">
                         {nc.denomination === "Other" || nc.denomination === "Unknown" ? "Unspecified" : nc.denomination}
                         {nc.city ? ` \u00b7 ${nc.city}` : ""}
                       </div>
                     </div>
                     <div className="flex-shrink-0 text-right">
-                      <div className="text-white/50 text-[10px] font-medium">
+                      <div className="text-white/50 text-xs font-medium">
                         {nc.distance < 1
                           ? `${(nc.distance * 5280).toFixed(0)} ft`
                           : `${nc.distance.toFixed(1)} mi`}
@@ -645,13 +648,13 @@ export function ChurchDetailPanel({
 
         {/* Data source note */}
         <div className="pt-3 border-t border-white/5">
-          <p className="text-white/25 text-[10px] leading-relaxed text-center">
+          <p className="text-white/25 text-xs leading-relaxed text-center">
             Data sourced from OpenStreetMap. Attendance figures are estimates
             based on capacity data and denomination averages.
           </p>
           {church.lastVerified && (
-            <p className="text-white/30 text-[10px] mt-1 text-center flex items-center justify-center gap-1">
-              <ShieldCheck size={9} className="inline" />
+            <p className="text-white/30 text-xs mt-1 text-center flex items-center justify-center gap-1">
+              <ShieldCheck size={11} className="inline" />
               Last verified {formatTimeAgo(church.lastVerified)}
             </p>
           )}

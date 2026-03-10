@@ -2,6 +2,8 @@
 
 export interface Church {
   id: string;
+  /** 8-digit id for URLs; unique per state */
+  shortId?: string;
   name: string;
   city: string;
   state: string;

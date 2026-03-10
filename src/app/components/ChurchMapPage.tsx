@@ -6,23 +6,25 @@ import { ChurchMap } from "./ChurchMap";
  * Thin routing wrapper — parses URL params and passes navigation
  * callbacks down to ChurchMap. This keeps all React Router logic
  * in one place so ChurchMap doesn't need to import router hooks directly.
+ * URLs: /state/MO/16692500 (shortId) or /state/MO/church/legacy-id (legacy).
  */
 export function ChurchMapPage() {
   const location = useLocation();
   const nav = useNavigate();
 
-  // Parse route params from pathname
   const routeParams = useMemo(() => {
     const parts = location.pathname.split("/").filter(Boolean);
-    // /state/TX → stateAbbrev = "TX"
-    // /state/TX/church/TX-123 → stateAbbrev = "TX", churchId = "TX-123"
     const stateAbbrev =
       parts[0] === "state" && parts[1] ? parts[1].toUpperCase() : null;
-    const churchId =
-      parts[2] === "church" && parts[3]
-        ? decodeURIComponent(parts[3])
+    const segment1 = parts[2];
+    const segment2 = parts[3];
+    const legacyChurchId =
+      segment1 === "church" && segment2
+        ? decodeURIComponent(segment2)
         : null;
-    return { stateAbbrev, churchId };
+    const churchShortId =
+      segment1 && segment1 !== "church" ? segment1 : null;
+    return { stateAbbrev, churchShortId, legacyChurchId };
   }, [location.pathname]);
 
   const navigateToState = useCallback(
@@ -30,8 +32,8 @@ export function ChurchMapPage() {
     [nav]
   );
   const navigateToChurch = useCallback(
-    (stateAbbrev: string, churchId: string) =>
-      nav(`/state/${stateAbbrev}/church/${encodeURIComponent(churchId)}`),
+    (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) =>
+      nav(`/state/${stateAbbrev}/${churchShortId}`, options ?? {}),
     [nav]
   );
   const navigateToNational = useCallback(() => nav("/"), [nav]);
@@ -39,7 +41,8 @@ export function ChurchMapPage() {
   return (
     <ChurchMap
       routeStateAbbrev={routeParams.stateAbbrev}
-      routeChurchId={routeParams.churchId}
+      routeChurchShortId={routeParams.churchShortId}
+      routeLegacyChurchId={routeParams.legacyChurchId}
       navigateToState={navigateToState}
       navigateToChurch={navigateToChurch}
       navigateToNational={navigateToNational}

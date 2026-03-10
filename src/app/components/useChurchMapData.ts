@@ -21,9 +21,10 @@ import { useChurchFilters } from "./hooks/useChurchFilters";
 
 interface UseChurchMapDataArgs {
   routeStateAbbrev: string | null;
-  routeChurchId: string | null;
+  routeChurchShortId: string | null;
+  routeLegacyChurchId: string | null;
   navigateToState: (abbrev: string) => void;
-  navigateToChurch: (stateAbbrev: string, churchId: string) => void;
+  navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => void;
   navigateToNational: () => void;
 }
 
@@ -42,7 +43,8 @@ function filterToStatePolygon(
 
 export function useChurchMapData({
   routeStateAbbrev,
-  routeChurchId,
+  routeChurchShortId,
+  routeLegacyChurchId,
   navigateToState,
   navigateToChurch,
   navigateToNational,
@@ -138,7 +140,8 @@ export function useChurchMapData({
   const loadFnsRef = useRef<{
     loadStateData: ((s: string) => Promise<void>) | null;
     loadStateDataSilent: ((s: string, c: Church) => Promise<void>) | null;
-  }>({ loadStateData: null, loadStateDataSilent: null });
+    loadStateDataSilentForChurch: ((s: string, churchId: string) => Promise<void>) | null;
+  }>({ loadStateData: null, loadStateDataSilent: null, loadStateDataSilentForChurch: null });
 
   // ── Load state data (plain function, stored in ref) ──
   const loadStateData = async (stateAbbrev: string) => {
@@ -379,9 +382,157 @@ export function useChurchMapData({
     }
   };
 
+  // ── Silent load for church page (no full overlay; state view then church when data arrives) ──
+  const loadStateDataSilentForChurch = async (stateAbbrev: string, churchId: string) => {
+    const stateInfo = states.find((s) => s.abbrev === stateAbbrev);
+    if (!stateInfo) return;
+
+    const cached = refs.current.churchCache.get(stateAbbrev);
+    if (cached && cached.length > 0) {
+      const church = cached.find((c) => c.id === churchId);
+      if (church) {
+        refs.current.loadVersion++;
+        setFocusedState(stateAbbrev);
+        setFocusedStateName(stateInfo.name);
+        setChurches(cached);
+        setSelectedChurch(church);
+        setError(null);
+        setLoading(false);
+        setPopulating(false);
+        refs.current.pendingTransition = null;
+        setLoadingStateName("");
+        overlay.setForceLoadingVisible(false);
+        moveToView([church.lng, church.lat], Math.max(ds.zoom, 8));
+        return;
+      }
+    }
+
+    const version = ++refs.current.loadVersion;
+    const isStale = () => refs.current.loadVersion !== version;
+
+    console.log(`[ChurchMap] Church page load (silent): ${stateAbbrev} / ${churchId} [v${version}]`);
+
+    setFocusedState(stateAbbrev);
+    setFocusedStateName(stateInfo.name);
+    setChurches([]);
+    setSelectedChurch(null);
+    setError(null);
+    refs.current.pendingTransition = null;
+    setLoadingStateName("");
+    overlay.setForceLoadingVisible(false);
+    moveToView([stateInfo.lng, stateInfo.lat], getStateZoom(stateAbbrev));
+
+    try {
+      const data = await fetchChurches(stateAbbrev);
+      if (isStale()) return;
+
+      if (data.churches && data.churches.length > 0) {
+        const filtered = filterToStatePolygon(data.churches, stateAbbrev, refs.current.stateFeatures);
+        setChurches(filtered);
+
+        const church = filtered.find((c) => c.id === churchId);
+        if (church) {
+          setSelectedChurch(church);
+          moveToView([church.lng, church.lat], Math.max(ds.zoom, 8));
+        }
+
+        if (data.churches.length === 2000) {
+          try {
+            const result = await populateState(stateAbbrev, true);
+            if (isStale()) return;
+            if (!result.error) {
+              const fresh = await fetchChurches(stateAbbrev);
+              if (isStale()) return;
+              if (fresh.churches?.length) {
+                const ff = filterToStatePolygon(fresh.churches, stateAbbrev, refs.current.stateFeatures);
+                setChurches(ff);
+                const fc = ff.find((c) => c.id === churchId);
+                if (fc) {
+                  setSelectedChurch(fc);
+                  moveToView([fc.lng, fc.lat], Math.max(ds.zoom, 8));
+                }
+              }
+              const sd = await fetchStates();
+              if (!isStale()) {
+                setStates(sd.states);
+                setTotalChurches(sd.totalChurches);
+              }
+            }
+          } catch (e) {
+            console.warn(`Background refresh failed for ${stateAbbrev}:`, e);
+          }
+        }
+        return;
+      }
+
+      setPopulating(true);
+      setLoadingStateName(stateInfo.name);
+      try {
+        const result = await populateState(stateAbbrev);
+        if (isStale()) return;
+        if (result.error) {
+          setError(result.error);
+          setFocusedState(stateAbbrev);
+          setFocusedStateName(stateInfo.name);
+          moveToView([stateInfo.lng, stateInfo.lat], getStateZoom(stateAbbrev));
+          return;
+        }
+        const freshData = await fetchChurches(stateAbbrev);
+        if (isStale()) return;
+        const freshFiltered = filterToStatePolygon(freshData.churches || [], stateAbbrev, refs.current.stateFeatures);
+        setChurches(freshFiltered);
+        const church = freshFiltered.find((c) => c.id === churchId);
+        if (church) {
+          setSelectedChurch(church);
+          moveToView([church.lng, church.lat], Math.max(ds.zoom, 8));
+        }
+        const statesData = await fetchStates();
+        if (!isStale()) {
+          setStates(statesData.states);
+          setTotalChurches(statesData.totalChurches);
+        }
+      } catch (e) {
+        console.warn(`Background population failed for ${stateAbbrev}:`, e);
+        if (!isStale()) {
+          setError(
+            `Failed to load churches for ${stateInfo.name}. This might be due to API rate limits -- try again in a moment.`
+          );
+        }
+      } finally {
+        if (!isStale()) setPopulating(false);
+      }
+    } catch (err) {
+      if (isStale()) return;
+      console.error(`Failed to load churches for ${stateAbbrev}:`, err);
+      setError(
+        `Failed to load churches for ${stateInfo.name}. This might be due to API rate limits -- try again in a moment.`
+      );
+      setLoading(false);
+      setPopulating(false);
+    }
+  };
+
+  // ── Silent refetch of current state's churches (e.g. after edit) ──
+  const refetchCurrentStateChurches = async () => {
+    if (!focusedState) return;
+    try {
+      const data = await fetchChurches(focusedState);
+      if (!data.churches?.length) return;
+      const filtered = filterToStatePolygon(data.churches, focusedState, refs.current.stateFeatures);
+      setChurches(filtered);
+      if (selectedChurch) {
+        const found = filtered.find((c) => c.id === selectedChurch.id);
+        setSelectedChurch(found ?? selectedChurch);
+      }
+    } catch (e) {
+      console.warn(`[ChurchMap] Refetch churches failed for ${focusedState}:`, e);
+    }
+  };
+
   // Store latest versions in ref (avoids useCallback, stabilizes effect deps)
   loadFnsRef.current.loadStateData = loadStateData;
   loadFnsRef.current.loadStateDataSilent = loadStateDataSilent;
+  loadFnsRef.current.loadStateDataSilentForChurch = loadStateDataSilentForChurch;
 
   // ── Apply pending state transition once loading overlay fully dismisses ──
   useEffect(() => {
@@ -526,20 +677,23 @@ export function useChurchMapData({
       refs.current.preloadedChurch = null;
       if (preloaded && preloaded.state === routeStateAbbrev) {
         loadFnsRef.current.loadStateDataSilent?.(routeStateAbbrev, preloaded);
+      } else if (routeChurchShortId ?? routeLegacyChurchId) {
+        loadFnsRef.current.loadStateDataSilentForChurch?.(routeStateAbbrev, routeChurchShortId ?? routeLegacyChurchId ?? "");
       } else {
         loadFnsRef.current.loadStateData?.(routeStateAbbrev);
       }
     }
-  }, [routeStateAbbrev, states]);
+  }, [routeStateAbbrev, routeChurchShortId, routeLegacyChurchId, states]);
 
-  // Sync church route param + deferred selection (merged — saves 1 hook)
+  // Sync church route param + deferred selection; resolve by shortId or legacy id; redirect legacy URL to canonical
+  const routeChurchKey = routeChurchShortId ?? routeLegacyChurchId ?? null;
   useEffect(() => {
-    const isNewRoute = routeChurchId !== refs.current.prevRouteChurch;
+    const isNewRoute = routeChurchKey !== refs.current.prevRouteChurch;
     if (isNewRoute) {
-      refs.current.prevRouteChurch = routeChurchId;
+      refs.current.prevRouteChurch = routeChurchKey;
     }
 
-    if (!routeChurchId) {
+    if (!routeChurchKey) {
       if (isNewRoute && selectedChurch) {
         setSelectedChurch(null);
         if (focusedState) {
@@ -550,15 +704,23 @@ export function useChurchMapData({
       return;
     }
 
-    // Deferred + direct selection
-    if (churches.length > 0 && (!selectedChurch || selectedChurch.id !== routeChurchId)) {
-      const church = churches.find((c) => c.id === routeChurchId);
-      if (church) {
+    if (churches.length === 0) return;
+
+    const church = routeChurchShortId
+      ? churches.find((c) => (c.shortId ?? c.id) === routeChurchShortId)
+      : churches.find((c) => c.id === routeLegacyChurchId);
+
+    if (church) {
+      if (!selectedChurch || selectedChurch.id !== church.id) {
         setSelectedChurch(church);
         moveToView([church.lng, church.lat], Math.max(ds.zoom, 8));
       }
+      // Redirect legacy URL to canonical once we have the church (and thus shortId)
+      if (routeLegacyChurchId && focusedState && church.shortId) {
+        navigateToChurch(focusedState, church.shortId, { replace: true });
+      }
     }
-  }, [routeChurchId, churches, selectedChurch?.id, focusedState]);
+  }, [routeChurchShortId, routeLegacyChurchId, routeChurchKey, churches, selectedChurch?.id, focusedState, navigateToChurch]);
 
   // Update page title
   useEffect(() => {
@@ -570,6 +732,44 @@ export function useChurchMapData({
       document.title = "Here's My Church";
     }
   }, [selectedChurch, focusedState, focusedStateName]);
+
+  // Inject or remove JSON-LD for selected church (SEO / rich results)
+  const CHURCH_JSONLD_ID = "church-jsonld";
+  useEffect(() => {
+    let el = document.getElementById(CHURCH_JSONLD_ID) as HTMLScriptElement | null;
+    if (selectedChurch && focusedState) {
+      const url = `https://heresmychurch.com/state/${focusedState}/${selectedChurch.shortId ?? selectedChurch.id}`;
+      const address =
+        selectedChurch.address
+          ? { "@type": "PostalAddress" as const, streetAddress: selectedChurch.address, addressLocality: selectedChurch.city || undefined, addressRegion: selectedChurch.state || undefined }
+          : { "@type": "PostalAddress" as const, addressLocality: selectedChurch.city || undefined, addressRegion: selectedChurch.state || undefined };
+      const payload: Record<string, unknown> = {
+        "@context": "https://schema.org",
+        "@type": "Place",
+        name: selectedChurch.name,
+        address,
+        geo: {
+          "@type": "GeoCoordinates",
+          latitude: selectedChurch.lat,
+          longitude: selectedChurch.lng,
+        },
+        url,
+      };
+      if (selectedChurch.website) payload.sameAs = selectedChurch.website;
+      const json = JSON.stringify(payload);
+      if (el) {
+        el.textContent = json;
+      } else {
+        el = document.createElement("script");
+        el.id = CHURCH_JSONLD_ID;
+        el.type = "application/ld+json";
+        el.textContent = json;
+        document.head.appendChild(el);
+      }
+    } else {
+      el?.remove();
+    }
+  }, [selectedChurch, focusedState]);
 
   // ── Plain handler functions (no useCallback — only used from return object) ──
   const handlePopulate = async () => {
@@ -609,8 +809,8 @@ export function useChurchMapData({
 
   const handleChurchDotClick = (church: Church) => {
     ui.setHoveredChurch(null);
-    if (focusedState) {
-      navigateToChurch(focusedState, church.id);
+    if (focusedState && (church.shortId ?? church.id)) {
+      navigateToChurch(focusedState, church.shortId ?? church.id);
     }
   };
 
@@ -679,6 +879,7 @@ export function useChurchMapData({
     summaryStats: filters.summaryStats,
     // Actions
     loadStateData,
+    refetchCurrentStateChurches,
     preloadChurch,
     handlePopulate,
     handleResetView,
