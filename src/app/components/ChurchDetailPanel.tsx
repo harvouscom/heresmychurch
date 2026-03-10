@@ -339,6 +339,16 @@ export function ChurchDetailPanel({
 
   const handleReaction = async (reaction: ReactionType) => {
     setReactionAnimKeys((k) => ({ ...k, [reaction]: k[reaction] + 1 }));
+    const prevReaction = myReaction;
+    const prevCounts = { ...counts };
+
+    // Optimistic update
+    const newCounts = { ...counts };
+    if (prevReaction) newCounts[prevReaction] = Math.max(0, newCounts[prevReaction] - 1);
+    newCounts[reaction]++;
+    setMyReaction(reaction);
+    setCounts(newCounts);
+
     setReactionSubmitting(true);
     try {
       const res = await submitReaction(church.id, reaction);
@@ -346,6 +356,8 @@ export function ChurchDetailPanel({
       setCounts(res.counts);
     } catch (err) {
       console.error("Failed to submit reaction:", err);
+      setMyReaction(prevReaction);
+      setCounts(prevCounts);
     } finally {
       setReactionSubmitting(false);
     }
@@ -482,9 +494,9 @@ export function ChurchDetailPanel({
                     type="button"
                     onClick={() => handleReaction(reaction)}
                     disabled={reactionSubmitting}
-                    className={`flex-1 flex flex-col items-center gap-1 px-3 py-2.5 rounded-xl border transition-colors min-w-0 ${
+                    className={`group flex-1 flex flex-col items-center gap-2 px-3 py-2.5 rounded-xl border transition-colors min-w-0 ${
                       isSelected
-                        ? "bg-purple-500/15 border-purple-500/30 text-purple-300"
+                        ? "bg-purple-600 border-purple-600 text-white"
                         : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white/80"
                     }`}
                   >
@@ -493,11 +505,15 @@ export function ChurchDetailPanel({
                       initial={false}
                       animate={reactionAnimKeys[reaction] > 0 ? animate : restState}
                       transition={transition}
-                      className="inline-flex items-center justify-center"
+                      className={`inline-flex items-center justify-center transition-all duration-200 ${
+                        isSelected
+                          ? "fill-white stroke-white"
+                          : "fill-white stroke-white group-hover:fill-purple-400 group-hover:stroke-purple-400 group-hover:scale-110 group-hover:rotate-6"
+                      }`}
                     >
-                      <Icon size={20} strokeWidth={2} />
+                      <Icon size={20} strokeWidth={1.5} className="fill-inherit stroke-inherit" />
                     </motion.span>
-                    <span className="text-[10px] font-medium truncate w-full text-center">
+                    <span className="text-sm font-medium truncate w-full text-center">
                       {label}
                     </span>
                   </motion.button>
@@ -560,19 +576,27 @@ export function ChurchDetailPanel({
           </div>
         </div>
 
-        {/* Languages — full-width row when confirmed */}
+        {/* Languages — single language: simple line with icon; multiple: badges */}
         {church.languages && church.languages.length > 0 && (
-          <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/5 group/card flex items-center gap-2">
-            <Languages size={14} className="text-purple-400 flex-shrink-0" />
-            <div className="flex flex-wrap gap-1.5 min-w-0 flex-1">
-              {church.languages.map((lang) => (
-                <span key={lang} className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/15 text-purple-300 border border-purple-500/20">
-                  {lang}
-                </span>
-              ))}
+          church.languages.length === 1 ? (
+            <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/10 group/card flex items-center gap-2">
+              <Languages size={14} className="text-purple-400 flex-shrink-0" />
+              <span className="text-sm text-white/90">{church.languages[0]}</span>
+              <button onClick={() => openEditForField("languages")} className="ml-auto p-1 rounded hover:bg-white/10 transition-colors opacity-0 group-hover/card:opacity-100 flex-shrink-0"><Pencil size={11} className="text-white/30" /></button>
             </div>
-            <button onClick={() => openEditForField("languages")} className="p-1 rounded hover:bg-white/10 transition-colors opacity-0 group-hover/card:opacity-100 flex-shrink-0"><Pencil size={11} className="text-white/30" /></button>
-          </div>
+          ) : (
+            <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/10 group/card flex items-center gap-2">
+              <Languages size={14} className="text-purple-400 flex-shrink-0" />
+              <div className="flex flex-wrap gap-1.5 min-w-0 flex-1">
+                {church.languages.map((lang) => (
+                  <span key={lang} className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/15 text-purple-300 border border-purple-500/20">
+                    {lang}
+                  </span>
+                ))}
+              </div>
+              <button onClick={() => openEditForField("languages")} className="p-1 rounded hover:bg-white/10 transition-colors opacity-0 group-hover/card:opacity-100 flex-shrink-0"><Pencil size={11} className="text-white/30" /></button>
+            </div>
+          )
         )}
 
         {/* Bilingual estimate — only when language not confirmed */}

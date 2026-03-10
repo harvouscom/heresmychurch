@@ -366,7 +366,7 @@ function mergeCorrectionsIntoChurches(churches:any[],corrections:Record<string,R
       else if(f==="languages"||f==="ministries"){(ch as any)[f]=String(v).split(",").map((s:string)=>s.trim()).filter(Boolean);}
       else if(f==="address"){
         const val=String(v).trim();
-        if(val.startsWith("{")){try{const o=JSON.parse(val) as Record<string,string>;(ch as any).address=(o.address??"").trim();(ch as any).city=(o.city??"").trim();(ch as any).state=(o.state??"").trim().toUpperCase().slice(0,2);}catch{ (ch as any).address=val; }}
+        if(val.startsWith("{")){try{const o=JSON.parse(val) as Record<string,unknown>;(ch as any).address=String(o.address??"").trim();(ch as any).city=String(o.city??"").trim();(ch as any).state=String(o.state??"").trim().toUpperCase().slice(0,2);const lat=typeof o.lat==="number"&&!isNaN(o.lat)?o.lat:undefined;const lng=typeof o.lng==="number"&&!isNaN(o.lng)?o.lng:undefined;if(lat!=null&&lng!=null&&lat>=18&&lat<=72&&lng>=-180&&lng<=-65){(ch as any).lat=lat;(ch as any).lng=lng;}}catch{ (ch as any).address=val; }}
         else{const parts=val.split(",").map((s:string)=>s.trim());(ch as any).address=parts[0]??"";(ch as any).city=parts[1]??(ch as any).city;(ch as any).state=(parts[2]??(ch as any).state||"").toUpperCase().slice(0,2);}
       }
       else if(f==="phone"){(ch as any).phone=normalizePhone(String(v))||undefined;}
@@ -575,10 +575,13 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>):
           const val=String(v).trim();
           if(val.startsWith("{")){
             try{
-              const o=JSON.parse(val) as Record<string,string>;
-              (ch as any).address=(o.address??"").trim();
-              (ch as any).city=(o.city??"").trim();
-              (ch as any).state=(o.state??"").trim().toUpperCase().slice(0,2);
+              const o=JSON.parse(val) as Record<string,unknown>;
+              (ch as any).address=String(o.address??"").trim();
+              (ch as any).city=String(o.city??"").trim();
+              (ch as any).state=String(o.state??"").trim().toUpperCase().slice(0,2);
+              const lat=typeof o.lat==="number"&&!isNaN(o.lat)?o.lat:undefined;
+              const lng=typeof o.lng==="number"&&!isNaN(o.lng)?o.lng:undefined;
+              if(lat!=null&&lng!=null&&lat>=18&&lat<=72&&lng>=-180&&lng<=-65){(ch as any).lat=lat;(ch as any).lng=lng;}
             }catch{ (ch as any).address=val; }
           }else{
             const parts=val.split(",").map((s:string)=>s.trim());

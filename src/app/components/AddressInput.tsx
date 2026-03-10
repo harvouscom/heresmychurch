@@ -25,21 +25,29 @@ export interface AddressParts {
   address: string;
   city: string;
   state: string;
+  /** Optional coordinates (e.g. from geocoding) for address corrections */
+  lat?: number;
+  lng?: number;
 }
 
 const INPUT_CLASS =
   "w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/20";
 
-/** Serialize address parts to a single string (JSON) for form/API */
+/** Serialize address parts to a single string (JSON) for form/API. Includes lat/lng when provided. */
 export function serializeAddress(parts: AddressParts): string {
-  return JSON.stringify({
+  const obj: Record<string, string | number> = {
     address: (parts.address || "").trim(),
     city: (parts.city || "").trim(),
     state: (parts.state || "").trim().toUpperCase().slice(0, 2),
-  });
+  };
+  if (typeof parts.lat === "number" && !isNaN(parts.lat) && typeof parts.lng === "number" && !isNaN(parts.lng)) {
+    obj.lat = parts.lat;
+    obj.lng = parts.lng;
+  }
+  return JSON.stringify(obj);
 }
 
-/** Parse stored value (JSON or legacy comma-separated) back to address parts */
+/** Parse stored value (JSON or legacy comma-separated) back to address parts. Extracts lat/lng from JSON when present. */
 export function parseAddressValue(value: string): AddressParts {
   if (!value || !value.trim()) {
     return { address: "", city: "", state: "" };
@@ -47,11 +55,14 @@ export function parseAddressValue(value: string): AddressParts {
   const trimmed = value.trim();
   if (trimmed.startsWith("{")) {
     try {
-      const o = JSON.parse(trimmed) as Record<string, string>;
+      const o = JSON.parse(trimmed) as Record<string, string | number>;
+      const lat = typeof o.lat === "number" && !isNaN(o.lat) ? o.lat : undefined;
+      const lng = typeof o.lng === "number" && !isNaN(o.lng) ? o.lng : undefined;
       return {
-        address: (o.address ?? "").trim(),
-        city: (o.city ?? "").trim(),
-        state: (o.state ?? "").trim().toUpperCase().slice(0, 2),
+        address: String(o.address ?? "").trim(),
+        city: String(o.city ?? "").trim(),
+        state: String(o.state ?? "").trim().toUpperCase().slice(0, 2),
+        ...(lat !== undefined && lng !== undefined ? { lat, lng } : {}),
       };
     } catch {
       return { address: "", city: "", state: "" };

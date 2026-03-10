@@ -22,6 +22,7 @@ import {
 import { useState, useEffect } from "react";
 import { ServiceTimesInput } from "./ServiceTimesInput";
 import { AddressInput, serializeAddress, parseAddressValue } from "./AddressInput";
+import { geocodeAddress } from "./AddChurchForm";
 import { normalizePhone } from "./ui/utils";
 
 interface SuggestEditFormProps {
@@ -129,6 +130,25 @@ export function SuggestEditForm({ church, onClose, focusField, onChurchUpdated }
 
     setSubmitting(field);
     setError(null);
+
+    // For address, geocode so map pin and nearby list stay correct
+    if (field === "address") {
+      const parts = parseAddressValue(val);
+      if (parts.address && parts.city && parts.state) {
+        try {
+          const coords = await geocodeAddress(parts.address, parts.city, parts.state);
+          if (coords) {
+            val = serializeAddress({ ...parts, lat: coords.lat, lng: coords.lng });
+          } else {
+            setError("We couldn't find that address on the map. Your correction will still be saved; location may need a manual update later.");
+            // Continue to submit without coords
+          }
+        } catch {
+          setError("We couldn't look up that address. Your correction will still be saved.");
+          // Continue to submit without coords
+        }
+      }
+    }
 
     try {
       await submitSuggestion(church.id, field, val);

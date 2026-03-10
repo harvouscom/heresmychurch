@@ -23,6 +23,40 @@ import { addChurch } from "./api";
 import { ServiceTimesInput } from "./ServiceTimesInput";
 import { normalizePhone } from "./ui/utils";
 
+/** Geocode a US address to lat/lng using Nominatim (OpenStreetMap). Returns null if not found or error. */
+export async function geocodeAddress(
+  address: string,
+  city: string,
+  stateAbbrev: string
+): Promise<{ lat: number; lng: number } | null> {
+  const street = (address || "").trim();
+  const ci = (city || "").trim();
+  const st = (stateAbbrev || "").trim().toUpperCase().slice(0, 2);
+  if (!street || !ci || !st) return null;
+  const q = `${street}, ${ci}, ${st}, USA`;
+  const url = `https://nominatim.openstreetmap.org/search?${new URLSearchParams({
+    q,
+    format: "json",
+    limit: "1",
+    countrycodes: "us",
+  })}`;
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "HereIsMyChurch/1.0 (church map app)" },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const first = Array.isArray(data) ? data[0] : null;
+    if (!first || first.lat == null || first.lon == null) return null;
+    const lat = parseFloat(first.lat);
+    const lng = parseFloat(first.lon);
+    if (isNaN(lat) || isNaN(lng) || lat < 18 || lat > 72 || lng < -180 || lng > -65) return null;
+    return { lat, lng };
+  } catch {
+    return null;
+  }
+}
+
 const MAX_SIMILAR_MATCHES = 5;
 const MAX_DISTANCE_KM = 1.6; // ~1 mile
 
@@ -120,13 +154,12 @@ export function AddChurchForm({
   const [showExtended, setShowExtended] = useState(false);
   const [similarMatches, setSimilarMatches] = useState<Church[]>([]);
   const [showSimilarWarning, setShowSimilarWarning] = useState(false);
+  const [geocodedCoords, setGeocodedCoords] = useState<{ lat: number; lng: number } | null>(null);
 
-  // Core form fields
+  // Core form fields (lat/lng come from geocoding the address)
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
-  const [lat, setLat] = useState("");
-  const [lng, setLng] = useState("");
   const [denomination, setDenomination] = useState("");
   const [attendance, setAttendance] = useState("");
   const [website, setWebsite] = useState("");
@@ -139,14 +172,11 @@ export function AddChurchForm({
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
 
-  const submitToApi = async () => {
+  const submitToApi = async (parsedLat: number, parsedLng: number) => {
     setSubmitting(true);
     setError(null);
     setSuccess(null);
     setShowSimilarWarning(false);
-
-    const parsedLat = parseFloat(lat);
-    const parsedLng = parseFloat(lng);
 
     try {
       const result = await addChurch({
@@ -176,8 +206,6 @@ export function AddChurchForm({
       setName("");
       setAddress("");
       setCity("");
-      setLat("");
-      setLng("");
       setDenomination("");
       setAttendance("");
       setWebsite("");
@@ -188,6 +216,7 @@ export function AddChurchForm({
       setPhone("");
       setEmail("");
       setShowExtended(false);
+      setGeocodedCoords(null);
 
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
@@ -202,28 +231,31 @@ export function AddChurchForm({
       setError("Church name is required");
       return;
     }
-    if (!lat.trim() || !lng.trim()) {
-      setError(
-        "Latitude and longitude are required. You can find these on Google Maps by right-clicking a location."
-      );
-      return;
-    }
-
-    const parsedLat = parseFloat(lat);
-    const parsedLng = parseFloat(lng);
-    if (
-      isNaN(parsedLat) ||
-      isNaN(parsedLng) ||
-      parsedLat < 18 ||
-      parsedLat > 72 ||
-      parsedLng < -180 ||
-      parsedLng > -65
-    ) {
-      setError("Please enter valid US coordinates");
+    if (!address.trim() || !city.trim()) {
+      setError("Street address and city are required so we can place the church on the map.");
       return;
     }
 
     setError(null);
+    setSubmitting(true);
+    let parsedLat: number;
+    let parsedLng: number;
+    try {
+      const coords = await geocodeAddress(address.trim(), city.trim(), stateAbbrev);
+      if (!coords) {
+        setSubmitting(false);
+        setError("We couldn't find that address. Please check the street address and city, and try again.");
+        return;
+      }
+      parsedLat = coords.lat;
+      parsedLng = coords.lng;
+      setGeocodedCoords(coords);
+    } catch {
+      setSubmitting(false);
+      setError("We couldn't look up that address. Please try again.");
+      return;
+    }
+    setSubmitting(false);
 
     if (churches.length > 0) {
       const similar = findSimilarChurches(
@@ -241,7 +273,7 @@ export function AddChurchForm({
       }
     }
 
-    await submitToApi();
+    await submitToApi(parsedLat, parsedLng);
   };
 
   const toggleLanguage = (lang: string) => {
@@ -383,8 +415,8 @@ export function AddChurchForm({
               <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
                 <button
                   type="button"
-                  onClick={() => submitToApi()}
-                  disabled={submitting}
+                  onClick={() => geocodedCoords && submitToApi(geocodedCoords.lat, geocodedCoords.lng)}
+                  disabled={submitting || !geocodedCoords}
                   className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-white/10 text-white/80 text-xs font-medium hover:bg-white/15 transition-colors disabled:opacity-50"
                 >
                   {submitting ? (
@@ -399,6 +431,7 @@ export function AddChurchForm({
                   onClick={() => {
                     setShowSimilarWarning(false);
                     setSimilarMatches([]);
+                    setGeocodedCoords(null);
                   }}
                   className="text-white/50 text-xs hover:text-white/70"
                 >
@@ -426,12 +459,12 @@ export function AddChurchForm({
                 />
               </div>
 
-              {/* Address + City row */}
+              {/* Address + City (required — we use these to place the church on the map) */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                   <div className="flex items-center gap-2 mb-2">
                     <MapPin size={13} className="text-purple-400" />
-                    <span className={labelClass}>Address</span>
+                    <span className={labelClass}>Street address *</span>
                   </div>
                   <input
                     type="text"
@@ -444,7 +477,7 @@ export function AddChurchForm({
                 <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                   <div className="flex items-center gap-2 mb-2">
                     <MapPin size={13} className="text-purple-400" />
-                    <span className={labelClass}>City</span>
+                    <span className={labelClass}>City *</span>
                   </div>
                   <input
                     type="text"
@@ -455,34 +488,9 @@ export function AddChurchForm({
                   />
                 </div>
               </div>
-
-              {/* Lat + Lng row */}
-              <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <MapPin size={13} className="text-purple-400" />
-                  <span className={labelClass}>Coordinates *</span>
-                </div>
-                <p className="text-[10px] text-white/25 mb-2">
-                  Right-click any location on Google Maps and copy the
-                  coordinates.
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="text"
-                    value={lat}
-                    onChange={(e) => setLat(e.target.value)}
-                    placeholder="Latitude (e.g., 33.749)"
-                    className={inputClass}
-                  />
-                  <input
-                    type="text"
-                    value={lng}
-                    onChange={(e) => setLng(e.target.value)}
-                    placeholder="Longitude (e.g., -84.388)"
-                    className={inputClass}
-                  />
-                </div>
-              </div>
+              <p className="text-[10px] text-white/40 -mt-1">
+                We&apos;ll look up the location from this address to place the church on the map.
+              </p>
 
               {/* Denomination + Attendance row */}
               <div className="grid grid-cols-2 gap-3">
@@ -678,7 +686,7 @@ export function AddChurchForm({
               {/* Submit button */}
               <button
                 onClick={handleSubmit}
-                disabled={submitting || !name.trim() || !lat.trim() || !lng.trim()}
+                disabled={submitting || !name.trim() || !address.trim() || !city.trim()}
                 className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-30 flex items-center justify-center gap-2"
                 style={{
                   background:
