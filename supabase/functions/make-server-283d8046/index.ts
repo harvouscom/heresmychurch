@@ -343,6 +343,38 @@ app.get(`${P}/churches/search`,async(c)=>{
   }catch(e){return c.json({results:[],query:rawQ,error:`${e}`},500);}
 });
 
+async function getApprovedCorrectionsForState(st:string):Promise<Record<string,Record<string,string>>>{
+  const all=await kv.getByPrefix(`suggestions:${st}-`);
+  const approved:Record<string,Record<string,string>>={};
+  if(!Array.isArray(all))return approved;
+  for(const entry of all){
+    if(!entry||!Array.isArray(entry.submissions))continue;
+    const id=entry.churchId||"";if(!id)continue;
+    const con=consensus(entry.submissions);
+    const corr:Record<string,string>={};
+    for(const[f,d]of Object.entries(con)){if((d as any).approved&&(d as any).value!==null)corr[f]=(d as any).value;}
+    if(Object.keys(corr).length)approved[id]=corr;
+  }
+  return approved;
+}
+
+function mergeCorrectionsIntoChurches(churches:any[],corrections:Record<string,Record<string,string>>):void{
+  for(const ch of churches){
+    const corr=corrections[ch.id];if(!corr)continue;
+    for(const[f,v]of Object.entries(corr)){
+      if(f==="attendance"){(ch as any).attendance=parseInt(v)||(ch as any).attendance;}
+      else if(f==="languages"||f==="ministries"){(ch as any)[f]=String(v).split(",").map((s:string)=>s.trim()).filter(Boolean);}
+      else if(f==="address"){
+        const val=String(v).trim();
+        if(val.startsWith("{")){try{const o=JSON.parse(val) as Record<string,string>;(ch as any).address=(o.address??"").trim();(ch as any).city=(o.city??"").trim();(ch as any).state=(o.state??"").trim().toUpperCase().slice(0,2);}catch{ (ch as any).address=val; }}
+        else{const parts=val.split(",").map((s:string)=>s.trim());(ch as any).address=parts[0]??"";(ch as any).city=parts[1]??(ch as any).city;(ch as any).state=(parts[2]??(ch as any).state||"").toUpperCase().slice(0,2);}
+      }
+      else if(f==="phone"){(ch as any).phone=normalizePhone(String(v))||undefined;}
+      else{(ch as any)[f]=v;}
+    }
+  }
+}
+
 app.get(`${P}/churches/:state`,async(c)=>{
   try{
     const st=c.req.param("state").toUpperCase(),info=gS(st);
@@ -350,6 +382,8 @@ app.get(`${P}/churches/:state`,async(c)=>{
     let ch=await kv.get(`churches:${st}`);
     if(!ch||!Array.isArray(ch)||!ch.length)return c.json({churches:[],state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},fromCache:false,message:`No data for ${info.n}. POST /churches/populate/${st} to fetch.`});
     if(st==="MD"){try{const dc=await kv.get("churches:DC");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));for(const x of dc)if(!ids.has(x.id))ch.push({...x,state:"MD"});}}catch(_){}}
+    const corrections=await getApprovedCorrectionsForState(st);
+    mergeCorrectionsIntoChurches(ch,corrections);
     const withShort=addShortIds(ch,st);
     let cal=await kv.get(`calibration:${st}`);
     if(!cal||!cal.medians){cal=await computeCalibrationForState(st,ch);try{await kv.set(`calibration:${st}`,cal);}catch(_){}}
