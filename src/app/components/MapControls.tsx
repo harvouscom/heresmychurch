@@ -18,6 +18,7 @@ export function MapControls({
   onToggleLegend,
   onShowHelp,
   zoom,
+  minZoom = 1,
   compact = false,
 }: {
   focusedState: string | null;
@@ -30,10 +31,11 @@ export function MapControls({
   onToggleLegend: () => void;
   onShowHelp: () => void;
   zoom: number;
+  minZoom?: number;
   compact?: boolean;
 }) {
   const zoomInDisabled = zoom >= 120;
-  const zoomOutDisabled = zoom <= 1;
+  const zoomOutDisabled = zoom <= minZoom;
   const sizeClass = compact ? "w-8 h-8" : "w-9 h-9";
   const iconSize = compact ? 14 : 16;
   const gapClass = compact ? "gap-1.5" : "gap-2";

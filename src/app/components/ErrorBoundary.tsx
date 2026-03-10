@@ -1,5 +1,7 @@
 import React from "react";
-import { Church, RefreshCw } from "lucide-react";
+import { Church, RefreshCw, Mail } from "lucide-react";
+
+const CONTACT_EMAIL = "hey@heresmychurch.com";
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -58,16 +60,25 @@ export class AppErrorBoundary extends React.Component<
                 </p>
               </div>
             )}
-            <button
-              onClick={() => window.location.reload()}
-              className="flex items-center gap-2 px-6 py-3 rounded-full text-white text-sm font-medium shadow-lg hover:shadow-xl transition-all"
-              style={{
-                background: "linear-gradient(135deg, #6B21A8 0%, #A855F7 100%)",
-              }}
-            >
-              <RefreshCw size={16} />
-              Refresh Page
-            </button>
+            <div className="flex flex-wrap gap-3 justify-center">
+              <button
+                onClick={() => window.location.reload()}
+                className="flex items-center gap-2 px-6 py-3 rounded-full text-white text-sm font-medium shadow-lg hover:shadow-xl transition-all"
+                style={{
+                  background: "linear-gradient(135deg, #6B21A8 0%, #A855F7 100%)",
+                }}
+              >
+                <RefreshCw size={16} />
+                Refresh Page
+              </button>
+              <a
+                href={`mailto:${CONTACT_EMAIL}`}
+                className="flex items-center gap-2 px-6 py-3 rounded-full text-white/60 text-sm border border-white/15 hover:bg-white/5 transition-all"
+              >
+                <Mail size={16} />
+                Email us
+              </a>
+            </div>
           </div>
         </div>
       );

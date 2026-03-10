@@ -29,6 +29,7 @@ export type CountyStats = {
 interface MapCanvasProps {
   center: [number, number];
   zoom: number;
+  minZoom?: number;
   focusedState: string | null;
   hoveredState: string | null;
   states: StateInfo[];
@@ -50,6 +51,7 @@ interface MapCanvasProps {
 export const MapCanvas = memo(function MapCanvas({
   center,
   zoom,
+  minZoom = 1,
   focusedState,
   hoveredState,
   states,
@@ -84,7 +86,7 @@ export const MapCanvas = memo(function MapCanvas({
       <ZoomableGroup
         center={center}
         zoom={zoom}
-        minZoom={1}
+        minZoom={minZoom}
         maxZoom={120}
         onMoveStart={() => { if (onUserInteractionStart) onUserInteractionStart(); }}
         onMoveEnd={({ coordinates, zoom: z }: { coordinates: [number, number]; zoom: number }) => {

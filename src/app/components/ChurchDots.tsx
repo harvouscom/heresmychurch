@@ -133,6 +133,8 @@ export const ChurchDots = memo(function ChurchDots({
   // users expect when pinch-zooming to tap a specific church.
   const isNarrow = typeof window !== "undefined" && window.innerWidth < 768;
   const zoomDiv = isNarrow ? Math.pow(zoom, 0.75) : zoom;
+  // Scale down dot size on small screens so they don't dominate the map.
+  const dotScale = isNarrow ? 0.6 : 1;
 
   // If context/projection not ready yet, render nothing
   if (!projection || visible.length === 0) return null;
@@ -164,11 +166,11 @@ export const ChurchDots = memo(function ChurchDots({
               data-id={v.id}
               cx={v.x}
               cy={v.y}
-              r={v.r / zoomDiv}
+              r={(v.r * dotScale) / zoomDiv}
               fill={v.color}
               fillOpacity={0.8}
               stroke="rgba(255,255,255,0.6)"
-              strokeWidth={0.8 / zoomDiv}
+              strokeWidth={(0.8 * dotScale) / zoomDiv}
               style={{ cursor: "pointer" }}
             />
           )
@@ -177,7 +179,7 @@ export const ChurchDots = memo(function ChurchDots({
 
       {/* Selected church — Lucide MapPin, drops in from above */}
       {selectedEntry && (() => {
-        const pinScale = 1.2 / zoomDiv;
+        const pinScale = (1.2 * dotScale) / zoomDiv;
         return (
           <g
             key={selectedEntry.id}

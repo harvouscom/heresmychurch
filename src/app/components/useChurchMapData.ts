@@ -853,6 +853,19 @@ export function useChurchMapData({
     }
   }, [routeChurchShortId, routeLegacyChurchId, routeChurchKey, churches, selectedChurch?.id, focusedState, navigateToChurch]);
 
+  // Re-center map when isMobile changes while viewing a church
+  const prevIsMobileRef = useRef(isMobile);
+  useEffect(() => {
+    if (prevIsMobileRef.current === isMobile) return;
+    prevIsMobileRef.current = isMobile;
+    if (!selectedChurch) return;
+    if (isMobile) {
+      setCenter([selectedChurch.lng, selectedChurch.lat - getMobileLatOffset(zoom)]);
+    } else {
+      setCenter([selectedChurch.lng, selectedChurch.lat]);
+    }
+  }, [isMobile]);
+
   // Update page title
   useEffect(() => {
     if (selectedChurch) {
@@ -934,8 +947,10 @@ export function useChurchMapData({
 
   const clearTransition = () => dd({ type: "SET_TRANSITIONING", value: false });
   const handleResetView = () => navigateToNational();
+  // In state view, don't allow zooming out past the initial state zoom.
+  const minZoom = focusedState ? getStateZoom(focusedState) : 1;
   const handleZoomIn = () => setZoom((z) => Math.min(z * 1.5, 120));
-  const handleZoomOut = () => setZoom((z) => Math.max(z / 1.5, 1));
+  const handleZoomOut = () => setZoom((z) => Math.max(z / 1.5, minZoom));
   const preloadChurch = (church: Church) => { refs.current.preloadedChurch = church; };
 
   const handleChurchDotClick = (church: Church) => {
@@ -948,6 +963,7 @@ export function useChurchMapData({
   return {
     // Map state (was in useMapView, now in data reducer)
     zoom, setZoom,
+    minZoom,
     center, setCenter,
     isTransitioning: ds.isTransitioning,
     clearTransition,

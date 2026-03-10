@@ -1,5 +1,7 @@
 import { motion, AnimatePresence } from "motion/react";
-import { Loader2, X } from "lucide-react";
+import { Loader2, X, Mail } from "lucide-react";
+
+const CONTACT_EMAIL = "hey@heresmychurch.com";
 import { StateFlag } from "./StateFlag";
 import { getSizeCategory, getFallbackLocation } from "./church-data";
 import type { Church } from "./church-data";
@@ -80,7 +82,7 @@ export function ErrorOverlay({
             {error}
           </div>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3 justify-center">
           <button
             onClick={onRetry}
             className="px-5 py-2 rounded-full text-white text-sm font-medium shadow-lg hover:shadow-xl transition-all"
@@ -97,6 +99,13 @@ export function ErrorOverlay({
           >
             Go Back
           </button>
+          <a
+            href={`mailto:${CONTACT_EMAIL}`}
+            className="flex items-center gap-2 px-5 py-2 rounded-full text-white/60 text-sm border border-white/15 hover:bg-white/5 transition-all"
+          >
+            <Mail size={14} />
+            Email us
+          </a>
         </div>
       </div>
     </div>

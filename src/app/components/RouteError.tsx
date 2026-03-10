@@ -1,5 +1,7 @@
 import { useRouteError } from "react-router";
-import { RefreshCw, Home } from "lucide-react";
+import { RefreshCw, Home, Mail } from "lucide-react";
+
+const CONTACT_EMAIL = "hey@heresmychurch.com";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 
 export function RouteError() {
@@ -39,7 +41,7 @@ export function RouteError() {
             {message}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3 justify-center">
           <button
             onClick={() => window.location.reload()}
             className="flex items-center gap-2 px-5 py-2.5 rounded-full text-white text-sm font-medium shadow-lg hover:shadow-xl transition-all"
@@ -56,6 +58,13 @@ export function RouteError() {
           >
             <Home size={15} />
             Home
+          </a>
+          <a
+            href={`mailto:${CONTACT_EMAIL}`}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-full text-white/60 text-sm border border-white/15 hover:bg-white/5 transition-all"
+          >
+            <Mail size={15} />
+            Email us
           </a>
         </div>
       </div>

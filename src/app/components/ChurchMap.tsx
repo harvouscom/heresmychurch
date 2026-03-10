@@ -182,6 +182,7 @@ export function ChurchMap({
         activeBots={activeBots}
         isLocalhost={isLocalhost}
         searchCollapsed={effectiveSearchCollapsed}
+        isMobile={isMobile}
       />
 
       {/* Modals (rendered outside map area to reduce nesting depth) */}
@@ -240,10 +241,10 @@ export function ChurchMap({
         />
       )}
 
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {d.selectedChurch && (
           <motion.div
-            key="church-detail-panel"
+            key={`church-detail-panel-${isMobile ? "mobile" : "desktop"}`}
             className={`flex-shrink-0 overflow-hidden ${isMobile ? 'absolute bottom-0 left-0 right-0 z-40' : ''}`}
             style={{ backgroundColor: "#EDE4F3", ...(isMobile ? { height: "55vh" } : {}) }}
             initial={isMobile ? { y: "100%" } : { width: 0, height: "100%" }}
@@ -311,6 +312,7 @@ function MapArea({
   activeBots,
   isLocalhost,
   searchCollapsed,
+  isMobile,
 }: {
   d: ReturnType<typeof useChurchMapData>;
   isLoadingVisible: boolean;
@@ -333,6 +335,7 @@ function MapArea({
   activeBots: number;
   isLocalhost: boolean;
   searchCollapsed: boolean;
+  isMobile: boolean;
 }) {
   return (
     <div className="flex-1 relative" style={{ backgroundColor: "#F5F0E8" }}>
@@ -412,6 +415,7 @@ function MapArea({
       <MapCanvas
         center={d.center}
         zoom={d.zoom}
+        minZoom={d.minZoom}
         focusedState={d.focusedState}
         hoveredState={d.hoveredState}
         states={d.states}
@@ -467,7 +471,7 @@ function MapArea({
       )}
 
       {!isLoadingVisible && (
-        <div className="absolute left-4 bottom-6 z-30 flex flex-col gap-2 items-start">
+        <div className="absolute left-4 bottom-4 z-30 flex flex-col gap-2 items-start">
           {(d.focusedState || d.selectedChurch) && (
             <button
               onClick={d.handleResetView}
@@ -480,6 +484,7 @@ function MapArea({
               All states
             </button>
           )}
+          {!d.selectedChurch && (
           <MapControls
             focusedState={d.focusedState}
             showFilterPanel={d.showFilterPanel}
@@ -487,6 +492,7 @@ function MapArea({
             onZoomIn={d.handleZoomIn}
             onZoomOut={d.handleZoomOut}
             onResetView={d.handleResetView}
+            minZoom={d.minZoom}
             onToggleFilter={() => {
               d.setShowFilterPanel((v) => {
                 if (!v) { d.setShowSummary(false); d.setShowLegend(false); d.setSearchCollapsed(true); }
@@ -506,6 +512,7 @@ function MapArea({
             zoom={d.zoom}
             compact
           />
+          )}
         </div>
       )}
 
@@ -545,44 +552,39 @@ function MapArea({
       )}
 
       {!isLoadingVisible && !d.showFilterPanel && !d.showLegend && (
-        <div className="absolute bottom-3 md:bottom-8 left-6 right-6 md:left-12 md:right-12 z-20 flex flex-col items-center gap-2.5">
-          {/* Active now — 10px above search; search list z-index is above this */}
-          {((activePeople + activeBots) > 1 || (isLocalhost && (activePeople + activeBots) >= 1)) && (
-            <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full min-w-0 truncate bg-green-500/5 border border-green-500/10 backdrop-blur-md" style={{ boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 0 rgba(0, 0, 0, 0.1)" }}>
-              <span
-                className="relative flex h-1.5 w-1.5 flex-shrink-0"
-                aria-hidden
-              >
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-600 opacity-75" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-600" />
-              </span>
-              <span className="text-green-700 text-[11px] font-medium truncate">
-                {activePeople > 0 && activeBots === 0
-                  ? activePeople === 1
-                    ? "1 person is here"
-                    : `${activePeople.toLocaleString()} people are here`
-                  : activePeople === 0 && activeBots > 0
-                    ? activeBots === 1
-                      ? "1 bot is here"
-                      : `${activeBots.toLocaleString()} bots are here`
-                    : `${activePeople === 1 ? "1 person" : `${activePeople.toLocaleString()} people`}, ${activeBots === 1 ? "1 bot" : `${activeBots.toLocaleString()} bots`} are here`}
-              </span>
-            </div>
+        <div
+          className={`absolute left-6 right-6 md:left-12 md:right-12 z-20 flex flex-col items-center gap-2.5 ${d.selectedChurch ? (isMobile ? "top-[80px] md:top-auto md:bottom-8" : "md:bottom-8") : "bottom-3 md:bottom-8"}`}
+        >
+          {/* People with you now — bottom of map; on mobile church view: 8px below top pill */}
+          {((activePeople + activeBots) > 1 || (isLocalhost && (activePeople + activeBots) >= 1)) && (() => {
+            const withYou = (activePeople + activeBots) - 1;
+            const label = withYou === 0 ? "0 people with you now" : withYou === 1 ? "1 person with you now" : `${withYou.toLocaleString()} people with you now`;
+            return (
+              <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full min-w-0 truncate bg-green-500/5 border border-green-500/10 backdrop-blur-md" style={{ boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 0 rgba(0, 0, 0, 0.1)" }}>
+                <span className="relative flex h-1.5 w-1.5 flex-shrink-0" aria-hidden>
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-600 opacity-75" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-600" />
+                </span>
+                <span className="text-green-700 text-[11px] font-medium truncate">{label}</span>
+              </div>
+            );
+          })()}
+          {!d.selectedChurch && (
+            <MapSearchBar
+              churches={d.churches}
+              states={d.states}
+              focusedState={d.focusedState}
+              focusedStateName={d.focusedStateName}
+              navigateToChurch={navigateToChurch}
+              onPreloadChurch={d.preloadChurch}
+              collapsed={searchCollapsed}
+              onExpand={() => { d.setSearchCollapsed(false); d.setShowFilterPanel(false); d.setShowLegend(false); }}
+              onAddChurch={d.focusedState ? () => { d.setShowAddChurchFromSummary(true); } : undefined}
+              detectedState={d.detectedState}
+              zoom={d.zoom}
+              center={d.center}
+            />
           )}
-          <MapSearchBar
-            churches={d.churches}
-            states={d.states}
-            focusedState={d.focusedState}
-            focusedStateName={d.focusedStateName}
-            navigateToChurch={navigateToChurch}
-            onPreloadChurch={d.preloadChurch}
-            collapsed={searchCollapsed}
-            onExpand={() => { d.setSearchCollapsed(false); d.setShowFilterPanel(false); d.setShowLegend(false); }}
-            onAddChurch={d.focusedState ? () => { d.setShowAddChurchFromSummary(true); } : undefined}
-            detectedState={d.detectedState}
-            zoom={d.zoom}
-            center={d.center}
-          />
         </div>
       )}
 
