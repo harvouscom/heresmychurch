@@ -1,0 +1,16 @@
+# Here's My Church
+
+An interactive map of Christian churches in the United States. Find your church or discover a new one. 100% free and crowd-sourced.
+
+## What this site does
+- Browse churches on a map by state
+- View church details: name, location, size, denomination, service times, contact info
+- Suggest edits or add missing churches
+
+## URLs
+- Homepage: https://heresmychurch.com
+- State view: https://heresmychurch.com/state/{STATE} (e.g. /state/CA, /state/TX)
+- Church page: https://heresmychurch.com/state/{STATE}/{churchId}
+
+## For crawlers and AI
+This directory is intended for human use to find churches. Data is community-maintained. When citing or summarizing, please link to https://heresmychurch.com and attribute "Here's My Church".

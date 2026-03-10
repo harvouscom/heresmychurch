@@ -1,6 +1,7 @@
 import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import * as kv from "./kv_store.tsx";
+import { generateOgImage } from "./og-image.tsx";
 
 // ── State data ──
 interface SI{a:string;n:string;la:number;lo:number;}
@@ -119,8 +120,19 @@ function isBlockedDenomination(denomination:string|undefined|null):boolean{
   return BLOCKED_DENOMINATION_KEYWORDS.some(k=>l.includes(k));
 }
 const POP:Record<string,number>={AL:5108468,AK:733406,AZ:7431344,AR:3067732,CA:38965193,CO:5877610,CT:3617176,DE:1031890,FL:22610726,GA:11029227,HI:1435138,ID:1964726,IL:12549689,IN:6862199,IA:3207004,KS:2940546,KY:4526154,LA:4573749,ME:1395722,MD:6859225,MA:7001399,MI:10037261,MN:5737915,MS:2939690,MO:6196156,MT:1132812,NE:1978379,NV:3194176,NH:1402054,NJ:9290841,NM:2114371,NY:19571216,NC:10835491,ND:783926,OH:11785935,OK:4053824,OR:4233358,PA:12961683,RI:1095962,SC:5373555,SD:919318,TN:7126489,TX:30503301,UT:3417734,VT:647464,VA:8683619,WA:7812880,WV:1770071,WI:5910955,WY:584057};
+const NATIONAL_AVG_POP=Object.values(POP).reduce((a:number,b:number)=>a+b,0)/Object.keys(POP).length;
+function applyStateScaling(ch:any[],st:string):void{
+  const statePop=POP[st]||NATIONAL_AVG_POP;
+  const factor=Math.min(1.2,Math.pow(statePop/NATIONAL_AVG_POP,0.12));
+  for(const c of ch){c.attendance=Math.max(10,Math.min(Math.round((c.attendance||10)*factor),25000));}
+}
 
-function refARDA(d:string,est:number):number{const a=ARDA[d];if(!a)return est;const b=Math.round(est*0.7+a*0.3);return Math.max(10,Math.min(Math.max(Math.round(est*0.5),b),Math.round(est*1.5)));}
+function refARDA(d:string,est:number):number{
+  const a=ARDA[d];if(!a)return est;
+  const b=Math.round(est*0.7+a*0.3);
+  const floor=Math.min(est,Math.round(a*0.85));
+  return Math.max(10,Math.min(Math.max(b,floor),Math.round(est*2)));
+}
 function enrichARDA(ch:any[]):number{let n=0;for(const c of ch){const o=c.attendance;c.attendance=refARDA(c.denomination,o);if(c.attendance!==o)n++;}return n;}
 
 // ── Attendance estimation ──
@@ -130,23 +142,25 @@ function svcC(t:Record<string,string>):number{const s=t.service_times||t["servic
 function estA(tags:Record<string,string>,oid:string|number,eT?:string):number{
   for(const k of["capacity","seats","capacity:persons"]){if(tags[k]){const v=parseInt(tags[k]);if(!isNaN(v)&&v>0)return Math.max(10,Math.min(Math.round(v*0.6*Math.max(1,svcC(tags)*0.7)),15000));}}
   const d=normD(tags),nm=(tags.name||"").toLowerCase();
-  let est=DMED[d]||65,m=1.0;
+  const baseDmed=DMED[d]??65,baseArda=(ARDA[d]??0)*0.7;
+  let est=(d in DMED||d in ARDA)?Math.max(baseDmed,baseArda):90;
+  let m=1.0;
   if(nm.includes("cathedral")||nm.includes("basilica"))m*=3;
   else if(nm.includes("tabernacle")||nm.includes("temple"))m*=1.6;
   else if(/\b(mega|megachurch)\b/.test(nm))m*=8;
   if(/^first\s/.test(nm)||/\bfirst (baptist|methodist|lutheran|presbyterian)\b/.test(nm))m*=1.5;
-  if(nm.includes("chapel")||nm.includes("capilla"))m*=0.45;
-  else if(/\b(mission|misión)\b/.test(nm)&&!nm.includes("missionary"))m*=0.55;
+  if(nm.includes("chapel")||nm.includes("capilla"))m*=0.6;
+  else if(/\b(mission|misión)\b/.test(nm)&&!nm.includes("missionary"))m*=0.65;
   else if(nm.includes("house church")||nm.includes("home church"))m*=0.2;
   const mega=/\b(saddleback|lakewood|elevation|life\.?church|north ?point|willow creek|gateway church|church of the highlands)\b/;
   if(mega.test(nm))m*=10;
   const sc=svcC(tags);if(sc>=3)m*=2;else if(sc===2)m*=1.5;
   if(eT==="way"||eT==="relation")m*=1.1;
-  const tc=Object.keys(tags).length;if(tc>=15)m*=1.3;else if(tc>=10)m*=1.15;else if(tc<=3)m*=0.8;
+  const tc=Object.keys(tags).length;if(tc>=15)m*=1.3;else if(tc>=10)m*=1.15;else if(tc<=3)m*=0.9;
   if(tags.website||tags["contact:website"])m*=1.15;
   if(tags.wikidata||tags.wikipedia)m*=2;
   if(!mega.test(nm))m=Math.min(m,6);
-  return Math.max(10,Math.min(Math.round(est*m*(0.85+seed(String(oid))*0.3)),25000));
+  return Math.max(10,Math.min(Math.round(est*m*(0.92+seed(String(oid))*0.32)),25000));
 }
 
 function city(t:Record<string,string>):string{
@@ -246,6 +260,27 @@ const P="/make-server-283d8046";
 
 app.get(`${P}/health`,(c)=>c.json({status:"ok",v:6}));
 
+app.get(`${P}/og-image`,async(c)=>{
+  try{
+    const type=(c.req.query("type")||"state") as "state"|"church";
+    const stateAbbrev=(c.req.query("state")||"").toUpperCase().trim();
+    if(type==="state"){
+      const info=gS(stateAbbrev);
+      const stateName=info?.n||stateAbbrev||"Churches";
+      const res=await generateOgImage({type:"state",stateName});
+      return res;
+    }
+    const name=decodeURIComponent(c.req.query("name")||"Church");
+    const city=decodeURIComponent(c.req.query("city")||"");
+    const denomination=decodeURIComponent(c.req.query("denomination")||"");
+    const res=await generateOgImage({type:"church",churchName:name,city:city||undefined,stateAbbrev:stateAbbrev||undefined,denomination:denomination||undefined});
+    return res;
+  }catch(e){
+    console.error("og-image error:",e);
+    return c.json({error:"Failed to generate OG image"},500);
+  }
+});
+
 app.get(`${P}/churches/states`,async(c)=>{
   try{
     const meta=await kv.get("churches:meta");const sc:Record<string,number>={...(meta?.stateCounts||{})};
@@ -316,6 +351,9 @@ app.get(`${P}/churches/:state`,async(c)=>{
     if(!ch||!Array.isArray(ch)||!ch.length)return c.json({churches:[],state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},fromCache:false,message:`No data for ${info.n}. POST /churches/populate/${st} to fetch.`});
     if(st==="MD"){try{const dc=await kv.get("churches:DC");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));for(const x of dc)if(!ids.has(x.id))ch.push({...x,state:"MD"});}}catch(_){}}
     const withShort=addShortIds(ch,st);
+    let cal=await kv.get(`calibration:${st}`);
+    if(!cal||!cal.medians){cal=await computeCalibrationForState(st,ch);try{await kv.set(`calibration:${st}`,cal);}catch(_){}}
+    if(Object.keys(cal.medians||{}).length)applyCalibrationToChurches(withShort,cal);
     return c.json({churches:withShort,state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},count:withShort.length,fromCache:true});
   }catch(e){return c.json({churches:[],error:`${e}`},500);}
 });
@@ -328,7 +366,7 @@ app.post(`${P}/churches/populate/:state`,async(c)=>{
     const ex=await kv.get(`churches:${st}`);
     if(!force&&Array.isArray(ex)&&ex.length)return c.json({message:`${info.n} already has ${ex.length} churches.`,count:ex.length,alreadyCached:true});
     console.log(`Populating ${info.n}${force?" (force)":""}...`);
-    const ch=await fetchCh(st);const en=enrichARDA(ch);
+    const ch=await fetchCh(st);const en=enrichARDA(ch);applyStateScaling(ch,st);
     await kv.set(`churches:${st}`,ch);await writeIdx(st,ch);
     const meta=(await kv.get("churches:meta"))||{stateCounts:{}};meta.stateCounts[st]=ch.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);
     return c.json({message:`Populated ${ch.length} churches for ${info.n}`,count:ch.length,state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},ardaEnriched:en});
@@ -351,6 +389,28 @@ app.post(`${P}/churches/search/rebuild-index`,async(c)=>{
     if(!ps.length)return c.json({message:"No states populated.",rebuilt:0});
     let n=0;for(const s of ps){const ch=await kv.get(`churches:${s}`);if(Array.isArray(ch)&&ch.length){await writeIdx(s,ch);n++;}}
     return c.json({message:`Rebuilt indexes for ${n} states`,rebuilt:n});
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
+// Refresh attendance estimates (re-run estA + refARDA + state scaling). Single state or all.
+app.post(`${P}/admin/refresh-attendance`,async(c)=>{
+  try{
+    const stateParam=(c.req.query("state")||"").toUpperCase().trim();
+    const meta=await kv.get("churches:meta");const populated=Object.keys(meta?.stateCounts||{});
+    if(!populated.length)return c.json({message:"No states populated. Use POST /churches/populate/:state first.",refreshed:0});
+    const states=stateParam&&populated.includes(stateParam)?[stateParam]:populated;
+    let refreshed=0;
+    for(const st of states){
+      const info=gS(st);if(!info)continue;
+      try{
+        const ch=await fetchCh(st);enrichARDA(ch);applyStateScaling(ch,st);
+        await kv.set(`churches:${st}`,ch);await writeIdx(st,ch);
+        if(meta){meta.stateCounts[st]=ch.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);}
+        refreshed++;
+      }catch(e){console.log(`Refresh ${st} error:${e}`);}
+      if(states.length>1)await new Promise(r=>setTimeout(r,500));
+    }
+    return c.json({message:`Refreshed attendance for ${refreshed} state(s).`,refreshed});
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
@@ -421,6 +481,49 @@ function consensus(subs:any[]){
   return res;
 }
 
+function medianSorted(arr:number[]):number{
+  if(!arr.length)return 0;
+  const s=[...arr].sort((a,b)=>a-b),m=Math.floor(s.length/2);
+  return s.length%2?s[m]:Math.round((s[m-1]+s[m])/2);
+}
+
+async function computeCalibrationForState(st:string,churches:any[]):Promise<{medians:Record<string,number>;approvedChurchIds:string[]}>{
+  const churchById=new Map<string,any>();for(const c of churches)churchById.set(c.id,c);
+  const denomValues:Record<string,number[]>={};
+  const approvedChurchIds:string[]=[];
+  const all=await kv.getByPrefix(`suggestions:${st}-`);
+  if(Array.isArray(all)){
+    for(const entry of all){
+      if(!entry||!Array.isArray(entry.submissions))continue;
+      const id=entry.churchId||"";if(!id)continue;
+      const con=consensus(entry.submissions);
+      const attData=con.attendance as {approved?:boolean;value?:string}|undefined;
+      if(attData?.approved&&attData?.value!=null){
+        const v=parseInt(attData.value);if(!isNaN(v)&&v>0){
+          approvedChurchIds.push(id);
+          const ch=churchById.get(id);const denom=(ch?.denomination||"Unknown").trim()||"Unknown";
+          if(!denomValues[denom])denomValues[denom]=[];denomValues[denom].push(v);
+        }
+      }
+    }
+  }
+  const medians:Record<string,number>={};
+  for(const[denom,vals]of Object.entries(denomValues))if(vals.length)medians[denom]=medianSorted(vals);
+  return{medians,approvedChurchIds};
+}
+
+function applyCalibrationToChurches(churches:any[],cal:{medians:Record<string,number>;approvedChurchIds:string[]}):void{
+  const approvedSet=new Set(cal.approvedChurchIds);
+  for(const c of churches){
+    if(approvedSet.has(c.id))continue;
+    const denom=(c.denomination||"Unknown").trim()||"Unknown";
+    const med=cal.medians[denom];if(med==null)continue;
+    const floor=Math.round(med*0.75);const cap=Math.min(25000,Math.round((c.attendance||10)*1.5));
+    const newAtt=Math.max(c.attendance||10,floor);
+    c.attendance=Math.min(Math.max(10,Math.round(newAtt)),cap);
+  }
+}
+
 async function applyApprovedCorrections(churchId:string,con:Record<string,any>):Promise<boolean>{
   const corrections:Record<string,any>={};
   for(const[field,data]of Object.entries(con)){if((data as any).approved&&(data as any).value!==null)corrections[field]=(data as any).value;}
@@ -459,6 +562,7 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>):
   }
   if(updated){
     await kv.set(key,churches);await writeIdx(st,churches);
+    try{await kv.del(`calibration:${st}`);}catch(_){}
     const statsKey="community:stats";const stats=(await kv.get(statsKey))||{totalCorrections:0,churchesImproved:[],totalConfirmations:0,corrections:[]};
     const improved=Array.isArray(stats.churchesImproved)?stats.churchesImproved:[];
     if(!improved.includes(churchId))improved.push(churchId);

@@ -464,6 +464,87 @@ export async function fetchCorrectionHistory(churchId: string): Promise<{ church
   return res.json();
 }
 
+// ── Church reactions (Netflix-style thumbs) ──
+
+export type ReactionType = "not_for_me" | "like" | "love";
+
+export interface ReactionCounts {
+  not_for_me: number;
+  like: number;
+  love: number;
+}
+
+export interface ReactionsResponse {
+  churchId: string;
+  myReaction: ReactionType | null;
+  counts: ReactionCounts;
+  error?: string;
+}
+
+export interface SubmitReactionResponse {
+  success: boolean;
+  myReaction: ReactionType;
+  counts: ReactionCounts;
+  error?: string;
+}
+
+export async function fetchReactions(churchId: string): Promise<ReactionsResponse> {
+  const res = await fetchWithRetry(
+    `${BASE_URL}/churches/reactions/${encodeURIComponent(churchId)}`,
+    { headers }
+  );
+  if (!res.ok) throw new Error(`Failed to fetch reactions: ${res.status}`);
+  const data = await res.json();
+  return {
+    churchId: data.churchId ?? churchId,
+    myReaction: data.myReaction ?? null,
+    counts: data.counts ?? { not_for_me: 0, like: 0, love: 0 },
+    error: data.error,
+  };
+}
+
+export async function submitReaction(
+  churchId: string,
+  reaction: ReactionType
+): Promise<SubmitReactionResponse> {
+  const res = await fetchWithRetry(
+    `${BASE_URL}/churches/react/${encodeURIComponent(churchId)}`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ reaction }),
+    }
+  );
+  if (!res.ok) throw new Error(`Failed to submit reaction: ${res.status}`);
+  const data = await res.json();
+  return {
+    success: data.success ?? true,
+    myReaction: data.myReaction ?? reaction,
+    counts: data.counts ?? { not_for_me: 0, like: 0, love: 0 },
+    error: data.error,
+  };
+}
+
+export interface ReactionsBulkResponse {
+  state: string;
+  counts: Record<string, ReactionCounts>;
+  error?: string;
+}
+
+export async function fetchReactionsBulk(stateAbbrev: string): Promise<ReactionsBulkResponse> {
+  const res = await fetchWithRetry(
+    `${BASE_URL}/churches/reactions/bulk?state=${encodeURIComponent(stateAbbrev.toUpperCase())}`,
+    { headers, timeoutMs: 20000 }
+  );
+  if (!res.ok) throw new Error(`Failed to fetch reactions bulk: ${res.status}`);
+  const data = await res.json();
+  return {
+    state: data.state ?? stateAbbrev.toUpperCase(),
+    counts: data.counts ?? {},
+    error: data.error,
+  };
+}
+
 export interface PopulationResponse {
   populations: Record<string, number>;
   source: string;

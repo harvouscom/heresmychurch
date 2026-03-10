@@ -10,6 +10,7 @@ import {
   Plus,
 } from "lucide-react";
 import type { Church } from "./church-data";
+import { churchNeedsReview, getTier1Completeness } from "./church-data";
 
 interface VerificationModalProps {
   stateAbbrev: string;
@@ -29,15 +30,8 @@ export function VerificationModal({
   onChurchClick,
   onAddChurch,
 }: VerificationModalProps) {
-  // Compute incomplete churches (missing denomination, address, or service times)
-  const incompleteChurches = useMemo(() => {
-    return churches.filter((c) => {
-      const noDenom = !c.denomination || c.denomination === "Unknown" || c.denomination === "Other";
-      const noAddress = !c.address;
-      const noServiceTimes = !c.serviceTimes;
-      return noDenom || noAddress || noServiceTimes;
-    });
-  }, [churches]);
+  // Churches that need review: missing 2+ of address, service times, denomination
+  const incompleteChurches = useMemo(() => churches.filter(churchNeedsReview), [churches]);
 
   const incompleteTotal = incompleteChurches.length;
 
@@ -65,10 +59,10 @@ export function VerificationModal({
             </div>
             <div>
               <h2 className="text-white font-medium text-base leading-tight">
-                Incomplete Churches
+                Churches Needing Review
               </h2>
               <p className="text-white/40 text-xs mt-0.5">
-                {stateName} &middot; {incompleteTotal} church{incompleteTotal !== 1 ? "es" : ""} missing data
+                {stateName} &middot; {incompleteTotal} church{incompleteTotal !== 1 ? "es" : ""} missing 2+ critical fields
               </p>
             </div>
           </div>
@@ -95,7 +89,7 @@ export function VerificationModal({
         {/* Footer */}
         <div className="flex-shrink-0 px-5 py-3 border-t border-white/6">
           <p className="text-white/25 text-[10px] text-center leading-relaxed">
-            Help fill in missing data to improve accuracy. Click a church to update its info.
+            Critical fields: address, service times, denomination. Click a church to update its info.
           </p>
         </div>
       </motion.div>
@@ -151,7 +145,7 @@ function IncompleteChurchesList({
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search incomplete churches..."
+          placeholder="Search churches needing review..."
           className="w-full pl-9 pr-3 py-2 rounded-full bg-white/[0.05] border border-white/8 text-white text-xs placeholder:text-white/25 focus:outline-none focus:border-purple-500/40 transition-colors"
         />
       </div>
@@ -159,7 +153,7 @@ function IncompleteChurchesList({
       {displayed.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-10 gap-3">
           <p className="text-white/40 text-xs">
-            No incomplete churches found for &ldquo;{search}&rdquo;
+            No churches needing review found for &ldquo;{search}&rdquo;
           </p>
           {onAddChurch && (
             <button
@@ -174,14 +168,11 @@ function IncompleteChurchesList({
       ) : (
         <>
           {displayed.map((ch) => {
-            const noDenom = !ch.denomination || ch.denomination === "Unknown" || ch.denomination === "Other";
-            const noAddress = !ch.address;
-            const noServiceTimes = !ch.serviceTimes;
-
+            const t1 = getTier1Completeness(ch);
             const missing: string[] = [];
-            if (noDenom) missing.push("Denomination");
-            if (noAddress) missing.push("Address");
-            if (noServiceTimes) missing.push("Service Times");
+            if (t1.missingDenomination) missing.push("Denomination");
+            if (t1.missingAddress) missing.push("Address");
+            if (t1.missingServiceTimes) missing.push("Service Times");
 
             return (
               <div
@@ -225,7 +216,7 @@ function IncompleteChurchesList({
           })}
           {!isSearching && churches.length > DISPLAY_CAP && (
             <div className="text-white/40 text-[10px] text-center leading-relaxed mt-2">
-              Showing {DISPLAY_CAP} of {churches.length} incomplete churches. Use search to find a specific church.
+              Showing {DISPLAY_CAP} of {churches.length} churches needing review. Use search to find a specific church.
             </div>
           )}
         </>

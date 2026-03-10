@@ -1,0 +1,160 @@
+/**
+ * Netlify Edge Function: rewrite HTML meta tags for social crawlers
+ * so /state/:abbrev and /state/:abbrev/:shortId get correct og:image, og:title, og:url.
+ *
+ * Required Netlify env vars (for bot requests):
+ *   SUPABASE_FUNCTIONS_BASE_URL - e.g. https://PROJECT.supabase.co/functions/v1/make-server-283d8046
+ *   SUPABASE_ANON_KEY - Supabase anon key for API calls
+ */
+import type { Context } from "https://edge.netlify.com";
+
+const BOT_UA_PATTERNS = [
+  "Twitterbot",
+  "facebookexternalhit",
+  "LinkedInBot",
+  "Slackbot",
+  "Discordbot",
+  "WhatsApp",
+  "TelegramBot",
+  "Pinterest",
+  "Applebot",
+  "Googlebot",
+  "bingbot",
+  "Slurp",
+  "DuckDuckBot",
+  "Baiduspider",
+  "YandexBot",
+  "facebot",
+  "ia_archiver",
+];
+
+const STATE_NAMES: Record<string, string> = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+  CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+  HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa", KS: "Kansas",
+  KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland", MA: "Massachusetts",
+  MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri", MT: "Montana",
+  NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico",
+  NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma",
+  OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota",
+  TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington",
+  WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming", DC: "District of Columbia",
+};
+
+const SITE_URL = "https://heresmychurch.com";
+const DEFAULT_DESCRIPTION = "An interactive map of Christian churches in the U.S. Find your church or find a new church. 100% free and crowd-sourced.";
+
+function isBot(userAgent: string): boolean {
+  const ua = userAgent || "";
+  return BOT_UA_PATTERNS.some((p) => ua.includes(p));
+}
+
+function getStateName(abbrev: string): string {
+  return STATE_NAMES[abbrev.toUpperCase()] ?? abbrev;
+}
+
+interface OgMeta {
+  title: string;
+  description: string;
+  image: string;
+  url: string;
+}
+
+export default async function handler(request: Request, context: Context): Promise<Response> {
+  const userAgent = request.headers.get("user-agent") ?? "";
+  if (!isBot(userAgent)) {
+    return context.next();
+  }
+
+  const url = new URL(request.url);
+  const path = url.pathname;
+  const pathParts = path.split("/").filter(Boolean); // ["state", "CA"] or ["state", "CA", "16692500"]
+
+  const apiBase = Deno.env.get("SUPABASE_FUNCTIONS_BASE_URL");
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!apiBase || !anonKey) {
+    return context.next();
+  }
+
+  let meta: OgMeta = {
+    title: "Here's My Church",
+    description: DEFAULT_DESCRIPTION,
+    image: `${SITE_URL}/og-image.png`,
+    url: SITE_URL,
+  };
+
+  if (pathParts[0] === "state" && pathParts[1]) {
+    const stateAbbrev = pathParts[1].toUpperCase();
+    const shortId = pathParts[2];
+
+    if (!shortId) {
+      const stateName = getStateName(stateAbbrev);
+      meta = {
+        title: `Churches in ${stateName}`,
+        description: `Find Christian churches in ${stateName}. ${DEFAULT_DESCRIPTION}`,
+        image: `${apiBase}/og-image?type=state&state=${encodeURIComponent(stateAbbrev)}`,
+        url: `${SITE_URL}/state/${stateAbbrev}`,
+      };
+    } else {
+      try {
+        const res = await fetch(`${apiBase}/churches/${stateAbbrev}`, {
+          headers: { Authorization: `Bearer ${anonKey}`, "Content-Type": "application/json" },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const churches = data.churches ?? [];
+          const church = churches.find((c: { shortId?: string }) => String(c.shortId) === String(shortId));
+          if (church) {
+            const name = church.name ?? "Church";
+            const city = church.city ?? "";
+            const denom = church.denomination ?? "";
+            const ogParams = new URLSearchParams({
+              type: "church",
+              name: name,
+              state: stateAbbrev,
+            });
+            if (city) ogParams.set("city", city);
+            if (denom) ogParams.set("denomination", denom);
+            meta = {
+              title: name,
+              description: [city, stateAbbrev].filter(Boolean).join(", ") + (denom ? ` · ${denom}` : ""),
+              image: `${apiBase}/og-image?${ogParams.toString()}`,
+              url: `${SITE_URL}/state/${stateAbbrev}/${shortId}`,
+            };
+          }
+        }
+      } catch (_) {
+        // keep default meta
+      }
+    }
+  }
+
+  const response = await context.next();
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("text/html")) {
+    return response;
+  }
+
+  const html = await response.text();
+
+  function escapeAttr(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  let out = html;
+  out = out.replace(/<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i, `<meta property="og:title" content="${escapeAttr(meta.title)}" />`);
+  out = out.replace(/<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i, `<meta property="og:url" content="${escapeAttr(meta.url)}" />`);
+  out = out.replace(/<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i, `<meta property="og:image" content="${escapeAttr(meta.image)}" />`);
+  out = out.replace(/<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i, `<meta property="og:description" content="${escapeAttr(meta.description)}" />`);
+  out = out.replace(/<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i, `<meta name="twitter:title" content="${escapeAttr(meta.title)}" />`);
+  out = out.replace(/<meta\s+name="twitter:url"\s+content="[^"]*"\s*\/?>/i, `<meta name="twitter:url" content="${escapeAttr(meta.url)}" />`);
+  out = out.replace(/<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i, `<meta name="twitter:image" content="${escapeAttr(meta.image)}" />`);
+  out = out.replace(/<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i, `<meta name="twitter:description" content="${escapeAttr(meta.description)}" />`);
+  out = out.replace(/<title>[^<]*<\/title>/i, `<title>${escapeAttr(meta.title)}</title>`);
+
+  return new Response(out, {
+    status: response.status,
+    headers: new Headers(response.headers),
+  });
+}

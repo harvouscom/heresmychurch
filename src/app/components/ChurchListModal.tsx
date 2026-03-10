@@ -11,8 +11,13 @@ import {
   Filter,
   ChevronDown,
   Plus,
+  Heart,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import type { Church } from "./church-data";
+import { fetchReactionsBulk } from "./api";
+import type { ReactionCounts } from "./api";
 import {
   sizeCategories,
   getSizeCategory,
@@ -24,6 +29,15 @@ import { FixedSizeList as List } from "react-window";
 
 type SortField = "name" | "city" | "address" | "denomination" | "attendance";
 type SortDir = "asc" | "desc";
+type ReactionFilter = "any" | "love" | "like" | "mixed" | "none";
+
+function getDominantReaction(counts: ReactionCounts): "love" | "like" | "mixed" | "none" {
+  const total = counts.not_for_me + counts.like + counts.love;
+  if (total === 0) return "none";
+  if (counts.love >= counts.like && counts.love >= counts.not_for_me) return "love";
+  if (counts.like >= counts.not_for_me) return "like";
+  return "mixed";
+}
 
 interface ChurchListModalProps {
   churches: Church[];
@@ -53,9 +67,23 @@ export function ChurchListModal({
   );
   const [showDenomDropdown, setShowDenomDropdown] = useState(false);
   const [showSizeDropdown, setShowSizeDropdown] = useState(false);
+  const [showReactionDropdown, setShowReactionDropdown] = useState(false);
   const [showAddChurch, setShowAddChurch] = useState(false);
+  const [reactionCountsByChurchId, setReactionCountsByChurchId] = useState<
+    Record<string, ReactionCounts>
+  >({});
+  const [selectedReactionFilter, setSelectedReactionFilter] =
+    useState<ReactionFilter>("any");
   const listContainerRef = useRef<HTMLDivElement>(null);
   const [listHeight, setListHeight] = useState(400);
+
+  // Fetch reaction counts for the state when modal has churches
+  useEffect(() => {
+    if (churches.length === 0 || !stateAbbrev) return;
+    fetchReactionsBulk(stateAbbrev)
+      .then((data) => setReactionCountsByChurchId(data.counts))
+      .catch(() => {});
+  }, [churches.length, stateAbbrev]);
 
   useEffect(() => {
     const el = listContainerRef.current;
@@ -89,6 +117,25 @@ export function ChurchListModal({
     });
     return counts;
   }, [churches]);
+
+  // Reaction (dominant) counts for filter
+  const reactionFilterCounts = useMemo(() => {
+    const counts: Record<Exclude<ReactionFilter, "any">, number> = {
+      love: 0,
+      like: 0,
+      mixed: 0,
+      none: 0,
+    };
+    churches.forEach((ch) => {
+      const c = reactionCountsByChurchId[ch.id] ?? {
+        not_for_me: 0,
+        like: 0,
+        love: 0,
+      };
+      counts[getDominantReaction(c)]++;
+    });
+    return counts;
+  }, [churches, reactionCountsByChurchId]);
 
   // State overview stats: top denominations by % and median attendance
   const stateStats = useMemo(() => {
@@ -156,6 +203,15 @@ export function ChurchListModal({
       const sizeCat = getSizeCategory(ch.attendance);
       if (!selectedSizes.has(sizeCat.label)) return false;
 
+      // Reaction filter
+      if (selectedReactionFilter !== "any") {
+        const counts =
+          reactionCountsByChurchId[ch.id] ??
+          ({ not_for_me: 0, like: 0, love: 0 } as ReactionCounts);
+        const dominant = getDominantReaction(counts);
+        if (dominant !== selectedReactionFilter) return false;
+      }
+
       return true;
     });
 
@@ -190,6 +246,8 @@ export function ChurchListModal({
     sortDir,
     selectedDenominations,
     selectedSizes,
+    selectedReactionFilter,
+    reactionCountsByChurchId,
   ]);
 
   const handleSort = useCallback(
@@ -235,7 +293,9 @@ export function ChurchListModal({
   const allSizesSelected = selectedSizes.size === sizeCategories.length;
 
   const activeFilterCount =
-    (allDenomsSelected ? 0 : 1) + (allSizesSelected ? 0 : 1);
+    (allDenomsSelected ? 0 : 1) +
+    (allSizesSelected ? 0 : 1) +
+    (selectedReactionFilter !== "any" ? 1 : 0);
 
   // Format large numbers compactly (e.g. 5.1M, 733K)
   function formatPopulation(pop: number): string {
@@ -398,6 +458,7 @@ export function ChurchListModal({
                 onClick={() => {
                   setShowDenomDropdown(!showDenomDropdown);
                   setShowSizeDropdown(false);
+                  setShowReactionDropdown(false);
                 }}
                 className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-medium border transition-colors ${
                   !allDenomsSelected
@@ -466,6 +527,7 @@ export function ChurchListModal({
                 onClick={() => {
                   setShowSizeDropdown(!showSizeDropdown);
                   setShowDenomDropdown(false);
+                  setShowReactionDropdown(false);
                 }}
                 className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-medium border transition-colors ${
                   !allSizesSelected
@@ -533,6 +595,78 @@ export function ChurchListModal({
                 </div>
               )}
             </div>
+
+            {/* Community reaction dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setShowReactionDropdown(!showReactionDropdown);
+                  setShowDenomDropdown(false);
+                  setShowSizeDropdown(false);
+                }}
+                className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-medium border transition-colors ${
+                  selectedReactionFilter !== "any"
+                    ? "bg-purple-600/20 border-purple-500/40 text-purple-300"
+                    : "bg-white/6 border-white/8 text-white/50 hover:text-white/70"
+                }`}
+              >
+                <Heart size={13} />
+                <span className="hidden sm:inline">Reaction</span>
+                <ChevronDown size={13} />
+              </button>
+
+              {showReactionDropdown && (
+                <div
+                  className="absolute right-0 top-full mt-2 w-52 rounded-xl shadow-2xl border border-white/10 p-3 z-50"
+                  style={{ backgroundColor: "#231450" }}
+                >
+                  <span className="text-xs font-semibold text-white/60 uppercase tracking-wider block mb-2">
+                    Community reaction
+                  </span>
+                  {(
+                    [
+                      { value: "any" as const, label: "Any" },
+                      {
+                        value: "love" as const,
+                        label: "People love it",
+                        Icon: Heart,
+                      },
+                      {
+                        value: "like" as const,
+                        label: "People like it",
+                        Icon: ThumbsUp,
+                      },
+                      { value: "mixed" as const, label: "Mixed", Icon: null },
+                      {
+                        value: "none" as const,
+                        label: "No reactions yet",
+                        Icon: null,
+                      },
+                    ] as const
+                  ).map(({ value, label, Icon }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        setSelectedReactionFilter(value);
+                        setShowReactionDropdown(false);
+                      }}
+                      className="flex items-center justify-between w-full py-1.5 px-2 rounded-lg hover:bg-white/5 text-left gap-2"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        {Icon && <Icon size={14} className="text-white/50" />}
+                        <span className="text-xs text-white/70">{label}</span>
+                      </div>
+                      {value !== "any" && (
+                        <span className="text-xs text-white/25">
+                          {reactionFilterCounts[value]}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Active filter tags */}
@@ -568,6 +702,20 @@ export function ChurchListModal({
                   </button>
                 </span>
               )}
+              {selectedReactionFilter !== "any" && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-600/20 border border-purple-500/30 text-xs text-purple-300">
+                  {selectedReactionFilter === "love"
+                    ? "People love it"
+                    : selectedReactionFilter === "like"
+                      ? "People like it"
+                      : selectedReactionFilter === "mixed"
+                        ? "Mixed"
+                        : "No reactions yet"}
+                  <button onClick={() => setSelectedReactionFilter("any")}>
+                    <X size={11} />
+                  </button>
+                </span>
+              )}
               <button
                 onClick={() => {
                   setSelectedDenominations(
@@ -576,6 +724,7 @@ export function ChurchListModal({
                   setSelectedSizes(
                     new Set(sizeCategories.map((c) => c.label))
                   );
+                  setSelectedReactionFilter("any");
                 }}
                 className="text-xs text-white/30 hover:text-white/50 ml-1"
               >
@@ -681,8 +830,21 @@ export function ChurchListModal({
                         </span>
                       </div>
 
-                      {/* Attendance */}
+                      {/* Reaction + Attendance */}
                       <div className="flex items-center justify-end gap-2 self-center">
+                        {(() => {
+                          const counts =
+                            reactionCountsByChurchId[church.id] ??
+                            ({ not_for_me: 0, like: 0, love: 0 } as ReactionCounts);
+                          const dominant = getDominantReaction(counts);
+                          return dominant === "love" ? (
+                            <Heart size={12} className="text-pink-400/80 flex-shrink-0" />
+                          ) : dominant === "like" ? (
+                            <ThumbsUp size={12} className="text-green-400/80 flex-shrink-0" />
+                          ) : dominant === "mixed" ? (
+                            <ThumbsDown size={12} className="text-white/30 flex-shrink-0" />
+                          ) : null;
+                        })()}
                         <span className="text-sm text-white/70 tabular-nums">
                           {church.attendance.toLocaleString()}
                         </span>

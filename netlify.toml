@@ -1,0 +1,11 @@
+# Netlify configuration
+# See https://docs.netlify.com/configure-builds/file-based-configuration/
+
+[build]
+  publish = "dist"
+  command = "pnpm run build"
+
+# Edge function: rewrite HTML meta tags for social crawlers so they get per-page OG images
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/state/*"

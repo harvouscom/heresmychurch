@@ -19,15 +19,18 @@ import {
   Phone,
   Mail,
   ShieldCheck,
+  ThumbsDown,
+  ThumbsUp,
 } from "lucide-react";
 import { useState, useMemo, useEffect, useRef } from "react";
+import { motion } from "motion/react";
 import { SuggestEditForm } from "./SuggestEditForm";
 import { groupServiceTimesByDay, parseServiceTimesForDisplay } from "./ServiceTimesInput";
 import { formatFullAddress } from "./AddressInput";
 import { formatPhoneDisplay } from "./ui/utils";
 import { withSiteRef } from "./url-utils";
-import { confirmChurchData, fetchCorrectionHistory } from "./api";
-import type { CorrectionHistoryEntry } from "./api";
+import { confirmChurchData, fetchCorrectionHistory, fetchReactions, submitReaction } from "./api";
+import type { CorrectionHistoryEntry, ReactionType, ReactionCounts } from "./api";
 
 interface ChurchDetailPanelProps {
   church: Church;
@@ -132,7 +135,7 @@ function ServiceTimesCard({ serviceTimes }: { serviceTimes: string }) {
         <div className="space-y-2">
           {grouped.map((group) => (
             <div key={group.day} className="flex items-baseline gap-2.5">
-              <span className="text-white/50 text-xs font-semibold w-12 flex-shrink-0">
+              <span className="text-white/50 text-xs font-semibold flex-shrink-0">
                 {group.dayFull.slice(0, 3)}
               </span>
               <div className="flex flex-wrap gap-1.5">
@@ -214,6 +217,11 @@ export function ChurchDetailPanel({
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [correctionHistory, setCorrectionHistory] = useState<CorrectionHistoryEntry[]>([]);
+  const [reactionsLoading, setReactionsLoading] = useState(true);
+  const [myReaction, setMyReaction] = useState<ReactionType | null>(null);
+  const [counts, setCounts] = useState<ReactionCounts>({ not_for_me: 0, like: 0, love: 0 });
+  const [reactionAnimKeys, setReactionAnimKeys] = useState({ not_for_me: 0, like: 0, love: 0 });
+  const [reactionSubmitting, setReactionSubmitting] = useState(false);
   const sizeCat = getSizeCategory(church.attendance);
   const denomGroup = getDenominationGroup(church.denomination);
   const bilingualInfo = estimateBilingualProbability(church);
@@ -285,6 +293,20 @@ export function ChurchDetailPanel({
       .catch(() => {});
   }, [church.id]);
 
+  // Fetch reactions
+  useEffect(() => {
+    setReactionsLoading(true);
+    setMyReaction(null);
+    setCounts({ not_for_me: 0, like: 0, love: 0 });
+    fetchReactions(church.id)
+      .then((data) => {
+        setMyReaction(data.myReaction);
+        setCounts(data.counts);
+      })
+      .catch(() => {})
+      .finally(() => setReactionsLoading(false));
+  }, [church.id]);
+
   const handleConfirmData = async () => {
     setConfirming(true);
     try {
@@ -295,6 +317,20 @@ export function ChurchDetailPanel({
       console.error("Failed to confirm:", err);
     } finally {
       setConfirming(false);
+    }
+  };
+
+  const handleReaction = async (reaction: ReactionType) => {
+    setReactionAnimKeys((k) => ({ ...k, [reaction]: k[reaction] + 1 }));
+    setReactionSubmitting(true);
+    try {
+      const res = await submitReaction(church.id, reaction);
+      setMyReaction(res.myReaction);
+      setCounts(res.counts);
+    } catch (err) {
+      console.error("Failed to submit reaction:", err);
+    } finally {
+      setReactionSubmitting(false);
     }
   };
 
@@ -341,7 +377,7 @@ export function ChurchDetailPanel({
           </div>
           <button
             onClick={onClose}
-            className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors"
+            className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors -mt-2"
           >
             <X size={20} className="text-white/60" />
           </button>
@@ -389,6 +425,94 @@ export function ChurchDetailPanel({
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        {/* Reaction bar (Netflix-style thumbs) — above service times */}
+        {!reactionsLoading && (
+          <div className="flex flex-col gap-2">
+            <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
+              How do you feel about this church?
+            </span>
+            <div className="flex gap-2">
+              {(
+                [
+                  {
+                    reaction: "not_for_me" as ReactionType,
+                    label: "Not for me",
+                    Icon: ThumbsDown,
+                    animate: { x: [0, -4, 4, -3, 3, 0] },
+                    transition: { duration: 0.4 },
+                  },
+                  {
+                    reaction: "like" as ReactionType,
+                    label: "I like it",
+                    Icon: ThumbsUp,
+                    animate: { scale: [1, 1.3, 0.95, 1.05, 1] },
+                    transition: { duration: 0.4 },
+                  },
+                  {
+                    reaction: "love" as ReactionType,
+                    label: "I love it",
+                    Icon: Heart,
+                    animate: { scale: [1, 1.4, 1], rotate: [0, -10, 10, -5, 0] },
+                    transition: { duration: 0.5 },
+                  },
+                ] as const
+              ).map(({ reaction, label, Icon, animate, transition }) => {
+                const isSelected = myReaction === reaction;
+                const restState = reaction === "love" ? { scale: 1, rotate: 0 } : reaction === "like" ? { scale: 1 } : { x: 0 };
+                return (
+                  <motion.button
+                    key={reaction}
+                    type="button"
+                    onClick={() => handleReaction(reaction)}
+                    disabled={reactionSubmitting}
+                    className={`flex-1 flex flex-col items-center gap-1 px-3 py-2.5 rounded-xl border transition-colors min-w-0 ${
+                      isSelected
+                        ? "bg-purple-500/15 border-purple-500/30 text-purple-300"
+                        : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white/80"
+                    }`}
+                  >
+                    <motion.span
+                      key={reactionAnimKeys[reaction]}
+                      initial={false}
+                      animate={reactionAnimKeys[reaction] > 0 ? animate : restState}
+                      transition={transition}
+                      className="inline-flex items-center justify-center"
+                    >
+                      <Icon size={20} strokeWidth={2} />
+                    </motion.span>
+                    <span className="text-[10px] font-medium truncate w-full text-center">
+                      {label}
+                    </span>
+                  </motion.button>
+                );
+              })}
+            </div>
+            {/* Overall summary from reactions */}
+            {(() => {
+              const total = counts.not_for_me + counts.like + counts.love;
+              const dominant =
+                counts.love >= counts.like && counts.love >= counts.not_for_me
+                  ? "love"
+                  : counts.like >= counts.not_for_me
+                    ? "like"
+                    : "not_for_me";
+              const message =
+                total === 0
+                  ? "No reactions yet — share how you feel above."
+                  : dominant === "love"
+                    ? "Overall people love this church."
+                    : dominant === "like"
+                      ? "Overall people like this church."
+                      : "Reactions are mixed.";
+              return (
+                <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/10">
+                  <p className="text-white/70 text-sm font-medium">{message}</p>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         {/* Primary: Service Times first */}
         {church.serviceTimes && (
           <ServiceTimesCard serviceTimes={church.serviceTimes} />

@@ -9,6 +9,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { Church } from "./church-data";
+import { churchNeedsReview } from "./church-data";
 import { ChurchListModal } from "./ChurchListModal";
 import { MapSearchBar } from "./MapSearchBar";
 import { ChurchDetailPanel } from "./ChurchDetailPanel";
@@ -96,14 +97,9 @@ export function ChurchMap({
     document.cookie = "hmc_seen_about=1; path=/; max-age=31536000; SameSite=Lax";
   };
 
-  // Compute churches with incomplete minimum data
+  // Compute churches that need review (missing 2+ of address, service times, denomination)
   const incompleteChurches = useMemo(() => {
-    return d.churches.filter((c) => {
-      const noDenom = !c.denomination || c.denomination === "Unknown" || c.denomination === "Other";
-      const noAddress = !c.address;
-      const noServiceTimes = !c.serviceTimes;
-      return noDenom || noAddress || noServiceTimes;
-    });
+    return d.churches.filter(churchNeedsReview);
   }, [d.churches]);
 
   // Set review count based on incomplete churches

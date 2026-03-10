@@ -35,6 +35,17 @@ npm i
 npm run dev
 ```
 
+## Dynamic OG images (state & church pages)
+
+State and church pages get programmatic Open Graph images so shares show the state name or church name with the site’s font and colors.
+
+- **OG image API:** Supabase Edge Function `GET .../og-image?type=state&state=CA` or `?type=church&name=...&city=...&state=...&denomination=...` (see `supabase/functions/server/og-image.tsx`).
+- **Meta tag rewrite:** Netlify Edge Function `og-rewrite` runs on `/state/*` for known social crawler user-agents and injects the correct `og:image`, `og:title`, and `og:url` into the HTML.
+
+**Netlify env vars** (for the edge function): set `SUPABASE_FUNCTIONS_BASE_URL` (e.g. `https://PROJECT.supabase.co/functions/v1/make-server-283d8046`) and `SUPABASE_ANON_KEY`.
+
+**Testing after deploy:** Use [Facebook Sharing Debugger](https://developers.facebook.com/tools/debug/) or [Twitter Card Validator](https://cards-dev.twitter.com/validator) with URLs like `https://heresmychurch.com/state/CA` and `https://heresmychurch.com/state/CA/16692500` (use a real shortId). Rescrape to refresh cached meta.
+
 ## Tech Stack
 
 **Frontend**

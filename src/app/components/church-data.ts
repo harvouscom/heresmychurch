@@ -33,6 +33,46 @@ export interface StateInfo {
   isPopulated: boolean;
 }
 
+// ── Completeness tiers (tier 1 = critical for "needs review") ──
+
+/** Tier 1: address, serviceTimes, denomination. "Needs review" when 2+ are missing. */
+const TIER1_DENOM_EMPTY_VALUES = ["", "Unknown", "Other"];
+
+function isDenominationMissing(denomination: string | undefined): boolean {
+  return !denomination || TIER1_DENOM_EMPTY_VALUES.includes(denomination.trim());
+}
+
+export interface Tier1Completeness {
+  missingAddress: boolean;
+  missingServiceTimes: boolean;
+  missingDenomination: boolean;
+  missingCount: number;
+  needsReview: boolean;
+}
+
+/**
+ * Returns tier-1 completeness for a church. "Needs review" when 2+ of
+ * address, service times, denomination are missing (denom treated as missing if Unknown/Other).
+ */
+export function getTier1Completeness(church: Church): Tier1Completeness {
+  const missingAddress = !church.address || !church.address.trim();
+  const missingServiceTimes = !church.serviceTimes || !church.serviceTimes.trim();
+  const missingDenomination = isDenominationMissing(church.denomination);
+  const missingCount = [missingAddress, missingServiceTimes, missingDenomination].filter(Boolean).length;
+  return {
+    missingAddress,
+    missingServiceTimes,
+    missingDenomination,
+    missingCount,
+    needsReview: missingCount >= 2,
+  };
+}
+
+/** True if church should appear in "need review" list (missing 2+ of address, service times, denomination). */
+export function churchNeedsReview(church: Church): boolean {
+  return getTier1Completeness(church).needsReview;
+}
+
 export type SizeCategory =
   | "< 50"
   | "50–250"
