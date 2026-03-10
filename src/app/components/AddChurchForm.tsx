@@ -140,6 +140,8 @@ interface AddChurchFormProps {
   onClose: () => void;
   churches?: Church[];
   onSelectChurch?: (church: Church) => void;
+  /** After successfully adding (or duplicate), navigate to that church's page. */
+  onChurchAdded?: (state: string, shortId: string) => void;
 }
 
 export function AddChurchForm({
@@ -148,6 +150,7 @@ export function AddChurchForm({
   onClose,
   churches = [],
   onSelectChurch,
+  onChurchAdded,
 }: AddChurchFormProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -198,6 +201,10 @@ export function AddChurchForm({
         email: email.trim() || undefined,
       });
 
+      const church = result.church ?? result.existingChurch;
+      const state = church?.state ?? stateAbbrev;
+      const shortId = church?.shortId;
+
       if (result.isDuplicate) {
         setSuccess("This church was already submitted!");
       } else {
@@ -219,6 +226,10 @@ export function AddChurchForm({
       setShowExtended(false);
       setGeocodedCoords(null);
 
+      if (shortId && state && onChurchAdded) {
+        onClose();
+        onChurchAdded(state, shortId);
+      }
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
       setError(err.message || "Failed to submit church");

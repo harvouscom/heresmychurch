@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Search, ChevronRight, Loader2, MapPin, ChevronDown, Plus } from "lucide-react";
 import { geoAlbersUsa } from "d3-geo";
 import type { Church, StateInfo } from "./church-data";
-import { getFallbackLocation } from "./church-data";
+import { getFallbackLocation, formatAddressWithCity } from "./church-data";
 import { searchChurches } from "./api";
 import type { SearchResult } from "./api";
 import { getChurchUrlSegment } from "./url-utils";
@@ -412,7 +412,7 @@ export function MapSearchBar({
                         </div>
                         {(ch.address || ch.city || getFallbackLocation(ch)) && (
                           <div className="text-xs text-white/40 truncate">
-                            {ch.address || ch.city || getFallbackLocation(ch)}
+                            {formatAddressWithCity(ch.address, ch.city) || getFallbackLocation(ch)}
                           </div>
                         )}
                       </div>
@@ -503,7 +503,7 @@ export function MapSearchBar({
                         </div>
                         {(r.address || r.city || r.state || getFallbackLocation(r)) && (
                           <div className="text-xs text-white/40 truncate">
-                            {r.address || r.city || (STATE_NAMES[r.state] || r.state) || getFallbackLocation(r)}
+                            {formatAddressWithCity(r.address, r.city) || (STATE_NAMES[r.state] || r.state) || getFallbackLocation(r)}
                           </div>
                         )}
                       </div>

@@ -203,6 +203,10 @@ export function ChurchMap({
             if (d.focusedState) navigateToChurch(d.focusedState, getChurchUrlSegment(church, d.focusedState));
             setTimeout(() => localDispatch({ type: "SET", key: "forceEditForm", value: true }), 50);
           }}
+          onChurchAdded={(state, shortId) => {
+            d.setShowListModal(false);
+            d.refetchCurrentStateChurches().then(() => navigateToChurch(state, shortId));
+          }}
         />
       )}
 
@@ -217,6 +221,10 @@ export function ChurchMap({
             d.setSelectedChurch(church);
             if (d.focusedState) navigateToChurch(d.focusedState, getChurchUrlSegment(church, d.focusedState));
             setTimeout(() => localDispatch({ type: "SET", key: "forceEditForm", value: true }), 50);
+          }}
+          onChurchAdded={(state, shortId) => {
+            d.setShowAddChurchFromSummary(false);
+            d.refetchCurrentStateChurches().then(() => navigateToChurch(state, shortId));
           }}
         />
       )}

@@ -247,6 +247,7 @@ export async function submitSuggestion(
 
 export interface PendingChurchData {
   id: string;
+  shortId?: string;
   name: string;
   address: string;
   city: string;

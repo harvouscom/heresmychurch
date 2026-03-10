@@ -123,6 +123,19 @@ export function getFallbackLocation(church: {
   return `Somewhere in ${quadrant} ${stateName}`;
 }
 
+/**
+ * Format address for list/search display. When both address and city exist, returns "address, city";
+ * otherwise returns address, city, or "".
+ */
+export function formatAddressWithCity(address?: string | null, city?: string | null): string {
+  const a = (address || "").trim();
+  const c = (city || "").trim();
+  if (a && c) return `${a}, ${c}`;
+  if (a) return a;
+  if (c) return c;
+  return "";
+}
+
 export interface Tier1Completeness {
   missingAddress: boolean;
   missingServiceTimes: boolean;
