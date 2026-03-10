@@ -29,8 +29,6 @@ import {
 } from "./MapOverlays";
 import { useChurchMapData } from "./useChurchMapData";
 import { useReducer, useEffect, useMemo } from "react";
-import { fetchPendingChurches, fetchPendingSuggestions } from "./api";
-import type { PendingChurchData, PendingSuggestion } from "./api";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 
 /* eslint-disable @refresh/only-export-components -- force clean re-mount after hook changes */
@@ -81,9 +79,7 @@ export function ChurchMap({
   const hasSeenAbout = typeof document !== "undefined" && document.cookie.includes("hmc_seen_about=1");
   const [local, localDispatch] = useReducer(localReducer, {
     showVerificationModal: false,
-    verificationFilterChurchId: null as string | null,
     pendingReviewCount: 0,
-    pendingSuggestions: [] as PendingSuggestion[],
     forceEditForm: false,
     showAbout: !hasSeenAbout && !routeStateAbbrev,
   });
@@ -103,28 +99,12 @@ export function ChurchMap({
     });
   }, [d.churches]);
 
-  // Fetch pending review counts when state changes
+  // Set review count based on incomplete churches
   useEffect(() => {
-    if (!d.focusedState) { localDispatch({ type: "SET", key: "pendingReviewCount", value: 0 }); return; }
-    let cancelled = false;
-    Promise.all([
-      fetchPendingChurches(d.focusedState).catch(() => ({ churches: [] as PendingChurchData[] })),
-      fetchPendingSuggestions(d.focusedState).catch(() => ({ pending: [] as PendingSuggestion[] })),
-    ]).then(([cRes, sRes]) => {
-      if (cancelled) return;
-      const unapproved = (cRes.churches ?? []).filter((c: PendingChurchData) => !c.approved);
-      const churchIds = new Set<string>();
-      unapproved.forEach((c: PendingChurchData) => churchIds.add(c.id ?? c.name));
-      (sRes.pending ?? []).forEach((s: PendingSuggestion) => churchIds.add(s.churchId));
-      incompleteChurches.forEach((c) => churchIds.add(c.id));
-      localDispatch({ type: "SET", key: "pendingReviewCount", value: churchIds.size });
-      localDispatch({ type: "SET", key: "pendingSuggestions", value: sRes.pending ?? [] });
-    });
-    return () => { cancelled = true; };
-  }, [d.focusedState, incompleteChurches.length]);
+    localDispatch({ type: "SET", key: "pendingReviewCount", value: incompleteChurches.length });
+  }, [incompleteChurches.length]);
 
   const onShowVerification = () => {
-    localDispatch({ type: "SET", key: "verificationFilterChurchId", value: null });
     localDispatch({ type: "SET", key: "showVerificationModal", value: true });
   };
   const onShowAbout = () => localDispatch({ type: "SET", key: "showAbout", value: true });
@@ -186,10 +166,6 @@ export function ChurchMap({
             localDispatch({ type: "SET", key: "showVerificationModal", value: false });
             if (d.focusedState) navigateToChurch(d.focusedState, church.id);
           }}
-          filterChurchId={local.verificationFilterChurchId}
-          onOpenCorrections={() => {
-            localDispatch({ type: "SET", key: "forceEditForm", value: true });
-          }}
           onAddChurch={() => {
             localDispatch({ type: "SET", key: "showVerificationModal", value: false });
             d.setShowAddChurchFromSummary(true);
@@ -209,15 +185,6 @@ export function ChurchMap({
             onChurchClick={(church: Church) => {
               if (d.focusedState) navigateToChurch(d.focusedState, church.id);
             }}
-            pendingCorrectionCount={
-              local.pendingSuggestions
-                .filter((s) => s.churchId === d.selectedChurch?.id)
-                .reduce((sum, s) => sum + Object.keys(s.fields).length, 0)
-            }
-            onReviewCorrections={() => {
-              localDispatch({ type: "SET", key: "verificationFilterChurchId", value: d.selectedChurch?.id ?? null });
-              localDispatch({ type: "SET", key: "showVerificationModal", value: true });
-            }}
             externalShowEditForm={local.forceEditForm}
             onEditFormClosed={() => localDispatch({ type: "SET", key: "forceEditForm", value: false })}
           />
@@ -230,9 +197,7 @@ export function ChurchMap({
 // ── Local state reducer for ChurchMap (replaces 6 useState — saves 5 hooks) ──
 type LocalState = {
   showVerificationModal: boolean;
-  verificationFilterChurchId: string | null;
   pendingReviewCount: number;
-  pendingSuggestions: PendingSuggestion[];
   forceEditForm: boolean;
   showAbout: boolean;
 };

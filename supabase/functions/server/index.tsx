@@ -374,7 +374,7 @@ app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
 });
 
 // ── Community routes ──
-const THR=3;
+const THR=1;
 function cip(c:any):string{return c.req.header("x-forwarded-for")?.split(",")[0]?.trim()||c.req.header("x-real-ip")||"unknown";}
 const VF=["website","address","attendance","denomination","serviceTimes","languages","ministries","pastorName","phone","email"];
 function consensus(subs:any[]){
@@ -513,8 +513,12 @@ app.post(`${P}/churches/add`,async(c)=>{
     const k=`pending-churches:${st}`;const store=(await kv.get(k))||{churches:[]};
     const dup=store.churches.find((ch:any)=>ch.name.trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs(ch.lat-pLat)<0.001&&Math.abs(ch.lng-pLng)<0.001);
     if(dup){if(!dup.verifications.some((v:any)=>v.ip===ip)){dup.verifications.push({ip,timestamp:Date.now()});if(dup.verifications.length>=THR)dup.approved=true;await kv.set(k,store);}return c.json({success:true,church:dup,isDuplicate:true});}
-    const nc={id,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:(phone||"").trim()||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:false,verifications:[{ip,timestamp:Date.now()}]};
+    const nc={id,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:(phone||"").trim()||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
     store.churches.push(nc);await kv.set(k,store);
+    // Immediately merge into main churches data so it appears on the map
+    const mainKey=`churches:${st}`;const mainChurches=(await kv.get(mainKey))||[];
+    const churchForMain={id,name:nc.name,address:nc.address,city:nc.city,state:st,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
+    if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);}
     return c.json({success:true,church:nc});
   }catch(e){return c.json({error:`${e}`},500);}
 });
@@ -575,6 +579,44 @@ app.get(`${P}/community/history/:churchId`,async(c)=>{
     const history=Array.isArray(stats.corrections)?stats.corrections.filter((h:any)=>h.churchId===churchId):[];
     return c.json({churchId,history});
   }catch(e){return c.json({churchId:c.req.param("churchId"),history:[],error:`${e}`},500);}
+});
+
+// ── One-time migration: apply all pending corrections & merge pending churches ──
+app.post(`${P}/migrate/apply-pending`,async(c)=>{
+  try{
+    let correctionsApplied=0,churchesMerged=0;
+    // 1. Apply all pending corrections
+    const allSuggestions=await kv.getByPrefix("suggestions:");
+    if(Array.isArray(allSuggestions)){
+      for(const entry of allSuggestions){
+        if(!entry||!Array.isArray(entry.submissions)||!entry.churchId)continue;
+        const con=consensus(entry.submissions);
+        const applied=await applyApprovedCorrections(entry.churchId,con);
+        if(applied)correctionsApplied++;
+      }
+    }
+    // 2. Merge all pending churches into main data
+    const states=["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"];
+    for(const st of states){
+      const store=await kv.get(`pending-churches:${st}`);
+      if(!store||!Array.isArray(store.churches)||!store.churches.length)continue;
+      const mainKey=`churches:${st}`;const mainChurches=(await kv.get(mainKey))||[];
+      if(!Array.isArray(mainChurches))continue;
+      let added=false;
+      for(const pc of store.churches){
+        if(!pc.verifications||!pc.verifications.length)continue;
+        pc.approved=true;
+        // Check for duplicates by name+location
+        const exists=mainChurches.some((mc:any)=>mc.name?.trim().toLowerCase()===pc.name?.trim().toLowerCase()&&Math.abs((mc.lat||0)-(pc.lat||0))<0.001&&Math.abs((mc.lng||0)-(pc.lng||0))<0.001);
+        if(exists)continue;
+        mainChurches.push({id:pc.id,name:pc.name,address:pc.address,city:pc.city,state:st,lat:pc.lat,lng:pc.lng,denomination:pc.denomination,attendance:pc.attendance,website:pc.website,serviceTimes:pc.serviceTimes,languages:pc.languages,ministries:pc.ministries,pastorName:pc.pastorName,phone:pc.phone,email:pc.email,lastVerified:Date.now()});
+        churchesMerged++;added=true;
+      }
+      if(added){await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);}
+      await kv.set(`pending-churches:${st}`,store);
+    }
+    return c.json({success:true,correctionsApplied,churchesMerged});
+  }catch(e){return c.json({error:`${e}`},500);}
 });
 
 Deno.serve(app.fetch);

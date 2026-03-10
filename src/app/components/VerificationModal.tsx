@@ -1,43 +1,15 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { motion } from "motion/react";
 import {
   X,
-  ShieldCheck,
-  Church as ChurchIcon,
-  FileEdit,
-  CheckCircle2,
-  Clock,
-  ChevronRight,
-  Loader2,
-  MapPin,
-  AlertCircle,
   AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  MapPin,
   Search,
   Plus,
 } from "lucide-react";
 import type { Church } from "./church-data";
-import type {
-  PendingChurchData,
-  PendingSuggestion,
-} from "./api";
-import {
-  fetchPendingChurches,
-  fetchPendingSuggestions,
-  verifyChurch,
-} from "./api";
-
-const FIELD_LABELS: Record<string, string> = {
-  website: "Website",
-  address: "Address",
-  attendance: "Est. Avg. Weekly Attendance",
-  denomination: "Denomination",
-  serviceTimes: "Service Times",
-  languages: "Languages",
-  ministries: "Ministries",
-  pastorName: "Pastor",
-  phone: "Phone",
-  email: "Email",
-};
 
 interface VerificationModalProps {
   stateAbbrev: string;
@@ -51,95 +23,12 @@ interface VerificationModalProps {
 }
 
 export function VerificationModal({
-  stateAbbrev,
   stateName,
   churches,
   onClose,
   onChurchClick,
-  filterChurchId,
-  onOpenCorrections,
   onAddChurch,
 }: VerificationModalProps) {
-  const [activeTab, setActiveTab] = useState<"additions" | "corrections" | "incomplete">(
-    filterChurchId ? "corrections" : "additions"
-  );
-  const [pendingChurches, setPendingChurches] = useState<PendingChurchData[]>([]);
-  const [pendingSuggestions, setPendingSuggestions] = useState<PendingSuggestion[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [verifyingId, setVerifyingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    Promise.all([
-      fetchPendingChurches(stateAbbrev).catch((e) => {
-        console.error("Failed to fetch pending churches:", e);
-        return { state: stateAbbrev, churches: [] as PendingChurchData[] };
-      }),
-      fetchPendingSuggestions(stateAbbrev).catch((e) => {
-        console.error("Failed to fetch pending suggestions:", e);
-        return { state: stateAbbrev, pending: [] as PendingSuggestion[] };
-      }),
-    ]).then(([churchesRes, suggestionsRes]) => {
-      if (cancelled) return;
-      // Only show unapproved pending churches
-      const unapproved = churchesRes.churches.filter((c) => !c.approved);
-      setPendingChurches(unapproved);
-      setPendingSuggestions(suggestionsRes.pending);
-      // Auto-select the tab with content
-      if (unapproved.length === 0 && suggestionsRes.pending.length > 0) {
-        setActiveTab("corrections");
-      } else if (unapproved.length === 0 && suggestionsRes.pending.length === 0) {
-        setActiveTab("incomplete");
-      }
-      setLoading(false);
-    });
-
-    return () => { cancelled = true; };
-  }, [stateAbbrev]);
-
-  const handleVerify = useCallback(async (pendingId: string) => {
-    setVerifyingId(pendingId);
-    try {
-      const res = await verifyChurch(pendingId);
-      if (res.success) {
-        setPendingChurches((prev) =>
-          prev.map((c) =>
-            c.id === pendingId
-              ? { ...c, verificationCount: res.church?.verificationCount ?? c.verificationCount + 1, myVerification: true, approved: res.church?.approved ?? c.approved }
-              : c
-          )
-        );
-      }
-    } catch (e) {
-      console.error("Failed to verify church:", e);
-      setError("Failed to verify. Please try again.");
-    } finally {
-      setVerifyingId(null);
-    }
-  }, []);
-
-  // Look up church name from loaded churches for pending suggestions
-  const getChurchName = useCallback(
-    (churchId: string) => {
-      const ch = churches.find((c) => c.id === churchId);
-      return ch?.name || churchId.replace(/^[A-Z]{2}-/, "").replace(/-/g, " ");
-    },
-    [churches]
-  );
-
-  const getChurchCity = useCallback(
-    (churchId: string) => {
-      const ch = churches.find((c) => c.id === churchId);
-      return ch?.city || "";
-    },
-    [churches]
-  );
-
-  const INCOMPLETE_CAP = 50;
   // Compute incomplete churches (missing denomination, address, or service times)
   const incompleteChurches = useMemo(() => {
     return churches.filter((c) => {
@@ -151,17 +40,6 @@ export function VerificationModal({
   }, [churches]);
 
   const incompleteTotal = incompleteChurches.length;
-
-  // Apply church filter if set
-  const filteredSuggestions = filterChurchId
-    ? pendingSuggestions.filter((s) => s.churchId === filterChurchId)
-    : pendingSuggestions;
-
-  const filterChurchName = filterChurchId ? getChurchName(filterChurchId) : null;
-
-  const totalItems = filterChurchId
-    ? filteredSuggestions.length
-    : pendingChurches.length + pendingSuggestions.length + incompleteChurches.length;
 
   return (
     <div
@@ -183,17 +61,14 @@ export function VerificationModal({
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-white/8 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-pink-500/15 flex items-center justify-center">
-              <ShieldCheck size={18} className="text-pink-400" />
+              <AlertTriangle size={18} className="text-pink-400" />
             </div>
             <div>
               <h2 className="text-white font-medium text-base leading-tight">
-                {filterChurchId ? "Pending Corrections" : "Needs Your Review"}
+                Incomplete Churches
               </h2>
               <p className="text-white/40 text-xs mt-0.5">
-                {filterChurchName
-                  ? <><span className="text-pink-300/70">{filterChurchName}</span> &middot; {filteredSuggestions.reduce((sum, s) => sum + Object.keys(s.fields).length, 0)} field{filteredSuggestions.reduce((sum, s) => sum + Object.keys(s.fields).length, 0) !== 1 ? "s" : ""} pending</>
-                  : <>{stateName} &middot; {totalItems} item{totalItems !== 1 ? "s" : ""} pending</>
-                }
+                {stateName} &middot; {incompleteTotal} church{incompleteTotal !== 1 ? "es" : ""} missing data
               </p>
             </div>
           </div>
@@ -205,241 +80,25 @@ export function VerificationModal({
           </button>
         </div>
 
-        {/* Tabs — hide when filtering to a specific church */}
-        {!filterChurchId && (
-          <div className="flex px-5 pt-3 gap-1 flex-shrink-0 overflow-x-auto">
-            <button
-              onClick={() => setActiveTab("additions")}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-                activeTab === "additions"
-                  ? "bg-pink-500/15 text-pink-300"
-                  : "text-white/40 hover:text-white/60 hover:bg-white/5"
-              }`}
-            >
-              <ChurchIcon size={12} />
-              New
-              {pendingChurches.length > 0 && (
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                  activeTab === "additions" ? "bg-pink-500/20 text-pink-300" : "bg-white/10 text-white/40"
-                }`}>
-                  {pendingChurches.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab("corrections")}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-                activeTab === "corrections"
-                  ? "bg-pink-500/15 text-pink-300"
-                  : "text-white/40 hover:text-white/60 hover:bg-white/5"
-              }`}
-            >
-              <FileEdit size={12} />
-              Corrections
-              {filteredSuggestions.length > 0 && (
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                  activeTab === "corrections" ? "bg-pink-500/20 text-pink-300" : "bg-white/10 text-white/40"
-                }`}>
-                  {filteredSuggestions.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab("incomplete")}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-                activeTab === "incomplete"
-                  ? "bg-pink-500/15 text-pink-300"
-                  : "text-white/40 hover:text-white/60 hover:bg-white/5"
-              }`}
-            >
-              <AlertTriangle size={12} />
-              Incomplete
-              {incompleteTotal > 0 && (
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                  activeTab === "incomplete" ? "bg-pink-500/20 text-pink-300" : "bg-white/10 text-white/40"
-                }`}>
-                  {incompleteTotal > INCOMPLETE_CAP ? `${INCOMPLETE_CAP}+` : incompleteTotal}
-                </span>
-              )}
-            </button>
-          </div>
-        )}
-
         {/* Content */}
         <div className="flex-1 overflow-y-auto min-h-0 px-5 py-3">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <Loader2 size={24} className="text-purple-400 animate-spin" />
-              <p className="text-white/40 text-xs">Loading review items...</p>
-            </div>
-          ) : error ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <AlertCircle size={24} className="text-red-400" />
-              <p className="text-white/40 text-xs">{error}</p>
-            </div>
-          ) : activeTab === "additions" && !filterChurchId ? (
-            <PendingChurchesList
-              churches={pendingChurches}
-              verifyingId={verifyingId}
-              onVerify={handleVerify}
-            />
-          ) : activeTab === "incomplete" && !filterChurchId ? (
-            <IncompleteChurchesList
-              churches={incompleteChurches}
-              onChurchClick={(church) => {
-                onClose();
-                onChurchClick?.(church);
-              }}
-              onAddChurch={onAddChurch}
-            />
-          ) : (
-            <PendingCorrectionsList
-              suggestions={filteredSuggestions}
-              getChurchName={getChurchName}
-              getChurchCity={getChurchCity}
-              allChurches={churches}
-              onChurchClick={(churchId) => {
-                if (filterChurchId && onOpenCorrections) {
-                  onClose();
-                  onOpenCorrections();
-                } else {
-                  const ch = churches.find((c) => c.id === churchId);
-                  if (ch && onChurchClick) {
-                    onClose();
-                    onChurchClick(ch);
-                  }
-                }
-              }}
-            />
-          )}
+          <IncompleteChurchesList
+            churches={incompleteChurches}
+            onChurchClick={(church) => {
+              onClose();
+              onChurchClick?.(church);
+            }}
+            onAddChurch={onAddChurch}
+          />
         </div>
 
         {/* Footer */}
         <div className="flex-shrink-0 px-5 py-3 border-t border-white/6">
-          {filterChurchId && onOpenCorrections && filteredSuggestions.length > 0 && !loading ? (
-            <button
-              onClick={() => { onClose(); onOpenCorrections(); }}
-              className="w-full py-2.5 rounded-xl bg-pink-500/15 hover:bg-pink-500/25 border border-pink-500/20 text-pink-300 text-xs font-semibold transition-colors flex items-center justify-center gap-2 mb-2"
-            >
-              <FileEdit size={13} />
-              View & vote on corrections
-            </button>
-          ) : null}
           <p className="text-white/25 text-[10px] text-center leading-relaxed">
-            Community-sourced data requires {3} verifications to be approved.
-            Help keep church info accurate by reviewing submissions.
+            Help fill in missing data to improve accuracy. Click a church to update its info.
           </p>
         </div>
       </motion.div>
-    </div>
-  );
-}
-
-// ── Pending Churches List ──
-
-function PendingChurchesList({
-  churches,
-  verifyingId,
-  onVerify,
-}: {
-  churches: PendingChurchData[];
-  verifyingId: string | null;
-  onVerify: (id: string) => void;
-}) {
-  if (churches.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 gap-3">
-        <CheckCircle2 size={32} className="text-green-400/40" />
-        <p className="text-white/40 text-sm font-medium">All caught up!</p>
-        <p className="text-white/25 text-xs text-center max-w-[240px]">
-          No community-added churches are waiting for verification in this state.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {churches.map((ch) => {
-        const isVerifying = verifyingId === ch.id;
-        const progress = ch.verificationCount / ch.needed;
-
-        return (
-          <div
-            key={ch.id}
-            className="rounded-xl bg-white/[0.03] border border-white/6 p-3.5 group"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <h3 className="text-white text-sm font-medium truncate">{ch.name}</h3>
-                <div className="flex items-center gap-2 mt-1">
-                  {ch.city && (
-                    <span className="text-white/30 text-[11px] flex items-center gap-1">
-                      <MapPin size={9} />
-                      {ch.city}
-                    </span>
-                  )}
-                  {ch.denomination && ch.denomination !== "Unknown" && (
-                    <span className="text-white/30 text-[11px]">{ch.denomination}</span>
-                  )}
-                  {ch.attendance > 0 && (
-                    <span className="text-white/30 text-[11px]">~{ch.attendance}</span>
-                  )}
-                </div>
-                {ch.address && (
-                  <p className="text-white/20 text-[10px] mt-1 truncate">{ch.address}</p>
-                )}
-              </div>
-
-              {ch.myVerification ? (
-                <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-green-500/10 flex-shrink-0">
-                  <CheckCircle2 size={12} className="text-green-400" />
-                  <span className="text-green-400 text-[11px] font-medium">Verified</span>
-                </div>
-              ) : (
-                <button
-                  onClick={() => onVerify(ch.id)}
-                  disabled={isVerifying}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-pink-500/15 text-pink-300 text-[11px] font-medium hover:bg-pink-500/25 transition-colors disabled:opacity-50 flex-shrink-0 cursor-pointer"
-                >
-                  {isVerifying ? (
-                    <Loader2 size={11} className="animate-spin" />
-                  ) : (
-                    <ShieldCheck size={11} />
-                  )}
-                  Verify
-                </button>
-              )}
-            </div>
-
-            {/* Progress bar */}
-            <div className="mt-2.5 flex items-center gap-2">
-              <div className="flex-1 h-1 rounded-full bg-white/8 overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{
-                    width: `${Math.min(progress * 100, 100)}%`,
-                    background: ch.approved
-                      ? "#22C55E"
-                      : "linear-gradient(90deg, #EC4899, #DB2777)",
-                  }}
-                />
-              </div>
-              <span className="text-white/30 text-[10px] flex-shrink-0">
-                {ch.verificationCount}/{ch.needed}
-              </span>
-            </div>
-
-            {/* Submitted time */}
-            {ch.submittedAt && (
-              <p className="text-white/15 text-[10px] mt-1.5">
-                <Clock size={9} className="inline mr-1 relative -top-px" />
-                Submitted {formatTimeAgo(ch.submittedAt)}
-              </p>
-            )}
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -579,104 +238,4 @@ function IncompleteChurchesList({
       )}
     </div>
   );
-}
-
-// ── Pending Corrections List ──
-
-function PendingCorrectionsList({
-  suggestions,
-  getChurchName,
-  getChurchCity,
-  allChurches,
-  onChurchClick,
-}: {
-  suggestions: PendingSuggestion[];
-  getChurchName: (id: string) => string;
-  getChurchCity: (id: string) => string;
-  allChurches: Church[];
-  onChurchClick: (churchId: string) => void;
-}) {
-  if (suggestions.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 gap-3">
-        <CheckCircle2 size={32} className="text-green-400/40" />
-        <p className="text-white/40 text-sm font-medium">No pending corrections</p>
-        <p className="text-white/25 text-xs text-center max-w-[240px]">
-          All suggested edits have either reached consensus or no corrections have been submitted yet.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {suggestions.map((s) => {
-        const name = getChurchName(s.churchId);
-        const city = getChurchCity(s.churchId);
-        const fieldEntries = Object.entries(s.fields);
-        const isClickable = allChurches.some((c) => c.id === s.churchId);
-
-        return (
-          <div
-            key={s.churchId}
-            className={`rounded-xl bg-white/[0.03] border border-white/6 p-3.5 ${
-              isClickable ? "cursor-pointer hover:bg-white/[0.05] transition-colors group" : ""
-            }`}
-            onClick={() => isClickable && onChurchClick(s.churchId)}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex-1 min-w-0">
-                <h3 className="text-white text-sm font-medium truncate group-hover:text-purple-300 transition-colors">
-                  {name}
-                </h3>
-                {city && (
-                  <span className="text-white/30 text-[11px] flex items-center gap-1 mt-0.5">
-                    <MapPin size={9} />
-                    {city}
-                  </span>
-                )}
-              </div>
-              {isClickable && (
-                <ChevronRight size={14} className="text-white/20 mt-1 flex-shrink-0 group-hover:text-white/40 transition-colors" />
-              )}
-            </div>
-
-            <div className="mt-2.5 space-y-1.5">
-              {fieldEntries.map(([field, data]) => (
-                <div
-                  key={field}
-                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white/[0.03]"
-                >
-                  <FileEdit size={10} className="text-pink-400/60 flex-shrink-0" />
-                  <span className="text-white/50 text-[11px] font-medium min-w-[60px]">
-                    {FIELD_LABELS[field] || field}
-                  </span>
-                  <span className="text-pink-300/80 text-[11px] truncate flex-1">
-                    {data.topValue}
-                  </span>
-                  <span className="text-white/25 text-[10px] flex-shrink-0">
-                    {data.votes}/{data.needed}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Utility ──
-
-function formatTimeAgo(timestamp: number): string {
-  const diff = Date.now() - timestamp;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return `${Math.floor(days / 7)}w ago`;
 }

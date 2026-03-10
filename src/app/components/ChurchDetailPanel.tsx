@@ -31,8 +31,6 @@ interface ChurchDetailPanelProps {
   allChurches: Church[];
   onClose: () => void;
   onChurchClick: (church: Church) => void;
-  pendingCorrectionCount?: number;
-  onReviewCorrections?: () => void;
   externalShowEditForm?: boolean;
   onEditFormClosed?: () => void;
 }
@@ -202,8 +200,6 @@ export function ChurchDetailPanel({
   allChurches,
   onClose,
   onChurchClick,
-  pendingCorrectionCount,
-  onReviewCorrections,
   externalShowEditForm,
   onEditFormClosed,
 }: ChurchDetailPanelProps) {
@@ -523,22 +519,6 @@ export function ChurchDetailPanel({
 
         {/* Action buttons */}
         <div className="flex flex-col gap-2">
-          {/* Review pending corrections — pink button */}
-          {pendingCorrectionCount != null && pendingCorrectionCount > 0 && onReviewCorrections && (
-            <button
-              onClick={onReviewCorrections}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-pink-500/15 hover:bg-pink-500/25 border border-pink-500/20 transition-colors group"
-            >
-              <ShieldCheck size={13} className="text-pink-400 group-hover:text-pink-300 transition-colors" />
-              <span className="text-pink-300 text-xs font-semibold group-hover:text-pink-200 transition-colors">
-                Review pending corrections
-              </span>
-              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-pink-500/20 text-pink-400 font-semibold">
-                {pendingCorrectionCount}
-              </span>
-            </button>
-          )}
-
           {/* Data looks correct */}
           <button
             onClick={handleConfirmData}
@@ -560,14 +540,14 @@ export function ChurchDetailPanel({
             )}
           </button>
 
-          {/* Suggest a Correction */}
+          {/* Update Church Info */}
           <button
             onClick={() => { setEditFocusField(null); setShowEditForm(true); }}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/20 transition-colors group"
           >
             <Pencil size={13} className="text-purple-400 group-hover:text-purple-300 transition-colors" />
             <span className="text-purple-300 text-xs font-semibold group-hover:text-purple-200 transition-colors">
-              Suggest a Correction
+              Update Church Info
             </span>
             {missingFieldCount > 0 && (
               <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-pink-500/20 text-pink-400 font-semibold">

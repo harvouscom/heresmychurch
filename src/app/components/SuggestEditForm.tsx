@@ -1,7 +1,6 @@
 import type { Church } from "./church-data";
 import { DENOMINATION_GROUPS, COMMON_LANGUAGES, COMMON_MINISTRIES } from "./church-data";
-import type { SuggestionConsensus } from "./api";
-import { fetchSuggestions, submitSuggestion } from "./api";
+import { submitSuggestion } from "./api";
 import {
   X,
   Send,
@@ -18,10 +17,9 @@ import {
   User,
   Phone,
   Mail,
-  ShieldCheck,
   Pencil,
 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { ServiceTimesInput } from "./ServiceTimesInput";
 
 interface SuggestEditFormProps {
@@ -85,9 +83,6 @@ function getCurrentValue(church: Church, field: EditableField): string {
 }
 
 export function SuggestEditForm({ church, onClose, focusField }: SuggestEditFormProps) {
-  const [consensus, setConsensus] = useState<Record<string, SuggestionConsensus> | null>(null);
-  const [myVotes, setMyVotes] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -106,33 +101,16 @@ export function SuggestEditForm({ church, onClose, focusField }: SuggestEditForm
     setValues(v => ({ ...v, ministries: Array.from(chipMinistries).join(", ") }));
   }, [chipMinistries]);
 
-  const loadSuggestions = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await fetchSuggestions(church.id);
-      setConsensus(data.consensus);
-      setMyVotes(data.myVotes);
-    } catch (err) {
-      console.error("Failed to load suggestions:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [church.id]);
-
-  useEffect(() => {
-    loadSuggestions();
-  }, [loadSuggestions]);
-
   // Auto-focus on a specific field when focusField prop is set
   useEffect(() => {
-    if (focusField && !loading) {
+    if (focusField) {
       setEditingFields(new Set([focusField]));
       setValues(v => ({ ...v, [focusField]: getCurrentValue(church, focusField as EditableField) }));
       setTimeout(() => {
         document.getElementById(`field-${focusField}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
       }, 100);
     }
-  }, [focusField, loading]);
+  }, [focusField]);
 
   const handleSubmit = async (field: EditableField, value?: string) => {
     const val = (value ?? values[field])?.trim();
@@ -142,12 +120,8 @@ export function SuggestEditForm({ church, onClose, focusField }: SuggestEditForm
     setError(null);
 
     try {
-      const result = await submitSuggestion(church.id, field, val);
-      if (result.allFields) {
-        setConsensus(result.allFields);
-      }
+      await submitSuggestion(church.id, field, val);
       setSubmitted((prev) => new Set([...prev, field]));
-      setMyVotes((prev) => ({ ...prev, [field]: val }));
       // Close edit mode after successful submit
       setEditingFields((prev) => {
         const next = new Set(prev);
@@ -169,11 +143,6 @@ export function SuggestEditForm({ church, onClose, focusField }: SuggestEditForm
     }
   };
 
-  // "Verify" = submit the top suggestion's value as your own vote
-  const handleVerify = async (field: EditableField, topValue: string) => {
-    await handleSubmit(field, topValue);
-  };
-
   const emptyCount = FIELD_CONFIG.filter(f => isFieldEmpty(church, f.key)).length;
 
   return (
@@ -187,17 +156,14 @@ export function SuggestEditForm({ church, onClose, focusField }: SuggestEditForm
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-[10px] uppercase tracking-wider text-purple-400/70 font-semibold">
-                Community Corrections
+                Update Church Info
               </span>
             </div>
             <h2 className="text-white font-semibold text-[22px] leading-tight truncate">
               {church.name}
             </h2>
             <p className="text-white/40 text-[11px] mt-1.5 leading-relaxed">
-              Verify existing suggestions or submit your own.
-              Changes apply when{" "}
-              <span className="text-purple-400 font-semibold">3 people</span>{" "}
-              agree.
+              Help keep this church&apos;s information accurate and up to date.
               {emptyCount > 0 && (
                 <span className="text-pink-400/80">
                   {" "}This church is missing {emptyCount} {emptyCount === 1 ? "field" : "fields"} — help fill them in!
@@ -216,20 +182,13 @@ export function SuggestEditForm({ church, onClose, focusField }: SuggestEditForm
 
       {/* Form fields */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 size={20} className="text-purple-400 animate-spin" />
-          </div>
-        ) : (
-          <>
             {/* Core fields */}
             {FIELD_CONFIG.filter(f => f.group === "core").map((fieldConfig) => (
               <FieldCard
                 key={fieldConfig.key}
                 fieldConfig={fieldConfig}
                 church={church}
-                consensus={consensus}
-                myVotes={myVotes}
+
                 submitting={submitting}
                 submitted={submitted}
                 isEditing={editingFields.has(fieldConfig.key)}
@@ -245,7 +204,7 @@ export function SuggestEditForm({ church, onClose, focusField }: SuggestEditForm
                     return next;
                   });
                 }}
-                onVerify={(topValue) => handleVerify(fieldConfig.key, topValue)}
+
                 onSubmitEdit={() => handleSubmit(fieldConfig.key)}
                 values={values}
                 setValues={setValues}
@@ -271,8 +230,7 @@ export function SuggestEditForm({ church, onClose, focusField }: SuggestEditForm
                 key={fieldConfig.key}
                 fieldConfig={fieldConfig}
                 church={church}
-                consensus={consensus}
-                myVotes={myVotes}
+
                 submitting={submitting}
                 submitted={submitted}
                 isEditing={editingFields.has(fieldConfig.key)}
@@ -287,7 +245,7 @@ export function SuggestEditForm({ church, onClose, focusField }: SuggestEditForm
                     return next;
                   });
                 }}
-                onVerify={(topValue) => handleVerify(fieldConfig.key, topValue)}
+
                 onSubmitEdit={() => handleSubmit(fieldConfig.key)}
                 values={values}
                 setValues={setValues}
@@ -304,15 +262,12 @@ export function SuggestEditForm({ church, onClose, focusField }: SuggestEditForm
                 <p className="text-red-300/80 text-xs">{error}</p>
               </div>
             )}
-          </>
-        )}
 
         {/* Info note */}
         <div className="pt-3 border-t border-white/5">
           <p className="text-white/25 text-[10px] leading-relaxed text-center">
-            Corrections require 3 independent votes to take effect. For
-            attendance, the approved value is the average of all votes. Your
-            vote can be updated once per day.
+            Your edits are applied immediately. You can update each field
+            once per day.
           </p>
         </div>
       </div>
@@ -321,18 +276,15 @@ export function SuggestEditForm({ church, onClose, focusField }: SuggestEditForm
 }
 
 // ── Field Card Component ──
-// Shows: current value, top suggestion with Verify button, Edit button to open input
+// Shows: current value and edit button to open input
 function FieldCard({
   fieldConfig,
   church,
-  consensus,
-  myVotes,
   submitting,
   submitted,
   isEditing,
   onStartEdit,
   onCancelEdit,
-  onVerify,
   onSubmitEdit,
   values,
   setValues,
@@ -343,14 +295,11 @@ function FieldCard({
 }: {
   fieldConfig: (typeof FIELD_CONFIG)[number];
   church: Church;
-  consensus: Record<string, SuggestionConsensus> | null;
-  myVotes: Record<string, string>;
   submitting: string | null;
   submitted: Set<string>;
   isEditing: boolean;
   onStartEdit: () => void;
   onCancelEdit: () => void;
-  onVerify: (topValue: string) => void;
   onSubmitEdit: () => void;
   values: Record<string, string>;
   setValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
@@ -360,16 +309,10 @@ function FieldCard({
   setChipMinistries: React.Dispatch<React.SetStateAction<Set<string>>>;
 }) {
   const { key, label, icon: Icon, placeholder, type } = fieldConfig;
-  const fieldConsensus = consensus?.[key];
-  const hasVoted = !!myVotes[key];
   const isSubmitting = submitting === key;
   const justSubmitted = submitted.has(key);
   const empty = isFieldEmpty(church, key);
   const currentValue = getCurrentValue(church, key);
-
-  // Top suggestion from existing submissions
-  const topSubmission = fieldConsensus?.submissions?.[0];
-  const hasExistingSuggestion = topSubmission && fieldConsensus && fieldConsensus.votes > 0 && !fieldConsensus.approved;
 
   return (
     <div
@@ -386,17 +329,7 @@ function FieldCard({
         <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
           {label}
         </span>
-        {fieldConsensus?.approved && (
-          <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 font-semibold">
-            APPROVED
-          </span>
-        )}
-        {hasVoted && !fieldConsensus?.approved && (
-          <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-400 font-semibold">
-            VOTED
-          </span>
-        )}
-        {empty && !fieldConsensus?.approved && !hasVoted && (
+        {empty && (
           <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-pink-500/15 text-pink-400 font-semibold">
             MISSING
           </span>
@@ -411,79 +344,17 @@ function FieldCard({
         </div>
       )}
 
-      {/* Approved consensus value */}
-      {fieldConsensus?.approved && fieldConsensus.value && (
-        <div className="mb-2 px-2.5 py-2 rounded-lg bg-green-500/8 border border-green-500/15">
-          <div className="flex items-center gap-1.5 mb-1">
-            <Check size={10} className="text-green-400" />
-            <span className="text-[10px] text-green-400/70 font-medium">Community approved</span>
-          </div>
-          <p className="text-green-300/90 text-xs">{fieldConsensus.value}</p>
-        </div>
-      )}
-
       {/* Just submitted feedback */}
       {justSubmitted && (
         <div className="flex items-center gap-2 py-2 px-2.5 rounded-lg bg-green-500/10 border border-green-500/15 mb-2">
           <Check size={12} className="text-green-400" />
-          <span className="text-green-400 text-xs font-medium">Vote recorded!</span>
+          <span className="text-green-400 text-xs font-medium">Updated!</span>
         </div>
       )}
 
-      {/* Not approved: show suggestions + verify/edit */}
-      {!fieldConsensus?.approved && !justSubmitted && (
+      {/* Edit controls */}
+      {!justSubmitted && (
         <>
-          {/* Existing suggestions to verify */}
-          {hasExistingSuggestion && !isEditing && (
-            <div className="space-y-1.5 mb-2.5">
-              {fieldConsensus.submissions.map((s, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/[0.04] border border-white/6"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white/70 text-xs truncate">"{s.value}"</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      {/* Mini progress */}
-                      <div className="flex-1 h-1 rounded-full bg-white/8 overflow-hidden max-w-[60px]">
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{
-                            width: `${Math.min((s.count / (fieldConsensus.needed)) * 100, 100)}%`,
-                            background: "linear-gradient(90deg, #a855f7, #ec4899)",
-                          }}
-                        />
-                      </div>
-                      <span className="text-white/30 text-[10px]">
-                        {s.count}/{fieldConsensus.needed}
-                      </span>
-                    </div>
-                  </div>
-                  {/* Verify button (agree with this value) */}
-                  {myVotes[key]?.trim() === s.value.trim() ? (
-                    <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-purple-500/10 flex-shrink-0">
-                      <Check size={10} className="text-purple-400" />
-                      <span className="text-purple-400 text-[10px] font-medium">Your vote</span>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => onVerify(s.value)}
-                      disabled={isSubmitting}
-                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-pink-500/15 text-pink-300 text-[10px] font-medium hover:bg-pink-500/25 transition-colors disabled:opacity-50 flex-shrink-0 cursor-pointer"
-                    >
-                      {isSubmitting ? (
-                        <Loader2 size={10} className="animate-spin" />
-                      ) : (
-                        <ShieldCheck size={10} />
-                      )}
-                      Verify
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
           {/* Action buttons: Edit (to show input) */}
           {!isEditing && (
             <button
@@ -491,7 +362,7 @@ function FieldCard({
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/12 text-purple-300 text-[11px] font-medium hover:bg-purple-500/20 transition-colors cursor-pointer"
             >
               <Pencil size={10} />
-              {hasExistingSuggestion ? "Submit different value" : (empty ? "Add value" : "Suggest correction")}
+              {empty ? "Add value" : "Edit"}
             </button>
           )}
 

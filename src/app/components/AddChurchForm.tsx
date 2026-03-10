@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import {
   X,
   Plus,
@@ -9,7 +9,6 @@ import {
   Church as ChurchIcon,
   AlertCircle,
   Loader2,
-  ShieldCheck,
   Clock,
   Phone,
   Mail,
@@ -19,8 +18,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { DENOMINATION_GROUPS, COMMON_LANGUAGES, COMMON_MINISTRIES } from "./church-data";
-import type { PendingChurchData } from "./api";
-import { addChurch, fetchPendingChurches, verifyChurch } from "./api";
+import { addChurch } from "./api";
 import { ServiceTimesInput } from "./ServiceTimesInput";
 
 interface AddChurchFormProps {
@@ -34,13 +32,7 @@ export function AddChurchForm({
   stateName,
   onClose,
 }: AddChurchFormProps) {
-  const [mode, setMode] = useState<"list" | "form">("list");
-  const [pendingChurches, setPendingChurches] = useState<PendingChurchData[]>(
-    []
-  );
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [verifying, setVerifying] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showExtended, setShowExtended] = useState(false);
@@ -62,22 +54,6 @@ export function AddChurchForm({
   const [pastorName, setPastorName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-
-  const loadPending = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await fetchPendingChurches(stateAbbrev);
-      setPendingChurches(data.churches);
-    } catch (err) {
-      console.error("Failed to load pending churches:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [stateAbbrev]);
-
-  useEffect(() => {
-    loadPending();
-  }, [loadPending]);
 
   const handleSubmit = async () => {
     if (!name.trim()) {
@@ -130,11 +106,11 @@ export function AddChurchForm({
 
       if (result.isDuplicate) {
         setSuccess(
-          "This church was already submitted. Your verification has been counted!"
+          "This church was already submitted!"
         );
       } else {
         setSuccess(
-          "Church submitted! It needs 2 more people to verify before it appears on the map."
+          "Church added to the map!"
         );
       }
 
@@ -155,46 +131,13 @@ export function AddChurchForm({
       setEmail("");
       setShowExtended(false);
 
-      // Refresh pending list
-      await loadPending();
       setTimeout(() => {
-        setMode("list");
         setSuccess(null);
       }, 3000);
     } catch (err: any) {
       setError(err.message || "Failed to submit church");
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleVerify = async (churchId: string) => {
-    setVerifying(churchId);
-    setError(null);
-
-    try {
-      const result = await verifyChurch(churchId);
-      if (result.alreadyVerified) {
-        setError("You have already verified this church");
-      } else {
-        // Update local state
-        setPendingChurches((prev) =>
-          prev.map((ch) =>
-            ch.id === churchId
-              ? {
-                  ...ch,
-                  verificationCount: result.church.verificationCount,
-                  myVerification: true,
-                  approved: result.church.approved,
-                }
-              : ch
-          )
-        );
-      }
-    } catch (err: any) {
-      setError(err.message || "Failed to verify church");
-    } finally {
-      setVerifying(null);
     }
   };
 
@@ -215,9 +158,6 @@ export function AddChurchForm({
       return next;
     });
   };
-
-  const remainingNeeded = (ch: PendingChurchData) =>
-    Math.max(0, ch.needed - ch.verificationCount);
 
   const inputClass =
     "w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/20";
@@ -256,11 +196,7 @@ export function AddChurchForm({
                 Add a Church in {stateName}
               </h2>
               <p className="text-white/40 text-[11px] mt-1 leading-relaxed">
-                Don't see a church? Submit it below. New entries need{" "}
-                <span className="text-purple-400 font-semibold">
-                  3 people
-                </span>{" "}
-                to verify before appearing on the map.
+                Don&apos;t see your church? Add it below and it will appear on the map right away.
               </p>
             </div>
             <button
@@ -271,30 +207,6 @@ export function AddChurchForm({
             </button>
           </div>
 
-          {/* Tab switcher */}
-          <div className="flex gap-1 mt-3 bg-white/5 rounded-lg p-0.5">
-            <button
-              onClick={() => setMode("list")}
-              className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-colors ${
-                mode === "list"
-                  ? "bg-purple-600/30 text-purple-300"
-                  : "text-white/40 hover:text-white/60"
-              }`}
-            >
-              Pending ({pendingChurches.length})
-            </button>
-            <button
-              onClick={() => setMode("form")}
-              className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-colors ${
-                mode === "form"
-                  ? "bg-purple-600/30 text-purple-300"
-                  : "text-white/40 hover:text-white/60"
-              }`}
-            >
-              <Plus size={11} className="inline mr-1" />
-              Add New
-            </button>
-          </div>
         </div>
 
         {/* Content */}
@@ -321,141 +233,7 @@ export function AddChurchForm({
             </div>
           )}
 
-          {mode === "list" ? (
-            /* ── Pending churches list ── */
-            loading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 size={20} className="text-purple-400 animate-spin" />
-              </div>
-            ) : pendingChurches.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <ChurchIcon size={28} className="text-white/10 mb-3" />
-                <p className="text-white/40 text-sm">
-                  No community-submitted churches yet
-                </p>
-                <p className="text-white/20 text-xs mt-1">
-                  Be the first to add a missing church
-                </p>
-                <button
-                  onClick={() => setMode("form")}
-                  className="mt-4 px-4 py-2 rounded-lg text-xs font-medium text-purple-300 bg-purple-600/20 border border-purple-500/30 hover:bg-purple-600/30 transition-colors"
-                >
-                  <Plus size={12} className="inline mr-1" />
-                  Add a Church
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {pendingChurches.map((ch) => (
-                  <div
-                    key={ch.id}
-                    className={`rounded-xl p-3.5 border transition-colors ${
-                      ch.approved
-                        ? "bg-green-500/5 border-green-500/20"
-                        : "bg-white/[0.03] border-white/6"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-white font-medium truncate">
-                            {ch.name}
-                          </span>
-                          {ch.approved && (
-                            <span className="flex-shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 font-semibold flex items-center gap-0.5">
-                              <ShieldCheck size={9} />
-                              VERIFIED
-                            </span>
-                          )}
-                        </div>
-                        {(ch.city || ch.address) && (
-                          <p className="text-xs text-white/30 mt-0.5 truncate">
-                            {[ch.address, ch.city, ch.state]
-                              .filter(Boolean)
-                              .join(", ")}
-                          </p>
-                        )}
-                        <div className="flex items-center gap-3 mt-2">
-                          {ch.denomination &&
-                            ch.denomination !== "Unknown" && (
-                              <span className="text-[10px] text-white/40 flex items-center gap-1">
-                                <ChurchIcon size={9} />
-                                {ch.denomination}
-                              </span>
-                            )}
-                          <span className="text-[10px] text-white/40 flex items-center gap-1">
-                            <Users size={9} />~
-                            {ch.attendance.toLocaleString()}
-                          </span>
-                          <span className="text-[10px] text-white/20 flex items-center gap-1">
-                            <Clock size={9} />
-                            {new Date(ch.submittedAt).toLocaleDateString()}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Verify button / status */}
-                      <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
-                        {ch.approved ? (
-                          <div className="text-[10px] text-green-400/60 text-right">
-                            <Check size={12} className="inline" /> Approved
-                          </div>
-                        ) : ch.myVerification ? (
-                          <div className="text-[10px] text-purple-400/60 text-right">
-                            <Check size={12} className="inline" /> You verified
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => handleVerify(ch.id)}
-                            disabled={verifying === ch.id}
-                            className="px-3 py-1.5 rounded-lg text-[11px] font-medium text-white bg-purple-600/40 border border-purple-500/30 hover:bg-purple-600/60 transition-colors disabled:opacity-40"
-                          >
-                            {verifying === ch.id ? (
-                              <Loader2
-                                size={12}
-                                className="animate-spin inline"
-                              />
-                            ) : (
-                              <>
-                                <ShieldCheck
-                                  size={11}
-                                  className="inline mr-1"
-                                />
-                                Verify
-                              </>
-                            )}
-                          </button>
-                        )}
-
-                        {/* Progress */}
-                        {!ch.approved && (
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-16 h-1 rounded-full bg-white/10 overflow-hidden">
-                              <div
-                                className="h-full rounded-full transition-all duration-500"
-                                style={{
-                                  width: `${Math.min(
-                                    (ch.verificationCount / ch.needed) * 100,
-                                    100
-                                  )}%`,
-                                  backgroundColor: "#a855f7",
-                                }}
-                              />
-                            </div>
-                            <span className="text-[9px] text-white/30 tabular-nums">
-                              {remainingNeeded(ch) > 0
-                                ? `needs ${remainingNeeded(ch)} more`
-                                : "approved"}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )
-          ) : (
+          {(
             /* ── Add church form ── */
             <div className="space-y-3.5">
               {/* Name (required) */}
@@ -747,10 +525,8 @@ export function AddChurchForm({
 
               {/* Info note */}
               <p className="text-white/20 text-[10px] leading-relaxed text-center pt-1">
-                Your submission counts as the first verification. Two more
-                unique people need to verify before the church appears on the
-                map. Once verified, anyone can suggest corrections using the same
-                community consensus system.
+                Your church will appear on the map immediately. Anyone can
+                suggest corrections to keep the info accurate.
               </p>
             </div>
           )}
