@@ -807,11 +807,15 @@ app.post(`${P}/churches/react/:churchId`, async (c) => {
     const key = `reactions:${churchId}`;
     const store = (await kv.get(key)) || { reactions: [] };
     const reactions = Array.isArray(store.reactions) ? store.reactions : [];
+    const existing = reactions.find((x: any) => x.ip === ip);
+    const isToggleOff = existing && existing.reaction === reaction;
     const withoutMe = reactions.filter((x: any) => x.ip !== ip);
-    withoutMe.push({ ip, reaction, timestamp: Date.now() });
+    if (!isToggleOff) {
+      withoutMe.push({ ip, reaction, timestamp: Date.now() });
+    }
     store.reactions = withoutMe;
     await kv.set(key, store);
-    return c.json({ success: true, myReaction: reaction, counts: reactionCounts(withoutMe) });
+    return c.json({ success: true, myReaction: isToggleOff ? null : reaction, counts: reactionCounts(withoutMe) });
   } catch (e) {
     return c.json({ error: `${e}` }, 500);
   }

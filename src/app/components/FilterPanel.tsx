@@ -55,7 +55,7 @@ export function FilterPanel({
 }: FilterPanelProps) {
   return (
     <div
-      className="absolute left-[7.5rem] bottom-6 z-25 rounded-xl shadow-2xl p-4 w-[260px] max-h-[70vh] overflow-y-auto"
+      className="absolute left-[58px] bottom-6 z-25 rounded-xl shadow-2xl p-4 w-[260px] max-h-[70vh] overflow-y-auto"
       style={{ backgroundColor: "rgba(30, 16, 64, 0.96)" }}
     >
       <div className="flex items-center justify-between mb-3">

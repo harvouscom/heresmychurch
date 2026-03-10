@@ -124,7 +124,7 @@ function TimeWithBlinkingColon({ time }: { time: string }) {
   return (
     <>
       {before}
-      <span className="animate-colon-blink inline-block w-[0.25em] text-center" aria-hidden>
+      <span className="animate-colon-blink inline-block w-[0.25em] text-center mx-[2px]" aria-hidden>
         :
       </span>
       {after}
@@ -239,6 +239,7 @@ export function ChurchDetailPanel({
   const [counts, setCounts] = useState<ReactionCounts>({ not_for_me: 0, like: 0, love: 0 });
   const [reactionAnimKeys, setReactionAnimKeys] = useState({ not_for_me: 0, like: 0, love: 0 });
   const [reactionSubmitting, setReactionSubmitting] = useState(false);
+  const hasSubmittedReaction = useRef(false);
   const sizeCat = getSizeCategory(church.attendance);
   const denomGroup = getDenominationGroup(church.denomination);
   const bilingualInfo = estimateBilingualProbability(church);
@@ -310,6 +311,11 @@ export function ChurchDetailPanel({
       .catch(() => {});
   }, [church.id]);
 
+  // Reset "submitted reaction" flag when church changes so next fetch applies
+  useEffect(() => {
+    hasSubmittedReaction.current = false;
+  }, [church.id]);
+
   // Fetch reactions
   useEffect(() => {
     setReactionsLoading(true);
@@ -317,8 +323,10 @@ export function ChurchDetailPanel({
     setCounts({ not_for_me: 0, like: 0, love: 0 });
     fetchReactions(church.id)
       .then((data) => {
-        setMyReaction(data.myReaction);
-        setCounts(data.counts);
+        if (!hasSubmittedReaction.current) {
+          setMyReaction(data.myReaction);
+          setCounts(data.counts);
+        }
       })
       .catch(() => {})
       .finally(() => setReactionsLoading(false));
@@ -339,25 +347,29 @@ export function ChurchDetailPanel({
 
   const handleReaction = async (reaction: ReactionType) => {
     setReactionAnimKeys((k) => ({ ...k, [reaction]: k[reaction] + 1 }));
-    const prevReaction = myReaction;
-    const prevCounts = { ...counts };
+    hasSubmittedReaction.current = true;
 
-    // Optimistic update
+    // Optimistic update — applied immediately and never reverted so the UI
+    // stays consistent even if the server call is slow or fails.
+    const isToggle = myReaction === reaction;
     const newCounts = { ...counts };
-    if (prevReaction) newCounts[prevReaction] = Math.max(0, newCounts[prevReaction] - 1);
-    newCounts[reaction]++;
-    setMyReaction(reaction);
+    if (isToggle) {
+      newCounts[reaction] = Math.max(0, newCounts[reaction] - 1);
+      setMyReaction(null);
+    } else {
+      if (myReaction) newCounts[myReaction] = Math.max(0, newCounts[myReaction] - 1);
+      newCounts[reaction]++;
+      setMyReaction(reaction);
+    }
     setCounts(newCounts);
 
     setReactionSubmitting(true);
     try {
       const res = await submitReaction(church.id, reaction);
-      setMyReaction(res.myReaction);
       setCounts(res.counts);
+      if (res.myReaction !== undefined) setMyReaction(res.myReaction);
     } catch (err) {
       console.error("Failed to submit reaction:", err);
-      setMyReaction(prevReaction);
-      setCounts(prevCounts);
     } finally {
       setReactionSubmitting(false);
     }

@@ -485,7 +485,7 @@ export interface ReactionsResponse {
 
 export interface SubmitReactionResponse {
   success: boolean;
-  myReaction: ReactionType;
+  myReaction: ReactionType | null;
   counts: ReactionCounts;
   error?: string;
 }
@@ -521,7 +521,7 @@ export async function submitReaction(
   const data = await res.json();
   return {
     success: data.success ?? true,
-    myReaction: data.myReaction ?? reaction,
+    myReaction: data.myReaction !== undefined ? data.myReaction : reaction,
     counts: data.counts ?? { not_for_me: 0, like: 0, love: 0 },
     error: data.error,
   };

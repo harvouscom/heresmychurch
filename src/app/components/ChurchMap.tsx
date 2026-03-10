@@ -73,9 +73,11 @@ export function ChurchMap({
   const showErrorBanner = d.error && (d.churches.length > 0 || !d.focusedState);
 
   const isMobile = useIsMobile();
-  // State/church view: always show full search. National: collapsed only on mobile.
+  // When Filter or Map Key panel is open, collapse search (same as filter behavior). Otherwise: state/church view always show full search; national collapsed only on mobile.
   const effectiveSearchCollapsed =
-    d.focusedState || d.selectedChurch ? false : (d.searchCollapsed && isMobile);
+    d.showFilterPanel || d.showLegend
+      ? true
+      : (d.focusedState || d.selectedChurch ? false : (d.searchCollapsed && isMobile));
   // Only count search as "overlay open" on national + mobile (so map tap can collapse the pill). Desktop national and state/church always show full search — no overlay for search.
   const isNationalView = !d.focusedState && !d.selectedChurch;
   const anyOverlayOpen = d.showSummary || d.showFilterPanel || d.showLegend || (isNationalView && isMobile && !effectiveSearchCollapsed);
@@ -455,23 +457,27 @@ function MapArea({
               if (willOpen) {
                 d.setShowSummary(false);
                 d.setShowFilterPanel(false);
+                d.setSearchCollapsed(true);
               }
             }}
             zoom={d.zoom}
             compact
           />
-          <MapLegend
-            focusedState={d.focusedState}
-            showLegend={d.showLegend}
-            setShowLegend={(v) => d.setShowLegend(v)}
-            setShowSummary={(v) => d.setShowSummary(v)}
-            setShowFilterPanel={(v) => d.setShowFilterPanel(v)}
-            allStatesLoaded={d.allStatesLoaded}
-            states={d.states}
-            filteredChurches={d.filteredChurches}
-            sizeCounts={d.sizeCounts}
-          />
         </div>
+      )}
+
+      {d.showLegend && (
+        <MapLegend
+          focusedState={d.focusedState}
+          showLegend={d.showLegend}
+          setShowLegend={(v) => d.setShowLegend(v)}
+          setShowSummary={(v) => d.setShowSummary(v)}
+          setShowFilterPanel={(v) => d.setShowFilterPanel(v)}
+          allStatesLoaded={d.allStatesLoaded}
+          states={d.states}
+          filteredChurches={d.filteredChurches}
+          sizeCounts={d.sizeCounts}
+        />
       )}
 
       {d.showFilterPanel && (
@@ -495,8 +501,8 @@ function MapArea({
         />
       )}
 
-      {!isLoadingVisible && !d.showFilterPanel && (
-        <div className="absolute bottom-[24px] left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2.5">
+      {!isLoadingVisible && !d.showFilterPanel && !d.showLegend && (
+        <div className="absolute bottom-[24px] left-6 right-6 md:left-12 md:right-12 z-20 flex flex-col items-center gap-2.5">
           {/* Active now — 10px above search; search list z-index is above this */}
           {((activePeople + activeBots) > 1 || (isLocalhost && (activePeople + activeBots) >= 1)) && (
             <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full min-w-0 truncate bg-green-500/5 border border-green-500/10">
@@ -528,7 +534,7 @@ function MapArea({
             navigateToChurch={navigateToChurch}
             onPreloadChurch={d.preloadChurch}
             collapsed={searchCollapsed}
-            onExpand={() => { d.setSearchCollapsed(false); d.setShowFilterPanel(false); }}
+            onExpand={() => { d.setSearchCollapsed(false); d.setShowFilterPanel(false); d.setShowLegend(false); }}
             onAddChurch={d.focusedState ? () => { d.setShowAddChurchFromSummary(true); } : undefined}
             detectedState={d.detectedState}
             zoom={d.zoom}
