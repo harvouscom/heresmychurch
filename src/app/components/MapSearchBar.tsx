@@ -27,7 +27,12 @@ interface MapSearchBarProps {
   center?: [number, number];
 }
 
+/** Max results for national (remote) search dropdown */
 const MAX_RESULTS = 8;
+/** Max results for state-view local search so users see more matches in-state */
+const MAX_RESULTS_STATE_VIEW = 50;
+/** Max results when searching with a state filter (national view, server search) */
+const MAX_RESULTS_STATE_SCOPED = 100;
 const DEBOUNCE_MS = 300;
 
 export function MapSearchBar({
@@ -142,7 +147,7 @@ export function MapSearchBar({
     const tokens = q.split(/\s+/).filter(Boolean);
     const matched: Church[] = [];
     for (const ch of churches) {
-      if (matched.length >= MAX_RESULTS) break;
+      if (matched.length >= MAX_RESULTS_STATE_VIEW) break;
       const haystack = `${ch.name} ${ch.city} ${ch.denomination} ${ch.address || ""}`.toLowerCase();
       if (tokens.every((t) => haystack.includes(t))) {
         matched.push(ch);
@@ -195,7 +200,8 @@ export function MapSearchBar({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const data = await searchChurches(q, MAX_RESULTS, stateFilter || undefined);
+        const limit = stateFilter ? MAX_RESULTS_STATE_SCOPED : MAX_RESULTS;
+        const data = await searchChurches(q, limit, stateFilter || undefined);
         if (searchVersionRef.current !== version) return;
         setRemoteResults(data.results);
         setRemoteSearched(true);
@@ -419,7 +425,7 @@ export function MapSearchBar({
                       <ChevronRight size={14} className="text-white/20 flex-shrink-0" />
                     </button>
                   ))}
-                  {localResults.length >= MAX_RESULTS && (
+                  {localResults.length >= MAX_RESULTS_STATE_VIEW && (
                     <div className="px-4 py-2 text-xs text-white/30 text-center border-t border-white/5">
                       Keep typing to narrow results…
                     </div>
@@ -510,7 +516,7 @@ export function MapSearchBar({
                       <ChevronRight size={14} className="text-white/20 flex-shrink-0" />
                     </button>
                   ))}
-                  {remoteResults.length >= MAX_RESULTS && (
+                  {remoteResults.length >= (stateFilter ? MAX_RESULTS_STATE_SCOPED : MAX_RESULTS) && (
                     <div className="px-4 py-2 text-xs text-white/30 text-center border-t border-white/5">
                       Keep typing to narrow results…
                     </div>

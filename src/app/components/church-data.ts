@@ -20,10 +20,24 @@ export interface Church {
   languages?: string[];        // e.g. ["English", "Spanish"]
   ministries?: string[];       // e.g. ["Youth", "Music", "Outreach"]
   pastorName?: string;
+  /** "campus" = Campus Pastor (for campuses); "lead" or missing = Lead Pastor */
+  pastorRole?: "lead" | "campus";
   phone?: string;
   email?: string;
+  /** When set, this church is a campus; value is the main church's id (e.g. "TX-12345"). */
+  homeCampusId?: string;
+  /** Resolved by API when homeCampusId points to another state: main campus summary for display/link. */
+  homeCampus?: HomeCampusSummary;
   bilingualProbability?: number; // 0-1, estimated or user-confirmed
   lastVerified?: number; // timestamp of last correction or confirmation
+}
+
+/** Minimal church info for cross-state main campus link (from API). */
+export interface HomeCampusSummary {
+  id: string;
+  name: string;
+  state: string;
+  shortId: string;
 }
 
 export interface StateInfo {

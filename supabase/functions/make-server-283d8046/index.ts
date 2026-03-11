@@ -11,7 +11,8 @@ function gS(a:string):SI|undefined{return US.find(s=>s.a===a.toUpperCase());}
 
 // ── Geographic data ──
 const B:Record<string,[number,number,number,number]>={AL:[30.22,-88.47,35.01,-84.89],AK:[51.21,-179.15,71.39,-129.98],AZ:[31.33,-114.81,37,-109.04],AR:[33,-94.62,36.5,-89.64],CA:[32.53,-124.41,42.01,-114.13],CO:[36.99,-109.06,41,-102.04],CT:[40.95,-73.73,42.05,-71.79],DE:[38.45,-75.79,39.84,-75.05],FL:[24.4,-87.63,31,-79.97],GA:[30.36,-85.61,35,-80.84],HI:[18.91,-160.24,22.24,-154.81],ID:[42,-117.24,49,-111.04],IL:[36.97,-91.51,42.51,-87.02],IN:[37.77,-88.1,41.76,-84.78],IA:[40.38,-96.64,43.5,-90.14],KS:[36.99,-102.05,40,-94.59],KY:[36.5,-89.57,39.15,-81.96],LA:[28.93,-94.04,33.02,-88.82],ME:[42.98,-71.08,47.46,-66.95],MD:[37.91,-79.49,39.72,-75.05],MA:[41.24,-73.5,42.89,-69.93],MI:[41.7,-90.42,48.31,-82.12],MN:[43.5,-97.24,49.38,-89.49],MS:[30.17,-91.66,34.99,-88.1],MO:[35.99,-95.77,40.61,-89.1],MT:[44.36,-116.05,49,-104.04],NE:[39.99,-104.05,43,-95.31],NV:[35,-120.01,42,-114.04],NH:[42.7,-72.56,45.31,-70.7],NJ:[38.93,-75.56,41.36,-73.89],NM:[31.33,-109.05,37,-103],NY:[40.5,-79.76,45.02,-71.86],NC:[33.84,-84.32,36.59,-75.46],ND:[45.94,-104.05,49,-96.55],OH:[38.4,-84.82,42.33,-80.52],OK:[33.62,-103,37,-94.43],OR:[41.99,-124.57,46.29,-116.46],PA:[39.72,-80.52,42.27,-74.69],RI:[41.15,-71.86,42.02,-71.12],SC:[32.03,-83.35,35.22,-78.54],SD:[42.48,-104.06,45.95,-96.44],TN:[34.98,-90.31,36.68,-81.65],TX:[25.84,-106.65,36.5,-93.51],UT:[36.99,-114.05,42,-109.04],VT:[42.73,-73.44,45.02,-71.46],VA:[36.54,-83.68,39.47,-75.24],WA:[45.54,-124.85,49,-116.92],WV:[37.2,-82.64,40.64,-77.72],WI:[42.49,-92.89,47.08,-86.25],WY:[40.99,-111.06,45.01,-104.05],DC:[38.79,-77.12,38.99,-76.91]};
-const BIG=new Set(["TX","CA","FL","NY","PA","OH","IL","GA","NC","MI","TN","VA","AL","MO","IN","SC","KY","LA","WI","MN","MS","AR","OK","IA","KS"]);
+// States that use 4-quadrant Overpass queries to avoid single-query 2000 truncation
+const BIG=new Set(["TX","CA","FL","NY","PA","OH","IL","GA","NC","MI","TN","VA","AL","MO","IN","SC","KY","LA","WI","MN","MS","AR","OK","IA","KS","NJ","AZ","WA","OR","MA","NV","NM","UT","CT","MD","CO"]);
 
 // ── Denomination matching (lazy regex compilation) ──
 type DR=[string,string[]?,string?,string[]?];
@@ -193,7 +194,8 @@ async function ovpQ(q:string,label:string):Promise<any[]>{
 }
 function bQ(iso:string,bbox?:[number,number,number,number]):string{
   const f=bbox?`(area.searchArea)(${bbox.join(",")})`:"(area.searchArea)";
-  return`[out:json][timeout:90];area["ISO3166-2"="${iso}"]->.searchArea;(node["amenity"="place_of_worship"]["religion"="christian"]${f};way["amenity"="place_of_worship"]["religion"="christian"]${f};relation["amenity"="place_of_worship"]["religion"="christian"]${f};);out center;`;
+  // Request up to 10000 elements per query; public Overpass may still cap at 2000
+  return`[out:json][timeout:90];area["ISO3166-2"="${iso}"]->.searchArea;(node["amenity"="place_of_worship"]["religion"="christian"]${f};way["amenity"="place_of_worship"]["religion"="christian"]${f};relation["amenity"="place_of_worship"]["religion"="christian"]${f};);out center 10000;`;
 }
 function splitB(b:[number,number,number,number]):[number,number,number,number][]{const[s,w,n,e]=b,mL=(s+n)/2,mN=(w+e)/2;return[[s,w,mL,mN],[s,mN,mL,e],[mL,w,n,mN],[mL,mN,n,e]];}
 
@@ -293,12 +295,13 @@ app.get(`${P}/churches/search`,async(c)=>{
   try{
     const rawQ=c.req.query("q")||"",q=rawQ.toLowerCase().trim();
     if(!q||q.length<2)return c.json({results:[],query:rawQ});
-    const tokens=q.split(/\s+/).filter(Boolean),limit=Math.min(parseInt(c.req.query("limit")||"10"),25);
+    const tokens=q.split(/\s+/).filter(Boolean);
     const meta=await kv.get("churches:meta");const sc:Record<string,number>={...(meta?.stateCounts||{})};
     if(sc["DC"]){sc["MD"]=(sc["MD"]||0)+sc["DC"];delete sc["DC"];}
     const pop=Object.keys(sc);if(!pop.length)return c.json({results:[],query:rawQ});
 
     let stP=(c.req.query("state")||"").toUpperCase().trim();if(stP==="DC")stP="MD";
+    const limit=(stP&&pop.includes(stP))?Math.min(parseInt(c.req.query("limit")||"100")||100,200):Math.min(parseInt(c.req.query("limit")||"10")||10,25);
     const sM:Record<string,string>={};
     for(const s of US){sM[s.a.toLowerCase()]=s.a;sM[s.n.toLowerCase()]=s.a;}
     sM["dc"]="MD";sM["d.c."]="MD";sM["district of columbia"]="MD";
@@ -554,7 +557,7 @@ function normalizePhone(s:string):string{
   if(digits.length<10)return "";
   return digits;
 }
-const VF=["website","address","attendance","denomination","serviceTimes","languages","ministries","pastorName","phone","email"];
+const VF=["name","website","address","attendance","denomination","serviceTimes","languages","ministries","pastorName","pastorRole","phone","email"];
 function consensus(subs:any[]){
   const res:Record<string,any>={};
   for(const f of VF){
@@ -647,6 +650,7 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>):
           }
         }
         else if(f==="phone"){(ch as any).phone=normalizePhone(String(v))||undefined;}
+        else if(f==="pastorRole"){const r=String(v).trim();if(r==="lead"||r==="campus")(ch as any).pastorRole=r;}
         else{(ch as any)[f]=v;}
       }
       ch.lastVerified=Date.now();updated=true;break;
@@ -674,7 +678,10 @@ app.post(`${P}/suggestions`,async(c)=>{
     if(!VF.includes(field))return c.json({error:"Invalid field"},400);
     if(field==="denomination"&&isBlockedDenomination(String(value)))return c.json({error:"Denomination not supported"},400);
     if(field==="attendance"){const n=parseInt(value);if(isNaN(n)||n<1||n>50000)return c.json({error:"Attendance 1-50000"},400);}
-    let storeValue=String(value).trim();
+    if(field==="pastorRole"){const r=String(value).trim();if(r!=="lead"&&r!=="campus")return c.json({error:"Pastor role must be lead or campus"},400);}
+    let storeValue=String(value??"").trim();
+    if(!storeValue)return c.json({error:"Value is required"},400);
+    if(field==="name"&&storeValue.length<2)return c.json({error:"Church name must be at least 2 characters"},400);
     if(field==="phone"){storeValue=normalizePhone(storeValue);if(!storeValue)return c.json({error:"Invalid phone number"},400);}
     const k=`suggestions:${churchId}`;const ex=(await kv.get(k))||{churchId,submissions:[]};
     // Ensure churchId is stored in the value for getByPrefix lookups
@@ -745,7 +752,7 @@ app.get(`${P}/suggestions/:churchId`,async(c)=>{
 app.post(`${P}/churches/add`,async(c)=>{
   try{
     const ip=cip(c);const b=await c.req.json();
-    const{name,address:addr,city:ci,state,lat,lng,denomination,attendance,website,serviceTimes,languages,ministries,pastorName,phone,email}=b;
+    const{name,address:addr,city:ci,state,lat,lng,denomination,attendance,website,serviceTimes,languages,ministries,pastorName,pastorRole,phone,email}=b;
     if(!name||typeof name!=="string"||name.trim().length<2)return c.json({error:"Name required"},400);
     const st=String(state).toUpperCase();if(!gS(st))return c.json({error:"Invalid state"},400);
     const pLat=parseFloat(lat),pLng=parseFloat(lng);
@@ -760,9 +767,10 @@ app.post(`${P}/churches/add`,async(c)=>{
     const k=`pending-churches:${st}`;const store=(await kv.get(k))||{churches:[]};
     const dup=store.churches.find((ch:any)=>ch.name.trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs(ch.lat-pLat)<0.001&&Math.abs(ch.lng-pLng)<0.001);
     if(dup){if(!dup.verifications.some((v:any)=>v.ip===ip)){dup.verifications.push({ip,timestamp:Date.now()});if(dup.verifications.length>=THR)dup.approved=true;await kv.set(k,store);}return c.json({success:true,church:dup,isDuplicate:true});}
-    const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:normalizePhone(phone||"")||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
+    const pr=pastorRole==="campus"?"campus":"lead";
+    const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,pastorRole:pr,phone:normalizePhone(phone||"")||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
     store.churches.push(nc);await kv.set(k,store);
-    const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,state:st,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
+    const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,state:st,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,pastorRole:nc.pastorRole,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
     if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);}
     return c.json({success:true,church:nc});
   }catch(e){return c.json({error:`${e}`},500);}
@@ -940,7 +948,7 @@ app.post(`${P}/migrate/apply-pending`,async(c)=>{
         // Check for duplicates by name+location
         const exists=mainChurches.some((mc:any)=>mc.name?.trim().toLowerCase()===pc.name?.trim().toLowerCase()&&Math.abs((mc.lat||0)-(pc.lat||0))<0.001&&Math.abs((mc.lng||0)-(pc.lng||0))<0.001);
         if(exists)continue;
-        mainChurches.push({id:pc.id,name:pc.name,address:pc.address,city:pc.city,state:st,lat:pc.lat,lng:pc.lng,denomination:pc.denomination,attendance:pc.attendance,website:pc.website,serviceTimes:pc.serviceTimes,languages:pc.languages,ministries:pc.ministries,pastorName:pc.pastorName,phone:pc.phone,email:pc.email,lastVerified:Date.now()});
+        mainChurches.push({id:pc.id,name:pc.name,address:pc.address,city:pc.city,state:st,lat:pc.lat,lng:pc.lng,denomination:pc.denomination,attendance:pc.attendance,website:pc.website,serviceTimes:pc.serviceTimes,languages:pc.languages,ministries:pc.ministries,pastorName:pc.pastorName,pastorRole:pc.pastorRole||"lead",phone:pc.phone,email:pc.email,lastVerified:Date.now()});
         churchesMerged++;added=true;
       }
       if(added){await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);}

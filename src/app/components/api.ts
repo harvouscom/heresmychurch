@@ -251,7 +251,7 @@ export async function fetchSuggestions(
 
 export async function submitSuggestion(
   churchId: string,
-  field: "name" | "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email",
+  field: "name" | "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "pastorRole" | "phone" | "email" | "homeCampusId",
   value: string
 ): Promise<SubmitSuggestionResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/suggestions`, {
@@ -262,7 +262,14 @@ export async function submitSuggestion(
   if (!res.ok) {
     const text = await res.text();
     console.error(`Error submitting suggestion:`, text);
-    throw new Error(`Failed to submit suggestion: ${res.status}`);
+    let msg = `Failed to submit suggestion: ${res.status}`;
+    try {
+      const errBody = JSON.parse(text) as { error?: string };
+      if (errBody?.error) msg = errBody.error;
+    } catch {
+      if (text) msg = text.slice(0, 200);
+    }
+    throw new Error(msg);
   }
   const data = await res.json();
   return {
@@ -352,6 +359,7 @@ export async function addChurch(data: {
   languages?: string[];
   ministries?: string[];
   pastorName?: string;
+  pastorRole?: "lead" | "campus";
   phone?: string;
   email?: string;
 }): Promise<AddChurchResponse> {
@@ -497,7 +505,7 @@ export async function fetchCommunityStats(stateAbbrev?: string): Promise<Communi
   const url = stateAbbrev
     ? `${BASE_URL}/community/stats?state=${encodeURIComponent(stateAbbrev)}`
     : `${BASE_URL}/community/stats`;
-  const res = await fetchWithRetry(url, { headers });
+  const res = await fetchWithRetry(url, { headers, cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to fetch stats: ${res.status}`);
   return res.json();
 }

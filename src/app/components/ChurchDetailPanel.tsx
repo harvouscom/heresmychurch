@@ -1,4 +1,4 @@
-import type { Church } from "./church-data";
+import type { Church, HomeCampusSummary } from "./church-data";
 import { getSizeCategory, getDenominationGroup, estimateBilingualProbability, getFallbackLocation } from "./church-data";
 import {
   Church as ChurchIcon,
@@ -20,6 +20,8 @@ import {
   ShieldCheck,
   ThumbsDown,
   ThumbsUp,
+  Building2,
+  Home,
 } from "lucide-react";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { motion } from "motion/react";
@@ -32,11 +34,14 @@ import { withSiteRef } from "./url-utils";
 import { confirmChurchData, fetchCorrectionHistory, fetchReactions, submitReaction } from "./api";
 import type { CorrectionHistoryEntry, ReactionType, ReactionCounts } from "./api";
 
+/** Church or minimal summary for cross-state main campus link; both have state and shortId for navigation. */
+export type ChurchClickTarget = Church | HomeCampusSummary;
+
 interface ChurchDetailPanelProps {
   church: Church;
   allChurches: Church[];
   onClose: () => void;
-  onChurchClick: (church: Church) => void;
+  onChurchClick: (target: ChurchClickTarget) => void;
   externalShowEditForm?: boolean;
   onEditFormClosed?: () => void;
   onChurchUpdated?: () => void;
@@ -271,6 +276,18 @@ export function ChurchDetailPanel({
     !church.email,
   ].filter(Boolean).length;
 
+  // Other campuses (same state): churches that list this one as their main
+  const otherCampuses = useMemo(() => {
+    return allChurches.filter((c) => c.homeCampusId === church.id);
+  }, [church.id, allChurches]);
+
+  // Main campus: same-state from list, cross-state from API homeCampus
+  const mainCampusSameState = useMemo(() => {
+    if (!church.homeCampusId) return null;
+    return allChurches.find((c) => c.id === church.homeCampusId) ?? null;
+  }, [church.homeCampusId, allChurches]);
+  const mainCampusCrossState = church.homeCampusId && church.homeCampus ? church.homeCampus : null;
+
   // Get nearby churches
   const nearbyChurches = useMemo(() => {
     return allChurches
@@ -430,10 +447,28 @@ export function ChurchDetailPanel({
             <h2 className="text-white font-semibold text-xl leading-tight truncate">
               {church.name}
             </h2>
-            {fullAddress && (
-              <p className="text-white/50 text-sm mt-1.5 leading-relaxed">
-                {fullAddress}
-              </p>
+            {(church.homeCampusId || otherCampuses.length > 0 || fullAddress) && (
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                {church.homeCampusId && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider bg-purple-500/25 text-purple-300 border border-purple-500/30">
+                    Campus
+                  </span>
+                )}
+                {otherCampuses.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById("other-campuses")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                    className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider bg-purple-500/25 text-purple-300 border border-purple-500/30 hover:bg-purple-500/35 transition-colors cursor-pointer"
+                  >
+                    Multiple Campuses
+                  </button>
+                )}
+                {fullAddress && (
+                  <p className="text-white/50 text-sm leading-relaxed">
+                    {fullAddress}
+                  </p>
+                )}
+              </div>
             )}
           </div>
           <CloseButton onClick={onClose} size="lg" className="-mt-2" />
@@ -660,7 +695,7 @@ export function ChurchDetailPanel({
             <div className="space-y-1">
               {church.pastorName && (
                 <div className="flex justify-between items-center gap-2">
-                  <span className="text-white/50 text-xs">Lead Pastor</span>
+                  <span className="text-white/50 text-xs">{church.pastorRole === "campus" ? "Campus Pastor" : "Lead Pastor"}</span>
                   <span className="text-white text-sm font-medium truncate">{church.pastorName}</span>
                 </div>
               )}
@@ -753,10 +788,97 @@ export function ChurchDetailPanel({
               {correctionHistory.slice(0, 5).map((entry, i) => (
                 <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03]">
                   <Check size={12} className="text-green-400/60 flex-shrink-0" />
-                  <span className="text-white/50 text-xs font-medium capitalize">{entry.field === "serviceTimes" ? "Service Times" : entry.field === "pastorName" ? "Pastor" : entry.field}</span>
+                  <span className="text-white/50 text-xs font-medium capitalize">{entry.field === "serviceTimes" ? "Service Times" : entry.field === "pastorName" ? "Pastor" : entry.field === "pastorRole" ? "Pastor role" : entry.field}</span>
                   <span className="text-white/30 text-xs ml-auto">{formatTimeAgo(entry.appliedAt)}</span>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Other campuses */}
+        {otherCampuses.length > 0 && (
+          <div id="other-campuses">
+            <div className="flex items-center gap-2 mb-3">
+              <Building2 size={15} className="text-purple-400" />
+              <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
+                Other Campuses
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              {otherCampuses.map((campus) => {
+                const cat = getSizeCategory(campus.attendance);
+                return (
+                  <button
+                    key={campus.id}
+                    onClick={() => onChurchClick(campus)}
+                    className="w-full flex items-center gap-3 px-3.5 py-3 rounded-lg bg-white/4 hover:bg-white/8 transition-colors text-left group"
+                  >
+                    <div
+                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: cat.color }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white text-sm font-medium truncate group-hover:text-purple-300 transition-colors">
+                        {campus.name}
+                      </div>
+                      <div className="text-white/40 text-xs mt-0.5">
+                        {campus.denomination === "Other" || campus.denomination === "Unknown" ? "Unspecified" : campus.denomination}
+                        {campus.city ? ` \u00b7 ${campus.city}` : ""}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Main campus (when this church is a campus) */}
+        {(mainCampusSameState || mainCampusCrossState) && (
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Home size={15} className="text-purple-400" />
+              <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
+                Main Campus
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              {mainCampusSameState ? (
+                <button
+                  onClick={() => onChurchClick(mainCampusSameState)}
+                  className="w-full flex items-center gap-3 px-3.5 py-3 rounded-lg bg-white/4 hover:bg-white/8 transition-colors text-left group"
+                >
+                  <div
+                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: getSizeCategory(mainCampusSameState.attendance).color }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white text-sm font-medium truncate group-hover:text-purple-300 transition-colors">
+                      {mainCampusSameState.name}
+                    </div>
+                    <div className="text-white/40 text-xs mt-0.5">
+                      {mainCampusSameState.denomination === "Other" || mainCampusSameState.denomination === "Unknown" ? "Unspecified" : mainCampusSameState.denomination}
+                      {mainCampusSameState.city ? ` \u00b7 ${mainCampusSameState.city}` : ""}
+                    </div>
+                  </div>
+                </button>
+              ) : mainCampusCrossState ? (
+                <button
+                  onClick={() => onChurchClick(mainCampusCrossState)}
+                  className="w-full flex items-center gap-3 px-3.5 py-3 rounded-lg bg-white/4 hover:bg-white/8 transition-colors text-left group"
+                >
+                  <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-purple-400/60" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white text-sm font-medium truncate group-hover:text-purple-300 transition-colors">
+                      {mainCampusCrossState.name}
+                    </div>
+                    <div className="text-white/40 text-xs mt-0.5">
+                      {mainCampusCrossState.state}
+                    </div>
+                  </div>
+                </button>
+              ) : null}
             </div>
           </div>
         )}

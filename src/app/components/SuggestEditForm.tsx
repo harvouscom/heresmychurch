@@ -1,6 +1,7 @@
 import type { Church } from "./church-data";
 import { DENOMINATION_GROUPS, COMMON_LANGUAGES, COMMON_MINISTRIES } from "./church-data";
-import { submitSuggestion } from "./api";
+import { submitSuggestion, searchChurches } from "./api";
+import type { SearchResult } from "./api";
 import {
   Send,
   Check,
@@ -17,8 +18,10 @@ import {
   Phone,
   Mail,
   Pencil,
+  Link2,
+  Search,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ServiceTimesInput } from "./ServiceTimesInput";
 import { AddressInput, serializeAddress, parseAddressValue } from "./AddressInput";
 import { geocodeAddress } from "./AddChurchForm";
@@ -32,14 +35,14 @@ interface SuggestEditFormProps {
   onChurchUpdated?: () => void;
 }
 
-type EditableField = "name" | "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email";
+type EditableField = "name" | "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "pastorRole" | "phone" | "email" | "homeCampusId";
 
 const FIELD_CONFIG: {
   key: EditableField;
   label: string;
   icon: typeof Globe;
   placeholder: string;
-  type: "text" | "number" | "select" | "address" | "chips-languages" | "chips-ministries";
+  type: "text" | "number" | "select" | "address" | "chips-languages" | "chips-ministries" | "select-pastor-role" | "main-campus-search";
   group: "core" | "extended";
 }[] = [
   { key: "name", label: "Church Name", icon: ChurchIcon, placeholder: "e.g., Grace Community Church", type: "text", group: "core" },
@@ -50,9 +53,11 @@ const FIELD_CONFIG: {
   { key: "serviceTimes", label: "Service Times", icon: Clock, placeholder: "e.g., Sunday 9am, 11am; Wed 7pm", type: "text", group: "extended" },
   { key: "languages", label: "Languages", icon: Languages, placeholder: "Select languages offered", type: "chips-languages", group: "extended" },
   { key: "ministries", label: "Ministries", icon: Heart, placeholder: "Select ministries offered", type: "chips-ministries", group: "extended" },
-  { key: "pastorName", label: "Lead Pastor", icon: User, placeholder: "Pastor John Smith", type: "text", group: "extended" },
+  { key: "pastorName", label: "Pastor Name", icon: User, placeholder: "Pastor John Smith", type: "text", group: "extended" },
+  { key: "pastorRole", label: "Pastor Role", icon: User, placeholder: "Lead or Campus Pastor", type: "select-pastor-role", group: "extended" },
   { key: "phone", label: "Phone", icon: Phone, placeholder: "(555) 123-4567", type: "text", group: "extended" },
   { key: "email", label: "Email", icon: Mail, placeholder: "info@church.org", type: "text", group: "extended" },
+  { key: "homeCampusId", label: "Link to main campus", icon: Link2, placeholder: "Search for the main campus...", type: "main-campus-search", group: "extended" },
 ];
 
 // Helper to determine if a field is "empty" on the church
@@ -67,8 +72,10 @@ function isFieldEmpty(church: Church, field: EditableField): boolean {
     case "languages": return !church.languages || church.languages.length === 0;
     case "ministries": return !church.ministries || church.ministries.length === 0;
     case "pastorName": return !church.pastorName;
+    case "pastorRole": return false;
     case "phone": return !church.phone;
     case "email": return !church.email;
+    case "homeCampusId": return !church.homeCampusId;
   }
 }
 
@@ -88,8 +95,10 @@ function getCurrentValue(church: Church, field: EditableField): string {
     case "languages": return (church.languages || []).join(", ");
     case "ministries": return (church.ministries || []).join(", ");
     case "pastorName": return church.pastorName || "";
+    case "pastorRole": return church.pastorRole === "campus" ? "campus" : "lead";
     case "phone": return church.phone || "";
     case "email": return church.email || "";
+    case "homeCampusId": return church.homeCampusId || "";
   }
 }
 
@@ -277,6 +286,7 @@ export function SuggestEditForm({ church, onClose, focusField, onChurchUpdated }
                 }}
 
                 onSubmitEdit={() => handleSubmit(fieldConfig.key)}
+                onSubmitWithValue={fieldConfig.key === "homeCampusId" ? (val) => handleSubmit("homeCampusId", val) : undefined}
                 values={values}
                 setValues={setValues}
                 chipLanguages={chipLanguages}
@@ -305,6 +315,93 @@ export function SuggestEditForm({ church, onClose, focusField, onChurchUpdated }
   );
 }
 
+// ── Main campus search (for homeCampusId field) ──
+function MainCampusSearch({
+  currentChurchId,
+  onSelect,
+  submitting,
+  onCancel,
+}: {
+  currentChurchId: string;
+  onSelect: (churchId: string) => void;
+  submitting: boolean;
+  onCancel: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (!q || q.length < 2) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    timeoutRef.current = setTimeout(() => {
+      timeoutRef.current = null;
+      searchChurches(q, 20)
+        .then((data) => setResults((data.results || []).filter((r) => r.id !== currentChurchId)))
+        .catch((err) => {
+          setError(err?.message || "Search failed");
+          setResults([]);
+        })
+        .finally(() => setLoading(false));
+    }, 300);
+    return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); };
+  }, [query, currentChurchId]);
+
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Church name or city..."
+          className="w-full pl-8 pr-3 py-2 rounded-lg bg-white/10 border border-white/10 text-white placeholder-white/40 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+          autoFocus
+        />
+      </div>
+      {error && <p className="text-red-400 text-[10px]">{error}</p>}
+      {loading && <p className="text-white/50 text-[10px]">Searching...</p>}
+      {!loading && query.trim().length >= 2 && results.length === 0 && !error && (
+        <p className="text-white/50 text-[10px]">No churches found. Try a different name or city.</p>
+      )}
+      <div className="max-h-40 overflow-y-auto space-y-1">
+        {results.map((r) => (
+          <button
+            key={r.id}
+            type="button"
+            disabled={submitting}
+            onClick={() => onSelect(r.id)}
+            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-left text-xs disabled:opacity-60"
+          >
+            <div className="w-2 h-2 rounded-full bg-purple-400/60 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <span className="text-white font-medium truncate block">{r.name}</span>
+              <span className="text-white/50 text-[10px]">{r.city ? `${r.city}, ` : ""}{r.state}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="px-3 py-1.5 rounded-lg text-white/40 text-[11px] font-medium hover:bg-white/5 transition-colors"
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
 // ── Field Card Component ──
 // Shows: current value and edit button to open input
 function FieldCard({
@@ -316,6 +413,7 @@ function FieldCard({
   onStartEdit,
   onCancelEdit,
   onSubmitEdit,
+  onSubmitWithValue,
   values,
   setValues,
   chipLanguages,
@@ -331,6 +429,8 @@ function FieldCard({
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSubmitEdit: () => void;
+  /** For main-campus-search: submit selected church id immediately */
+  onSubmitWithValue?: (value: string) => void;
   values: Record<string, string>;
   setValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   chipLanguages: Set<string>;
@@ -343,11 +443,18 @@ function FieldCard({
   const justSubmitted = submitted.has(key);
   const empty = isFieldEmpty(church, key);
   const currentValue = getCurrentValue(church, key);
-  const displayValue = key === "address" ? [church.address, church.city, church.state].filter(Boolean).join(", ") : currentValue;
-  const canSubmitAddress = key !== "address" || (() => {
+  const displayValue = key === "address"
+    ? [church.address, church.city, church.state].filter(Boolean).join(", ")
+    : key === "pastorRole"
+      ? (church.pastorRole === "campus" ? "Campus Pastor" : "Lead Pastor")
+      : key === "homeCampusId"
+        ? (church.homeCampus ? `${church.homeCampus.name}, ${church.homeCampus.state}` : church.homeCampusId ? "Linked to main campus" : "")
+        : currentValue;
+  const   canSubmitAddress = key !== "address" || (() => {
     const p = parseAddressValue(values[key] ?? "");
     return !!(p.address.trim() && p.city.trim() && p.state.trim());
   })();
+  const isMainCampusSearch = type === "main-campus-search";
 
   return (
     <div
@@ -404,37 +511,48 @@ function FieldCard({
           {/* Edit mode: input form */}
           {isEditing && (
             <div className="space-y-2 mt-1">
-              <EditInput
-                fieldKey={key}
-                type={type}
-                placeholder={placeholder}
-                values={values}
-                setValues={setValues}
-                chipLanguages={chipLanguages}
-                setChipLanguages={setChipLanguages}
-                chipMinistries={chipMinistries}
-                setChipMinistries={setChipMinistries}
-              />
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={onSubmitEdit}
-                  disabled={isSubmitting || (key === "address" ? !canSubmitAddress : !values[key]?.trim())}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-300 text-[11px] font-medium hover:bg-purple-500/30 transition-colors disabled:opacity-30 cursor-pointer"
-                >
-                  {isSubmitting ? (
-                    <Loader2 size={10} className="animate-spin" />
-                  ) : (
-                    <Send size={10} />
-                  )}
-                  Submit
-                </button>
-                <button
-                  onClick={onCancelEdit}
-                  className="px-3 py-1.5 rounded-lg text-white/40 text-[11px] font-medium hover:bg-white/5 transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
+              {isMainCampusSearch && onSubmitWithValue ? (
+                <MainCampusSearch
+                  currentChurchId={church.id}
+                  onSelect={(id) => onSubmitWithValue?.(id)}
+                  submitting={isSubmitting}
+                  onCancel={onCancelEdit}
+                />
+              ) : (
+                <>
+                  <EditInput
+                    fieldKey={key}
+                    type={type}
+                    placeholder={placeholder}
+                    values={values}
+                    setValues={setValues}
+                    chipLanguages={chipLanguages}
+                    setChipLanguages={setChipLanguages}
+                    chipMinistries={chipMinistries}
+                    setChipMinistries={setChipMinistries}
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={onSubmitEdit}
+                      disabled={isSubmitting || (key === "address" ? !canSubmitAddress : !values[key]?.trim())}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-300 text-[11px] font-medium hover:bg-purple-500/30 transition-colors disabled:opacity-30 cursor-pointer"
+                    >
+                      {isSubmitting ? (
+                        <Loader2 size={10} className="animate-spin" />
+                      ) : (
+                        <Send size={10} />
+                      )}
+                      Submit
+                    </button>
+                    <button
+                      onClick={onCancelEdit}
+                      className="px-3 py-1.5 rounded-lg text-white/40 text-[11px] font-medium hover:bg-white/5 transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </>
@@ -519,6 +637,19 @@ function EditInput({
           </button>
         ))}
       </div>
+    );
+  }
+
+  if (fieldKey === "pastorRole" || type === "select-pastor-role") {
+    return (
+      <select
+        value={values[fieldKey] || "lead"}
+        onChange={(e) => setValues((v) => ({ ...v, [fieldKey]: e.target.value }))}
+        className="w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors appearance-none"
+      >
+        <option value="lead" className="bg-[#1E1040]">Lead Pastor</option>
+        <option value="campus" className="bg-[#1E1040]">Campus Pastor</option>
+      </select>
     );
   }
 

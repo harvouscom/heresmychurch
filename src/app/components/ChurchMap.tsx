@@ -34,6 +34,7 @@ import {
 } from "./MapOverlays";
 import { useChurchMapData } from "./useChurchMapData";
 import { getChurchUrlSegment } from "./url-utils";
+import type { ChurchClickTarget } from "./ChurchDetailPanel";
 import { fetchNationalReviewStats } from "./api";
 import type { NationalReviewStatsResponse } from "./api";
 import { useIsMobile } from "./ui/use-mobile";
@@ -321,8 +322,10 @@ export function ChurchMap({
                   if (d.focusedState) navigateToState(d.focusedState);
                   else navigateToNational();
                 }}
-                onChurchClick={(church: Church) => {
-                  if (d.focusedState) navigateToChurch(d.focusedState, getChurchUrlSegment(church, d.focusedState));
+                onChurchClick={(target: ChurchClickTarget) => {
+                  const state = target.state;
+                  const shortId = "shortId" in target && target.shortId ? target.shortId : getChurchUrlSegment(target as Church, state);
+                  if (state) navigateToChurch(state, shortId);
                 }}
                 externalShowEditForm={local.forceEditForm}
                 onEditFormClosed={() => localDispatch({ type: "SET", key: "forceEditForm", value: false })}

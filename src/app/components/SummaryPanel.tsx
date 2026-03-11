@@ -208,8 +208,8 @@ function StateSummaryContent({
         )}
       </p>
 
-      {/* Community impact */}
-      <CommunityStatsCard stateAbbrev={focusedState} />
+      {/* Community impact (state-scoped) */}
+      <CommunityStatsCard key={focusedState} stateAbbrev={focusedState} />
 
       {/* Interesting facts */}
       <FactsList facts={stats.interestingFacts} />
@@ -323,7 +323,7 @@ function NationalSummaryContent({
       </p>
 
       {/* Community impact (nation-wide totals) */}
-      <CommunityStatsCard />
+      <CommunityStatsCard key="national" />
 
       {/* Top 3 states by church count — podium style */}
       {stats.topStates.length > 0 && (

@@ -173,6 +173,7 @@ export function AddChurchForm({
   const [selectedLanguages, setSelectedLanguages] = useState<Set<string>>(new Set());
   const [selectedMinistries, setSelectedMinistries] = useState<Set<string>>(new Set());
   const [pastorName, setPastorName] = useState("");
+  const [pastorRole, setPastorRole] = useState<"lead" | "campus">("lead");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
 
@@ -196,6 +197,7 @@ export function AddChurchForm({
         languages: selectedLanguages.size > 0 ? Array.from(selectedLanguages) : undefined,
         ministries: selectedMinistries.size > 0 ? Array.from(selectedMinistries) : undefined,
         pastorName: pastorName.trim() || undefined,
+        pastorRole,
         phone: normalizePhone(phone) || undefined,
         email: email.trim() || undefined,
       });
@@ -220,6 +222,7 @@ export function AddChurchForm({
       setSelectedLanguages(new Set());
       setSelectedMinistries(new Set());
       setPastorName("");
+      setPastorRole("lead");
       setPhone("");
       setEmail("");
       setShowExtended(false);
@@ -647,15 +650,31 @@ export function AddChurchForm({
 
                   {/* Pastor + Contact row */}
                   <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <User size={13} className="text-purple-400" />
-                      <span className={labelClass}>Lead Pastor</span>
+                      <span className={labelClass}>Pastor</span>
+                      <div className="flex rounded-lg overflow-hidden border border-white/10">
+                        <button
+                          type="button"
+                          onClick={() => setPastorRole("lead")}
+                          className={`px-2.5 py-1 text-[10px] font-medium transition-colors ${pastorRole === "lead" ? "bg-purple-500/30 text-purple-300 border-purple-500/50" : "bg-white/5 text-white/50 hover:text-white/70 border-transparent"}`}
+                        >
+                          Lead Pastor
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPastorRole("campus")}
+                          className={`px-2.5 py-1 text-[10px] font-medium transition-colors border-l border-white/10 ${pastorRole === "campus" ? "bg-purple-500/30 text-purple-300 border-purple-500/50" : "bg-white/5 text-white/50 hover:text-white/70 border-transparent"}`}
+                        >
+                          Campus Pastor
+                        </button>
+                      </div>
                     </div>
                     <input
                       type="text"
                       value={pastorName}
                       onChange={(e) => setPastorName(e.target.value)}
-                      placeholder="Pastor John Smith"
+                      placeholder={pastorRole === "campus" ? "Campus pastor name" : "Pastor John Smith"}
                       className={inputClass}
                     />
                   </div>
