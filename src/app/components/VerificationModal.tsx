@@ -413,13 +413,13 @@ export function NationalReviewModal({ stats, onClose, onSelectState }: NationalR
                     }}
                   >
                     <StateFlag abbrev={abbrev} size="sm" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-white text-sm font-medium truncate group-hover:text-purple-300 transition-colors">
+                    <div className="flex-1 min-w-0 flex items-center gap-2 text-sm">
+                      <span className="text-white font-medium truncate group-hover:text-purple-300 transition-colors">
                         {stateName}
-                      </div>
-                      <div className="text-white/40 text-[11px] mt-0.5">
-                        {s.needsReview.toLocaleString()} need review ({pct}%)
-                      </div>
+                      </span>
+                      <span className="text-white/40 whitespace-nowrap">
+                        {pct}% need review
+                      </span>
                     </div>
                     <ChevronRight size={14} className="text-white/20 flex-shrink-0 group-hover:text-white/40 transition-colors" />
                   </div>
