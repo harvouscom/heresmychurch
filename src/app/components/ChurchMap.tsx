@@ -757,10 +757,10 @@ function HeaderPill({
         >
           <span className="text-pink-300 text-[11px] font-medium min-w-0 truncate">
             {nationalReviewStatsLoading
-              ? "…% need review"
+              ? "…% of them need reviewed"
               : nationalReviewStats !== null
-                ? `${nationalReviewPercentage}% need review`
-                : "—% need review"}
+                ? `${nationalReviewPercentage}% of them need reviewed`
+                : "—% of them need reviewed"}
           </span>
         </div>
       )}
