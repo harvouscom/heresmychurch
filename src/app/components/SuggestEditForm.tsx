@@ -375,21 +375,29 @@ function MainCampusSearch({
         <p className="text-white/50 text-[10px]">No churches found. Try a different name or city.</p>
       )}
       <div className="max-h-40 overflow-y-auto space-y-1">
-        {results.map((r) => (
-          <button
-            key={r.id}
-            type="button"
-            disabled={submitting}
-            onClick={() => onSelect(r.id)}
-            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-left text-xs disabled:opacity-60"
-          >
-            <div className="w-2 h-2 rounded-full bg-purple-400/60 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <span className="text-white font-medium truncate block">{r.name}</span>
-              <span className="text-white/50 text-[10px]">{r.city ? `${r.city}, ` : ""}{r.state}</span>
-            </div>
-          </button>
-        ))}
+        {results.map((r) => {
+          const hasAddress = r.address?.trim();
+          const locationLine = hasAddress
+            ? [r.address, r.city, r.state].filter(Boolean).join(", ")
+            : [r.city, r.state].filter(Boolean).join(", ");
+          return (
+            <button
+              key={r.id}
+              type="button"
+              disabled={submitting}
+              onClick={() => onSelect(r.id)}
+              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-left text-xs disabled:opacity-60"
+            >
+              <div className="w-2 h-2 rounded-full bg-purple-400/60 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <span className="text-white font-medium truncate block">{r.name}</span>
+                {locationLine ? (
+                  <span className="text-white/50 text-[10px] block truncate">{locationLine}</span>
+                ) : null}
+              </div>
+            </button>
+          );
+        })}
       </div>
       <button
         type="button"
