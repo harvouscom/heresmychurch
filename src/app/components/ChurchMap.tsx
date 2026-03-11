@@ -260,17 +260,41 @@ export function ChurchMap({
         <AddChurchForm
           stateAbbrev={d.focusedState}
           stateName={d.focusedStateName}
-          onClose={() => d.setShowAddChurchFromSummary(false)}
+          onClose={() => { d.setShowAddChurchFromSummary(false); d.setAddChurchForState(null); }}
           churches={d.churches}
           onSelectChurch={(church) => {
             d.setShowAddChurchFromSummary(false);
+            d.setAddChurchForState(null);
             d.setSelectedChurch(church);
             if (d.focusedState) navigateToChurch(d.focusedState, getChurchUrlSegment(church, d.focusedState));
             setTimeout(() => localDispatch({ type: "SET", key: "forceEditForm", value: true }), 50);
           }}
           onChurchAdded={(state, shortId) => {
             d.setShowAddChurchFromSummary(false);
+            d.setAddChurchForState(null);
             d.refetchCurrentStateChurches().then(() => navigateToChurch(state, shortId));
+          }}
+        />
+      )}
+
+      {d.addChurchForState && (
+        <AddChurchForm
+          stateAbbrev={d.addChurchForState}
+          stateName={d.states.find((s) => s.abbrev === d.addChurchForState)?.name ?? d.addChurchForState}
+          onClose={() => { d.setShowAddChurchFromSummary(false); d.setAddChurchForState(null); }}
+          churches={[]}
+          onSelectChurch={(church) => {
+            const stateAbbrev = d.addChurchForState;
+            d.setAddChurchForState(null);
+            if (stateAbbrev) {
+              d.setSelectedChurch(church);
+              navigateToChurch(stateAbbrev, getChurchUrlSegment(church, stateAbbrev));
+              setTimeout(() => localDispatch({ type: "SET", key: "forceEditForm", value: true }), 50);
+            }
+          }}
+          onChurchAdded={(state, shortId) => {
+            d.setAddChurchForState(null);
+            navigateToChurch(state, shortId);
           }}
         />
       )}
@@ -674,6 +698,7 @@ function MapArea({
               collapsed={searchCollapsed}
               onExpand={() => { d.setSearchCollapsed(false); d.setShowFilterPanel(false); d.setShowLegend(false); }}
               onAddChurch={d.focusedState ? () => { d.setShowAddChurchFromSummary(true); } : undefined}
+              onAddChurchForState={!d.focusedState ? (stateAbbrev) => d.setAddChurchForState(stateAbbrev) : undefined}
               detectedState={d.detectedState}
               zoom={d.zoom}
               center={d.center}

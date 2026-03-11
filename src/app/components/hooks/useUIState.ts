@@ -23,6 +23,8 @@ interface UIState {
   languageFilter: string;
   showListModal: boolean;
   showAddChurchFromSummary: boolean;
+  /** When set, Add Church form opens for this state (national view, from search state filter). */
+  addChurchForState: string | null;
   showSummary: boolean;
   showLegend: boolean;
 }
@@ -44,6 +46,7 @@ type UIAction =
   | { type: "SET_LANGUAGE_FILTER"; value: string }
   | { type: "SET_SHOW_LIST_MODAL"; value: boolean }
   | { type: "SET_SHOW_ADD_CHURCH"; value: boolean }
+  | { type: "SET_ADD_CHURCH_FOR_STATE"; value: string | null }
   | { type: "SET_SHOW_SUMMARY"; value: boolean | ((prev: boolean) => boolean) }
   | { type: "SET_SHOW_LEGEND"; value: boolean };
 
@@ -89,6 +92,8 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       return state.showListModal === action.value ? state : { ...state, showListModal: action.value };
     case "SET_SHOW_ADD_CHURCH":
       return state.showAddChurchFromSummary === action.value ? state : { ...state, showAddChurchFromSummary: action.value };
+    case "SET_ADD_CHURCH_FOR_STATE":
+      return state.addChurchForState === action.value ? state : { ...state, addChurchForState: action.value };
     case "SET_SHOW_SUMMARY": {
       const v = typeof action.value === "function" ? action.value(state.showSummary) : action.value;
       return v === state.showSummary ? state : { ...state, showSummary: v };
@@ -117,6 +122,7 @@ const initialUIState: UIState = {
   languageFilter: "all",
   showListModal: false,
   showAddChurchFromSummary: false,
+  addChurchForState: null,
   showSummary: false,
   showLegend: false,
 };
@@ -137,11 +143,12 @@ export function useUIState(focusedState: string | null) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [s.showSummary]);
 
-  // Close summary and pinned preview when navigating
+  // Close summary, pinned preview, and add-church-for-state when navigating
   useEffect(() => {
     dispatch({ type: "SET_SHOW_SUMMARY", value: false });
     dispatch({ type: "SET_PREVIEW_CHURCH", value: null });
     dispatch({ type: "SET_PREVIEW_PINNED", value: false });
+    dispatch({ type: "SET_ADD_CHURCH_FOR_STATE", value: null });
   }, [focusedState]);
 
   // Plain setter functions — dispatch is guaranteed stable by React, so no useCallback needed
@@ -167,6 +174,7 @@ export function useUIState(focusedState: string | null) {
   const setLanguageFilter = (v: string) => dispatch({ type: "SET_LANGUAGE_FILTER", value: v });
   const setShowListModal = (v: boolean) => dispatch({ type: "SET_SHOW_LIST_MODAL", value: v });
   const setShowAddChurchFromSummary = (v: boolean) => dispatch({ type: "SET_SHOW_ADD_CHURCH", value: v });
+  const setAddChurchForState = (v: string | null) => dispatch({ type: "SET_ADD_CHURCH_FOR_STATE", value: v });
   const setShowSummary = (v: boolean | ((prev: boolean) => boolean)) => dispatch({ type: "SET_SHOW_SUMMARY", value: v });
   const setShowLegend = (v: boolean) => dispatch({ type: "SET_SHOW_LEGEND", value: v });
   const toggleSize = (label: string) => dispatch({ type: "TOGGLE_SIZE", label });
@@ -194,6 +202,7 @@ export function useUIState(focusedState: string | null) {
     languageFilter: s.languageFilter, setLanguageFilter,
     showListModal: s.showListModal, setShowListModal,
     showAddChurchFromSummary: s.showAddChurchFromSummary, setShowAddChurchFromSummary,
+    addChurchForState: s.addChurchForState, setAddChurchForState,
     showSummary: s.showSummary, setShowSummary, summaryRef, showLegend: s.showLegend, setShowLegend,
     handleMouseMove,
   };

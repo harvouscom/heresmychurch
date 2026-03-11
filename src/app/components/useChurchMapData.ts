@@ -1013,6 +1013,8 @@ export function useChurchMapData({
     setSelectedChurch,
     showAddChurchFromSummary: ui.showAddChurchFromSummary,
     setShowAddChurchFromSummary: ui.setShowAddChurchFromSummary,
+    addChurchForState: ui.addChurchForState,
+    setAddChurchForState: ui.setAddChurchForState,
     showSummary: ui.showSummary,
     setShowSummary: ui.setShowSummary,
     summaryRef: ui.summaryRef,

@@ -23,6 +23,8 @@ interface MapSearchBarProps {
   collapsed?: boolean;
   onExpand?: () => void;
   onAddChurch?: () => void;
+  /** When in national view with state filter, open Add Church for this state. */
+  onAddChurchForState?: (stateAbbrev: string) => void;
   detectedState?: string | null;
   zoom?: number;
   center?: [number, number];
@@ -46,6 +48,7 @@ export function MapSearchBar({
   collapsed,
   onExpand,
   onAddChurch,
+  onAddChurchForState,
   detectedState,
   zoom = 1,
   center = [-96, 38],
@@ -483,12 +486,13 @@ export function MapSearchBar({
                       ? "Explore a state first to enable search"
                       : <>No churches found for &ldquo;{query}&rdquo;</>}
                   </p>
-                  {onAddChurch && hasPopulated && (
+                  {hasPopulated && (onAddChurch || (stateFilter && onAddChurchForState)) && (
                     <button
                       onClick={() => {
                         setQuery("");
                         setIsFocused(false);
-                        onAddChurch();
+                        if (stateFilter && onAddChurchForState) onAddChurchForState(stateFilter);
+                        else onAddChurch?.();
                       }}
                       className="mt-2.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-purple-500/20 text-purple-300 text-xs font-medium hover:bg-purple-500/30 transition-colors"
                     >
@@ -531,13 +535,14 @@ export function MapSearchBar({
                       <Loader2 size={12} className="text-purple-400/50 animate-spin" />
                     </div>
                   )}
-                  {onAddChurch && hasPopulated && (
+                  {hasPopulated && (onAddChurch || (stateFilter && onAddChurchForState)) && (
                     <button
                       type="button"
                       onClick={() => {
                         setQuery("");
                         setIsFocused(false);
-                        onAddChurch();
+                        if (stateFilter && onAddChurchForState) onAddChurchForState(stateFilter);
+                        else onAddChurch?.();
                       }}
                       className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-xs text-purple-300 hover:bg-white/5 border-t border-white/5 transition-colors"
                     >
