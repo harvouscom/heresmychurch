@@ -447,7 +447,7 @@ export function ChurchDetailPanel({
       <div className="flex-shrink-0 px-5 pt-5 pb-4 border-b border-white/10">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <h2 className="text-white font-semibold text-xl leading-tight line-clamp-3 text-pretty">
+            <h2 className="text-white font-semibold text-xl leading-tight line-clamp-2 text-pretty">
               {church.name}
             </h2>
             {(church.homeCampusId || otherCampuses.length > 0 || fullAddress) && (

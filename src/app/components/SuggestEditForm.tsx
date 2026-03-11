@@ -207,7 +207,7 @@ export function SuggestEditForm({ church, onClose, focusField, onChurchUpdated }
                 Update Church Info
               </span>
             </div>
-            <h2 className="text-white font-semibold text-[22px] leading-tight truncate">
+            <h2 className="text-white font-semibold text-[22px] leading-tight line-clamp-2 text-pretty">
               {church.name}
             </h2>
             <p className="text-white/60 text-[11px] mt-1.5 leading-relaxed">
