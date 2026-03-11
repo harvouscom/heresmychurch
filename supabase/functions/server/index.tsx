@@ -3,6 +3,7 @@ import { cors } from "npm:hono/cors";
 import * as kv from "./kv_store.tsx";
 import { generateOgImage } from "./og-image.tsx";
 import * as regrid from "./regrid.ts";
+import { POP } from "./state-populations.ts";
 
 // ── State data ──
 interface SI{a:string;n:string;la:number;lo:number;}
@@ -121,7 +122,6 @@ function isBlockedDenomination(denomination:string|undefined|null):boolean{
   const l=v.toLowerCase();
   return BLOCKED_DENOMINATION_KEYWORDS.some(k=>l.includes(k));
 }
-const POP:Record<string,number>={AL:5108468,AK:733406,AZ:7431344,AR:3067732,CA:38965193,CO:5877610,CT:3617176,DE:1031890,FL:22610726,GA:11029227,HI:1435138,ID:1964726,IL:12549689,IN:6862199,IA:3207004,KS:2940546,KY:4526154,LA:4573749,ME:1395722,MD:6859225,MA:7001399,MI:10037261,MN:5737915,MS:2939690,MO:6196156,MT:1132812,NE:1978379,NV:3194176,NH:1402054,NJ:9290841,NM:2114371,NY:19571216,NC:10835491,ND:783926,OH:11785935,OK:4053824,OR:4233358,PA:12961683,RI:1095962,SC:5373555,SD:919318,TN:7126489,TX:30503301,UT:3417734,VT:647464,VA:8683619,WA:7812880,WV:1770071,WI:5910955,WY:584057};
 const NATIONAL_AVG_POP=Object.values(POP).reduce((a:number,b:number)=>a+b,0)/Object.keys(POP).length;
 function applyStateScaling(ch:any[],st:string):void{
   const statePop=POP[st]||NATIONAL_AVG_POP;

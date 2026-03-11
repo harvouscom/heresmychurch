@@ -936,8 +936,8 @@ export function ChurchDetailPanel({
         <div className="pt-3 border-t border-white/5">
           <p className="text-white/25 text-xs leading-relaxed text-center">
             Data sourced from OpenStreetMap. Attendance figures are estimates
-            based on capacity data, denomination averages, and where available,
-            building square footage from Regrid.
+            based on denomination averages, capacity data, and regional
+            population scaling.
           </p>
           {church.lastVerified && (
             <p className="text-white/30 text-xs mt-1 text-center flex items-center justify-center gap-1">

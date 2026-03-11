@@ -3,6 +3,7 @@ import { cors } from "npm:hono/cors";
 import * as kv from "./kv_store.tsx";
 import { generateOgImage } from "./og-image.tsx";
 import * as regrid from "./regrid.ts";
+import { POP } from "./state-populations.ts";
 
 // ── State data ──
 interface SI{a:string;n:string;la:number;lo:number;}
@@ -121,7 +122,6 @@ function isBlockedDenomination(denomination:string|undefined|null):boolean{
   const l=v.toLowerCase();
   return BLOCKED_DENOMINATION_KEYWORDS.some(k=>l.includes(k));
 }
-const POP:Record<string,number>={AL:5108468,AK:733406,AZ:7431344,AR:3067732,CA:38965193,CO:5877610,CT:3617176,DE:1031890,FL:22610726,GA:11029227,HI:1435138,ID:1964726,IL:12549689,IN:6862199,IA:3207004,KS:2940546,KY:4526154,LA:4573749,ME:1395722,MD:6859225,MA:7001399,MI:10037261,MN:5737915,MS:2939690,MO:6196156,MT:1132812,NE:1978379,NV:3194176,NH:1402054,NJ:9290841,NM:2114371,NY:19571216,NC:10835491,ND:783926,OH:11785935,OK:4053824,OR:4233358,PA:12961683,RI:1095962,SC:5373555,SD:919318,TN:7126489,TX:30503301,UT:3417734,VT:647464,VA:8683619,WA:7812880,WV:1770071,WI:5910955,WY:584057};
 const NATIONAL_AVG_POP=Object.values(POP).reduce((a:number,b:number)=>a+b,0)/Object.keys(POP).length;
 function applyStateScaling(ch:any[],st:string):void{
   const statePop=POP[st]||NATIONAL_AVG_POP;
@@ -605,7 +605,7 @@ app.post(`${P}/admin/enrich-regrid/:state`,async(c)=>{
   }
 });
 
-// Debug: test a single Regrid point lookup with raw response
+// Debug: test Regrid point + address lookups with raw responses
 app.get(`${P}/admin/regrid-debug`,async(c)=>{
   try{
     const lat=Number(c.req.query("lat")||"39.6081741");
@@ -613,13 +613,29 @@ app.get(`${P}/admin/regrid-debug`,async(c)=>{
     const token=Deno.env.get("REGRID_TOKEN")?.trim()||"";
     if(!token)return c.json({error:"No REGRID_TOKEN"},503);
     const radius=Number(c.req.query("radius")||"50");
-    const url=`https://app.regrid.com/api/v2/us/parcels/point?lat=${lat}&lon=${lng}&token=${encodeURIComponent(token)}&return_geometry=false&limit=5&radius=${radius}`;
-    const res=await fetch(url);
-    const status=res.status;
-    const body=await res.text();
-    let parsed:any=null;
-    try{parsed=JSON.parse(body);}catch{}
-    return c.json({lat,lng,radius,limit:5,httpStatus:status,featureCount:parsed?.parcels?.features?.length??null,rawResponse:parsed||body});
+    // Test point API
+    const pointUrl=`https://app.regrid.com/api/v2/us/parcels/point?lat=${lat}&lon=${lng}&token=${encodeURIComponent(token)}&return_geometry=false&limit=5&radius=${radius}`;
+    const pointRes=await fetch(pointUrl);
+    const pointBody=await pointRes.text();
+    let pointParsed:any=null;try{pointParsed=JSON.parse(pointBody);}catch{}
+    // Test address API
+    const addrQuery=c.req.query("address")||"Red Lion United Methodist Church, Delaware";
+    const addrParams=new URLSearchParams({query:addrQuery,token,return_geometry:"false",limit:"5",path:"us/de"});
+    const addrUrl=`https://app.regrid.com/api/v2/us/parcels/address?${addrParams.toString()}`;
+    const addrRes=await fetch(addrUrl);
+    const addrBody=await addrRes.text();
+    let addrParsed:any=null;try{addrParsed=JSON.parse(addrBody);}catch{}
+    // Test typeahead (simple search)
+    const taUrl=`https://app.regrid.com/api/v2/typeahead?token=${encodeURIComponent(token)}&query=${encodeURIComponent(addrQuery)}&limit=3`;
+    const taRes=await fetch(taUrl);
+    const taBody=await taRes.text();
+    let taParsed:any=null;try{taParsed=JSON.parse(taBody);}catch{}
+    return c.json({
+      point:{status:pointRes.status,featureCount:pointParsed?.parcels?.features?.length??null,response:pointParsed||pointBody},
+      address:{status:addrRes.status,featureCount:addrParsed?.parcels?.features?.length??null,response:addrParsed||addrBody},
+      typeahead:{status:taRes.status,response:taParsed||taBody},
+      tokenPrefix:token.substring(0,8)+"..."
+    });
   }catch(e:any){return c.json({error:String(e?.message||e)},500);}
 });
 

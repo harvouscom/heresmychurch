@@ -54,10 +54,11 @@ The goal is simple: make it easy for anyone to find a church near them, with dat
 
 **Data Sources**
 - OpenStreetMap church data with denomination matching
-- ARDA (Association of Religion Data Archives) reference data
-- Regrid parcel data (building square footage) used to improve attendance estimates where available
-- U.S. Census population data
+- ARDA (Association of Religion Data Archives) reference data for denomination-based attendance estimates
+- U.S. Census population data for regional scaling (state/county from Census POPESTIMATE2023)
 - Community-submitted churches and corrections
+
+To refresh state and national population totals from the latest Census county estimates, run `node scripts/generate-state-populations.mjs` then redeploy the Supabase functions.
 
 ## Credits
 

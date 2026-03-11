@@ -28,7 +28,7 @@ export interface Church {
   homeCampus?: HomeCampusSummary;
   bilingualProbability?: number; // 0-1, estimated or user-confirmed
   lastVerified?: number; // timestamp of last correction or confirmation
-  /** Building square footage from Regrid (audit); used to improve attendance estimate. */
+  /** Building square footage (parcel data); used to improve attendance estimate when available. */
   buildingSqft?: number;
 }
 

@@ -102,7 +102,7 @@ export function SummaryPanel({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -8, scale: 0.97 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
-      className="mt-2 rounded-2xl shadow-2xl overflow-hidden w-full md:w-[360px] max-h-[70vh] flex flex-col"
+      className="mt-2 rounded-2xl shadow-2xl overflow-hidden w-[min(360px,calc(100vw-3.5rem))] max-h-[70vh] flex flex-col"
       style={{ backgroundColor: "rgba(30, 16, 64, 0.97)" }}
     >
       {/* Header */}
@@ -144,7 +144,6 @@ export function SummaryPanel({
           <p className="text-white/20 text-[10px] text-center leading-relaxed">
             Church data from OpenStreetMap via Overpass API{" "}&middot;{" "}
             Cross-referenced with The Association of Religion Data Archives (ARDA){" "}&middot;{" "}
-            Regrid parcel data for attendance estimates{" "}&middot;{" "}
             Population from U.S. Census Bureau{" "}&middot;{" "}
             Boundaries from Natural Earth / U.S. Census TIGER
           </p>

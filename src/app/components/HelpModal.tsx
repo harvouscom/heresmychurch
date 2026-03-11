@@ -160,9 +160,10 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
               </AccordionTrigger>
               <AccordionContent className="text-white/70">
                 We use OpenStreetMap church data with denomination matching, ARDA (Association of
-                Religion Data Archives) reference data, Regrid parcel data to improve attendance
-                estimates from building square footage where available, U.S. Census population data,
-                and community-submitted churches and corrections.
+                Religion Data Archives) reference data, U.S. Census population data,
+                and community-submitted churches and corrections. Attendance estimates
+                are based on denomination averages, capacity data where available,
+                and regional population scaling.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="data-updates" className="border-white/10">
