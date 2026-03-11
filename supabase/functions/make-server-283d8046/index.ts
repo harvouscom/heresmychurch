@@ -718,15 +718,16 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>):
 app.post(`${P}/suggestions`,async(c)=>{
   try{
     const ip=cip(c);const{churchId,field,value}=await c.req.json();
-    if(!churchId||!field||!value)return c.json({error:"Missing fields"},400);
+    if(!churchId||!field)return c.json({error:"Missing fields"},400);
+    if(field!=="phone"&&(value===undefined||value===null||String(value).trim()===""))return c.json({error:"Missing fields"},400);
     if(!VF.includes(field))return c.json({error:"Invalid field"},400);
     if(field==="denomination"&&isBlockedDenomination(String(value)))return c.json({error:"Denomination not supported"},400);
     if(field==="attendance"){const n=parseInt(value);if(isNaN(n)||n<1||n>50000)return c.json({error:"Attendance 1-50000"},400);}
     if(field==="homeCampusId"){const v=String(value).trim();if(!v)return c.json({error:"Main campus ID required"},400);if(!stateFromChurchId(v))return c.json({error:"Invalid church ID format"},400);}
     let storeValue=String(value??"").trim();
-    if(!storeValue)return c.json({error:"Value is required"},400);
+    if(!storeValue&&field!=="phone")return c.json({error:"Value is required"},400);
     if(field==="name"&&storeValue.length<2)return c.json({error:"Church name must be at least 2 characters"},400);
-    if(field==="phone"){storeValue=normalizePhone(storeValue);if(!storeValue)return c.json({error:"Invalid phone number"},400);}
+    if(field==="phone"){const raw=storeValue;storeValue=raw===""?"":normalizePhone(raw);if(raw!==""&&!storeValue)return c.json({error:"Invalid phone number"},400);}
     const k=`suggestions:${churchId}`;const ex=(await kv.get(k))||{churchId,submissions:[]};
     // Ensure churchId is stored in the value for getByPrefix lookups
     if(!ex.churchId)ex.churchId=churchId;
