@@ -499,7 +499,7 @@ function normalizePhone(s:string):string{
   if(digits.length<10)return "";
   return digits;
 }
-const VF=["website","address","attendance","denomination","serviceTimes","languages","ministries","pastorName","phone","email"];
+const VF=["name","website","address","attendance","denomination","serviceTimes","languages","ministries","pastorName","phone","email"];
 function consensus(subs:any[]){
   const res:Record<string,any>={};
   for(const f of VF){

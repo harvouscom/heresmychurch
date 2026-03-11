@@ -407,6 +407,58 @@ app.post(`${P}/churches/populate/:state`,async(c)=>{
   }catch(e){console.log(`Populate error:${e}`);return c.json({error:`${e}`},500);}
 });
 
+// ── Review stats (needs review = missing 2+ of address, service times, denomination) ──
+const TIER1_DENOM_EMPTY=["","Unknown","Other"];
+const TIER1_SVC_EMPTY=["","unknown","other","see website","tbd","n/a","na","pending","to be determined"];
+function isDenomMissing(d:string|undefined):boolean{if(!d)return true;const v=d.trim();return !v||TIER1_DENOM_EMPTY.includes(v);}
+function isServiceTimesMissing(v:string|undefined):boolean{if(!v)return true;const n=v.trim().toLowerCase();return TIER1_SVC_EMPTY.includes(n);}
+function isAddressMeaningful(addr:string|undefined,city:string,state:string):boolean{
+  if(!addr||!addr.trim())return false;
+  const a=addr.trim();if(a.length<5)return false;
+  const c=(city||"").trim().toLowerCase(),s=(state||"").trim().toLowerCase(),an=a.toLowerCase();
+  if(c&&an===c)return false;
+  const cs=[c,s].filter(Boolean).join(", ");
+  if(cs&&an===cs)return false;
+  return true;
+}
+function churchNeedsReview(ch:any):{needsReview:boolean;missingAddress:boolean;missingServiceTimes:boolean;missingDenomination:boolean}{
+  const missingAddress=!isAddressMeaningful(ch.address,ch.city||"",ch.state||"");
+  const missingServiceTimes=isServiceTimesMissing(ch.serviceTimes);
+  const missingDenomination=isDenomMissing(ch.denomination);
+  const missingCount=[missingAddress,missingServiceTimes,missingDenomination].filter(Boolean).length;
+  return{needsReview:missingCount>=2,missingAddress,missingServiceTimes,missingDenomination};
+}
+
+app.get(`${P}/churches/review-stats`,async(c)=>{
+  try{
+    const meta=await kv.get("churches:meta");const sc:Record<string,number>={...(meta?.stateCounts||{})};
+    if(sc["DC"]){sc["MD"]=(sc["MD"]||0)+sc["DC"];delete sc["DC"];}
+    const ps=Object.keys(sc);if(!ps.length)return c.json({states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingServiceTimes:0,missingDenomination:0});
+    const states:Record<string,{total:number;needsReview:number;missingAddress:number;missingServiceTimes:number;missingDenomination:number}>={};
+    let totalChurches=0,totalNeedsReview=0,missingAddress=0,missingServiceTimes=0,missingDenomination=0;
+    for(const st of ps){
+      let ch:any[]=await kv.get(`churches:${st}`);
+      if(st==="MD"){try{const dc=await kv.get("churches:DC");if(Array.isArray(dc)&&dc.length){const ids=new Set((ch||[]).map((x:any)=>x.id));for(const x of dc)if(!ids.has(x.id))ch=(ch||[]).concat([{...x,state:"MD"}]);}}catch(_){}}
+      if(!Array.isArray(ch)||!ch.length){if(!states[st])states[st]={total:0,needsReview:0,missingAddress:0,missingServiceTimes:0,missingDenomination:0};continue;}
+      const corrections=await getApprovedCorrectionsForState(st);
+      mergeCorrectionsIntoChurches(ch,corrections);
+      let need=0,ma=0,ms=0,md=0;
+      for(const church of ch){
+        const r=churchNeedsReview(church);
+        if(r.needsReview)need++;
+        if(r.missingAddress)ma++;
+        if(r.missingServiceTimes)ms++;
+        if(r.missingDenomination)md++;
+      }
+      if(!states[st])states[st]={total:0,needsReview:0,missingAddress:0,missingServiceTimes:0,missingDenomination:0};
+      states[st].total+=ch.length;states[st].needsReview+=need;states[st].missingAddress+=ma;states[st].missingServiceTimes+=ms;states[st].missingDenomination+=md;
+      totalChurches+=ch.length;totalNeedsReview+=need;missingAddress+=ma;missingServiceTimes+=ms;missingDenomination+=md;
+    }
+    const percentage=totalChurches>0?Math.round((totalNeedsReview/totalChurches)*1000)/10:0;
+    return c.json({states,totalChurches,totalNeedsReview,percentage,missingAddress,missingServiceTimes,missingDenomination});
+  }catch(e){return c.json({states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingServiceTimes:0,missingDenomination:0,error:`${e}`},500);}
+});
+
 app.get(`${P}/churches/denominations/all`,async(c)=>{
   try{
     const meta=await kv.get("churches:meta");const ps=Object.keys(meta?.stateCounts||{});

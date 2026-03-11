@@ -98,6 +98,12 @@ export const ChurchDots = memo(function ChurchDots({
     );
   }, [projected, center, zoom, projection]);
 
+  // Sort by radius ascending so smaller (lower-attendance) circles render last and appear on top — easier to select when overlapping
+  const visibleBySize = useMemo(
+    () => [...visible].sort((a, b) => a.r - b.r),
+    [visible]
+  );
+
   // ── Event delegation handlers (one per parent <g>) ──
   const handleClick = useCallback(
     (e: React.MouseEvent<SVGGElement>) => {
@@ -159,7 +165,7 @@ export const ChurchDots = memo(function ChurchDots({
           pointerEvents: selectedChurchId ? "none" : "auto",
         }}
       >
-        {visible.map((v) =>
+        {visibleBySize.map((v) =>
           v.id === selectedChurchId ? null : (
             <circle
               key={v.id}

@@ -32,7 +32,7 @@ interface SuggestEditFormProps {
   onChurchUpdated?: () => void;
 }
 
-type EditableField = "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email";
+type EditableField = "name" | "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email";
 
 const FIELD_CONFIG: {
   key: EditableField;
@@ -42,6 +42,7 @@ const FIELD_CONFIG: {
   type: "text" | "number" | "select" | "address" | "chips-languages" | "chips-ministries";
   group: "core" | "extended";
 }[] = [
+  { key: "name", label: "Church Name", icon: ChurchIcon, placeholder: "e.g., Grace Community Church", type: "text", group: "core" },
   { key: "website", label: "Website", icon: Globe, placeholder: "https://www.example.com", type: "text", group: "core" },
   { key: "address", label: "Address", icon: MapPin, placeholder: "Street, city, state", type: "address", group: "core" },
   { key: "attendance", label: "Est. Avg. Weekly Attendance", icon: Users, placeholder: "Enter estimated weekly attendance", type: "number", group: "core" },
@@ -57,6 +58,7 @@ const FIELD_CONFIG: {
 // Helper to determine if a field is "empty" on the church
 function isFieldEmpty(church: Church, field: EditableField): boolean {
   switch (field) {
+    case "name": return !church.name;
     case "website": return !church.website;
     case "address": return !church.address;
     case "attendance": return !church.attendance || church.attendance === 0;
@@ -73,6 +75,7 @@ function isFieldEmpty(church: Church, field: EditableField): boolean {
 // Get the current display value for a field (for address, serialized JSON for AddressInput)
 function getCurrentValue(church: Church, field: EditableField): string {
   switch (field) {
+    case "name": return church.name || "";
     case "website": return church.website || "";
     case "address": return serializeAddress({
       address: church.address || "",
@@ -394,7 +397,7 @@ function FieldCard({
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/12 text-purple-300 text-[11px] font-medium hover:bg-purple-500/20 transition-colors cursor-pointer"
             >
               <Pencil size={10} />
-              {empty ? "Add value" : "Edit"}
+              {empty ? "Add" : "Edit"}
             </button>
           )}
 

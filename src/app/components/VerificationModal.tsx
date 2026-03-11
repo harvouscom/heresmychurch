@@ -11,6 +11,9 @@ import {
 import type { Church } from "./church-data";
 import { CloseButton } from "./ui/close-button";
 import { churchNeedsReview, getTier1Completeness } from "./church-data";
+import type { NationalReviewStatsResponse } from "./api";
+import { StateFlag } from "./StateFlag";
+import { STATE_NAMES } from "./map-constants";
 
 interface VerificationModalProps {
   stateAbbrev: string;
@@ -265,6 +268,175 @@ function IncompleteChurchesList({
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// ── National Review Modal (states needing review) ──
+
+export interface NationalReviewModalProps {
+  stats: NationalReviewStatsResponse | null;
+  onClose: () => void;
+  onSelectState: (abbrev: string) => void;
+}
+
+export function NationalReviewModal({ stats, onClose, onSelectState }: NationalReviewModalProps) {
+  const [search, setSearch] = useState("");
+  const totalChurches = stats?.totalChurches || 1;
+  const missingAddressPct = stats ? (stats.missingAddress / totalChurches) * 100 : 0;
+  const missingServiceTimesPct = stats ? (stats.missingServiceTimes / totalChurches) * 100 : 0;
+  const missingDenominationPct = stats ? (stats.missingDenomination / totalChurches) * 100 : 0;
+
+  const stateEntries = useMemo(
+    () =>
+      stats
+        ? Object.entries(stats.states)
+            .filter(([, s]) => s.needsReview > 0)
+            .sort((a, b) => b[1].needsReview - a[1].needsReview)
+        : [],
+    [stats]
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return stateEntries;
+    const tokens = q.split(/\s+/).filter(Boolean);
+    return stateEntries.filter(([abbrev]) => {
+      const name = (STATE_NAMES[abbrev] || abbrev).toLowerCase();
+      return tokens.every((t) => name.includes(t));
+    });
+  }, [search, stateEntries]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        className="relative w-full max-w-lg max-h-[80vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+        style={{ backgroundColor: "#1E1040" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-white/8 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-pink-500/15 flex items-center justify-center">
+              <AlertTriangle size={18} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-white font-medium text-base leading-tight">
+                States Needing Review
+              </h2>
+              <p className="text-white/40 text-xs mt-0.5">
+                {stats
+                  ? `Nationwide · ${stats.totalNeedsReview.toLocaleString()} church${stats.totalNeedsReview !== 1 ? "es" : ""} missing 2+ critical fields (${stats.percentage}%)`
+                  : "Review stats could not be loaded."}
+              </p>
+            </div>
+          </div>
+          <CloseButton onClick={onClose} size="md" />
+        </div>
+
+        <div className="flex-1 overflow-y-auto min-h-0 px-5 py-3">
+          {!stats ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-3">
+              <AlertTriangle size={32} className="text-pink-400/60" />
+              <p className="text-white/60 text-sm font-medium text-center max-w-[260px]">
+                National review stats could not be loaded. The review-stats API may not be deployed yet, or there was a network error.
+              </p>
+              <p className="text-white/40 text-xs text-center max-w-[260px]">
+                You can still open any state and use the state-level &ldquo;need review&rdquo; pill to see churches needing review there.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="mb-3">
+                <span className="text-[10px] uppercase tracking-widest text-pink-400/70 font-medium block mb-2">
+                  % of churches missing key info (national)
+                </span>
+                <div className="flex gap-1.5">
+                  <div className="flex-1 rounded-lg bg-white/4 border border-white/5 px-2 py-2.5 text-center flex flex-col items-center">
+                    <span className="text-white/45 text-[10px] block">Address</span>
+                    <span className="text-white text-[13px] font-semibold tabular-nums mt-0.5">{missingAddressPct.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex-1 rounded-lg bg-white/4 border border-white/5 px-2 py-2.5 text-center flex flex-col items-center">
+                    <span className="text-white/45 text-[10px] block">Service times</span>
+                    <span className="text-white text-[13px] font-semibold tabular-nums mt-0.5">{missingServiceTimesPct.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex-1 rounded-lg bg-white/4 border border-white/5 px-2 py-2.5 text-center flex flex-col items-center">
+                    <span className="text-white/45 text-[10px] block">Denomination</span>
+                    <span className="text-white text-[13px] font-semibold tabular-nums mt-0.5">{missingDenominationPct.toFixed(1)}%</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="relative mb-1">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search states..."
+                    className="w-full pl-9 pr-3 py-2 rounded-full bg-white/[0.05] border border-white/8 text-white text-xs placeholder:text-white/25 focus:outline-none focus:border-purple-500/40 transition-colors"
+                  />
+                </div>
+
+                {stateEntries.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-3">
+                <CheckCircle2 size={32} className="text-green-400/40" />
+                <p className="text-white/40 text-sm font-medium">All caught up!</p>
+                <p className="text-white/25 text-xs text-center max-w-[240px]">
+                  No states have churches missing critical information.
+                </p>
+              </div>
+            ) : filtered.length === 0 ? (
+              <p className="text-white/40 text-xs py-6 text-center">
+                No states found for &ldquo;{search}&rdquo;
+              </p>
+            ) : (
+              filtered.map(([abbrev, s]) => {
+                const stateName = STATE_NAMES[abbrev] || abbrev;
+                const pct = s.total > 0 ? Math.round((s.needsReview / s.total) * 1000) / 10 : 0;
+                return (
+                  <div
+                    key={abbrev}
+                    className="rounded-xl bg-white/[0.03] border border-white/6 px-3.5 py-2.5 cursor-pointer hover:bg-white/[0.05] transition-colors group flex items-center gap-3"
+                    onClick={() => {
+                      onClose();
+                      onSelectState(abbrev);
+                    }}
+                  >
+                    <StateFlag abbrev={abbrev} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white text-sm font-medium truncate group-hover:text-purple-300 transition-colors">
+                        {stateName}
+                      </div>
+                      <div className="text-white/40 text-[11px] mt-0.5">
+                        {s.needsReview.toLocaleString()} need review ({pct}%)
+                      </div>
+                    </div>
+                    <ChevronRight size={14} className="text-white/20 flex-shrink-0 group-hover:text-white/40 transition-colors" />
+                  </div>
+                );
+              })
+            )}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex-shrink-0 px-5 py-3 border-t border-white/6 text-balance">
+          <p className="text-white/25 text-[10px] text-center leading-relaxed">
+            Click a state to open its churches needing review. Critical fields: address, service times, denomination.
+          </p>
+        </div>
+      </motion.div>
     </div>
   );
 }

@@ -180,7 +180,6 @@ export function AddChurchForm({
     setSubmitting(true);
     setError(null);
     setSuccess(null);
-    setShowSimilarWarning(false);
 
     try {
       const result = await addChurch({
@@ -225,6 +224,8 @@ export function AddChurchForm({
       setEmail("");
       setShowExtended(false);
       setGeocodedCoords(null);
+      setShowSimilarWarning(false);
+      setSimilarMatches([]);
 
       if (shortId && state && onChurchAdded) {
         onClose();
@@ -424,7 +425,7 @@ export function AddChurchForm({
                   type="button"
                   onClick={() => geocodedCoords && submitToApi(geocodedCoords.lat, geocodedCoords.lng)}
                   disabled={submitting || !geocodedCoords}
-                  className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-white/10 text-white/80 text-xs font-medium hover:bg-white/15 transition-colors disabled:opacity-50"
+                  className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-purple-500/20 text-purple-200 text-xs font-medium hover:bg-purple-500/30 transition-colors disabled:opacity-50"
                 >
                   {submitting ? (
                     <Loader2 size={12} className="animate-spin" />

@@ -24,11 +24,17 @@ export function ChurchMapPage() {
         : null;
     const churchShortId =
       segment1 && segment1 !== "church" ? segment1 : null;
-    return { stateAbbrev, churchShortId, legacyChurchId };
-  }, [location.pathname]);
+    const openReviewModalFromQuery =
+      new URLSearchParams(location.search).get("review") === "true";
+    return { stateAbbrev, churchShortId, legacyChurchId, openReviewModalFromQuery };
+  }, [location.pathname, location.search]);
 
   const navigateToState = useCallback(
     (abbrev: string) => nav(`/state/${abbrev}`),
+    [nav]
+  );
+  const navigateToStateWithReview = useCallback(
+    (abbrev: string) => nav(`/state/${abbrev}?review=true`),
     [nav]
   );
   const navigateToChurch = useCallback(
@@ -38,12 +44,21 @@ export function ChurchMapPage() {
   );
   const navigateToNational = useCallback(() => nav("/"), [nav]);
 
+  const clearReviewQueryParam = useCallback(() => {
+    if (new URLSearchParams(location.search).get("review") === "true") {
+      nav(location.pathname, { replace: true });
+    }
+  }, [nav, location.pathname, location.search]);
+
   return (
     <ChurchMap
       routeStateAbbrev={routeParams.stateAbbrev}
       routeChurchShortId={routeParams.churchShortId}
       routeLegacyChurchId={routeParams.legacyChurchId}
+      openReviewModalFromQuery={routeParams.openReviewModalFromQuery}
+      clearReviewQueryParam={clearReviewQueryParam}
       navigateToState={navigateToState}
+      navigateToStateWithReview={navigateToStateWithReview}
       navigateToChurch={navigateToChurch}
       navigateToNational={navigateToNational}
     />

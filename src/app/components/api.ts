@@ -62,6 +62,24 @@ export interface StatesResponse {
   populatedStates: number;
 }
 
+export interface NationalReviewStateStats {
+  total: number;
+  needsReview: number;
+  missingAddress: number;
+  missingServiceTimes: number;
+  missingDenomination: number;
+}
+
+export interface NationalReviewStatsResponse {
+  states: Record<string, NationalReviewStateStats>;
+  totalChurches: number;
+  totalNeedsReview: number;
+  percentage: number;
+  missingAddress: number;
+  missingServiceTimes: number;
+  missingDenomination: number;
+}
+
 export interface ChurchesResponse {
   churches: Church[];
   state: { abbrev: string; name: string; lat: number; lng: number };
@@ -118,6 +136,26 @@ export async function fetchStates(): Promise<StatesResponse> {
     states: Array.isArray(data.states) ? data.states : [],
     totalChurches: data.totalChurches ?? 0,
     populatedStates: data.populatedStates ?? 0,
+  };
+}
+
+export async function fetchNationalReviewStats(): Promise<NationalReviewStatsResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/churches/review-stats`, { headers, timeoutMs: 60000 });
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("Error fetching national review stats:", text);
+    throw new Error(`Failed to fetch review stats: ${res.status}`);
+  }
+  const data = await res.json();
+  const totalChurches = data.totalChurches ?? 0;
+  return {
+    states: data.states ?? {},
+    totalChurches,
+    totalNeedsReview: data.totalNeedsReview ?? 0,
+    percentage: data.percentage ?? 0,
+    missingAddress: data.missingAddress ?? 0,
+    missingServiceTimes: data.missingServiceTimes ?? 0,
+    missingDenomination: data.missingDenomination ?? 0,
   };
 }
 
@@ -213,7 +251,7 @@ export async function fetchSuggestions(
 
 export async function submitSuggestion(
   churchId: string,
-  field: "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email",
+  field: "name" | "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email",
   value: string
 ): Promise<SubmitSuggestionResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/suggestions`, {

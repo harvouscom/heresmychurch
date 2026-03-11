@@ -20,7 +20,7 @@ import { MapLegend } from "./MapLegend";
 import { MapControls } from "./MapControls";
 import { HelpModal } from "./HelpModal";
 import { MapCanvas } from "./MapCanvas";
-import { VerificationModal } from "./VerificationModal";
+import { VerificationModal, NationalReviewModal } from "./VerificationModal";
 import { StateFlag } from "./StateFlag";
 import { CloseButton } from "./ui/close-button";
 import { useActiveUsers } from "./hooks/useActiveUsers";
@@ -34,6 +34,8 @@ import {
 } from "./MapOverlays";
 import { useChurchMapData } from "./useChurchMapData";
 import { getChurchUrlSegment } from "./url-utils";
+import { fetchNationalReviewStats } from "./api";
+import type { NationalReviewStatsResponse } from "./api";
 import { useIsMobile } from "./ui/use-mobile";
 import { useReducer, useEffect, useMemo, useState } from "react";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
@@ -47,7 +49,10 @@ interface ChurchMapProps {
   routeStateAbbrev: string | null;
   routeChurchShortId: string | null;
   routeLegacyChurchId: string | null;
+  openReviewModalFromQuery?: boolean;
+  clearReviewQueryParam?: () => void;
   navigateToState: (abbrev: string) => void;
+  navigateToStateWithReview: (abbrev: string) => void;
   navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => void;
   navigateToNational: () => void;
 }
@@ -56,7 +61,10 @@ export function ChurchMap({
   routeStateAbbrev,
   routeChurchShortId,
   routeLegacyChurchId,
+  openReviewModalFromQuery = false,
+  clearReviewQueryParam,
   navigateToState,
+  navigateToStateWithReview,
   navigateToChurch,
   navigateToNational,
 }: ChurchMapProps) {
@@ -101,7 +109,10 @@ export function ChurchMap({
   const hasSeenAbout = typeof document !== "undefined" && document.cookie.includes("hmc_seen_about=1");
   const [local, localDispatch] = useReducer(localReducer, {
     showVerificationModal: false,
+    showNationalReviewModal: false,
     pendingReviewCount: 0,
+    nationalReviewStats: null,
+    nationalReviewStatsLoading: false,
     forceEditForm: false,
     showAbout: !hasSeenAbout && !routeStateAbbrev,
     showHelp: false,
@@ -129,12 +140,43 @@ export function ChurchMap({
   const onShowHelp = () => localDispatch({ type: "SET", key: "showHelp", value: true });
   const onDismissHelp = () => localDispatch({ type: "SET", key: "showHelp", value: false });
 
+  // Fetch national review stats when at national level
+  useEffect(() => {
+    if (!d.focusedState) {
+      localDispatch({ type: "SET", key: "nationalReviewStatsLoading", value: true });
+      fetchNationalReviewStats()
+        .then((stats: NationalReviewStatsResponse) => {
+          localDispatch({ type: "SET", key: "nationalReviewStats", value: stats });
+          localDispatch({ type: "SET", key: "nationalReviewStatsLoading", value: false });
+        })
+        .catch(() => {
+          localDispatch({ type: "SET", key: "nationalReviewStats", value: null });
+          localDispatch({ type: "SET", key: "nationalReviewStatsLoading", value: false });
+        });
+    }
+  }, [d.focusedState]);
+
   // Refetch state churches when opening the verification modal so stats use latest API data (incl. merged corrections)
   useEffect(() => {
     if (local.showVerificationModal && d.focusedState) {
       d.refetchCurrentStateChurches();
     }
   }, [local.showVerificationModal, d.focusedState]);
+
+  // Auto-open state review modal when navigating from national modal (?review=true)
+  useEffect(() => {
+    if (
+      openReviewModalFromQuery &&
+      clearReviewQueryParam &&
+      d.focusedState &&
+      d.churches.length > 0 &&
+      !d.loading &&
+      !d.populating
+    ) {
+      localDispatch({ type: "SET", key: "showVerificationModal", value: true });
+      clearReviewQueryParam();
+    }
+  }, [openReviewModalFromQuery, clearReviewQueryParam, d.focusedState, d.churches.length, d.loading, d.populating]);
 
   const { people: activePeople, bots: activeBots } = useActiveUsers();
   const [isLocalhost, setIsLocalhost] = useState(false);
@@ -171,7 +213,10 @@ export function ChurchMap({
         navigateToState={navigateToState}
         navigateToChurch={navigateToChurch}
         onShowVerification={onShowVerification}
+        onShowNationalReviewModal={() => localDispatch({ type: "SET", key: "showNationalReviewModal", value: true })}
         pendingReviewCount={local.pendingReviewCount}
+        nationalReviewStats={local.nationalReviewStats}
+        nationalReviewStatsLoading={local.nationalReviewStatsLoading}
         showAbout={local.showAbout}
         onDismissAbout={dismissAbout}
         onShowAbout={onShowAbout}
@@ -249,6 +294,14 @@ export function ChurchMap({
         />
       )}
 
+      {local.showNationalReviewModal && (
+        <NationalReviewModal
+          stats={local.nationalReviewStats}
+          onClose={() => localDispatch({ type: "SET", key: "showNationalReviewModal", value: false })}
+          onSelectState={(abbrev) => navigateToStateWithReview(abbrev)}
+        />
+      )}
+
       <AnimatePresence mode="wait">
         {d.selectedChurch && (
           <motion.div
@@ -286,7 +339,10 @@ export function ChurchMap({
 // ── Local state reducer for ChurchMap (replaces 6 useState — saves 5 hooks) ──
 type LocalState = {
   showVerificationModal: boolean;
+  showNationalReviewModal: boolean;
   pendingReviewCount: number;
+  nationalReviewStats: NationalReviewStatsResponse | null;
+  nationalReviewStatsLoading: boolean;
   forceEditForm: boolean;
   showAbout: boolean;
   showHelp: boolean;
@@ -309,7 +365,10 @@ function MapArea({
   navigateToState,
   navigateToChurch,
   onShowVerification,
+  onShowNationalReviewModal,
   pendingReviewCount,
+  nationalReviewStats,
+  nationalReviewStatsLoading,
   showAbout,
   onDismissAbout,
   onShowAbout,
@@ -332,7 +391,10 @@ function MapArea({
   navigateToState: (abbrev: string) => void;
   navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => void;
   onShowVerification: () => void;
+  onShowNationalReviewModal: () => void;
   pendingReviewCount: number;
+  nationalReviewStats: NationalReviewStatsResponse | null;
+  nationalReviewStatsLoading: boolean;
   showAbout: boolean;
   onDismissAbout: () => void;
   onShowAbout: () => void;
@@ -348,7 +410,8 @@ function MapArea({
   return (
     <div className="flex-1 relative" style={{ backgroundColor: "#F5F0E8" }}>
       {/* Top row: header pill only (secondary controls moved to bottom-left cluster); z-40 so summary stacks above All states + MapControls (z-30) */}
-      <div className="absolute top-4 left-4 right-4 z-40 flex flex-row items-center justify-center">
+      {!isLoadingVisible && d.states.length > 0 && (
+      <div className="absolute top-4 left-4 right-4 z-40 flex flex-row items-center justify-center animate-in fade-in duration-300">
         <div className="flex flex-col items-center justify-center min-w-0 overflow-hidden max-w-full" ref={d.summaryRef}>
           <HeaderPill
             focusedState={d.focusedState}
@@ -359,7 +422,10 @@ function MapArea({
             populatedCount={d.states.filter((s) => s.isPopulated).length}
             showSummary={d.showSummary}
             pendingReviewCount={pendingReviewCount}
+            nationalReviewStats={nationalReviewStats}
+            nationalReviewStatsLoading={nationalReviewStatsLoading}
             onShowVerification={onShowVerification}
+            onShowNationalReviewModal={onShowNationalReviewModal}
             onToggle={() => {
               d.setShowSummary((v) => {
                 if (!v) { d.setShowFilterPanel(false); d.setShowLegend(false); }
@@ -412,6 +478,7 @@ function MapArea({
           </AnimatePresence>
         </div>
       </div>
+      )}
 
       {/* About Modal */}
       {showAbout && <AboutModal onClose={onDismissAbout} />}
@@ -611,7 +678,10 @@ function HeaderPill({
   populatedCount,
   showSummary,
   pendingReviewCount,
+  nationalReviewStats,
+  nationalReviewStatsLoading,
   onShowVerification,
+  onShowNationalReviewModal,
   onToggle,
 }: {
   focusedState: string | null;
@@ -622,9 +692,14 @@ function HeaderPill({
   populatedCount: number;
   showSummary: boolean;
   pendingReviewCount: number;
+  nationalReviewStats: NationalReviewStatsResponse | null;
+  nationalReviewStatsLoading: boolean;
   onShowVerification: () => void;
+  onShowNationalReviewModal: () => void;
   onToggle: () => void;
 }) {
+  const nationalReviewPercentage = nationalReviewStats?.percentage ?? 0;
+  const showNationalReviewRow = !focusedState;
   return (
     <div
       className="flex flex-col items-center rounded-full shadow-lg transition-all hover:shadow-xl cursor-pointer w-auto overflow-hidden"
@@ -664,7 +739,7 @@ function HeaderPill({
         />
       </div>
 
-      {/* Review row — only in state view when there are pending items */}
+      {/* Review row — state view: count; national view: percentage */}
       {focusedState && pendingReviewCount > 0 && (
         <div
           onClick={(e) => { e.stopPropagation(); onShowVerification(); }}
@@ -672,6 +747,20 @@ function HeaderPill({
         >
           <span className="text-pink-300 text-[11px] font-medium min-w-0 truncate">
             {pendingReviewCount.toLocaleString()} need review
+          </span>
+        </div>
+      )}
+      {showNationalReviewRow && (
+        <div
+          onClick={(e) => { e.stopPropagation(); onShowNationalReviewModal(); }}
+          className="flex items-center justify-center gap-1.5 w-full min-w-0 px-5 pb-1.5 -mt-1.5 hover:opacity-80 transition-opacity"
+        >
+          <span className="text-pink-300 text-[11px] font-medium min-w-0 truncate">
+            {nationalReviewStatsLoading
+              ? "…% need review"
+              : nationalReviewStats !== null
+                ? `${nationalReviewPercentage}% need review`
+                : "—% need review"}
           </span>
         </div>
       )}
