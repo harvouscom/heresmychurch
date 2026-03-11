@@ -71,7 +71,7 @@ function isFieldEmpty(church: Church, field: EditableField): boolean {
     case "languages": return !church.languages || church.languages.length === 0;
     case "ministries": return !church.ministries || church.ministries.length === 0;
     case "pastorName": return !church.pastorName;
-    case "phone": return !church.phone;
+    case "phone": return false; // optional; never treat as missing
     case "email": return !church.email;
     case "homeCampusId": return !church.homeCampusId;
   }
@@ -130,12 +130,11 @@ export function SuggestEditForm({ church, onClose, focusField, onChurchUpdated }
   }, [focusField]);
 
   const handleSubmit = async (field: EditableField, value?: string) => {
-    const raw = (value ?? values[field])?.trim() ?? "";
-    if (!raw && field !== "phone") return;
-    let val = raw;
+    let val = (value ?? values[field])?.trim();
+    if (!val) return;
     if (field === "phone") {
-      val = raw ? normalizePhone(raw) : "";
-      if (raw && !val) return; // invalid number
+      val = normalizePhone(val);
+      if (!val) return;
     }
 
     setSubmitting(field);
@@ -538,7 +537,7 @@ function FieldCard({
                   <div className="flex items-center gap-2">
                     <button
                       onClick={onSubmitEdit}
-                      disabled={isSubmitting || (key === "address" ? !canSubmitAddress : key === "phone" ? false : !values[key]?.trim())}
+                      disabled={isSubmitting || (key === "address" ? !canSubmitAddress : !values[key]?.trim())}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-300 text-[11px] font-medium hover:bg-purple-500/30 transition-colors disabled:opacity-30 cursor-pointer"
                     >
                       {isSubmitting ? (
@@ -661,34 +660,6 @@ function EditInput({
         onChange={(val) => setValues((v) => ({ ...v, [fieldKey]: val }))}
         compact
       />
-    );
-  }
-
-  if (fieldKey === "phone") {
-    const noPhone = (values[fieldKey] || "") === "";
-    return (
-      <div className="space-y-2">
-        <label className="flex items-center gap-2 cursor-pointer text-white/60 text-xs">
-          <input
-            type="checkbox"
-            checked={noPhone}
-            onChange={(e) => setValues((v) => ({ ...v, [fieldKey]: e.target.checked ? "" : (v[fieldKey] || "") }))}
-            className="rounded border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500/50"
-          />
-          <span>Currently, no phone number</span>
-        </label>
-        <input
-          type="text"
-          value={values[fieldKey] || ""}
-          onChange={(e) => {
-            const next = e.target.value;
-            setValues((v) => ({ ...v, [fieldKey]: next }));
-          }}
-          placeholder={placeholder}
-          className="w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/20"
-          disabled={noPhone}
-        />
-      </div>
     );
   }
 

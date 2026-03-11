@@ -174,7 +174,6 @@ export function AddChurchForm({
   const [selectedMinistries, setSelectedMinistries] = useState<Set<string>>(new Set());
   const [pastorName, setPastorName] = useState("");
   const [phone, setPhone] = useState("");
-  const [noPhone, setNoPhone] = useState(false);
   const [email, setEmail] = useState("");
 
   const submitToApi = async (parsedLat: number, parsedLng: number) => {
@@ -197,7 +196,7 @@ export function AddChurchForm({
         languages: selectedLanguages.size > 0 ? Array.from(selectedLanguages) : undefined,
         ministries: selectedMinistries.size > 0 ? Array.from(selectedMinistries) : undefined,
         pastorName: pastorName.trim() || undefined,
-        phone: noPhone ? undefined : (normalizePhone(phone) || undefined),
+        phone: normalizePhone(phone) || undefined,
         email: email.trim() || undefined,
       });
 
@@ -222,7 +221,6 @@ export function AddChurchForm({
       setSelectedMinistries(new Set());
       setPastorName("");
       setPhone("");
-      setNoPhone(false);
       setEmail("");
       setShowExtended(false);
       setGeocodedCoords(null);
@@ -668,29 +666,12 @@ export function AddChurchForm({
                         <Phone size={13} className="text-purple-400" />
                         <span className={labelClass}>Phone</span>
                       </div>
-                      <label className="flex items-center gap-2 mb-2 cursor-pointer text-white/60 text-xs">
-                        <input
-                          type="checkbox"
-                          checked={noPhone}
-                          onChange={(e) => {
-                            const checked = e.target.checked;
-                            setNoPhone(checked);
-                            if (checked) setPhone("");
-                          }}
-                          className="rounded border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500/50"
-                        />
-                        <span>Currently, no phone number</span>
-                      </label>
                       <input
                         type="tel"
                         value={phone}
-                        onChange={(e) => {
-                          setPhone(e.target.value);
-                          if (e.target.value.trim()) setNoPhone(false);
-                        }}
+                        onChange={(e) => setPhone(e.target.value)}
                         placeholder="(555) 123-4567"
                         className={inputClass}
-                        disabled={noPhone}
                       />
                     </div>
                     <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">

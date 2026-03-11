@@ -266,13 +266,12 @@ export function ChurchDetailPanel({
   const denomGroup = getDenominationGroup(church.denomination);
   const bilingualInfo = estimateBilingualProbability(church);
 
-  // Count missing extended fields to encourage contributions
+  // Count missing extended fields to encourage contributions (phone is optional, not counted)
   const missingFieldCount = [
     !church.serviceTimes,
     !church.languages || church.languages.length === 0,
     !church.ministries || church.ministries.length === 0,
     !church.pastorName,
-    !church.phone,
     !church.email,
   ].filter(Boolean).length;
 
