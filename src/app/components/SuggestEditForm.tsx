@@ -360,6 +360,7 @@ function MainCampusSearch({
   const [results, setResults] = useState<(SearchResult & { _tier: number })[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stateNorm = normalizeStateAbbrev(churchState, currentChurchId);
@@ -506,17 +507,30 @@ function MainCampusSearch({
               )}
               <button
                 type="button"
-                disabled={submitting}
-                onClick={() => onSelect(r.id)}
-                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-left text-xs disabled:opacity-60"
+                disabled={submitting || selectedId !== null}
+                onClick={() => { setSelectedId(r.id); onSelect(r.id); }}
+                className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs transition-colors ${
+                  selectedId === r.id
+                    ? "bg-purple-500/20 border border-purple-400/30"
+                    : selectedId !== null
+                      ? "bg-white/5 opacity-40"
+                      : "bg-white/5 hover:bg-white/10"
+                } disabled:cursor-default`}
               >
-                <div className="w-2 h-2 rounded-full bg-purple-400/60 flex-shrink-0" />
+                {selectedId === r.id ? (
+                  <Loader2 size={12} className="animate-spin text-purple-400 flex-shrink-0" />
+                ) : (
+                  <div className="w-2 h-2 rounded-full bg-purple-400/60 flex-shrink-0" />
+                )}
                 <div className="flex-1 min-w-0">
                   <span className="text-white font-medium truncate block">{r.name}</span>
                   {locationLine ? (
                     <span className="text-white/70 text-[10px] block truncate">{locationLine}</span>
                   ) : null}
                 </div>
+                {selectedId === r.id && (
+                  <span className="text-purple-300 text-[10px] flex-shrink-0">Linking...</span>
+                )}
               </button>
             </div>
           );
