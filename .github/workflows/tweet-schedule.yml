@@ -17,9 +17,11 @@ jobs:
       - name: Post scheduled tweet
         env:
           SUPABASE_FUNCTION_URL: ${{ secrets.SUPABASE_FUNCTION_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           TWITTER_WEBHOOK_SECRET: ${{ secrets.TWITTER_WEBHOOK_SECRET }}
         run: |
           curl -sf -X POST "${SUPABASE_FUNCTION_URL}/twitter/scheduled" \
             -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
             -d "{\"secret\":\"${TWITTER_WEBHOOK_SECRET}\"}" \
             || echo "Scheduled tweet failed (non-fatal)"

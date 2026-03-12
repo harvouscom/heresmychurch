@@ -1570,7 +1570,7 @@ async function generateFunFact():Promise<{text:string;category:string}|null>{
 
     // Collect all possible facts
     const facts:{text:string;category:string;id:string}[]=[];
-    const stateEntries=Object.entries(sc).filter(([_,c])=>c>10);
+    const stateEntries=Object.entries(sc).filter(([a,c])=>a!=="DC"&&c>10);
     const stateInfo=(abbr:string)=>US.find(s=>s.a===abbr);
 
     // Category 1: State coverage with population
