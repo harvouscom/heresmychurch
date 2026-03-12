@@ -1,0 +1,28 @@
+name: Tweet on Deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '*.md'
+      - '.github/**'
+
+jobs:
+  tweet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Post deploy tweet
+        env:
+          SUPABASE_FUNCTION_URL: ${{ secrets.SUPABASE_FUNCTION_URL }}
+          TWITTER_WEBHOOK_SECRET: ${{ secrets.TWITTER_WEBHOOK_SECRET }}
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%s | head -c 180)
+          curl -sf -X POST "${SUPABASE_FUNCTION_URL}/twitter/post" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg s "$TWITTER_WEBHOOK_SECRET" --arg m "$COMMIT_MSG" \
+              '{secret: $s, eventType: "deploy", data: {message: $m}}')" \
+            || echo "Tweet post failed (non-fatal)"

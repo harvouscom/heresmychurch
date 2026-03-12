@@ -849,7 +849,9 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>):
         else if(f==="homeCampusId"){(ch as any).homeCampusId=(String(v).trim()||undefined);}
         else{(ch as any)[f]=v;}
       }
-      ch.lastVerified=Date.now();updated=true;break;
+      ch.lastVerified=Date.now();updated=true;
+      maybePostTweet("correction_applied",{churchId,churchName:ch.name||"A church",corrections}).catch(()=>{});
+      break;
     }
   }
   if(updated){
@@ -1067,7 +1069,7 @@ app.post(`${P}/churches/add`,async(c)=>{
     const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:normalizePhone(phone||"")||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
     store.churches.push(nc);await kv.set(k,store);
     const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,state:st,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
-    if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);}
+    if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);maybePostTweet("church_added",churchForMain).catch(()=>{});}
     return c.json({success:true,church:nc});
   }catch(e){return c.json({error:`${e}`},500);}
 });
@@ -1214,6 +1216,183 @@ app.get(`${P}/churches/reactions/bulk`, async (c) => {
   } catch (e) {
     return c.json({ state: c.req.query("state") ?? "", counts: {}, error: `${e}` }, 500);
   }
+});
+
+// ── Twitter / X automated posting ──
+const TWITTER_URL="https://api.twitter.com/2/tweets";
+const MILESTONES=[500,1000,2500,5000,10000,25000,50000];
+const DAILY_TWEET_CAP=10;
+
+function percentEncode(s:string):string{return encodeURIComponent(s).replace(/[!'()*]/g,c=>"%"+c.charCodeAt(0).toString(16).toUpperCase());}
+
+async function hmacSha1(key:Uint8Array,data:string):Promise<string>{
+  const ck=await crypto.subtle.importKey("raw",key,{name:"HMAC",hash:"SHA-1"},false,["sign"]);
+  const sig=await crypto.subtle.sign("HMAC",ck,new TextEncoder().encode(data));
+  return btoa(String.fromCharCode(...new Uint8Array(sig)));
+}
+
+async function oauthHeader(method:string,url:string,body:Record<string,string>={}):Promise<string>{
+  const apiKey=Deno.env.get("TWITTER_API_KEY")||"";
+  const apiSecret=Deno.env.get("TWITTER_API_SECRET")||"";
+  const token=Deno.env.get("TWITTER_ACCESS_TOKEN")||"";
+  const tokenSecret=Deno.env.get("TWITTER_ACCESS_TOKEN_SECRET")||"";
+  if(!apiKey||!apiSecret||!token||!tokenSecret)throw new Error("Twitter credentials not configured");
+  const ts=Math.floor(Date.now()/1000).toString();
+  const nonce=crypto.randomUUID().replace(/-/g,"");
+  const params:Record<string,string>={
+    oauth_consumer_key:apiKey,oauth_nonce:nonce,oauth_signature_method:"HMAC-SHA1",
+    oauth_timestamp:ts,oauth_token:token,oauth_version:"1.0",...body
+  };
+  const sorted=Object.keys(params).sort().map(k=>`${percentEncode(k)}=${percentEncode(params[k])}`).join("&");
+  const base=`${method.toUpperCase()}&${percentEncode(url)}&${percentEncode(sorted)}`;
+  const sigKey=new TextEncoder().encode(`${percentEncode(apiSecret)}&${percentEncode(tokenSecret)}`);
+  const sig=await hmacSha1(sigKey,base);
+  const hdr=`OAuth oauth_consumer_key="${percentEncode(apiKey)}",oauth_nonce="${percentEncode(nonce)}",oauth_signature="${percentEncode(sig)}",oauth_signature_method="HMAC-SHA1",oauth_timestamp="${ts}",oauth_token="${percentEncode(token)}",oauth_version="1.0"`;
+  return hdr;
+}
+
+async function postTweet(text:string):Promise<{success:boolean;tweetId?:string;error?:string}>{
+  try{
+    const auth=await oauthHeader("POST",TWITTER_URL);
+    const res=await fetch(TWITTER_URL,{method:"POST",headers:{"Authorization":auth,"Content-Type":"application/json"},body:JSON.stringify({text})});
+    if(!res.ok){const e=await res.text();return{success:false,error:`${res.status}: ${e}`};}
+    const data=await res.json();return{success:true,tweetId:data?.data?.id};
+  }catch(e){return{success:false,error:`${e}`};}
+}
+
+function churchTweet(ch:any):string{
+  const templates=[
+    (n:string,c:string,s:string,u:string)=>`Here's ${n} in ${c}, ${s} — just added to the map! ${u}`,
+    (n:string,c:string,s:string,u:string)=>`Here's a new one: ${n} in ${c}, ${s} is now on the map. ${u}`,
+    (n:string,c:string,s:string,u:string)=>`Here's another church mapped: ${n} in ${c}, ${s}. ${u}`,
+    (n:string,c:string,s:string,u:string)=>`Here's ${n} — ${c}, ${s} now represented on the map! ${u}`,
+    (n:string,c:string,s:string,u:string)=>`Here's your newest addition: ${n} in ${c}, ${s}. ${u}`,
+  ];
+  const st=(ch.state||"").toUpperCase();
+  const url=`heresmychurch.com/state/${st.toLowerCase()}`;
+  const name=(ch.name||"A church").slice(0,80);
+  const city=(ch.city||"").slice(0,40)||"a city";
+  const idx=Math.abs(hashCode(ch.id||name))%templates.length;
+  return templates[idx](name,city,st,url).slice(0,280);
+}
+
+function correctionTweet(data:any):string{
+  const templates=[
+    (n:string,f:string)=>`Here's an update: ${n}'s ${f} just got corrected by the community. heresmychurch.com`,
+    (n:string,f:string)=>`Here's a fix: ${n}'s ${f} has been updated thanks to community input. heresmychurch.com`,
+    (n:string,f:string)=>`Here's the community at work: ${n}'s ${f} just got an update. heresmychurch.com`,
+    (n:string,f:string)=>`Here's better data: ${n}'s ${f} was corrected by our community. heresmychurch.com`,
+  ];
+  const name=(data.churchName||"A church").slice(0,60);
+  const fields=Object.keys(data.corrections||{});
+  const field=fields[0]||"info";
+  const idx=Math.abs(hashCode(data.churchId||name))%templates.length;
+  return templates[idx](name,field).slice(0,280);
+}
+
+function deployTweet(msg:string):string{
+  const templates=[
+    (m:string)=>`Here's what's new: ${m}. heresmychurch.com`,
+    (m:string)=>`Here's a fresh update: ${m}. heresmychurch.com`,
+    (m:string)=>`Here's the latest improvement: ${m}. heresmychurch.com`,
+  ];
+  const clean=msg.replace(/\n/g," ").slice(0,180);
+  const idx=Math.abs(hashCode(clean))%templates.length;
+  return templates[idx](clean).slice(0,280);
+}
+
+function milestoneTweet(count:number,next:number):string{
+  const templates=[
+    (c:number,n:number)=>`Here's a milestone: ${c.toLocaleString()} churches mapped across America! Help us reach ${n.toLocaleString()} at heresmychurch.com`,
+    (c:number,n:number)=>`Here's something to celebrate: ${c.toLocaleString()} churches and counting! Next stop: ${n.toLocaleString()}. heresmychurch.com`,
+    (c:number,n:number)=>`Here's how far we've come: ${c.toLocaleString()} churches on the map. ${n.toLocaleString()} is next! heresmychurch.com`,
+  ];
+  const idx=Math.abs(hashCode(`ms-${count}`))%templates.length;
+  return templates[idx](count,next).slice(0,280);
+}
+
+function hashCode(s:string):number{let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return h;}
+
+async function maybePostTweet(eventType:string,data:any):Promise<void>{
+  try{
+    // Check credentials exist
+    if(!Deno.env.get("TWITTER_API_KEY"))return;
+
+    // Rate limit check
+    const today=new Date().toISOString().slice(0,10);
+    const daily=(await kv.get("twitter:daily"))||{date:"",count:0};
+    if(daily.date===today&&daily.count>=DAILY_TWEET_CAP)return;
+
+    // Dedup check
+    const log:any[]=(await kv.get("twitter:log"))||[];
+    const entityId=data?.id||data?.churchId||eventType;
+    const dayAgo=Date.now()-86400000;
+    if(log.some((e:any)=>e.eventType===eventType&&e.entityId===entityId&&e.timestamp>dayAgo))return;
+
+    // Build tweet text
+    let text="";
+    if(eventType==="church_added")text=churchTweet(data);
+    else if(eventType==="correction_applied")text=correctionTweet(data);
+    else if(eventType==="deploy")text=deployTweet(data?.message||"improvements");
+    else return;
+
+    // Post
+    const result=await postTweet(text);
+
+    // Log
+    log.unshift({eventType,entityId,text,timestamp:Date.now(),success:result.success,tweetId:result.tweetId,error:result.error});
+    await kv.set("twitter:log",log.slice(0,100));
+    await kv.set("twitter:daily",{date:today,count:(daily.date===today?daily.count:0)+1});
+
+    // Milestone check (only after church_added)
+    if(eventType==="church_added"){
+      try{
+        const meta=await kv.get("churches:meta");
+        if(meta?.stateCounts){
+          const total=Object.values(meta.stateCounts as Record<string,number>).reduce((a:number,b:number)=>a+b,0);
+          const reached:number[]=(await kv.get("twitter:milestones"))||[];
+          for(const m of MILESTONES){
+            if(total>=m&&!reached.includes(m)){
+              const next=MILESTONES.find(x=>x>m)||m*2;
+              const msText=milestoneTweet(m,next);
+              const msResult=await postTweet(msText);
+              reached.push(m);
+              log.unshift({eventType:"milestone",entityId:`ms-${m}`,text:msText,timestamp:Date.now(),success:msResult.success,tweetId:msResult.tweetId});
+              await kv.set("twitter:log",log.slice(0,100));
+              await kv.set("twitter:milestones",reached);
+              break;
+            }
+          }
+        }
+      }catch(_){}
+    }
+  }catch(_){}
+}
+
+// Twitter webhook route (for GitHub Actions deploy tweets)
+app.post(`${P}/twitter/post`,async(c)=>{
+  try{
+    const body=await c.req.json();
+    const secret=Deno.env.get("TWITTER_WEBHOOK_SECRET")||"";
+    if(!secret||body.secret!==secret)return c.json({error:"Unauthorized"},401);
+    const eventType=body.eventType||"deploy";
+    const data=body.data||{};
+    await maybePostTweet(eventType,data);
+    return c.json({success:true});
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
+// Twitter status/debug route
+app.get(`${P}/twitter/status`,async(c)=>{
+  try{
+    const secret=c.req.query("secret")||"";
+    const expected=Deno.env.get("TWITTER_WEBHOOK_SECRET")||"";
+    if(!expected||secret!==expected)return c.json({error:"Unauthorized"},401);
+    const log=(await kv.get("twitter:log"))||[];
+    const daily=(await kv.get("twitter:daily"))||{date:"",count:0};
+    const milestones=(await kv.get("twitter:milestones"))||[];
+    return c.json({recentTweets:log.slice(0,20),daily,milestones});
+  }catch(e){return c.json({error:`${e}`},500);}
 });
 
 // ── One-time migration: apply all pending corrections & merge pending churches ──
