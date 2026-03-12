@@ -1471,8 +1471,9 @@ async function generateFunFact():Promise<{text:string;category:string}|null>{
       facts.push({text:`Here's something cool: The community has made ${stats.totalCorrections.toLocaleString()} corrections to church data, improving ${improved.toLocaleString()} churches so far.`,category:"community",id:`comm-${stats.totalCorrections}`});
     }
 
-    // Category 6: Total churches nationally
-    facts.push({text:`Here's where we stand: ${total.toLocaleString()} churches mapped across ${stateEntries.length} states. Every church added helps someone find their community.`,category:"total",id:`total-${total}`});
+    // Category 6: Total churches nationally (exclude DC so we never say "51 states")
+    const stateCountForCopy=stateEntries.filter(([a])=>a!=="DC").length;
+    facts.push({text:`Here's where we stand: ${total.toLocaleString()} churches mapped across ${stateCountForCopy} states. Every church added helps someone find their community.`,category:"total",id:`total-${total}`});
 
     // Category 7: Attendance patterns (sample a state)
     if(stateEntries.length>0){
