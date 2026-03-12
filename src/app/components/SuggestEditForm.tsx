@@ -49,6 +49,7 @@ function normalizeStateAbbrev(churchState: string | undefined, churchId: string)
 
 interface SuggestEditFormProps {
   church: Church;
+  allChurches?: Church[];
   onClose: () => void;
   focusField?: string | null;
   onChurchUpdated?: () => void;
@@ -125,7 +126,7 @@ function getCurrentValue(church: Church, field: EditableField): string {
   }
 }
 
-export function SuggestEditForm({ church, onClose, focusField, onChurchUpdated }: SuggestEditFormProps) {
+export function SuggestEditForm({ church, allChurches, onClose, focusField, onChurchUpdated }: SuggestEditFormProps) {
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -250,7 +251,7 @@ export function SuggestEditForm({ church, onClose, focusField, onChurchUpdated }
                 key={fieldConfig.key}
                 fieldConfig={fieldConfig}
                 church={church}
-
+                allChurches={allChurches}
                 submitting={submitting}
                 submitted={submitted}
                 isEditing={editingFields.has(fieldConfig.key)}
@@ -293,7 +294,7 @@ export function SuggestEditForm({ church, onClose, focusField, onChurchUpdated }
                 key={fieldConfig.key}
                 fieldConfig={fieldConfig}
                 church={church}
-
+                allChurches={allChurches}
                 submitting={submitting}
                 submitted={submitted}
                 isEditing={editingFields.has(fieldConfig.key)}
@@ -343,18 +344,20 @@ export function SuggestEditForm({ church, onClose, focusField, onChurchUpdated }
 function MainCampusSearch({
   currentChurchId,
   churchState,
+  allChurches,
   onSelect,
   submitting,
   onCancel,
 }: {
   currentChurchId: string;
   churchState: string;
+  allChurches?: Church[];
   onSelect: (churchId: string) => void;
   submitting: boolean;
   onCancel: () => void;
 }) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [results, setResults] = useState<(SearchResult & { _tier: number })[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -368,6 +371,44 @@ function MainCampusSearch({
     return list.length ? list : undefined;
   })();
 
+  // Local search through already-loaded state churches (instant, complete)
+  const localSearch = (q: string): (SearchResult & { _tier: number })[] => {
+    if (!allChurches?.length || !q) return [];
+    const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!tokens.length) return [];
+    return allChurches
+      .filter((c) => {
+        if (c.id === currentChurchId) return false;
+        const hay = `${c.name} ${c.city || ""} ${c.denomination || ""} ${c.address || ""}`.toLowerCase();
+        return tokens.every((t) => hay.includes(t));
+      })
+      .map((c) => ({
+        id: c.id,
+        shortId: c.shortId,
+        name: c.name,
+        city: c.city,
+        state: c.state,
+        denomination: c.denomination,
+        attendance: c.attendance,
+        lat: c.lat,
+        lng: c.lng,
+        address: c.address || "",
+        _tier: 0,
+      }))
+      .sort((a, b) => {
+        // Score: exact phrase match in name first, then name-starts-with, then alphabetical
+        const aName = a.name.toLowerCase(), bName = b.name.toLowerCase();
+        const aPhrase = aName.includes(q.toLowerCase()) ? 1 : 0;
+        const bPhrase = bName.includes(q.toLowerCase()) ? 1 : 0;
+        if (aPhrase !== bPhrase) return bPhrase - aPhrase;
+        const aStarts = aName.startsWith(tokens[0]) ? 1 : 0;
+        const bStarts = bName.startsWith(tokens[0]) ? 1 : 0;
+        if (aStarts !== bStarts) return bStarts - aStarts;
+        return aName.localeCompare(bName);
+      })
+      .slice(0, 50);
+  };
+
   useEffect(() => {
     const q = query.trim();
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -376,13 +417,17 @@ function MainCampusSearch({
       setLoading(false);
       return;
     }
+
+    // Immediately show local same-state results (no network needed)
+    const local = localSearch(q);
+    if (local.length) setResults(local);
+
     setLoading(true);
     setError(null);
     timeoutRef.current = setTimeout(() => {
       timeoutRef.current = null;
-      searchChurches(q, 20, undefined, priorityStates)
+      searchChurches(q, 50, undefined, priorityStates)
         .then((data) => {
-          const filtered = (data.results || []).filter((r) => r.id !== currentChurchId);
           const norm = (x: string) => (x ?? "").trim().toUpperCase().slice(0, 2);
           const neighborSet = stateNorm ? new Set((STATE_NEIGHBORS[stateNorm] || []).map((s) => s.toUpperCase())) : new Set<string>();
           const tier = (r: SearchResult) => {
@@ -393,17 +438,27 @@ function MainCampusSearch({
             if (neighborSet.has(st)) return 1;
             return 2;
           };
-          filtered.sort((a, b) => {
-            const ta = tier(a);
-            const tb = tier(b);
-            if (ta !== tb) return ta - tb;
-            return (a.name || "").localeCompare(b.name || "");
-          });
-          setResults(filtered);
+          // Server results: only keep tier 1 and 2 (nearby + national)
+          const serverResults = (data.results || [])
+            .filter((r) => r.id !== currentChurchId)
+            .map((r) => ({ ...r, _tier: tier(r) }))
+            .filter((r) => r._tier > 0);
+          // Merge: local same-state + server nearby/national
+          const localNow = localSearch(q);
+          const seenIds = new Set(localNow.map((r) => r.id));
+          const merged = [
+            ...localNow,
+            ...serverResults.filter((r) => !seenIds.has(r.id)),
+          ];
+          merged.sort((a, b) => a._tier - b._tier);
+          setResults(merged);
         })
         .catch((err) => {
-          setError(err?.message || "Search failed");
-          setResults([]);
+          // If server fails, we still have local results
+          if (!local.length) {
+            setError(err?.message || "Search failed");
+            setResults([]);
+          }
         })
         .finally(() => setLoading(false));
     }, 300);
@@ -428,28 +483,42 @@ function MainCampusSearch({
       {!loading && query.trim().length >= 2 && results.length === 0 && !error && (
         <p className="text-white/70 text-[10px]">No churches found. Try a different name or city.</p>
       )}
-      <div className="max-h-40 overflow-y-auto space-y-1">
-        {results.map((r) => {
+      {!loading && results.length > 0 && (
+        <p className="text-white/40 text-[10px]">{results.length} church{results.length === 1 ? "" : "es"} found</p>
+      )}
+      <div className="max-h-60 overflow-y-auto space-y-1">
+        {results.map((r, i) => {
+          const prevTier = i > 0 ? results[i - 1]._tier : -1;
+          const showHeader = r._tier !== prevTier && stateNorm;
+          const tierLabel = r._tier === 0
+            ? `In ${STATE_NAMES[stateNorm] || stateNorm}`
+            : r._tier === 1
+              ? "Nearby states"
+              : "Other states";
           const hasAddress = r.address?.trim();
           const locationLine = hasAddress
             ? [r.address, r.city, r.state].filter(Boolean).join(", ")
             : [r.city, r.state].filter(Boolean).join(", ");
           return (
-            <button
-              key={r.id}
-              type="button"
-              disabled={submitting}
-              onClick={() => onSelect(r.id)}
-              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-left text-xs disabled:opacity-60"
-            >
-              <div className="w-2 h-2 rounded-full bg-purple-400/60 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <span className="text-white font-medium truncate block">{r.name}</span>
-                {locationLine ? (
-                  <span className="text-white/70 text-[10px] block truncate">{locationLine}</span>
-                ) : null}
-              </div>
-            </button>
+            <div key={r.id}>
+              {showHeader && (
+                <p className="text-[9px] text-white/40 uppercase tracking-wider px-2.5 pt-2 pb-0.5">{tierLabel}</p>
+              )}
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => onSelect(r.id)}
+                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-left text-xs disabled:opacity-60"
+              >
+                <div className="w-2 h-2 rounded-full bg-purple-400/60 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <span className="text-white font-medium truncate block">{r.name}</span>
+                  {locationLine ? (
+                    <span className="text-white/70 text-[10px] block truncate">{locationLine}</span>
+                  ) : null}
+                </div>
+              </button>
+            </div>
           );
         })}
       </div>
@@ -469,6 +538,7 @@ function MainCampusSearch({
 function FieldCard({
   fieldConfig,
   church,
+  allChurches,
   submitting,
   submitted,
   isEditing,
@@ -485,6 +555,7 @@ function FieldCard({
 }: {
   fieldConfig: (typeof FIELD_CONFIG)[number];
   church: Church;
+  allChurches?: Church[];
   submitting: string | null;
   submitted: Set<string>;
   isEditing: boolean;
@@ -580,6 +651,7 @@ function FieldCard({
                 <MainCampusSearch
                   currentChurchId={church.id}
                   churchState={church.state}
+                  allChurches={allChurches}
                   onSelect={(id) => onSubmitWithValue?.(id)}
                   submitting={isSubmitting}
                   onCancel={onCancelEdit}

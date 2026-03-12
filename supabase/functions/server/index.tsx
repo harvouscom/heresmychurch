@@ -394,7 +394,7 @@ app.get(`${P}/churches/search`,async(c)=>{
 
     let target=pop,search=tokens;
     if(stP&&pop.includes(stP)){target=[stP];}
-    else{
+    else if(!priorityStatesParam.length){
       const det:string[]=[],txt:string[]=[],used=new Set<number>(),full=tokens.join(" ");
       for(const s of US){const ln=s.n.toLowerCase();if(ln.includes(" ")&&full.includes(ln)&&pop.includes(s.a)){if(!det.includes(s.a))det.push(s.a);const ws=ln.split(" ");let sf=0;for(const w of ws){for(let i=sf;i<tokens.length;i++){if(!used.has(i)&&tokens[i]===w){used.add(i);sf=i+1;break;}}}}}
       for(let i=0;i<tokens.length;i++){if(used.has(i))continue;const m=sM[tokens[i]];if(m&&pop.includes(m)){det.push(m);used.add(i);}else txt.push(tokens[i]);}
@@ -410,7 +410,7 @@ app.get(`${P}/churches/search`,async(c)=>{
       exp=[...priorityOrdered,...rest];if(exp.includes("MD")&&!exp.includes("DC"))exp.push("DC");
     }else{exp=[...target];if(target.includes("MD")&&!target.includes("DC"))exp.push("DC");}
 
-    const COLLECT_CAP=500;
+    const COLLECT_CAP=priorityStatesParam.length?limit*5:500;
     const lastPriorityIdx=numPriorityStates>0?numPriorityStates-1:-1;
     const candidates:Array<{score:number,id:string,shortId:string,name:string,city:string,state:string,denomination:string,attendance:number,lat:number,lng:number,address:string}>=[];
     const seen=new Set<string>();
@@ -427,18 +427,19 @@ app.get(`${P}/churches/search`,async(c)=>{
           if(Array.isArray(raw)&&raw.length)items=raw;
         }
       }catch(_){}
-      if(!Array.isArray(items))continue;
+      if(!Array.isArray(items)){idx++;continue;}
       const isIdx=items.length>0&&items[0]?.n!==undefined;
+      const scoreQ=search.length<tokens.length?search.join(" "):q;
       for(const e of items){
         if(candidates.length>=COLLECT_CAP)break;
         const n=isIdx?e.n:(e.name||""),ci=isIdx?e.c:(e.city||""),d=isIdx?e.d:(e.denomination||""),ad=isIdx?e.ad:(e.address||"");
         if(search.length){const h=`${n} ${ci} ${d} ${ad}`.toLowerCase();if(!search.every((t:string)=>h.includes(t)))continue;}
-        const k=`${n.toLowerCase().replace(/[^a-z0-9]/g,"")}|${ci.toLowerCase().replace(/[^a-z0-9]/g,"")}|${realSt}`;
+        const k=`${n.toLowerCase().replace(/[^a-z0-9]/g,"")}|${ci.toLowerCase().replace(/[^a-z0-9]/g,"")}|${ad.toLowerCase().replace(/[^a-z0-9]/g,"")}|${realSt}`;
         if(seen.has(k))continue;seen.add(k);
         const row={id:e.id,shortId:toShortId(e.id,realSt,e.shortId),name:n||"Unknown Church",city:ci,state:realSt,denomination:d||"Unknown",attendance:isIdx?e.a:e.attendance,lat:isIdx?e.la:e.lat,lng:isIdx?e.lo:e.lng,address:ad||""};
-        candidates.push({score:scoreMatch(q,n,ci,ad),...row});
+        candidates.push({score:scoreMatch(scoreQ,n,ci,ad),...row});
       }
-      if(lastPriorityIdx>=0&&idx===lastPriorityIdx&&candidates.length>=limit)break;
+      if(lastPriorityIdx>=0&&idx<=lastPriorityIdx&&candidates.length>=limit)break;
       idx++;
     }
     candidates.sort((a,b)=>b.score-a.score||(a.name||"").localeCompare(b.name||""));

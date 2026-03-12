@@ -424,6 +424,7 @@ export function ChurchDetailPanel({
     return (
       <SuggestEditForm
         church={church}
+        allChurches={allChurches}
         onClose={() => { setShowEditForm(false); setEditFocusField(null); }}
         focusField={editFocusField}
         onChurchUpdated={onChurchUpdated}
