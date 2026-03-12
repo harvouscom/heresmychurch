@@ -1236,7 +1236,7 @@ app.get(`${P}/community/history/:churchId`,async(c)=>{
 });
 
 // ── Moderator endpoints ──
-app.get(`${P}/moderate/pending`,async(c)=>{
+const moderatePendingHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     const pendingSuggestions:any[]=[];
@@ -1248,7 +1248,6 @@ app.get(`${P}/moderate/pending`,async(c)=>{
         for(const f of SENSITIVE_FIELDS){
           const d=con[f] as any;
           if(d&&d.votes>0&&d.value!==null){
-            // Look up current church value
             const parts=entry.churchId.split("-");const st=parts[0]==="community"?parts[1]:parts[0];
             let currentValue:string|null=null;
             if(st&&st.length===2){
@@ -1260,7 +1259,6 @@ app.get(`${P}/moderate/pending`,async(c)=>{
         }
       }
     }
-    // Pending new churches (not yet approved)
     const pendingChurches:any[]=[];
     const states=["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"];
     for(const st of states){
@@ -1270,9 +1268,11 @@ app.get(`${P}/moderate/pending`,async(c)=>{
     }
     return c.json({pendingSuggestions,pendingChurches});
   }catch(e){return c.json({error:`${e}`},500);}
-});
+};
+app.get(`${P}/moderate/pending`,moderatePendingHandler);
+app.get("/moderate/pending",moderatePendingHandler);
 
-app.post(`${P}/moderate/approve/suggestion`,async(c)=>{
+const moderateApproveSuggestionHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     const{churchId,field}=await c.req.json();
@@ -1280,20 +1280,20 @@ app.post(`${P}/moderate/approve/suggestion`,async(c)=>{
     const k=`suggestions:${churchId}`;const ex=await kv.get(k);
     if(!ex||!Array.isArray(ex.submissions))return c.json({error:"No suggestions found"},404);
     const con=consensus(ex.submissions);
-    // Only apply the specific approved field
     const d=con[field] as any;
     if(!d||d.value===null)return c.json({error:"No value to approve"},400);
     const singleCon:Record<string,any>={};
     singleCon[field]={approved:true,value:d.value,votes:d.votes,needed:THR};
     const applied=await applyApprovedCorrections(churchId,singleCon);
-    // Remove processed submissions for this field
     ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
     await kv.set(k,ex);
     return c.json({success:true,applied,churchId,field,value:d.value});
   }catch(e){return c.json({error:`${e}`},500);}
-});
+};
+app.post(`${P}/moderate/approve/suggestion`,moderateApproveSuggestionHandler);
+app.post("/moderate/approve/suggestion",moderateApproveSuggestionHandler);
 
-app.post(`${P}/moderate/reject/suggestion`,async(c)=>{
+const moderateRejectSuggestionHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     const{churchId,field}=await c.req.json();
@@ -1304,9 +1304,11 @@ app.post(`${P}/moderate/reject/suggestion`,async(c)=>{
     await kv.set(k,ex);
     return c.json({success:true,churchId,field,rejected:true});
   }catch(e){return c.json({error:`${e}`},500);}
-});
+};
+app.post(`${P}/moderate/reject/suggestion`,moderateRejectSuggestionHandler);
+app.post("/moderate/reject/suggestion",moderateRejectSuggestionHandler);
 
-app.post(`${P}/moderate/approve/church`,async(c)=>{
+const moderateApproveChurchHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     const{churchId}=await c.req.json();
@@ -1317,7 +1319,6 @@ app.post(`${P}/moderate/approve/church`,async(c)=>{
     const ch=store.churches.find((x:any)=>x.id===churchId);
     if(!ch)return c.json({error:"Church not found"},404);
     ch.approved=true;await kv.set(k,store);
-    // Add to main churches list
     const mainKey=`churches:${st}`;const mainChurches=(await kv.get(mainKey))||[];
     if(Array.isArray(mainChurches)){
       const exists=mainChurches.some((mc:any)=>mc.id===churchId);
@@ -1328,9 +1329,11 @@ app.post(`${P}/moderate/approve/church`,async(c)=>{
     }
     return c.json({success:true,churchId,approved:true});
   }catch(e){return c.json({error:`${e}`},500);}
-});
+};
+app.post(`${P}/moderate/approve/church`,moderateApproveChurchHandler);
+app.post("/moderate/approve/church",moderateApproveChurchHandler);
 
-app.post(`${P}/moderate/reject/church`,async(c)=>{
+const moderateRejectChurchHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     const{churchId}=await c.req.json();
@@ -1342,7 +1345,9 @@ app.post(`${P}/moderate/reject/church`,async(c)=>{
     await kv.set(k,store);
     return c.json({success:true,churchId,rejected:true});
   }catch(e){return c.json({error:`${e}`},500);}
-});
+};
+app.post(`${P}/moderate/reject/church`,moderateRejectChurchHandler);
+app.post("/moderate/reject/church",moderateRejectChurchHandler);
 
 // ── Church reactions (Netflix-style thumbs) ──
 const REACTIONS = ["not_for_me", "like", "love"] as const;
