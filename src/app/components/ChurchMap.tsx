@@ -920,14 +920,14 @@ function AboutModal({ onClose }: { onClose: () => void }) {
             <img src={logoImg} alt="Here's My Church" className="w-full h-full object-cover" />
           </div>
           <h2 className="text-white font-medium text-[22px] leading-tight">Here's My Church</h2>
-          <p className="text-white/60 text-sm leading-relaxed mt-3 text-pretty">An interactive map of Christian churches in the U.S. Find your church or find a new church.</p>
+          <p className="text-white/60 text-sm leading-relaxed mt-3 text-pretty">An interactive map of Christian churches in the U.S. The goal is to be the place with the most accurate data.</p>
         </div>
 
         {/* Content */}
         <div className="px-6 py-5 overflow-y-auto flex-1 min-h-0">
           <div className="flex items-center justify-center gap-2 mb-4 px-3 py-2 rounded-lg bg-white/5">
             <span className="text-purple-300 text-xs">{"\u2726"}</span>
-            <p className="text-white/60 text-xs text-pretty">100% free and crowd-sourced</p>
+            <p className="text-white/60 text-xs text-pretty">100% free open-sourced project with crowd-sourced data</p>
           </div>
           <p className="text-white/40 text-[11px] uppercase tracking-wider font-medium mb-3">What you can do</p>
           <ul className="space-y-2.5">
@@ -936,6 +936,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
               "Search and filter by name, denomination, size, or language",
               "View church info like address, website, and service times",
               "Easily add a church and make any corrections",
+              "Update church info from any church in review",
             ].map((item, i) => (
               <li key={i} className="flex items-start gap-2.5">
                 <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-purple-500/20 flex items-center justify-center">
