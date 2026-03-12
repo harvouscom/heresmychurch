@@ -11,6 +11,9 @@ interface UIState {
   /** When true, preview card stays open on mouse out and is interactive (View church button) */
   previewPinned: boolean;
   hoveredState: string | null;
+  /** State shown in pinned tooltip (national view); click state to pin, then "View state" to navigate */
+  previewState: string | null;
+  previewStatePinned: boolean;
   hoveredCounty: string | null;
   tooltipPos: { x: number; y: number };
   showFilterPanel: boolean;
@@ -34,6 +37,8 @@ type UIAction =
   | { type: "SET_PREVIEW_CHURCH"; value: any }
   | { type: "SET_PREVIEW_PINNED"; value: boolean }
   | { type: "SET_HOVERED_STATE"; value: string | null }
+  | { type: "SET_PREVIEW_STATE"; value: string | null }
+  | { type: "SET_PREVIEW_STATE_PINNED"; value: boolean }
   | { type: "SET_HOVERED_COUNTY"; value: string | null }
   | { type: "SET_TOOLTIP_POS"; value: { x: number; y: number } }
   | { type: "SET_SHOW_FILTER_PANEL"; value: boolean | ((prev: boolean) => boolean) }
@@ -60,6 +65,10 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       return state.previewPinned === action.value ? state : { ...state, previewPinned: action.value };
     case "SET_HOVERED_STATE":
       return state.hoveredState === action.value ? state : { ...state, hoveredState: action.value };
+    case "SET_PREVIEW_STATE":
+      return state.previewState === action.value ? state : { ...state, previewState: action.value };
+    case "SET_PREVIEW_STATE_PINNED":
+      return state.previewStatePinned === action.value ? state : { ...state, previewStatePinned: action.value };
     case "SET_HOVERED_COUNTY":
       return state.hoveredCounty === action.value ? state : { ...state, hoveredCounty: action.value };
     case "SET_TOOLTIP_POS":
@@ -110,6 +119,8 @@ const initialUIState: UIState = {
   previewChurch: null,
   previewPinned: false,
   hoveredState: null,
+  previewState: null,
+  previewStatePinned: false,
   hoveredCounty: null,
   tooltipPos: { x: 0, y: 0 },
   showFilterPanel: false,
@@ -143,11 +154,13 @@ export function useUIState(focusedState: string | null) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [s.showSummary]);
 
-  // Close summary, pinned preview, and add-church-for-state when navigating
+  // Close summary, pinned previews, and add-church-for-state when navigating
   useEffect(() => {
     dispatch({ type: "SET_SHOW_SUMMARY", value: false });
     dispatch({ type: "SET_PREVIEW_CHURCH", value: null });
     dispatch({ type: "SET_PREVIEW_PINNED", value: false });
+    dispatch({ type: "SET_PREVIEW_STATE", value: null });
+    dispatch({ type: "SET_PREVIEW_STATE_PINNED", value: false });
     dispatch({ type: "SET_ADD_CHURCH_FOR_STATE", value: null });
   }, [focusedState]);
 
@@ -163,6 +176,15 @@ export function useUIState(focusedState: string | null) {
   const clearPreview = () => {
     dispatch({ type: "SET_PREVIEW_CHURCH", value: null });
     dispatch({ type: "SET_PREVIEW_PINNED", value: false });
+  };
+  const setPinnedStatePreview = (abbrev: string, pos: { x: number; y: number }) => {
+    dispatch({ type: "SET_TOOLTIP_POS", value: pos });
+    dispatch({ type: "SET_PREVIEW_STATE", value: abbrev });
+    dispatch({ type: "SET_PREVIEW_STATE_PINNED", value: true });
+  };
+  const clearStatePreview = () => {
+    dispatch({ type: "SET_PREVIEW_STATE", value: null });
+    dispatch({ type: "SET_PREVIEW_STATE_PINNED", value: false });
   };
   const setHoveredState = (v: string | null) => dispatch({ type: "SET_HOVERED_STATE", value: v });
   const setHoveredCounty = (v: string | null) => dispatch({ type: "SET_HOVERED_COUNTY", value: v });
@@ -180,8 +202,8 @@ export function useUIState(focusedState: string | null) {
   const toggleSize = (label: string) => dispatch({ type: "TOGGLE_SIZE", label });
   const toggleDenom = (label: string) => dispatch({ type: "TOGGLE_DENOM", label });
   const handleMouseMove = (e: React.MouseEvent) => {
-    // Don't move the tooltip when preview is pinned, so the "View church" button stays clickable
-    if (!s.previewPinned) {
+    // Don't move the tooltip when a preview is pinned, so the View church/state button stays clickable
+    if (!s.previewPinned && !s.previewStatePinned) {
       dispatch({ type: "SET_TOOLTIP_POS", value: { x: e.clientX, y: e.clientY } });
     }
   };
@@ -192,6 +214,8 @@ export function useUIState(focusedState: string | null) {
     previewPinned: s.previewPinned, setPreviewPinned,
     setPinnedPreview, clearPreview,
     hoveredState: s.hoveredState, setHoveredState,
+    previewState: s.previewState, previewStatePinned: s.previewStatePinned,
+    setPinnedStatePreview, clearStatePreview,
     hoveredCounty: s.hoveredCounty, setHoveredCounty,
     tooltipPos: s.tooltipPos,
     showFilterPanel: s.showFilterPanel, setShowFilterPanel,

@@ -46,6 +46,11 @@ import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 /** Set to true to temporarily hide All States button, Map Key, and action controls (zoom/filter). */
 const HIDE_MAP_UI = false;
 
+/** Sample per-state active counts for testing on localhost (see tooltip + on-map labels). */
+const SAMPLE_ACTIVE_BY_STATE: Record<string, number> = {
+  CA: 2, TX: 3, NY: 1, FL: 4, IL: 2, OH: 1, GA: 2, NC: 1, WA: 1,
+};
+
 /* eslint-disable @refresh/only-export-components -- force clean re-mount after hook changes */
 
 interface ChurchMapProps {
@@ -187,11 +192,17 @@ export function ChurchMap({
     }
   }, [openReviewModalFromQuery, clearReviewQueryParam, d.focusedState, d.churches.length, d.loading, d.populating]);
 
-  const { people: activePeople, bots: activeBots } = useActiveUsers();
+  const { people: activePeople, bots: activeBots, byState: activeByState } = useActiveUsers(
+    d.selectedChurch?.state ?? d.focusedState ?? null
+  );
   const [isLocalhost, setIsLocalhost] = useState(false);
   useEffect(() => {
     if (typeof window !== "undefined") setIsLocalhost(window.location.hostname === "localhost");
   }, []);
+
+  const displayActiveByState = isLocalhost
+    ? { ...SAMPLE_ACTIVE_BY_STATE, ...activeByState }
+    : activeByState;
 
   const isStateOrChurchView = !!d.focusedState || !!d.selectedChurch;
   useEffect(() => {
@@ -250,6 +261,7 @@ export function ChurchMap({
         }}
         activePeople={activePeople}
         activeBots={activeBots}
+        activeByState={displayActiveByState}
         isLocalhost={isLocalhost}
         searchCollapsed={effectiveSearchCollapsed}
         isMobile={isMobile}
@@ -438,6 +450,7 @@ function MapArea({
   onAnnouncementsPanelChange,
   activePeople,
   activeBots,
+  activeByState,
   isLocalhost,
   searchCollapsed,
   isMobile,
@@ -471,6 +484,7 @@ function MapArea({
   onAnnouncementsPanelChange: (open: boolean) => void;
   activePeople: number;
   activeBots: number;
+  activeByState: Record<string, number>;
   isLocalhost: boolean;
   searchCollapsed: boolean;
   isMobile: boolean;
@@ -573,7 +587,7 @@ function MapArea({
         filteredChurches={d.filteredChurches}
         selectedChurchId={d.selectedChurch?.id ?? null}
         onMoveEnd={handleMoveEnd}
-        onStateClick={navigateToState}
+        onStateClick={d.handleStateClick}
         onResetView={d.handleResetView}
         onStateHover={d.setHoveredState}
         onChurchClick={d.handleChurchDotClick}
@@ -586,9 +600,20 @@ function MapArea({
       />
 
       {/* Tooltips */}
-      {d.hoveredState && !d.focusedState && !(d.previewChurch ?? d.hoveredChurch) && (
-        <StateTooltip hoveredState={d.hoveredState} states={d.states} tooltipPos={d.tooltipPos} />
-      )}
+      {!d.focusedState && !(d.previewChurch ?? d.hoveredChurch) && (d.hoveredState || (d.previewStatePinned && d.previewState)) && (() => {
+        const stateAbbrev = d.previewStatePinned && d.previewState ? d.previewState : d.hoveredState!;
+        return (
+          <StateTooltip
+            hoveredState={stateAbbrev}
+            states={d.states}
+            tooltipPos={d.tooltipPos}
+            activeByState={activeByState}
+            pinned={d.previewStatePinned}
+            onViewState={d.previewStatePinned ? () => { d.clearStatePreview(); navigateToState(stateAbbrev); } : undefined}
+            onClose={d.previewStatePinned ? d.clearStatePreview : undefined}
+          />
+        );
+      })()}
       {(d.previewChurch ?? d.hoveredChurch) && (d.previewChurch ?? d.hoveredChurch)!.id !== d.selectedChurch?.id && (
         <ChurchTooltip
           church={(d.previewChurch ?? d.hoveredChurch)!}
@@ -602,13 +627,13 @@ function MapArea({
         <CountyTooltip countyFips={d.hoveredCounty} countyStats={d.countyStats} tooltipPos={d.tooltipPos} />
       )}
 
-      {/* Click-outside backdrop: dismiss pinned church preview */}
-      {d.previewPinned && (
+      {/* Click-outside backdrop: dismiss pinned church or state preview */}
+      {(d.previewPinned || d.previewStatePinned) && (
         <div
           className="absolute inset-0 z-[45]"
           aria-hidden
-          onClick={d.clearPreview}
-          onTouchEnd={(e) => { e.preventDefault(); d.clearPreview(); }}
+          onClick={() => { d.clearPreview(); d.clearStatePreview(); }}
+          onTouchEnd={(e) => { e.preventDefault(); d.clearPreview(); d.clearStatePreview(); }}
         />
       )}
 

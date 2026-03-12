@@ -961,6 +961,12 @@ export function useChurchMapData({
     }
   };
 
+  const handleStateClick = (abbrev: string, e?: { clientX: number; clientY: number }) => {
+    if (focusedState) return;
+    const pos = e ? { x: e.clientX, y: e.clientY } : ui.tooltipPos;
+    ui.setPinnedStatePreview(abbrev, pos);
+  };
+
   return {
     // Map state (was in useMapView, now in data reducer)
     zoom, setZoom,
@@ -988,6 +994,10 @@ export function useChurchMapData({
     clearPreview: ui.clearPreview,
     hoveredState: ui.hoveredState,
     setHoveredState: ui.setHoveredState,
+    previewState: ui.previewState,
+    previewStatePinned: ui.previewStatePinned,
+    clearStatePreview: ui.clearStatePreview,
+    handleStateClick,
     hoveredCounty: ui.hoveredCounty,
     setHoveredCounty: ui.setHoveredCounty,
     tooltipPos: ui.tooltipPos,

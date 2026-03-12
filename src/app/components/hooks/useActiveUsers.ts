@@ -65,7 +65,7 @@ function detectBot(): boolean {
   return false;
 }
 
-type PresencePayload = { id?: string; isBot?: boolean };
+type PresencePayload = { id?: string; isBot?: boolean; viewingState?: string | null };
 
 function countPeopleAndBots(state: Record<string, PresencePayload[]>): { people: number; bots: number } {
   let people = 0;
@@ -80,14 +80,39 @@ function countPeopleAndBots(state: Record<string, PresencePayload[]>): { people:
   return { people, bots };
 }
 
-export function useActiveUsers(): { people: number; bots: number } {
-  const [counts, setCounts] = useState({ people: 0, bots: 0 });
+function countByState(state: Record<string, PresencePayload[]>): Record<string, number> {
+  const byState: Record<string, number> = {};
+  for (const key of Object.keys(state)) {
+    const payloads = state[key];
+    if (!Array.isArray(payloads) || payloads.length === 0) continue;
+    const first = payloads[0] as PresencePayload | undefined;
+    if (first?.isBot) continue;
+    const stateAbbrev = first?.viewingState;
+    if (stateAbbrev && typeof stateAbbrev === "string") {
+      byState[stateAbbrev] = (byState[stateAbbrev] ?? 0) + 1;
+    }
+  }
+  return byState;
+}
+
+export function useActiveUsers(viewingState: string | null = null): {
+  people: number;
+  bots: number;
+  byState: Record<string, number>;
+} {
+  const [counts, setCounts] = useState({ people: 0, bots: 0, byState: {} as Record<string, number> });
   const channelRef = useRef<ReturnType<ReturnType<typeof getSupabase>["channel"]> | null>(null);
+  const viewingStateRef = useRef(viewingState);
+  viewingStateRef.current = viewingState;
 
   const retrack = useCallback(() => {
     const ch = channelRef.current;
     if (!ch) return;
-    ch.track({ id: getOrCreateSessionId(), isBot: detectBot() }).catch(() => {});
+    ch.track({
+      id: getOrCreateSessionId(),
+      isBot: detectBot(),
+      viewingState: viewingStateRef.current ?? null,
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -96,7 +121,9 @@ export function useActiveUsers(): { people: number; bots: number } {
 
     const updateCount = () => {
       const state = channel.presenceState() as Record<string, PresencePayload[]>;
-      setCounts(countPeopleAndBots(state));
+      const { people, bots } = countPeopleAndBots(state);
+      const byState = countByState(state);
+      setCounts({ people, bots, byState });
     };
 
     channel
@@ -108,6 +135,7 @@ export function useActiveUsers(): { people: number; bots: number } {
         await channel.track({
           id: getOrCreateSessionId(),
           isBot: detectBot(),
+          viewingState: viewingStateRef.current ?? null,
         });
       });
 
@@ -140,6 +168,11 @@ export function useActiveUsers(): { people: number; bots: number } {
       channelRef.current = null;
     };
   }, [retrack]);
+
+  // When viewingState changes, re-announce presence so our byState is accurate
+  useEffect(() => {
+    retrack();
+  }, [viewingState, retrack]);
 
   return counts;
 }

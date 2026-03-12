@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Loader2, X, Mail } from "lucide-react";
 
 const CONTACT_EMAIL = "hey@heresmychurch.com";
+import { CloseButton } from "./ui/close-button";
 import { StateFlag } from "./StateFlag";
 import { getSizeCategory, getFallbackLocation } from "./church-data";
 import type { Church } from "./church-data";
@@ -138,26 +139,45 @@ export function ErrorBanner({
   );
 }
 
-// --- State Tooltip (national view hover) ---
+// --- State Tooltip (national view hover or pinned) ---
 export function StateTooltip({
   hoveredState,
   states,
   tooltipPos,
+  activeByState = {},
+  pinned = false,
+  onViewState,
+  onClose,
 }: {
   hoveredState: string;
   states: { abbrev: string; name: string; isPopulated: boolean; churchCount: number }[];
   tooltipPos: { x: number; y: number };
+  activeByState?: Record<string, number>;
+  pinned?: boolean;
+  onViewState?: () => void;
+  onClose?: () => void;
 }) {
   const info = states.find((s) => s.abbrev === hoveredState);
+  const activeCount = activeByState[hoveredState] ?? 0;
+  const interactive = pinned && (onViewState || onClose);
   return (
     <div
-      className="fixed z-50 pointer-events-none rounded-lg shadow-xl px-4 py-2.5"
+      className={`fixed z-[60] rounded-xl shadow-xl px-4 py-3 ${interactive ? "" : "pointer-events-none"}`}
       style={{
         left: tooltipPos.x + 16,
         top: tooltipPos.y - 40,
-        backgroundColor: "rgba(30, 16, 64, 0.95)",
+        minWidth: 160,
+        backgroundColor: "rgba(30, 16, 64, 0.96)",
       }}
     >
+      {pinned && onClose && (
+        <CloseButton
+          onClick={onClose}
+          size="md"
+          className="absolute -right-4 -top-4 shadow-md transition-colors"
+          style={{ backgroundColor: "rgba(30, 16, 64, 0.9)" }}
+        />
+      )}
       <div className="flex items-center gap-2 text-sm font-semibold text-white">
         <StateFlag abbrev={hoveredState} size="sm" />
         {info?.name || hoveredState}
@@ -167,6 +187,20 @@ export function StateTooltip({
           ? `${info.churchCount.toLocaleString()} churches`
           : "Click to explore"}
       </div>
+      {activeCount > 0 && (
+        <div className="text-xs text-green-400/90 mt-1">
+          {activeCount === 1 ? "1 person viewing now" : `${activeCount.toLocaleString()} people viewing now`}
+        </div>
+      )}
+      {pinned && onViewState && (
+        <button
+          type="button"
+          onClick={onViewState}
+          className="mt-3 w-full py-2 rounded-lg text-sm font-medium bg-purple-500 hover:bg-purple-600 text-white"
+        >
+          View state
+        </button>
+      )}
     </div>
   );
 }
@@ -229,18 +263,17 @@ export function ChurchTooltip({
       style={{
         left: tooltipPos.x + 16,
         top: tooltipPos.y - 70,
+        minWidth: 160,
         backgroundColor: "rgba(30, 16, 64, 0.96)",
       }}
     >
       {pinned && onClose && (
-        <button
-          type="button"
+        <CloseButton
           onClick={onClose}
-          className="absolute right-2 top-2 p-1 rounded text-white/60 hover:text-white hover:bg-white/10"
-          aria-label="Close"
-        >
-          <X size={16} />
-        </button>
+          size="md"
+          className="absolute -right-4 -top-4 shadow-md transition-colors"
+          style={{ backgroundColor: "rgba(30, 16, 64, 0.9)" }}
+        />
       )}
       <div className="text-sm font-semibold text-white">
         {church.name}

@@ -1,7 +1,7 @@
 /**
  * MapCanvas — extracted from ChurchMap to reduce render-tree depth.
  * Contains ComposableMap, ZoomableGroup, state/county Geographies,
- * the background click-rect, and ChurchDots.
+ * the background click-rect, ChurchDots, and StateActiveLabels.
  */
 import { memo, useState, useCallback } from "react";
 import {
@@ -36,7 +36,7 @@ interface MapCanvasProps {
   filteredChurches: Church[];
   selectedChurchId: string | null;
   onMoveEnd: (coords: [number, number], z: number) => void;
-  onStateClick: (abbrev: string) => void;
+  onStateClick: (abbrev: string, e?: React.MouseEvent) => void;
   onResetView: () => void;
   onStateHover: (abbrev: string | null) => void;
   onChurchClick: (church: Church) => void;
@@ -151,7 +151,7 @@ const StateGeographies = memo(function StateGeographies({
   focusedState: string | null;
   hoveredState: string | null;
   states: StateInfo[];
-  onStateClick: (abbrev: string) => void;
+  onStateClick: (abbrev: string, e?: React.MouseEvent) => void;
   onResetView: () => void;
   onStateHover: (abbrev: string | null) => void;
 }) {
@@ -181,7 +181,7 @@ const StateGeographies = memo(function StateGeographies({
               strokeWidth={isFocused ? 1.5 : 0.5}
               onClick={(e: React.MouseEvent) => {
                 if (stateAbbrev && !focusedState) {
-                  onStateClick(stateAbbrev);
+                  onStateClick(stateAbbrev, e);
                 } else if (focusedState && isFocused) {
                   e.stopPropagation();
                 } else if (focusedState && !isFocused) {
