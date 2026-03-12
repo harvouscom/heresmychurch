@@ -206,6 +206,8 @@ export function AddChurchForm({
 
       if (result.isDuplicate) {
         setSuccess("This church was already submitted!");
+      } else if (result.needsModeration) {
+        setSuccess("Church submitted for review! It will appear on the map once approved.");
       } else {
         setSuccess("Church added to the map!");
       }

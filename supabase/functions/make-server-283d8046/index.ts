@@ -835,7 +835,10 @@ app.post(`${P}/admin/remove-churches-by-name`,async(c)=>{
 // ── Community routes ──
 const THR=1;
 const ALERT_THR=3;
+const SENSITIVE_FIELDS=["name","website","address"];
+const MODERATOR_KEY=Deno.env.get("MODERATOR_KEY")||"";
 function cip(c:any):string{return c.req.header("x-forwarded-for")?.split(",")[0]?.trim()||c.req.header("x-real-ip")||"unknown";}
+function checkModKey(c:any):boolean{const k=new URL(c.req.url).searchParams.get("key")||c.req.header("x-moderator-key")||"";return!!MODERATOR_KEY&&k===MODERATOR_KEY;}
 function normalizePhone(s:string):string{
   const digits=(s??"").replace(/\D/g,"");
   if(digits.length===11&&digits[0]==="1")return digits.slice(1);
@@ -975,6 +978,10 @@ app.post(`${P}/suggestions`,async(c)=>{
     const day=Date.now()-86400000;const r=ex.submissions.find((s:any)=>s.ip===ip&&s.field===field&&s.timestamp>day);
     if(r){r.value=storeValue;r.timestamp=Date.now();}else ex.submissions.push({ip,field,value:storeValue,timestamp:Date.now()});
     await kv.set(k,ex);const con=consensus(ex.submissions);
+    const isSensitive=SENSITIVE_FIELDS.includes(field);
+    if(isSensitive){
+      return c.json({success:true,field,consensus:con[field],allFields:con,applied:false,needsModeration:true});
+    }
     const applied=await applyApprovedCorrections(churchId,con);
     return c.json({success:true,field,consensus:con[field],allFields:con,applied});
   }catch(e){return c.json({error:`${e}`},500);}
@@ -1154,11 +1161,9 @@ app.post(`${P}/churches/add`,async(c)=>{
     const k=`pending-churches:${st}`;const store=(await kv.get(k))||{churches:[]};
     const dup=store.churches.find((ch:any)=>ch.name.trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs(ch.lat-pLat)<0.001&&Math.abs(ch.lng-pLng)<0.001);
     if(dup){if(!dup.verifications.some((v:any)=>v.ip===ip)){dup.verifications.push({ip,timestamp:Date.now()});if(dup.verifications.length>=THR)dup.approved=true;await kv.set(k,store);}return c.json({success:true,church:dup,isDuplicate:true});}
-    const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:normalizePhone(phone||"")||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
+    const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:normalizePhone(phone||"")||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:false,verifications:[{ip,timestamp:Date.now()}]};
     store.churches.push(nc);await kv.set(k,store);
-    const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,state:st,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
-    if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);queueChurch(churchForMain).catch(()=>{});}
-    return c.json({success:true,church:nc});
+    return c.json({success:true,church:nc,needsModeration:true});
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
@@ -1228,6 +1233,115 @@ app.get(`${P}/community/history/:churchId`,async(c)=>{
     const history=Array.isArray(stats.corrections)?stats.corrections.filter((h:any)=>h.churchId===churchId):[];
     return c.json({churchId,history});
   }catch(e){return c.json({churchId:c.req.param("churchId"),history:[],error:`${e}`},500);}
+});
+
+// ── Moderator endpoints ──
+app.get(`${P}/moderate/pending`,async(c)=>{
+  try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    const pendingSuggestions:any[]=[];
+    const allSuggestions=await kv.getByPrefix("suggestions:");
+    if(Array.isArray(allSuggestions)){
+      for(const entry of allSuggestions){
+        if(!entry||!Array.isArray(entry.submissions)||!entry.churchId)continue;
+        const con=consensus(entry.submissions);
+        for(const f of SENSITIVE_FIELDS){
+          const d=con[f] as any;
+          if(d&&d.votes>0&&d.value!==null){
+            // Look up current church value
+            const parts=entry.churchId.split("-");const st=parts[0]==="community"?parts[1]:parts[0];
+            let currentValue:string|null=null;
+            if(st&&st.length===2){
+              const churches=await kv.get(`churches:${st}`);
+              if(Array.isArray(churches)){const ch=churches.find((x:any)=>x.id===entry.churchId);if(ch)currentValue=f==="address"?[ch.address,ch.city,ch.state].filter(Boolean).join(", "):String(ch[f]||"");}
+            }
+            pendingSuggestions.push({churchId:entry.churchId,field:f,proposedValue:d.value,currentValue,votes:d.votes,submissions:d.submissions||[]});
+          }
+        }
+      }
+    }
+    // Pending new churches (not yet approved)
+    const pendingChurches:any[]=[];
+    const states=["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"];
+    for(const st of states){
+      const store=await kv.get(`pending-churches:${st}`);
+      if(!store||!Array.isArray(store.churches))continue;
+      for(const ch of store.churches){if(!ch.approved)pendingChurches.push({...ch,state:st});}
+    }
+    return c.json({pendingSuggestions,pendingChurches});
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
+app.post(`${P}/moderate/approve/suggestion`,async(c)=>{
+  try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    const{churchId,field}=await c.req.json();
+    if(!churchId||!field)return c.json({error:"Missing churchId or field"},400);
+    const k=`suggestions:${churchId}`;const ex=await kv.get(k);
+    if(!ex||!Array.isArray(ex.submissions))return c.json({error:"No suggestions found"},404);
+    const con=consensus(ex.submissions);
+    // Only apply the specific approved field
+    const d=con[field] as any;
+    if(!d||d.value===null)return c.json({error:"No value to approve"},400);
+    const singleCon:Record<string,any>={};
+    singleCon[field]={approved:true,value:d.value,votes:d.votes,needed:THR};
+    const applied=await applyApprovedCorrections(churchId,singleCon);
+    // Remove processed submissions for this field
+    ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
+    await kv.set(k,ex);
+    return c.json({success:true,applied,churchId,field,value:d.value});
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
+app.post(`${P}/moderate/reject/suggestion`,async(c)=>{
+  try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    const{churchId,field}=await c.req.json();
+    if(!churchId||!field)return c.json({error:"Missing churchId or field"},400);
+    const k=`suggestions:${churchId}`;const ex=await kv.get(k);
+    if(!ex||!Array.isArray(ex.submissions))return c.json({error:"No suggestions found"},404);
+    ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
+    await kv.set(k,ex);
+    return c.json({success:true,churchId,field,rejected:true});
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
+app.post(`${P}/moderate/approve/church`,async(c)=>{
+  try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    const{churchId}=await c.req.json();
+    if(!churchId)return c.json({error:"Missing churchId"},400);
+    const parts=churchId.split("-");if(parts.length<3||parts[0]!=="community")return c.json({error:"Invalid community church ID"},400);
+    const st=parts[1];const k=`pending-churches:${st}`;const store=await kv.get(k);
+    if(!store||!Array.isArray(store.churches))return c.json({error:"Not found"},404);
+    const ch=store.churches.find((x:any)=>x.id===churchId);
+    if(!ch)return c.json({error:"Church not found"},404);
+    ch.approved=true;await kv.set(k,store);
+    // Add to main churches list
+    const mainKey=`churches:${st}`;const mainChurches=(await kv.get(mainKey))||[];
+    if(Array.isArray(mainChurches)){
+      const exists=mainChurches.some((mc:any)=>mc.id===churchId);
+      if(!exists){
+        mainChurches.push({id:ch.id,shortId:ch.shortId,name:ch.name,address:ch.address,city:ch.city,state:st,lat:ch.lat,lng:ch.lng,denomination:ch.denomination,attendance:ch.attendance,website:ch.website,serviceTimes:ch.serviceTimes,languages:ch.languages,ministries:ch.ministries,pastorName:ch.pastorName,phone:ch.phone,email:ch.email,lastVerified:Date.now()});
+        await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);
+      }
+    }
+    return c.json({success:true,churchId,approved:true});
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
+app.post(`${P}/moderate/reject/church`,async(c)=>{
+  try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    const{churchId}=await c.req.json();
+    if(!churchId)return c.json({error:"Missing churchId"},400);
+    const parts=churchId.split("-");if(parts.length<3||parts[0]!=="community")return c.json({error:"Invalid community church ID"},400);
+    const st=parts[1];const k=`pending-churches:${st}`;const store=await kv.get(k);
+    if(!store||!Array.isArray(store.churches))return c.json({error:"Not found"},404);
+    store.churches=store.churches.filter((x:any)=>x.id!==churchId);
+    await kv.set(k,store);
+    return c.json({success:true,churchId,rejected:true});
+  }catch(e){return c.json({error:`${e}`},500);}
 });
 
 // ── Church reactions (Netflix-style thumbs) ──
@@ -1768,13 +1882,17 @@ app.get(`${P}/twitter/status`,async(c)=>{
 app.post(`${P}/migrate/apply-pending`,async(c)=>{
   try{
     let correctionsApplied=0,churchesMerged=0;
-    // 1. Apply all pending corrections
+    // 1. Apply all pending corrections (skip sensitive fields — those need moderator approval)
     const allSuggestions=await kv.getByPrefix("suggestions:");
     if(Array.isArray(allSuggestions)){
       for(const entry of allSuggestions){
         if(!entry||!Array.isArray(entry.submissions)||!entry.churchId)continue;
         const con=consensus(entry.submissions);
-        const applied=await applyApprovedCorrections(entry.churchId,con);
+        // Filter out sensitive fields from auto-apply
+        const safeCon:Record<string,any>={};
+        for(const[f,d]of Object.entries(con)){if(!SENSITIVE_FIELDS.includes(f))safeCon[f]=d;}
+        if(!Object.keys(safeCon).length)continue;
+        const applied=await applyApprovedCorrections(entry.churchId,safeCon);
         if(applied)correctionsApplied++;
       }
     }

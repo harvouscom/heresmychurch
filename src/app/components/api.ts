@@ -121,6 +121,7 @@ export interface SubmitSuggestionResponse {
   allFields: Record<string, SuggestionConsensus>;
   error?: string;
   applied?: boolean;
+  needsModeration?: boolean;
 }
 
 export async function fetchStates(): Promise<StatesResponse> {
@@ -285,6 +286,7 @@ export async function submitSuggestion(
     allFields: data.allFields ? normalizeConsensus(data.allFields) : {},
     error: data.error,
     applied: data.applied,
+    needsModeration: data.needsModeration,
   };
 }
 
@@ -319,6 +321,7 @@ export interface AddChurchResponse {
   church?: PendingChurchData;
   message?: string;
   isDuplicate?: boolean;
+  needsModeration?: boolean;
   /** When isDuplicate is true and the match was in main (not pending) data. */
   existingChurch?: { id: string; shortId?: string; name: string; city?: string; state: string };
 }
@@ -756,4 +759,102 @@ export async function voteResolveProposal(
     alerts: Array.isArray(data.alerts) ? data.alerts : [],
     proposals: { resolve: Array.isArray(data.proposals?.resolve) ? data.proposals.resolve : [] },
   };
+}
+
+// ── Moderator API ──
+
+export interface PendingSuggestionItem {
+  churchId: string;
+  field: string;
+  proposedValue: string;
+  currentValue: string | null;
+  votes: number;
+  submissions: { value: string; count: number }[];
+}
+
+export interface PendingChurchItem {
+  id: string;
+  shortId?: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  lat: number;
+  lng: number;
+  denomination: string;
+  attendance: number;
+  website: string;
+  submittedAt: number;
+}
+
+export interface ModeratorPendingResponse {
+  pendingSuggestions: PendingSuggestionItem[];
+  pendingChurches: PendingChurchItem[];
+  error?: string;
+}
+
+export async function fetchModeratorPending(
+  moderatorKey: string
+): Promise<ModeratorPendingResponse> {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/moderate/pending?key=${encodeURIComponent(moderatorKey)}`,
+    { headers }
+  );
+  if (res.status === 401) throw new Error("Invalid moderator key");
+  if (!res.ok) throw new Error(`Failed to fetch pending: ${res.status}`);
+  return res.json();
+}
+
+export async function moderateApproveSuggestion(
+  moderatorKey: string,
+  churchId: string,
+  field: string
+): Promise<{ success: boolean }> {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/moderate/approve/suggestion?key=${encodeURIComponent(moderatorKey)}`,
+    { method: "POST", headers, body: JSON.stringify({ churchId, field }) }
+  );
+  if (res.status === 401) throw new Error("Invalid moderator key");
+  if (!res.ok) throw new Error(`Failed to approve: ${res.status}`);
+  return res.json();
+}
+
+export async function moderateRejectSuggestion(
+  moderatorKey: string,
+  churchId: string,
+  field: string
+): Promise<{ success: boolean }> {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/moderate/reject/suggestion?key=${encodeURIComponent(moderatorKey)}`,
+    { method: "POST", headers, body: JSON.stringify({ churchId, field }) }
+  );
+  if (res.status === 401) throw new Error("Invalid moderator key");
+  if (!res.ok) throw new Error(`Failed to reject: ${res.status}`);
+  return res.json();
+}
+
+export async function moderateApproveChurch(
+  moderatorKey: string,
+  churchId: string
+): Promise<{ success: boolean }> {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/moderate/approve/church?key=${encodeURIComponent(moderatorKey)}`,
+    { method: "POST", headers, body: JSON.stringify({ churchId }) }
+  );
+  if (res.status === 401) throw new Error("Invalid moderator key");
+  if (!res.ok) throw new Error(`Failed to approve church: ${res.status}`);
+  return res.json();
+}
+
+export async function moderateRejectChurch(
+  moderatorKey: string,
+  churchId: string
+): Promise<{ success: boolean }> {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/moderate/reject/church?key=${encodeURIComponent(moderatorKey)}`,
+    { method: "POST", headers, body: JSON.stringify({ churchId }) }
+  );
+  if (res.status === 401) throw new Error("Invalid moderator key");
+  if (!res.ok) throw new Error(`Failed to reject church: ${res.status}`);
+  return res.json();
 }

@@ -129,6 +129,7 @@ function getCurrentValue(church: Church, field: EditableField): string {
 export function SuggestEditForm({ church, allChurches, onClose, focusField, onChurchUpdated }: SuggestEditFormProps) {
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<Set<string>>(new Set());
+  const [pendingModeration, setPendingModeration] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   // Track which fields are in "edit mode" (user wants to submit their own value)
   const [editingFields, setEditingFields] = useState<Set<string>>(new Set());
@@ -187,7 +188,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
     }
 
     try {
-      await submitSuggestion(church.id, field, val);
+      const result = await submitSuggestion(church.id, field, val);
       setSubmitted((prev) => new Set([...prev, field]));
       // Close edit mode after successful submit
       setEditingFields((prev) => {
@@ -195,7 +196,11 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
         next.delete(field);
         return next;
       });
-      onChurchUpdated?.();
+      if (result.needsModeration) {
+        setPendingModeration((prev) => new Set([...prev, field]));
+      } else {
+        onChurchUpdated?.();
+      }
 
       setTimeout(() => {
         setSubmitted((prev) => {
@@ -328,11 +333,19 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
               </div>
             )}
 
+            {pendingModeration.size > 0 && (
+              <div className="flex items-center gap-2 rounded-lg p-3 bg-amber-500/10 border border-amber-500/20">
+                <Clock size={14} className="text-amber-400 flex-shrink-0" />
+                <p className="text-amber-300/80 text-xs">
+                  Changes to {Array.from(pendingModeration).join(", ")} require review and will be applied once approved.
+                </p>
+              </div>
+            )}
+
         {/* Info note */}
         <div className="pt-3 border-t border-white/5 text-pretty">
           <p className="text-white/55 text-[10px] leading-relaxed text-center">
-            Your edits are applied immediately. You can update each field
-            once per day.
+            Most edits are applied immediately. Changes to name, website, and address require a brief review.
           </p>
         </div>
       </div>
