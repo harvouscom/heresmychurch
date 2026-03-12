@@ -27,6 +27,8 @@ curl -s -m 300 -X POST "$BASE/<STATE>?force=true" -H "$AUTH" -H "Content-Type: a
 |-------|------|--------|-------|-------|
 | IA | 2026-03-11 | 3,964 | 5,174 | NW quadrant recovered ~1,210 churches |
 | TX | 2026-03-11 | 14,765 | 16,596 | NW quadrant recovered ~1,831 churches |
+| WA | 2026-03-11 | — | 3,492 | NW quadrant recovered |
+| TN | 2026-03-11 | — | 11,056 | NW quadrant recovered, 1 community church preserved |
 
 ## States to watch
 

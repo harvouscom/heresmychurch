@@ -22,6 +22,6 @@ export const pendingAlerts: PendingAlert[] = [
     description:
       "After improving church attendance data accuracy we didn't complete the NW quadrant of Iowa and Texas. We'll fill these in soon.",
     estimatedResolution: "1–2 days",
-    resolved: false,
+    resolved: true,
   },
 ];
