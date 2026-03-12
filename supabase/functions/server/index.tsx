@@ -653,6 +653,43 @@ app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
+app.post(`${P}/admin/remove-churches-by-name`,async(c)=>{
+  try{
+    const b=await c.req.json().catch(()=>({}));
+    const name=typeof b?.name==="string"?b.name.trim():"";
+    if(!name)return c.json({error:"Body must include { name: \"Church Name\" }"},400);
+    const meta=await kv.get("churches:meta");const sc:Record<string,number>={...(meta?.stateCounts||{})};
+    const states=Object.keys(sc);
+    let removedMain=0,removedPending=0;
+    const norm=(s:string)=>s.trim().toLowerCase();
+    const target=norm(name);
+    for(const st of states){
+      const key=`churches:${st}`;
+      const ch=await kv.get(key);
+      if(Array.isArray(ch)&&ch.length){
+        const filtered=ch.filter((x:any)=>norm((x.name||"").trim())!==target);
+        const r=ch.length-filtered.length;
+        if(r>0){
+          await kv.set(key,filtered);
+          await writeIdx(st,filtered);
+          sc[st]=filtered.length;
+          removedMain+=r;
+        }
+      }
+      const pendingKey=`pending-churches:${st}`;
+      const store=await kv.get(pendingKey);
+      if(store&&Array.isArray(store.churches)&&store.churches.length){
+        const before=store.churches.length;
+        store.churches=store.churches.filter((pc:any)=>norm((pc.name||"").trim())!==target);
+        const removedP=before-store.churches.length;
+        if(removedP>0){await kv.set(pendingKey,store);removedPending+=removedP;}
+      }
+    }
+    if(meta){meta.stateCounts=sc;await kv.set("churches:meta",meta);}
+    return c.json({message:`Removed ${removedMain} church(es) from main list and ${removedPending} from pending.`,removedMain,removedPending});
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
 // ── Community routes ──
 const THR=1;
 function cip(c:any):string{return c.req.header("x-forwarded-for")?.split(",")[0]?.trim()||c.req.header("x-real-ip")||"unknown";}

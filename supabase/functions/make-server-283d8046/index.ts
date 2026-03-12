@@ -743,6 +743,43 @@ app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
+app.post(`${P}/admin/remove-churches-by-name`,async(c)=>{
+  try{
+    const b=await c.req.json().catch(()=>({}));
+    const name=typeof b?.name==="string"?b.name.trim():"";
+    if(!name)return c.json({error:"Body must include { name: \"Church Name\" }"},400);
+    const meta=await kv.get("churches:meta");const sc:Record<string,number>={...(meta?.stateCounts||{})};
+    const states=Object.keys(sc);
+    let removedMain=0,removedPending=0;
+    const norm=(s:string)=>s.trim().toLowerCase();
+    const target=norm(name);
+    for(const st of states){
+      const key=`churches:${st}`;
+      const ch=await kv.get(key);
+      if(Array.isArray(ch)&&ch.length){
+        const filtered=ch.filter((x:any)=>norm((x.name||"").trim())!==target);
+        const r=ch.length-filtered.length;
+        if(r>0){
+          await kv.set(key,filtered);
+          await writeIdx(st,filtered);
+          sc[st]=filtered.length;
+          removedMain+=r;
+        }
+      }
+      const pendingKey=`pending-churches:${st}`;
+      const store=await kv.get(pendingKey);
+      if(store&&Array.isArray(store.churches)&&store.churches.length){
+        const before=store.churches.length;
+        store.churches=store.churches.filter((pc:any)=>norm((pc.name||"").trim())!==target);
+        const removedP=before-store.churches.length;
+        if(removedP>0){await kv.set(pendingKey,store);removedPending+=removedP;}
+      }
+    }
+    if(meta){meta.stateCounts=sc;await kv.set("churches:meta",meta);}
+    return c.json({message:`Removed ${removedMain} church(es) from main list and ${removedPending} from pending.`,removedMain,removedPending});
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
 // ── Community routes ──
 const THR=1;
 const ALERT_THR=3;
@@ -850,7 +887,6 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>):
         else{(ch as any)[f]=v;}
       }
       ch.lastVerified=Date.now();updated=true;
-      maybePostTweet("correction_applied",{churchId,churchName:ch.name||"A church",corrections}).catch(()=>{});
       break;
     }
   }
@@ -1069,7 +1105,7 @@ app.post(`${P}/churches/add`,async(c)=>{
     const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:normalizePhone(phone||"")||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
     store.churches.push(nc);await kv.set(k,store);
     const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,state:st,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
-    if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);maybePostTweet("church_added",churchForMain).catch(()=>{});}
+    if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);queueChurch(churchForMain).catch(()=>{});}
     return c.json({success:true,church:nc});
   }catch(e){return c.json({error:`${e}`},500);}
 });
@@ -1218,10 +1254,12 @@ app.get(`${P}/churches/reactions/bulk`, async (c) => {
   }
 });
 
-// ── Twitter / X automated posting ──
+// ── Twitter / X automated posting v2 ──
 const TWITTER_URL="https://api.twitter.com/2/tweets";
-const MILESTONES=[500,1000,2500,5000,10000,25000,50000];
-const DAILY_TWEET_CAP=10;
+const DAILY_TWEET_CAP=5;
+const NATIONAL_MILESTONES=[500,1000,2500,5000,10000,25000,50000];
+const STATE_MILESTONES=[100,250,500,1000,2500];
+const COMMUNITY_MILESTONES=[100,500,1000,2500,5000];
 
 function percentEncode(s:string):string{return encodeURIComponent(s).replace(/[!'()*]/g,c=>"%"+c.charCodeAt(0).toString(16).toUpperCase());}
 
@@ -1247,8 +1285,7 @@ async function oauthHeader(method:string,url:string,body:Record<string,string>={
   const base=`${method.toUpperCase()}&${percentEncode(url)}&${percentEncode(sorted)}`;
   const sigKey=new TextEncoder().encode(`${percentEncode(apiSecret)}&${percentEncode(tokenSecret)}`);
   const sig=await hmacSha1(sigKey,base);
-  const hdr=`OAuth oauth_consumer_key="${percentEncode(apiKey)}",oauth_nonce="${percentEncode(nonce)}",oauth_signature="${percentEncode(sig)}",oauth_signature_method="HMAC-SHA1",oauth_timestamp="${ts}",oauth_token="${percentEncode(token)}",oauth_version="1.0"`;
-  return hdr;
+  return `OAuth oauth_consumer_key="${percentEncode(apiKey)}",oauth_nonce="${percentEncode(nonce)}",oauth_signature="${percentEncode(sig)}",oauth_signature_method="HMAC-SHA1",oauth_timestamp="${ts}",oauth_token="${percentEncode(token)}",oauth_version="1.0"`;
 }
 
 async function postTweet(text:string):Promise<{success:boolean;tweetId?:string;error?:string}>{
@@ -1260,6 +1297,37 @@ async function postTweet(text:string):Promise<{success:boolean;tweetId?:string;e
   }catch(e){return{success:false,error:`${e}`};}
 }
 
+function hashCode(s:string):number{let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return h;}
+
+function pickTemplate<T>(templates:T[],seed:string):T{return templates[Math.abs(hashCode(seed))%templates.length];}
+
+// Queue a church for future tweeting (1/day max)
+async function queueChurch(ch:any):Promise<void>{
+  try{
+    if(!Deno.env.get("TWITTER_API_KEY"))return;
+    const queue:any[]=(await kv.get("twitter:church-queue"))||[];
+    // Dedup by church id
+    if(queue.some((q:any)=>q.id===ch.id))return;
+    queue.push({id:ch.id,shortId:ch.shortId,name:ch.name,city:ch.city,state:ch.state,denomination:ch.denomination,queuedAt:Date.now()});
+    // Keep queue manageable
+    if(queue.length>100)queue.splice(0,queue.length-100);
+    await kv.set("twitter:church-queue",queue);
+  }catch(_){}
+}
+
+// Queue a deploy message for next scheduled slot
+async function queueDeploy(msg:string):Promise<void>{
+  try{
+    if(!Deno.env.get("TWITTER_API_KEY"))return;
+    const queue:any[]=(await kv.get("twitter:deploy-queue"))||[];
+    queue.push({message:msg,queuedAt:Date.now()});
+    if(queue.length>20)queue.splice(0,queue.length-20);
+    await kv.set("twitter:deploy-queue",queue);
+  }catch(_){}
+}
+
+// ── Tweet text builders ──
+
 function churchTweet(ch:any):string{
   const templates=[
     (n:string,c:string,s:string,u:string)=>`Here's ${n} in ${c}, ${s} — just added to the map! ${u}`,
@@ -1269,116 +1337,362 @@ function churchTweet(ch:any):string{
     (n:string,c:string,s:string,u:string)=>`Here's your newest addition: ${n} in ${c}, ${s}. ${u}`,
   ];
   const st=(ch.state||"").toUpperCase();
-  const url=`heresmychurch.com/state/${st.toLowerCase()}`;
+  const sid=ch.shortId||"";
+  const url=sid?`heresmychurch.com/state/${st.toLowerCase()}/${sid}`:`heresmychurch.com/state/${st.toLowerCase()}`;
   const name=(ch.name||"A church").slice(0,80);
   const city=(ch.city||"").slice(0,40)||"a city";
-  const idx=Math.abs(hashCode(ch.id||name))%templates.length;
-  return templates[idx](name,city,st,url).slice(0,280);
-}
-
-function correctionTweet(data:any):string{
-  const templates=[
-    (n:string,f:string)=>`Here's an update: ${n}'s ${f} just got corrected by the community. heresmychurch.com`,
-    (n:string,f:string)=>`Here's a fix: ${n}'s ${f} has been updated thanks to community input. heresmychurch.com`,
-    (n:string,f:string)=>`Here's the community at work: ${n}'s ${f} just got an update. heresmychurch.com`,
-    (n:string,f:string)=>`Here's better data: ${n}'s ${f} was corrected by our community. heresmychurch.com`,
-  ];
-  const name=(data.churchName||"A church").slice(0,60);
-  const fields=Object.keys(data.corrections||{});
-  const field=fields[0]||"info";
-  const idx=Math.abs(hashCode(data.churchId||name))%templates.length;
-  return templates[idx](name,field).slice(0,280);
+  return pickTemplate(templates,ch.id||name)(name,city,st,url).slice(0,280);
 }
 
 function deployTweet(msg:string):string{
   const templates=[
-    (m:string)=>`Here's what's new: ${m}. heresmychurch.com`,
-    (m:string)=>`Here's a fresh update: ${m}. heresmychurch.com`,
-    (m:string)=>`Here's the latest improvement: ${m}. heresmychurch.com`,
+    (m:string)=>`Here's what's new: ${m}`,
+    (m:string)=>`Here's a fresh update: ${m}`,
+    (m:string)=>`Here's the latest: ${m}`,
+    (m:string)=>`Here's an improvement we just made: ${m}`,
   ];
-  const clean=msg.replace(/\n/g," ").slice(0,180);
-  const idx=Math.abs(hashCode(clean))%templates.length;
-  return templates[idx](clean).slice(0,280);
+  const clean=msg.replace(/\n/g," ").slice(0,220);
+  return pickTemplate(templates,clean)(clean).slice(0,280);
 }
 
-function milestoneTweet(count:number,next:number):string{
+function nationalMilestoneTweet(count:number,next:number):string{
   const templates=[
-    (c:number,n:number)=>`Here's a milestone: ${c.toLocaleString()} churches mapped across America! Help us reach ${n.toLocaleString()} at heresmychurch.com`,
-    (c:number,n:number)=>`Here's something to celebrate: ${c.toLocaleString()} churches and counting! Next stop: ${n.toLocaleString()}. heresmychurch.com`,
-    (c:number,n:number)=>`Here's how far we've come: ${c.toLocaleString()} churches on the map. ${n.toLocaleString()} is next! heresmychurch.com`,
+    (c:number,n:number)=>`Here's a milestone: ${c.toLocaleString()} churches mapped across America! Help us reach ${n.toLocaleString()}!`,
+    (c:number,n:number)=>`Here's something to celebrate: ${c.toLocaleString()} churches and counting! Next stop: ${n.toLocaleString()}.`,
+    (c:number,n:number)=>`Here's how far we've come: ${c.toLocaleString()} churches on the map. ${n.toLocaleString()} is next!`,
   ];
-  const idx=Math.abs(hashCode(`ms-${count}`))%templates.length;
-  return templates[idx](count,next).slice(0,280);
+  return pickTemplate(templates,`national-${count}`)(count,next).slice(0,280);
 }
 
-function hashCode(s:string):number{let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return h;}
+function stateMilestoneTweet(st:string,stateName:string,count:number):string{
+  const templates=[
+    (sn:string,c:number)=>`Here's a milestone for ${sn}: ${c.toLocaleString()} churches now on the map!`,
+    (sn:string,c:number)=>`Here's some news from ${sn}: we just hit ${c.toLocaleString()} churches mapped!`,
+    (sn:string,c:number)=>`Here's ${sn} growing: ${c.toLocaleString()} churches and counting!`,
+  ];
+  return pickTemplate(templates,`state-${st}-${count}`)(stateName,count).slice(0,280);
+}
 
-async function maybePostTweet(eventType:string,data:any):Promise<void>{
+function accuracyMilestoneTweet(stateName:string,pct:number):string{
+  const templates=[
+    (sn:string,p:number)=>`Here's progress: ${p}% of churches in ${sn} now have complete info. The community keeps making the data better!`,
+    (sn:string,p:number)=>`Here's the community at work: ${sn} churches are ${p}% complete with accurate data!`,
+    (sn:string,p:number)=>`Here's a win for data quality: ${p}% of ${sn}'s churches now have full details!`,
+  ];
+  return pickTemplate(templates,`acc-${stateName}-${pct}`)(stateName,pct).slice(0,280);
+}
+
+function communityMilestoneTweet(corrections:number):string{
+  const templates=[
+    (c:number)=>`Here's the community at work: ${c.toLocaleString()} corrections made to church data so far! Every fix makes the map more useful.`,
+    (c:number)=>`Here's a milestone: our community has made ${c.toLocaleString()} data corrections. That's real people making real improvements!`,
+  ];
+  return pickTemplate(templates,`community-${corrections}`)(corrections).slice(0,280);
+}
+
+// ── Fun facts generator ──
+
+async function generateFunFact():Promise<{text:string;category:string}|null>{
   try{
-    // Check credentials exist
-    if(!Deno.env.get("TWITTER_API_KEY"))return;
+    const meta=await kv.get("churches:meta");
+    const sc:Record<string,number>=meta?.stateCounts||{};
+    const total=Object.values(sc).reduce((a:number,b:number)=>a+b,0);
+    if(total<50)return null;
 
-    // Rate limit check
-    const today=new Date().toISOString().slice(0,10);
-    const daily=(await kv.get("twitter:daily"))||{date:"",count:0};
-    if(daily.date===today&&daily.count>=DAILY_TWEET_CAP)return;
+    const stats=(await kv.get("community:stats"))||{totalCorrections:0,churchesImproved:[],totalConfirmations:0};
+    const pop=await kv.get("state-populations-v1");
 
-    // Dedup check
-    const log:any[]=(await kv.get("twitter:log"))||[];
-    const entityId=data?.id||data?.churchId||eventType;
-    const dayAgo=Date.now()-86400000;
-    if(log.some((e:any)=>e.eventType===eventType&&e.entityId===entityId&&e.timestamp>dayAgo))return;
+    // Collect all possible facts
+    const facts:{text:string;category:string;id:string}[]=[];
+    const stateEntries=Object.entries(sc).filter(([_,c])=>c>10);
+    const stateInfo=(abbr:string)=>US.find(s=>s.a===abbr);
 
-    // Build tweet text
-    let text="";
-    if(eventType==="church_added")text=churchTweet(data);
-    else if(eventType==="correction_applied")text=correctionTweet(data);
-    else if(eventType==="deploy")text=deployTweet(data?.message||"improvements");
-    else return;
-
-    // Post
-    const result=await postTweet(text);
-
-    // Log
-    log.unshift({eventType,entityId,text,timestamp:Date.now(),success:result.success,tweetId:result.tweetId,error:result.error});
-    await kv.set("twitter:log",log.slice(0,100));
-    await kv.set("twitter:daily",{date:today,count:(daily.date===today?daily.count:0)+1});
-
-    // Milestone check (only after church_added)
-    if(eventType==="church_added"){
-      try{
-        const meta=await kv.get("churches:meta");
-        if(meta?.stateCounts){
-          const total=Object.values(meta.stateCounts as Record<string,number>).reduce((a:number,b:number)=>a+b,0);
-          const reached:number[]=(await kv.get("twitter:milestones"))||[];
-          for(const m of MILESTONES){
-            if(total>=m&&!reached.includes(m)){
-              const next=MILESTONES.find(x=>x>m)||m*2;
-              const msText=milestoneTweet(m,next);
-              const msResult=await postTweet(msText);
-              reached.push(m);
-              log.unshift({eventType:"milestone",entityId:`ms-${m}`,text:msText,timestamp:Date.now(),success:msResult.success,tweetId:msResult.tweetId});
-              await kv.set("twitter:log",log.slice(0,100));
-              await kv.set("twitter:milestones",reached);
-              break;
-            }
-          }
+    // Category 1: State coverage with population
+    if(pop&&stateEntries.length>0){
+      const randomStates=stateEntries.sort(()=>Math.random()-0.5).slice(0,5);
+      for(const[st,count]of randomStates){
+        const si=stateInfo(st);const p=pop[st];
+        if(si&&p&&p>0){
+          const ratio=Math.round(p/count);
+          facts.push({text:`Here's a look at ${si.n}: ${count.toLocaleString()} churches mapped — that's about 1 church for every ${ratio.toLocaleString()} people.`,category:"coverage",id:`cov-${st}`});
         }
-      }catch(_){}
+      }
     }
-  }catch(_){}
+
+    // Category 2: State comparisons (top/bottom)
+    if(stateEntries.length>=5){
+      const sorted=[...stateEntries].sort((a,b)=>b[1]-a[1]);
+      const top3=sorted.slice(0,3).map(([st,c])=>`${stateInfo(st)?.n||st} (${c.toLocaleString()})`).join(", ");
+      facts.push({text:`Here's the top 3 states by churches mapped: ${top3}.`,category:"comparison",id:"top3"});
+      const bottom3=sorted.slice(-3).reverse().map(([st,c])=>`${stateInfo(st)?.n||st} (${c.toLocaleString()})`).join(", ");
+      facts.push({text:`Here's where we need the most help: ${bottom3} have the fewest churches mapped. Know a church there? Add it!`,category:"comparison",id:"bottom3"});
+    }
+
+    // Category 3: Denomination breakdown (pick a random populated state)
+    if(stateEntries.length>0){
+      const[randomSt]=stateEntries[Math.floor(Math.random()*stateEntries.length)];
+      const churches=await kv.get(`churches:${randomSt}`);
+      if(Array.isArray(churches)&&churches.length>20){
+        const denomCounts:Record<string,number>={};
+        for(const ch of churches){const d=(ch.denomination||"Unknown").trim();denomCounts[d]=(denomCounts[d]||0)+1;}
+        const sortedDenoms=Object.entries(denomCounts).filter(([d])=>d!=="Unknown").sort((a,b)=>b[1]-a[1]);
+        if(sortedDenoms.length>0){
+          const[topDenom,topCount]=sortedDenoms[0];
+          const pct=Math.round((topCount/churches.length)*100);
+          const si=stateInfo(randomSt);
+          facts.push({text:`Here's a fun fact: ${topDenom} churches make up ${pct}% of all churches mapped in ${si?.n||randomSt}.`,category:"denomination",id:`denom-${randomSt}`});
+        }
+      }
+    }
+
+    // Category 4: National denomination stats
+    {
+      const allDenoms:Record<string,number>={};
+      // Sample up to 10 states for performance
+      const sample=stateEntries.sort(()=>Math.random()-0.5).slice(0,10);
+      const keys=sample.map(([st])=>`churches:${st}`);
+      const vals=await kv.mget(keys);
+      for(const churches of vals){
+        if(!Array.isArray(churches))continue;
+        for(const ch of churches){const d=(ch.denomination||"Unknown").trim();allDenoms[d]=(allDenoms[d]||0)+1;}
+      }
+      const sortedAll=Object.entries(allDenoms).filter(([d])=>d!=="Unknown").sort((a,b)=>b[1]-a[1]);
+      if(sortedAll.length>=3){
+        const totalSampled=Object.values(allDenoms).reduce((a,b)=>a+b,0);
+        const[topD,topC]=sortedAll[0];
+        const topPct=Math.round((topC/totalSampled)*100);
+        facts.push({text:`Here's a fun fact: ${topD} is the most common denomination on the map, making up about ${topPct}% of churches.`,category:"denomination",id:`denom-national-${topD}`});
+      }
+    }
+
+    // Category 5: Community contributions
+    if(stats.totalCorrections>0){
+      const improved=Array.isArray(stats.churchesImproved)?stats.churchesImproved.length:0;
+      facts.push({text:`Here's something cool: The community has made ${stats.totalCorrections.toLocaleString()} corrections to church data, improving ${improved.toLocaleString()} churches so far.`,category:"community",id:`comm-${stats.totalCorrections}`});
+    }
+
+    // Category 6: Total churches nationally
+    facts.push({text:`Here's where we stand: ${total.toLocaleString()} churches mapped across ${stateEntries.length} states. Every church added helps someone find their community.`,category:"total",id:`total-${total}`});
+
+    // Category 7: Attendance patterns (sample a state)
+    if(stateEntries.length>0){
+      const[randomSt]=stateEntries[Math.floor(Math.random()*stateEntries.length)];
+      const churches=await kv.get(`churches:${randomSt}`);
+      if(Array.isArray(churches)&&churches.length>20){
+        const atts=churches.map((ch:any)=>ch.attendance||0).filter((a:number)=>a>0);
+        if(atts.length>10){
+          const avg=Math.round(atts.reduce((a:number,b:number)=>a+b,0)/atts.length);
+          const si=stateInfo(randomSt);
+          facts.push({text:`Here's an interesting find: The average church in ${si?.n||randomSt} on our map has about ${avg.toLocaleString()} people attending.`,category:"attendance",id:`att-${randomSt}`});
+        }
+      }
+    }
+
+    if(!facts.length)return null;
+
+    // Avoid repeating recent fun facts
+    const history:string[]=(await kv.get("twitter:funfact-history"))||[];
+    const available=facts.filter(f=>!history.includes(f.id));
+    const pick=available.length>0?available[Math.floor(Math.random()*available.length)]:facts[Math.floor(Math.random()*facts.length)];
+
+    // Update history
+    history.unshift(pick.id);
+    await kv.set("twitter:funfact-history",history.slice(0,50));
+
+    return{text:pick.text.slice(0,280),category:pick.category};
+  }catch(_){return null;}
 }
 
-// Twitter webhook route (for GitHub Actions deploy tweets)
-app.post(`${P}/twitter/post`,async(c)=>{
+// ── Milestone detection ──
+
+async function checkMilestones():Promise<{text:string;id:string}|null>{
+  try{
+    const reached:any=(await kv.get("twitter:milestones"))||{national:[],states:{},accuracy:{},community:[]};
+    // Normalize old format (was just an array)
+    if(Array.isArray(reached)){
+      const old=reached as number[];
+      const normalized={national:old,states:{} as Record<string,number[]>,accuracy:{} as Record<string,number[]>,community:[] as number[]};
+      await kv.set("twitter:milestones",normalized);
+      return checkMilestonesInner(normalized);
+    }
+    return checkMilestonesInner(reached);
+  }catch(_){return null;}
+}
+
+async function checkMilestonesInner(reached:{national:number[];states:Record<string,number[]>;accuracy:Record<string,number[]>;community:number[]}):Promise<{text:string;id:string}|null>{
+  const meta=await kv.get("churches:meta");
+  const sc:Record<string,number>=meta?.stateCounts||{};
+
+  // National milestones — pre-seed already-passed ones, only tweet the newest crossing
+  const total=Object.values(sc).reduce((a:number,b:number)=>a+b,0);
+  let nationalDirty=false;
+  let latestNational:{m:number;next:number}|null=null;
+  for(const m of NATIONAL_MILESTONES){
+    if(total>=m&&!reached.national.includes(m)){
+      reached.national.push(m);nationalDirty=true;
+      const next=NATIONAL_MILESTONES.find(x=>x>m)||m*2;
+      latestNational={m,next};
+    }
+  }
+  if(nationalDirty)await kv.set("twitter:milestones",reached);
+  if(latestNational){
+    return{text:nationalMilestoneTweet(total,latestNational.next),id:`national-${latestNational.m}`};
+  }
+
+  // State milestones — pre-seed passed ones, only tweet the newest per state
+  let stateDirty=false;
+  let latestState:{st:string;name:string;count:number;m:number}|null=null;
+  for(const[st,count]of Object.entries(sc)){
+    const si=US.find(s=>s.a===st);
+    if(!si)continue;
+    if(!reached.states[st])reached.states[st]=[];
+    for(const m of STATE_MILESTONES){
+      if(count>=m&&!reached.states[st].includes(m)){
+        reached.states[st].push(m);stateDirty=true;
+        latestState={st,name:si.n,count,m};
+      }
+    }
+  }
+  if(stateDirty)await kv.set("twitter:milestones",reached);
+  if(latestState){
+    return{text:stateMilestoneTweet(latestState.st,latestState.name,latestState.count),id:`state-${latestState.st}-${latestState.m}`};
+  }
+
+  // Accuracy milestones (check a few random states)
+  const populated=Object.entries(sc).filter(([_,c])=>c>50);
+  const sample=populated.sort(()=>Math.random()-0.5).slice(0,5);
+  for(const[st]of sample){
+    const churches=await kv.get(`churches:${st}`);
+    if(!Array.isArray(churches)||churches.length<50)continue;
+    let needsReview=0;
+    for(const ch of churches){const r=churchNeedsReview(ch);if(r.needsReview)needsReview++;}
+    const completePct=Math.round(((churches.length-needsReview)/churches.length)*100);
+    const si=US.find(s=>s.a===st);
+    if(!si)continue;
+    const accThresholds=[80,90,95];
+    const stReached=reached.accuracy[st]||[];
+    for(const t of accThresholds){
+      if(completePct>=t&&!stReached.includes(t)){
+        if(!reached.accuracy[st])reached.accuracy[st]=[];
+        reached.accuracy[st].push(t);
+        await kv.set("twitter:milestones",reached);
+        return{text:accuracyMilestoneTweet(si.n,completePct),id:`acc-${st}-${t}`};
+      }
+    }
+  }
+
+  // Community correction milestones — pre-seed passed ones
+  const stats=(await kv.get("community:stats"))||{totalCorrections:0};
+  let commDirty=false;let latestComm:number|null=null;
+  for(const m of COMMUNITY_MILESTONES){
+    if(stats.totalCorrections>=m&&!reached.community.includes(m)){
+      reached.community.push(m);commDirty=true;latestComm=m;
+    }
+  }
+  if(commDirty)await kv.set("twitter:milestones",reached);
+  if(latestComm){
+    return{text:communityMilestoneTweet(stats.totalCorrections),id:`community-${latestComm}`};
+  }
+
+  return null;
+}
+
+// ── Scheduled posting logic ──
+
+async function getDaily():{date:string;count:number;types:{church:number;deploy:number;milestone:number;funfact:number}}{
+  const today=new Date().toISOString().slice(0,10);
+  const daily=(await kv.get("twitter:daily"))||{date:"",count:0,types:{church:0,deploy:0,milestone:0,funfact:0}};
+  if(daily.date!==today)return{date:today,count:0,types:{church:0,deploy:0,milestone:0,funfact:0}};
+  if(!daily.types)daily.types={church:0,deploy:0,milestone:0,funfact:0};
+  return daily;
+}
+
+async function logTweet(eventType:string,entityId:string,text:string,result:{success:boolean;tweetId?:string;error?:string},daily:any):Promise<void>{
+  const log:any[]=(await kv.get("twitter:log"))||[];
+  log.unshift({eventType,entityId,text,timestamp:Date.now(),success:result.success,tweetId:result.tweetId,error:result.error});
+  await kv.set("twitter:log",log.slice(0,100));
+  daily.count++;
+  const typeKey=eventType==="church_added"?"church":eventType==="deploy"?"deploy":eventType==="milestone"?"milestone":"funfact";
+  daily.types[typeKey]=(daily.types[typeKey]||0)+1;
+  await kv.set("twitter:daily",daily);
+}
+
+async function runScheduledPost():Promise<{posted:boolean;type?:string;text?:string;error?:string}>{
+  try{
+    if(!Deno.env.get("TWITTER_API_KEY"))return{posted:false,error:"No Twitter credentials"};
+
+    const daily=await getDaily();
+    if(daily.count>=DAILY_TWEET_CAP)return{posted:false,error:`Daily cap reached (${DAILY_TWEET_CAP})`};
+
+    // Priority 1: Church from queue (max 1/day)
+    if(daily.types.church<1){
+      const queue:any[]=(await kv.get("twitter:church-queue"))||[];
+      if(queue.length>0){
+        const ch=queue.shift()!;
+        await kv.set("twitter:church-queue",queue);
+        const text=churchTweet(ch);
+        const result=await postTweet(text);
+        await logTweet("church_added",ch.id,text,result,daily);
+        return{posted:true,type:"church_added",text};
+      }
+    }
+
+    // Priority 2: Deploy from queue
+    if(daily.types.deploy<2){
+      const queue:any[]=(await kv.get("twitter:deploy-queue"))||[];
+      if(queue.length>0){
+        const deploy=queue.shift()!;
+        await kv.set("twitter:deploy-queue",queue);
+        const text=deployTweet(deploy.message||"improvements");
+        const result=await postTweet(text);
+        await logTweet("deploy",`deploy-${deploy.queuedAt}`,text,result,daily);
+        return{posted:true,type:"deploy",text};
+      }
+    }
+
+    // Priority 3: Milestones
+    if(daily.types.milestone<1){
+      const milestone=await checkMilestones();
+      if(milestone){
+        const result=await postTweet(milestone.text);
+        await logTweet("milestone",milestone.id,milestone.text,result,daily);
+        return{posted:true,type:"milestone",text:milestone.text};
+      }
+    }
+
+    // Priority 4: Fun facts (max 2/day)
+    if(daily.types.funfact<2){
+      const fact=await generateFunFact();
+      if(fact){
+        const result=await postTweet(fact.text);
+        await logTweet("funfact",`fact-${Date.now()}`,fact.text,result,daily);
+        return{posted:true,type:"funfact",text:fact.text};
+      }
+    }
+
+    return{posted:false,error:"Nothing to post"};
+  }catch(e){return{posted:false,error:`${e}`};}
+}
+
+// Twitter scheduled endpoint (called by GitHub Actions cron)
+app.post(`${P}/twitter/scheduled`,async(c)=>{
+  try{
+    const body=await c.req.json().catch(()=>({}));
+    const secret=Deno.env.get("TWITTER_WEBHOOK_SECRET")||"";
+    if(!secret||body.secret!==secret)return c.json({error:"Unauthorized"},401);
+    const result=await runScheduledPost();
+    return c.json(result);
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
+// Twitter queue deploy (called by GitHub Actions on push)
+app.post(`${P}/twitter/queue-deploy`,async(c)=>{
   try{
     const body=await c.req.json();
     const secret=Deno.env.get("TWITTER_WEBHOOK_SECRET")||"";
     if(!secret||body.secret!==secret)return c.json({error:"Unauthorized"},401);
-    const eventType=body.eventType||"deploy";
-    const data=body.data||{};
-    await maybePostTweet(eventType,data);
-    return c.json({success:true});
+    await queueDeploy(body.message||"improvements");
+    return c.json({success:true,queued:true});
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
@@ -1389,9 +1703,11 @@ app.get(`${P}/twitter/status`,async(c)=>{
     const expected=Deno.env.get("TWITTER_WEBHOOK_SECRET")||"";
     if(!expected||secret!==expected)return c.json({error:"Unauthorized"},401);
     const log=(await kv.get("twitter:log"))||[];
-    const daily=(await kv.get("twitter:daily"))||{date:"",count:0};
-    const milestones=(await kv.get("twitter:milestones"))||[];
-    return c.json({recentTweets:log.slice(0,20),daily,milestones});
+    const daily=await getDaily();
+    const milestones=(await kv.get("twitter:milestones"))||{};
+    const churchQueue:any[]=(await kv.get("twitter:church-queue"))||[];
+    const deployQueue:any[]=(await kv.get("twitter:deploy-queue"))||[];
+    return c.json({recentTweets:log.slice(0,20),daily,milestones,queues:{churches:churchQueue.length,deploys:deployQueue.length}});
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
