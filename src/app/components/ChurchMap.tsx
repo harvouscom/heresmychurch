@@ -725,8 +725,8 @@ function MapArea({
         <div
           className={`absolute left-6 right-6 md:left-12 md:right-12 z-40 flex flex-col items-center gap-2.5 pointer-events-none ${d.selectedChurch ? (isMobile ? "top-[80px] md:top-auto md:bottom-8" : "md:bottom-8") : "bottom-3 md:bottom-8"}`}
         >
-          {/* People with you now — bottom of map; on mobile church view: 8px below top pill */}
-          {((activePeople + activeBots) > 1 || (isLocalhost && (activePeople + activeBots) >= 1)) && (() => {
+          {/* People with you now — bottom of map; hidden on church view (mobile and desktop) */}
+          {!d.selectedChurch && ((activePeople + activeBots) > 1 || (isLocalhost && (activePeople + activeBots) >= 1)) && (() => {
             const withYou = (activePeople + activeBots) - 1;
             const label = withYou === 0 ? "0 people with you now" : withYou === 1 ? "1 person with you now" : `${withYou.toLocaleString()} people with you now`;
             return (

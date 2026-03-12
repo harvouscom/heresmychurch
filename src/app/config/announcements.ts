@@ -13,4 +13,10 @@ export const announcements: Announcement[] = [
     body: "You can now link churches to a main campus and therefore multi-campus support. To do this, visit Update Church Info. Have fun linking!",
     date: "Mar 12, 2025",
   },
+  {
+    id: "reactions",
+    title: "Reactions are here",
+    body: "Netflix/Apple Maps style reactions: tell us whether a church is not for me, you like it, or you love it. Later we’ll bring in reviews from Google, Facebook, and Yelp.",
+    date: "Mar 10, 2025",
+  },
 ];
