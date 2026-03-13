@@ -229,7 +229,7 @@ export function AddChurchForm({
       setShowSimilarWarning(false);
       setSimilarMatches([]);
 
-      if (shortId && state && onChurchAdded) {
+      if (shortId && state && onChurchAdded && !result.needsModeration) {
         onClose();
         onChurchAdded(state, shortId);
       }

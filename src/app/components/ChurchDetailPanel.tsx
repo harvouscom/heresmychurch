@@ -18,10 +18,13 @@ import {
   Phone,
   Mail,
   ShieldCheck,
+  Shield,
   ThumbsDown,
   ThumbsUp,
   Building2,
   Home,
+  Loader2,
+  X,
 } from "lucide-react";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { motion } from "motion/react";
@@ -31,8 +34,8 @@ import { groupServiceTimesByDay, parseServiceTimesForDisplay } from "./ServiceTi
 import { formatFullAddress } from "./AddressInput";
 import { formatPhoneDisplay } from "./ui/utils";
 import { withSiteRef } from "./url-utils";
-import { confirmChurchData, fetchCorrectionHistory, fetchReactions, submitReaction } from "./api";
-import type { CorrectionHistoryEntry, ReactionType, ReactionCounts } from "./api";
+import { confirmChurchData, fetchCorrectionHistory, fetchReactions, submitReaction, moderateApproveSuggestion, moderateRejectSuggestion } from "./api";
+import type { CorrectionHistoryEntry, ReactionType, ReactionCounts, PendingSuggestionItem } from "./api";
 
 /** Church or minimal summary for cross-state main campus link; both have state and shortId for navigation. */
 export type ChurchClickTarget = Church | HomeCampusSummary;
@@ -45,6 +48,10 @@ interface ChurchDetailPanelProps {
   externalShowEditForm?: boolean;
   onEditFormClosed?: () => void;
   onChurchUpdated?: () => void;
+  moderationMode?: boolean;
+  moderationPending?: { pendingSuggestions: import("./api").PendingSuggestionItem[] } | null;
+  moderatorKey?: string;
+  onModerationAction?: () => void;
 }
 
 function formatTimeAgo(ts: number): string {
@@ -248,6 +255,10 @@ export function ChurchDetailPanel({
   externalShowEditForm,
   onEditFormClosed,
   onChurchUpdated,
+  moderationMode,
+  moderationPending,
+  moderatorKey,
+  onModerationAction,
 }: ChurchDetailPanelProps) {
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
@@ -720,6 +731,19 @@ export function ChurchDetailPanel({
           </div>
         )}
 
+        {/* Inline moderation: pending changes for this church */}
+        {moderationMode && moderationPending && (() => {
+          const pendingForChurch = moderationPending.pendingSuggestions.filter(s => s.churchId === church.id);
+          if (pendingForChurch.length === 0) return null;
+          return (
+            <InlineModerationSection
+              items={pendingForChurch}
+              moderatorKey={moderatorKey || ""}
+              onAction={onModerationAction}
+            />
+          );
+        })()}
+
         {/* Action buttons */}
         <div className="flex flex-col gap-2">
           {/* Data looks correct */}
@@ -948,6 +972,79 @@ export function ChurchDetailPanel({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// --- Inline moderation section for church detail ---
+const MOD_FIELD_LABELS: Record<string, string> = { name: "Church Name", website: "Website", address: "Address" };
+
+function InlineModerationSection({
+  items,
+  moderatorKey,
+  onAction,
+}: {
+  items: PendingSuggestionItem[];
+  moderatorKey: string;
+  onAction?: () => void;
+}) {
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const handle = async (fn: () => Promise<any>, id: string) => {
+    setActionLoading(id);
+    try {
+      await fn();
+      onAction?.();
+    } catch {
+      // error handled silently
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  return (
+    <div className="rounded-xl p-4 bg-purple-500/10 border border-purple-500/20 space-y-3">
+      <p className="text-[10px] uppercase tracking-widest text-purple-400/80 font-semibold flex items-center gap-1.5">
+        <Shield size={11} className="text-purple-400" />
+        Pending Changes
+      </p>
+      {items.map((s) => {
+        const id = `${s.churchId}-${s.field}`;
+        const isActing = actionLoading === id;
+        return (
+          <div key={id} className="space-y-1">
+            <span className="text-purple-300 text-[10px] uppercase tracking-wider font-semibold">
+              {MOD_FIELD_LABELS[s.field] || s.field}
+            </span>
+            {s.currentValue && (
+              <p className="text-white/50 text-xs">
+                Current: <span className="text-white/70">{s.currentValue}</span>
+              </p>
+            )}
+            <p className="text-white text-xs">
+              Proposed: <span className="text-green-300 font-medium">{s.proposedValue}</span>
+            </p>
+            <div className="flex gap-2 pt-0.5">
+              <button
+                onClick={() => handle(() => moderateApproveSuggestion(moderatorKey, s.churchId, s.field), id)}
+                disabled={isActing}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[10px] font-medium transition-colors disabled:opacity-50"
+              >
+                {isActing ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}
+                Approve
+              </button>
+              <button
+                onClick={() => handle(() => moderateRejectSuggestion(moderatorKey, s.churchId, s.field), id)}
+                disabled={isActing}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-600/20 hover:bg-red-600/40 text-red-400 text-[10px] font-medium transition-colors disabled:opacity-50"
+              >
+                <X size={10} />
+                Reject
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

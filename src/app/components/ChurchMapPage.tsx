@@ -24,9 +24,10 @@ export function ChurchMapPage() {
         : null;
     const churchShortId =
       segment1 && segment1 !== "church" ? segment1 : null;
-    const openReviewModalFromQuery =
-      new URLSearchParams(location.search).get("review") === "true";
-    return { stateAbbrev, churchShortId, legacyChurchId, openReviewModalFromQuery };
+    const searchParams = new URLSearchParams(location.search);
+    const openReviewModalFromQuery = searchParams.get("review") === "true";
+    const moderatorKey = searchParams.get("key") || null;
+    return { stateAbbrev, churchShortId, legacyChurchId, openReviewModalFromQuery, moderatorKey };
   }, [location.pathname, location.search]);
 
   const navigateToState = useCallback(
@@ -57,6 +58,7 @@ export function ChurchMapPage() {
       routeLegacyChurchId={routeParams.legacyChurchId}
       openReviewModalFromQuery={routeParams.openReviewModalFromQuery}
       clearReviewQueryParam={clearReviewQueryParam}
+      moderatorKey={routeParams.moderatorKey}
       navigateToState={navigateToState}
       navigateToStateWithReview={navigateToStateWithReview}
       navigateToChurch={navigateToChurch}

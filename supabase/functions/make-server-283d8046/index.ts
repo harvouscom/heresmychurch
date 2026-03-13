@@ -1161,9 +1161,13 @@ app.post(`${P}/churches/add`,async(c)=>{
     const k=`pending-churches:${st}`;const store=(await kv.get(k))||{churches:[]};
     const dup=store.churches.find((ch:any)=>ch.name.trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs(ch.lat-pLat)<0.001&&Math.abs(ch.lng-pLng)<0.001);
     if(dup){if(!dup.verifications.some((v:any)=>v.ip===ip)){dup.verifications.push({ip,timestamp:Date.now()});if(dup.verifications.length>=THR)dup.approved=true;await kv.set(k,store);}return c.json({success:true,church:dup,isDuplicate:true});}
-    const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:normalizePhone(phone||"")||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:false,verifications:[{ip,timestamp:Date.now()}]};
+    const mainDup=Array.isArray(mainChurches)&&(mainChurches as any[]).find((ch:any)=>(ch.name||"").trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs((ch.lat||0)-pLat)<0.001&&Math.abs((ch.lng||0)-pLng)<0.001);
+    if(mainDup){return c.json({success:true,isDuplicate:true,existingChurch:{id:mainDup.id,shortId:mainDup.shortId,name:mainDup.name,city:mainDup.city,state:mainDup.state||st}});}
+    const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:normalizePhone(phone||"")||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
     store.churches.push(nc);await kv.set(k,store);
-    return c.json({success:true,church:nc,needsModeration:true});
+    const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,state:st,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
+    if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);}
+    return c.json({success:true,church:nc});
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
@@ -1910,12 +1914,11 @@ app.post(`${P}/migrate/apply-pending`,async(c)=>{
       if(!Array.isArray(mainChurches))continue;
       let added=false;
       for(const pc of store.churches){
-        if(!pc.verifications||!pc.verifications.length)continue;
         pc.approved=true;
         // Check for duplicates by name+location
         const exists=mainChurches.some((mc:any)=>mc.name?.trim().toLowerCase()===pc.name?.trim().toLowerCase()&&Math.abs((mc.lat||0)-(pc.lat||0))<0.001&&Math.abs((mc.lng||0)-(pc.lng||0))<0.001);
         if(exists)continue;
-        mainChurches.push({id:pc.id,name:pc.name,address:pc.address,city:pc.city,state:st,lat:pc.lat,lng:pc.lng,denomination:pc.denomination,attendance:pc.attendance,website:pc.website,serviceTimes:pc.serviceTimes,languages:pc.languages,ministries:pc.ministries,pastorName:pc.pastorName,phone:pc.phone,email:pc.email,lastVerified:Date.now()});
+        mainChurches.push({id:pc.id,shortId:pc.shortId||toShortId(pc.id,st),name:pc.name,address:pc.address,city:pc.city,state:st,lat:pc.lat,lng:pc.lng,denomination:pc.denomination,attendance:pc.attendance,website:pc.website,serviceTimes:pc.serviceTimes,languages:pc.languages,ministries:pc.ministries,pastorName:pc.pastorName,phone:pc.phone,email:pc.email,lastVerified:Date.now()});
         churchesMerged++;added=true;
       }
       if(added){await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);}

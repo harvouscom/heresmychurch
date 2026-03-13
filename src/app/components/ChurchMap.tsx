@@ -34,11 +34,14 @@ import {
 import { useChurchMapData } from "./useChurchMapData";
 import { getChurchUrlSegment } from "./url-utils";
 import type { ChurchClickTarget } from "./ChurchDetailPanel";
-import { fetchNationalReviewStats } from "./api";
-import type { NationalReviewStatsResponse } from "./api";
+import { fetchNationalReviewStats, fetchModeratorPending } from "./api";
+import type { NationalReviewStatsResponse, ModeratorPendingResponse } from "./api";
 import { useIsMobile } from "./ui/use-mobile";
 import { PendingAlertsPill } from "./PendingAlertsPill";
 import { AnnouncementsPill } from "./AnnouncementsPill";
+import { ModerationPill } from "./ModerationPill";
+
+type ModerationPendingData = Pick<ModeratorPendingResponse, "pendingSuggestions" | "pendingChurches">;
 import { reportIssueEnabled } from "../config/pendingAlerts";
 import { useReducer, useEffect, useMemo, useState } from "react";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
@@ -59,6 +62,7 @@ interface ChurchMapProps {
   routeLegacyChurchId: string | null;
   openReviewModalFromQuery?: boolean;
   clearReviewQueryParam?: () => void;
+  moderatorKey?: string | null;
   navigateToState: (abbrev: string) => void;
   navigateToStateWithReview: (abbrev: string) => void;
   navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => void;
@@ -71,6 +75,7 @@ export function ChurchMap({
   routeLegacyChurchId,
   openReviewModalFromQuery = false,
   clearReviewQueryParam,
+  moderatorKey,
   navigateToState,
   navigateToStateWithReview,
   navigateToChurch,
@@ -118,10 +123,15 @@ export function ChurchMap({
     showHelp: false,
     showAlertsPanel: false,
     showAnnouncementsPanel: false,
-  alertsPanelOpenedViaReportIssue: false,
+    alertsPanelOpenedViaReportIssue: false,
+    moderationMode: false,
+    moderationPending: null,
+    moderationLoading: false,
+    moderationError: null,
+    showModerationPanel: false,
   });
 
-  const anyOverlayOpen = d.showSummary || d.showFilterPanel || d.showLegend || local.showAlertsPanel || local.showAnnouncementsPanel || (isNationalView && isMobile && !effectiveSearchCollapsed);
+  const anyOverlayOpen = d.showSummary || d.showFilterPanel || d.showLegend || local.showAlertsPanel || local.showAnnouncementsPanel || local.showModerationPanel || (isNationalView && isMobile && !effectiveSearchCollapsed);
   const dismissAllOverlays = () => {
     d.setShowSummary(false);
     d.setShowFilterPanel(false);
@@ -130,6 +140,7 @@ export function ChurchMap({
     localDispatch({ type: "SET", key: "showAlertsPanel", value: false });
     localDispatch({ type: "SET", key: "showAnnouncementsPanel", value: false });
     localDispatch({ type: "SET", key: "alertsPanelOpenedViaReportIssue", value: false });
+    localDispatch({ type: "SET", key: "showModerationPanel", value: false });
   };
 
   const dismissAbout = () => {
@@ -176,6 +187,42 @@ export function ChurchMap({
       d.refetchCurrentStateChurches();
     }
   }, [local.showVerificationModal, d.focusedState]);
+
+  // Validate moderator key and load pending items
+  const refreshModeration = useMemo(() => {
+    if (!moderatorKey) return () => {};
+    return () => {
+      localDispatch({ type: "SET", key: "moderationLoading", value: true });
+      fetchModeratorPending(moderatorKey)
+        .then((data) => {
+          localDispatch({ type: "SET", key: "moderationMode", value: true });
+          localDispatch({ type: "SET", key: "moderationPending", value: { pendingSuggestions: data.pendingSuggestions, pendingChurches: data.pendingChurches } });
+          localDispatch({ type: "SET", key: "moderationError", value: null });
+          localDispatch({ type: "SET", key: "moderationLoading", value: false });
+        })
+        .catch((err) => {
+          localDispatch({ type: "SET", key: "moderationError", value: err.message || "Invalid key" });
+          localDispatch({ type: "SET", key: "moderationLoading", value: false });
+        });
+    };
+  }, [moderatorKey]);
+
+  useEffect(() => {
+    if (moderatorKey) {
+      refreshModeration();
+      // When moderator key is present, show login modal (replacing about)
+      if (!local.moderationMode) {
+        localDispatch({ type: "SET", key: "showAbout", value: true });
+      }
+    }
+  }, [moderatorKey]);
+
+  // Auto-dismiss login modal once moderation is validated
+  useEffect(() => {
+    if (local.moderationMode && local.showAbout && moderatorKey) {
+      dismissAbout();
+    }
+  }, [local.moderationMode]);
 
   // Auto-open state review modal when navigating from national modal (?review=true)
   useEffect(() => {
@@ -259,6 +306,16 @@ export function ChurchMap({
         onAnnouncementsPanelChange={(open) => {
           localDispatch({ type: "SET", key: "showAnnouncementsPanel", value: open });
         }}
+        moderationMode={local.moderationMode}
+        moderatorKey={moderatorKey || ""}
+        moderationPending={local.moderationPending}
+        moderationLoading={local.moderationLoading}
+        moderationError={local.moderationError}
+        showModerationPanel={local.showModerationPanel}
+        onModerationPanelChange={(open) => {
+          localDispatch({ type: "SET", key: "showModerationPanel", value: open });
+        }}
+        onRefreshModeration={refreshModeration}
         activePeople={activePeople}
         activeBots={activeBots}
         activeByState={displayActiveByState}
@@ -390,6 +447,10 @@ export function ChurchMap({
                 externalShowEditForm={local.forceEditForm}
                 onEditFormClosed={() => localDispatch({ type: "SET", key: "forceEditForm", value: false })}
                 onChurchUpdated={d.refetchCurrentStateChurches}
+                moderationMode={local.moderationMode}
+                moderationPending={local.moderationPending}
+                moderatorKey={moderatorKey || ""}
+                onModerationAction={refreshModeration}
               />
             </div>
           </motion.div>
@@ -412,6 +473,11 @@ type LocalState = {
   showAlertsPanel: boolean;
   showAnnouncementsPanel: boolean;
   alertsPanelOpenedViaReportIssue: boolean;
+  moderationMode: boolean;
+  moderationPending: ModerationPendingData | null;
+  moderationLoading: boolean;
+  moderationError: string | null;
+  showModerationPanel: boolean;
 };
 type LocalAction = { type: "SET"; key: keyof LocalState; value: any };
 function localReducer(state: LocalState, action: LocalAction): LocalState {
@@ -448,6 +514,14 @@ function MapArea({
   onAlertsPanelChange,
   showAnnouncementsPanel,
   onAnnouncementsPanelChange,
+  moderationMode,
+  moderatorKey,
+  moderationPending,
+  moderationLoading,
+  moderationError,
+  showModerationPanel,
+  onModerationPanelChange,
+  onRefreshModeration,
   activePeople,
   activeBots,
   activeByState,
@@ -482,6 +556,14 @@ function MapArea({
   onAlertsPanelChange: (open: boolean) => void;
   showAnnouncementsPanel: boolean;
   onAnnouncementsPanelChange: (open: boolean) => void;
+  moderationMode: boolean;
+  moderatorKey: string;
+  moderationPending: ModerationPendingData | null;
+  moderationLoading: boolean;
+  moderationError: string | null;
+  showModerationPanel: boolean;
+  onModerationPanelChange: (open: boolean) => void;
+  onRefreshModeration: () => void;
   activePeople: number;
   activeBots: number;
   activeByState: Record<string, number>;
@@ -490,82 +572,109 @@ function MapArea({
   isMobile: boolean;
 }) {
   return (
-    <div className="flex-1 relative" style={{ backgroundColor: "#F5F0E8" }}>
+    <div className="flex flex-1 flex-col relative" style={{ backgroundColor: "#F5F0E8" }}>
+      {/* Moderation banner — in-flow so it pushes content down */}
+      {moderationMode && (
+        <div className="flex-shrink-0 bg-pink-100 text-pink-800 text-[11px] text-center py-1.5 px-4 backdrop-blur-sm font-medium tracking-wide">
+          You're currently in moderation view
+        </div>
+      )}
+
+      <div className="flex-1 relative min-h-0">
       {/* Top row: header pill only (secondary controls moved to bottom-left cluster); z-40 so summary stacks above All states + MapControls (z-30). pointer-events-none so click-outside hits the catcher. */}
       {!isLoadingVisible && d.states.length > 0 && (
       <div className="absolute top-4 left-4 right-4 z-40 flex flex-row items-center justify-center animate-in fade-in duration-300 pointer-events-none">
         <div className="flex flex-col items-center justify-center min-w-0 overflow-hidden max-w-full pointer-events-auto" ref={d.summaryRef}>
-          <HeaderPill
-            focusedState={d.focusedState}
-            focusedStateName={d.focusedStateName}
-            filteredCount={d.filteredChurches.length}
-            totalChurches={d.totalChurches}
-            allStatesLoaded={d.allStatesLoaded}
-            populatedCount={d.states.filter((s) => s.isPopulated).length}
-            showSummary={d.showSummary}
-            pendingReviewCount={pendingReviewCount}
-            nationalReviewStats={nationalReviewStats}
-            nationalReviewStatsLoading={nationalReviewStatsLoading}
-            onShowVerification={onShowVerification}
-            onShowNationalReviewModal={onShowNationalReviewModal}
-            onToggle={() => {
-              d.setShowSummary((v) => {
-                if (!v) { d.setShowFilterPanel(false); d.setShowLegend(false); }
-                return !v;
-              });
-            }}
-          />
-
-          {/* Pending errors + announcements — below header pill */}
-          {!d.showSummary && (
-            <div className="mt-1.5 flex flex-wrap items-center justify-center gap-2">
-              <PendingAlertsPill
-                open={showAlertsPanel}
-                onOpenChange={onAlertsPanelChange}
-                showProposeForm={showProposeForm}
-                showReportIssue={showReportIssue}
+          {moderationMode ? (
+            <>
+              <ModerationPill
+                open={showModerationPanel}
+                onOpenChange={onModerationPanelChange}
+                moderatorKey={moderatorKey}
+                pending={moderationPending ?? { pendingSuggestions: [], pendingChurches: [] }}
+                onRefresh={onRefreshModeration}
+                alwaysShow
               />
-              <AnnouncementsPill
-                open={showAnnouncementsPanel}
-                onOpenChange={onAnnouncementsPanelChange}
-              />
-            </div>
-          )}
-
-          <AnimatePresence>
-            {d.showSummary && (
-              <SummaryPanel
-                summaryStats={d.summaryStats as SummaryStats}
+            </>
+          ) : (
+            <>
+              <HeaderPill
                 focusedState={d.focusedState}
                 focusedStateName={d.focusedStateName}
-                churches={d.churches}
+                filteredCount={d.filteredChurches.length}
                 totalChurches={d.totalChurches}
                 allStatesLoaded={d.allStatesLoaded}
-                statePopulations={d.statePopulations}
-                countyStats={d.countyStats ?? null}
-                onClose={() => d.setShowSummary(false)}
-                onNavigateToState={(abbrev) => {
-                  d.setShowSummary(false);
-                  navigateToState(abbrev);
-                }}
-                onShowListModal={() => {
-                  d.setShowSummary(false);
-                  d.setShowListModal(true);
-                }}
-                onShowAddChurch={() => {
-                  d.setShowSummary(false);
-                  d.setShowAddChurchFromSummary(true);
-                }}
+                populatedCount={d.states.filter((s) => s.isPopulated).length}
+                showSummary={d.showSummary}
+                pendingReviewCount={pendingReviewCount}
+                nationalReviewStats={nationalReviewStats}
+                nationalReviewStatsLoading={nationalReviewStatsLoading}
                 onShowVerification={onShowVerification}
+                onShowNationalReviewModal={onShowNationalReviewModal}
+                onToggle={() => {
+                  d.setShowSummary((v) => {
+                    if (!v) { d.setShowFilterPanel(false); d.setShowLegend(false); }
+                    return !v;
+                  });
+                }}
               />
-            )}
-          </AnimatePresence>
+
+              {/* Pending errors + announcements — below header pill (not in moderation view) */}
+              {!d.showSummary && (
+                <div className="mt-1.5 flex flex-wrap items-center justify-center gap-2">
+                  <PendingAlertsPill
+                    open={showAlertsPanel}
+                    onOpenChange={onAlertsPanelChange}
+                    showProposeForm={showProposeForm}
+                    showReportIssue={showReportIssue}
+                  />
+                  <AnnouncementsPill
+                    open={showAnnouncementsPanel}
+                    onOpenChange={onAnnouncementsPanelChange}
+                  />
+                </div>
+              )}
+
+              <AnimatePresence>
+                {d.showSummary && (
+                  <SummaryPanel
+                    summaryStats={d.summaryStats as SummaryStats}
+                    focusedState={d.focusedState}
+                    focusedStateName={d.focusedStateName}
+                    churches={d.churches}
+                    totalChurches={d.totalChurches}
+                    allStatesLoaded={d.allStatesLoaded}
+                    statePopulations={d.statePopulations}
+                    countyStats={d.countyStats ?? null}
+                    onClose={() => d.setShowSummary(false)}
+                    onNavigateToState={(abbrev) => {
+                      d.setShowSummary(false);
+                      navigateToState(abbrev);
+                    }}
+                    onShowListModal={() => {
+                      d.setShowSummary(false);
+                      d.setShowListModal(true);
+                    }}
+                    onShowAddChurch={() => {
+                      d.setShowSummary(false);
+                      d.setShowAddChurchFromSummary(true);
+                    }}
+                    onShowVerification={onShowVerification}
+                  />
+                )}
+              </AnimatePresence>
+            </>
+          )}
         </div>
       </div>
       )}
 
-      {/* About Modal */}
-      {showAbout && <AboutModal onClose={onDismissAbout} />}
+      {/* About Modal / Moderator Login */}
+      {showAbout && (moderatorKey && !moderationMode ? (
+        <ModeratorLoginModal loading={moderationLoading} error={moderationError} onClose={onDismissAbout} />
+      ) : showAbout ? (
+        <AboutModal onClose={onDismissAbout} />
+      ) : null)}
 
       {/* Help Modal */}
       {showHelp && (
@@ -786,7 +895,7 @@ function MapArea({
         </div>
       )}
 
-
+      </div>
     </div>
   );
 }
@@ -915,6 +1024,52 @@ function ThreeDotLoader() {
       />
       <style>{`@keyframes dotPulse { 0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1.2); } } @keyframes triangleSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </span>
+  );
+}
+
+// --- Moderator Login Modal ---
+function ModeratorLoginModal({ loading, error, onClose }: { loading: boolean; error: string | null; onClose: () => void }) {
+  return (
+    <div
+      className="absolute inset-0 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden p-6 flex flex-col items-center text-center"
+        style={{ backgroundColor: "#1E1040" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-16 h-16 rounded-xl overflow-hidden mb-3">
+          <img src={logoImg} alt="Here's My Church" className="w-full h-full object-cover" />
+        </div>
+        <div className="flex items-center justify-center gap-2 mb-4">
+          <ShieldCheck size={20} className="text-purple-400" />
+          <h2 className="text-white text-lg font-semibold">Moderator Access</h2>
+        </div>
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-4">
+            <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+            <span className="text-white/60 text-sm">Validating key...</span>
+          </div>
+        ) : error ? (
+          <div className="space-y-3 w-full">
+            <p className="text-red-400 text-sm">{error}</p>
+            <button
+              onClick={onClose}
+              className="w-full py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-2 py-4">
+            <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+            <span className="text-white/60 text-sm">Connecting...</span>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
