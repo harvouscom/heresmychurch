@@ -45,13 +45,11 @@ flowchart LR
     KV[(kv_store_283d8046)]
     Realtime[Realtime]
   end
-  Regrid[Regrid API]
   SPA --> Static
   SPA --> GeoInject
   SPA -->|"API calls"| Edge
   SPA -->|"Presence"| Realtime
   Edge --> KV
-  Edge --> Regrid
   OGRewrite -->|"OG image URL"| Edge
 ```
 
@@ -161,12 +159,11 @@ Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurc
 - **Moderator:** pending, approve/reject suggestions and churches, in-review (requires `Moderator-Key`).
 - **Other:** health, population, og-image (OG images for sharing), admin (refresh-attendance, enrich-regrid, cleanup-dc, cleanup-blocked-denominations, remove-churches-by-name).
 
-**Storage:** [supabase/functions/make-server-283d8046/kv_store.tsx](supabase/functions/make-server-283d8046/kv_store.tsx) wraps the Supabase table `kv_store_283d8046` (set/get/del, prefix scan). Church and state data is stored and read from here; the server populates it from OSM, Regrid, Census, and community submissions.
+**Storage:** [supabase/functions/make-server-283d8046/kv_store.tsx](supabase/functions/make-server-283d8046/kv_store.tsx) wraps the Supabase table `kv_store_283d8046` (set/get/del, prefix scan). Church and state data is stored and read from here; the server populates it from OSM, Census, and community submissions.
 
 **Supporting modules:**
 
 - [og-image.tsx](supabase/functions/make-server-283d8046/og-image.tsx) — generates OG images (state or church) for social sharing.
-- [regrid.ts](supabase/functions/make-server-283d8046/regrid.ts) — Regrid integration (parcel/building data).
 - [state-populations.ts](supabase/functions/make-server-283d8046/state-populations.ts) — state population data used by the server.
 
 ---

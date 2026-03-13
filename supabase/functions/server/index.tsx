@@ -2,7 +2,6 @@ import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import * as kv from "./kv_store.tsx";
 import { generateOgImage } from "./og-image.tsx";
-import * as regrid from "./regrid.ts";
 import { POP } from "./state-populations.ts";
 
 // ── State data ──
@@ -609,59 +608,7 @@ app.post(`${P}/admin/refresh-attendance`,async(c)=>{
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
-// Regrid: enrich attendance from building sqft (batch, capped at 2000 for trial).
-app.post(`${P}/admin/enrich-regrid/:state`,async(c)=>{
-  try{
-    const st=c.req.param("state").toUpperCase(),info=gS(st);
-    if(!info)return c.json({error:`Unknown state: ${st}`},400);
-    const meta=await kv.get("churches:meta");const populated=Object.keys(meta?.stateCounts||{});
-    if(!populated.includes(st))return c.json({error:`State ${st} not populated. Populate first.`},400);
-    if(!Deno.env.get("REGRID_TOKEN")?.trim())return c.json({error:"Regrid token not set.",message:"Set REGRID_TOKEN in Supabase secrets."},503);
-    let ch=await kv.get(`churches:${st}`);
-    if(!Array.isArray(ch)||!ch.length)return c.json({error:`No churches for ${st}`},400);
-
-    function attendanceStats(arr:any[]){const a=arr.map((x:any)=>x.attendance||0).filter((n:number)=>n>0);const total=a.reduce((s:number,n:number)=>s+n,0);const sorted=[...a].sort((x,y)=>x-y);const mid=Math.floor(sorted.length/2);const median=sorted.length?sorted.length%2?sorted[mid]:Math.round((sorted[mid-1]+sorted[mid])/2):0;return{total,median,count:arr.length};}
-    const before=attendanceStats(ch);
-
-    const points=ch.map((c:any)=>({id:c.id,lat:c.lat,lng:c.lng,address:c.address||"",city:c.city||"",state:c.state||st}));
-    let sqftByChurchId:Map<string,number>;
-    try{
-      const {job_uuid}=await regrid.submitBatch(points);
-      const maxWaitMs=20*60*1000,pollIntervalMs=4000;
-      const deadline=Date.now()+maxWaitMs;
-      while(Date.now()<deadline){
-        const status=await regrid.getBatchStatus(job_uuid);
-        if(status.status==="ready")break;
-        if(status.status==="failed")return c.json({error:"Regrid job failed",job_uuid,status},502);
-        await new Promise(r=>setTimeout(r,pollIntervalMs));
-      }
-      if(Date.now()>=deadline)return c.json({error:"Regrid job timed out",job_uuid},504);
-      sqftByChurchId=await regrid.downloadBatchResults(job_uuid);
-    }catch(batchErr:any){
-      if(batchErr?.message?.includes("401")||batchErr?.message?.includes("No Batch")){
-        sqftByChurchId=await regrid.enrichPointsRealtime(points);
-      }else throw batchErr;
-    }
-    let enriched=0;
-    for(const c of ch){
-      const sqft=sqftByChurchId.get(c.id);
-      if(sqft!=null&&sqft>0){
-        (c as any).buildingSqft=sqft;
-        (c as any).attendance=Math.max(10,Math.min(25000,Math.round(sqft/55)));
-        enriched++;
-      }
-    }
-    const noMatch=ch.length-enriched;
-    await kv.set(`churches:${st}`,ch);await writeIdx(st,ch);
-
-    const after=attendanceStats(ch);
-    return c.json({message:`Regrid enrichment done for ${info.n}.`,state:st,enriched,noMatch,attendanceBefore:before,attendanceAfter:after});
-  }catch(e:any){
-    if(e?.message==="Regrid token not set.")return c.json({error:"Regrid token not set.",message:"Set REGRID_TOKEN in Supabase secrets."},503);
-    console.log("enrich-regrid error:",e);
-    return c.json({error:String(e?.message||e)},500);
-  }
-});
+// (Regrid enrichment endpoints removed; attendance is derived from OSM geometry and heuristics only.)
 
 app.get(`${P}/population`,async(c)=>{
   try{

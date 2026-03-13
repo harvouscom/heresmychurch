@@ -2,7 +2,6 @@ import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import * as kv from "./kv_store.tsx";
 import { generateOgImage } from "./og-image.tsx";
-import * as regrid from "./regrid.ts";
 import { POP } from "./state-populations.ts";
 
 // ── State data ──
@@ -678,93 +677,7 @@ app.post(`${P}/admin/refresh-attendance`,async(c)=>{
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
-// Regrid: enrich attendance from building sqft (batch, capped at 2000 for trial).
-app.post(`${P}/admin/enrich-regrid/:state`,async(c)=>{
-  try{
-    const st=c.req.param("state").toUpperCase(),info=gS(st);
-    if(!info)return c.json({error:`Unknown state: ${st}`},400);
-    const meta=await kv.get("churches:meta");const populated=Object.keys(meta?.stateCounts||{});
-    if(!populated.includes(st))return c.json({error:`State ${st} not populated. Populate first.`},400);
-    if(!Deno.env.get("REGRID_TOKEN")?.trim())return c.json({error:"Regrid token not set.",message:"Set REGRID_TOKEN in Supabase secrets."},503);
-    let ch=await kv.get(`churches:${st}`);
-    if(!Array.isArray(ch)||!ch.length)return c.json({error:`No churches for ${st}`},400);
-
-    function attendanceStats(arr:any[]){const a=arr.map((x:any)=>x.attendance||0).filter((n:number)=>n>0);const total=a.reduce((s:number,n:number)=>s+n,0);const sorted=[...a].sort((x,y)=>x-y);const mid=Math.floor(sorted.length/2);const median=sorted.length?sorted.length%2?sorted[mid]:Math.round((sorted[mid-1]+sorted[mid])/2):0;return{total,median,count:arr.length};}
-    const before=attendanceStats(ch);
-
-    const points=ch.map((c:any)=>({id:c.id,lat:c.lat,lng:c.lng,address:c.address||"",city:c.city||"",state:c.state||st}));
-    let sqftByChurchId:Map<string,number>;
-    try{
-      const {job_uuid}=await regrid.submitBatch(points);
-      const maxWaitMs=20*60*1000,pollIntervalMs=4000;
-      const deadline=Date.now()+maxWaitMs;
-      while(Date.now()<deadline){
-        const status=await regrid.getBatchStatus(job_uuid);
-        if(status.status==="ready")break;
-        if(status.status==="failed")return c.json({error:"Regrid job failed",job_uuid,status},502);
-        await new Promise(r=>setTimeout(r,pollIntervalMs));
-      }
-      if(Date.now()>=deadline)return c.json({error:"Regrid job timed out",job_uuid},504);
-      sqftByChurchId=await regrid.downloadBatchResults(job_uuid);
-    }catch(batchErr:any){
-      if(batchErr?.message?.includes("401")||batchErr?.message?.includes("No Batch")){
-        sqftByChurchId=await regrid.enrichPointsRealtime(points);
-      }else throw batchErr;
-    }
-    let enriched=0;
-    for(const c of ch){
-      const sqft=sqftByChurchId.get(c.id);
-      if(sqft!=null&&sqft>0){
-        (c as any).buildingSqft=sqft;
-        (c as any).attendance=Math.max(10,Math.min(25000,Math.round(sqft/55)));
-        enriched++;
-      }
-    }
-    const noMatch=ch.length-enriched;
-    await kv.set(`churches:${st}`,ch);await writeIdx(st,ch);
-    await invalidateReviewStatsCache();
-    const after=attendanceStats(ch);
-    return c.json({message:`Regrid enrichment done for ${info.n}.`,state:st,enriched,noMatch,attendanceBefore:before,attendanceAfter:after});
-  }catch(e:any){
-    if(e?.message==="Regrid token not set.")return c.json({error:"Regrid token not set.",message:"Set REGRID_TOKEN in Supabase secrets."},503);
-    console.log("enrich-regrid error:",e);
-    return c.json({error:String(e?.message||e)},500);
-  }
-});
-
-// Debug: test Regrid point + address lookups with raw responses
-app.get(`${P}/admin/regrid-debug`,async(c)=>{
-  try{
-    const lat=Number(c.req.query("lat")||"39.6081741");
-    const lng=Number(c.req.query("lng")||"-75.666543");
-    const token=Deno.env.get("REGRID_TOKEN")?.trim()||"";
-    if(!token)return c.json({error:"No REGRID_TOKEN"},503);
-    const radius=Number(c.req.query("radius")||"50");
-    // Test point API
-    const pointUrl=`https://app.regrid.com/api/v2/us/parcels/point?lat=${lat}&lon=${lng}&token=${encodeURIComponent(token)}&return_geometry=false&limit=5&radius=${radius}`;
-    const pointRes=await fetch(pointUrl);
-    const pointBody=await pointRes.text();
-    let pointParsed:any=null;try{pointParsed=JSON.parse(pointBody);}catch{}
-    // Test address API
-    const addrQuery=c.req.query("address")||"Red Lion United Methodist Church, Delaware";
-    const addrParams=new URLSearchParams({query:addrQuery,token,return_geometry:"false",limit:"5",path:"us/de"});
-    const addrUrl=`https://app.regrid.com/api/v2/us/parcels/address?${addrParams.toString()}`;
-    const addrRes=await fetch(addrUrl);
-    const addrBody=await addrRes.text();
-    let addrParsed:any=null;try{addrParsed=JSON.parse(addrBody);}catch{}
-    // Test typeahead (simple search)
-    const taUrl=`https://app.regrid.com/api/v2/typeahead?token=${encodeURIComponent(token)}&query=${encodeURIComponent(addrQuery)}&limit=3`;
-    const taRes=await fetch(taUrl);
-    const taBody=await taRes.text();
-    let taParsed:any=null;try{taParsed=JSON.parse(taBody);}catch{}
-    return c.json({
-      point:{status:pointRes.status,featureCount:pointParsed?.parcels?.features?.length??null,response:pointParsed||pointBody},
-      address:{status:addrRes.status,featureCount:addrParsed?.parcels?.features?.length??null,response:addrParsed||addrBody},
-      typeahead:{status:taRes.status,response:taParsed||taBody},
-      tokenPrefix:token.substring(0,8)+"..."
-    });
-  }catch(e:any){return c.json({error:String(e?.message||e)},500);}
-});
+// (Regrid enrichment endpoints removed; attendance is derived from OSM geometry and heuristics only.)
 
 app.get(`${P}/population`,async(c)=>{
   try{
