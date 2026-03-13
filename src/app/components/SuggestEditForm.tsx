@@ -10,7 +10,6 @@ import {
   MapPin,
   Church as ChurchIcon,
   AlertCircle,
-  Loader2,
   Clock,
   Languages,
   Heart,
@@ -21,6 +20,7 @@ import {
   Link2,
   Search,
 } from "lucide-react";
+import { ThreeDotLoader } from "./ThreeDotLoader";
 import { useState, useEffect, useRef } from "react";
 import { ServiceTimesInput } from "./ServiceTimesInput";
 import { AddressInput, serializeAddress, parseAddressValue } from "./AddressInput";
@@ -53,6 +53,8 @@ interface SuggestEditFormProps {
   onClose: () => void;
   focusField?: string | null;
   onChurchUpdated?: () => void;
+  /** Called when user submits an edit that needs moderation (e.g. so parent can refetch pending list) */
+  onPendingSubmitted?: () => void;
 }
 
 type EditableField = "name" | "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email" | "homeCampusId";
@@ -126,7 +128,7 @@ function getCurrentValue(church: Church, field: EditableField): string {
   }
 }
 
-export function SuggestEditForm({ church, allChurches, onClose, focusField, onChurchUpdated }: SuggestEditFormProps) {
+export function SuggestEditForm({ church, allChurches, onClose, focusField, onChurchUpdated, onPendingSubmitted }: SuggestEditFormProps) {
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<Set<string>>(new Set());
   const [pendingModeration, setPendingModeration] = useState<Set<string>>(new Set());
@@ -198,6 +200,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
       });
       if (result.needsModeration) {
         setPendingModeration((prev) => new Set([...prev, field]));
+        onPendingSubmitted?.();
       } else {
         onChurchUpdated?.();
       }
@@ -259,6 +262,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
                 allChurches={allChurches}
                 submitting={submitting}
                 submitted={submitted}
+                pendingModeration={pendingModeration}
                 isEditing={editingFields.has(fieldConfig.key)}
                 onStartEdit={() => {
                   setEditingFields(prev => new Set(prev).add(fieldConfig.key));
@@ -302,6 +306,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
                 allChurches={allChurches}
                 submitting={submitting}
                 submitted={submitted}
+                pendingModeration={pendingModeration}
                 isEditing={editingFields.has(fieldConfig.key)}
                 onStartEdit={() => {
                   setEditingFields(prev => new Set(prev).add(fieldConfig.key));
@@ -531,7 +536,7 @@ function MainCampusSearch({
                 } disabled:cursor-default`}
               >
                 {selectedId === r.id ? (
-                  <Loader2 size={12} className="animate-spin text-purple-400 flex-shrink-0" />
+                  <ThreeDotLoader size={12} className="bg-purple-400" />
                 ) : (
                   <div className="w-2 h-2 rounded-full bg-purple-400/60 flex-shrink-0" />
                 )}
@@ -568,6 +573,7 @@ function FieldCard({
   allChurches,
   submitting,
   submitted,
+  pendingModeration,
   isEditing,
   onStartEdit,
   onCancelEdit,
@@ -585,6 +591,7 @@ function FieldCard({
   allChurches?: Church[];
   submitting: string | null;
   submitted: Set<string>;
+  pendingModeration: Set<string>;
   isEditing: boolean;
   onStartEdit: () => void;
   onCancelEdit: () => void;
@@ -651,10 +658,17 @@ function FieldCard({
 
       {/* Just submitted feedback */}
       {justSubmitted && (
-        <div className="flex items-center gap-2 py-2 px-2.5 rounded-lg bg-green-500/10 border border-green-500/15 mb-2">
-          <Check size={12} className="text-green-400" />
-          <span className="text-green-400 text-xs font-medium">Updated!</span>
-        </div>
+        pendingModeration.has(key) ? (
+          <div className="flex items-center gap-2 py-2 px-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-2">
+            <Clock size={12} className="text-amber-400" />
+            <span className="text-amber-300/90 text-xs font-medium">Submitted for review</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 py-2 px-2.5 rounded-lg bg-green-500/10 border border-green-500/15 mb-2">
+            <Check size={12} className="text-green-400" />
+            <span className="text-green-400 text-xs font-medium">Updated!</span>
+          </div>
+        )
       )}
 
       {/* Edit controls */}
@@ -703,7 +717,7 @@ function FieldCard({
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-300 text-[11px] font-medium hover:bg-purple-500/30 transition-colors disabled:opacity-30 cursor-pointer"
                     >
                       {isSubmitting ? (
-                        <Loader2 size={10} className="animate-spin" />
+                        <ThreeDotLoader size={10} />
                       ) : (
                         <Send size={10} />
                       )}

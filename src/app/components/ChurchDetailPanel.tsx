@@ -23,9 +23,9 @@ import {
   ThumbsUp,
   Building2,
   Home,
-  Loader2,
   X,
 } from "lucide-react";
+import { ThreeDotLoader } from "./ThreeDotLoader";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { motion } from "motion/react";
 import { SuggestEditForm } from "./SuggestEditForm";
@@ -40,6 +40,21 @@ import type { CorrectionHistoryEntry, ReactionType, ReactionCounts, PendingSugge
 /** Church or minimal summary for cross-state main campus link; both have state and shortId for navigation. */
 export type ChurchClickTarget = Church | HomeCampusSummary;
 
+const PENDING_FIELD_LABELS: Record<string, string> = {
+  name: "Church name",
+  website: "Website",
+  address: "Address",
+  attendance: "Attendance",
+  denomination: "Denomination",
+  serviceTimes: "Service times",
+  languages: "Languages",
+  ministries: "Ministries",
+  pastorName: "Pastor name",
+  phone: "Phone",
+  email: "Email",
+  homeCampusId: "Main campus link",
+};
+
 interface ChurchDetailPanelProps {
   church: Church;
   allChurches: Church[];
@@ -52,6 +67,10 @@ interface ChurchDetailPanelProps {
   moderationPending?: { pendingSuggestions: import("./api").PendingSuggestionItem[] } | null;
   moderatorKey?: string;
   onModerationAction?: () => void;
+  /** Field names with pending suggestions (for this church) — shown to all visitors */
+  pendingFieldsForChurch?: string[];
+  /** Called when user submits an edit that needs moderation (so we refetch pending list) */
+  onPendingSubmitted?: () => void;
 }
 
 function formatTimeAgo(ts: number): string {
@@ -259,6 +278,8 @@ export function ChurchDetailPanel({
   moderationPending,
   moderatorKey,
   onModerationAction,
+  pendingFieldsForChurch = [],
+  onPendingSubmitted,
 }: ChurchDetailPanelProps) {
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
@@ -439,6 +460,7 @@ export function ChurchDetailPanel({
         onClose={() => { setShowEditForm(false); setEditFocusField(null); }}
         focusField={editFocusField}
         onChurchUpdated={onChurchUpdated}
+        onPendingSubmitted={onPendingSubmitted}
       />
     );
   }
@@ -488,6 +510,16 @@ export function ChurchDetailPanel({
           </div>
           <CloseButton onClick={onClose} size="lg" className="-mt-2" />
         </div>
+
+        {/* Updates pending review — visible to all visitors (not only moderators) */}
+        {!moderationMode && pendingFieldsForChurch.length > 0 && (
+          <div className="flex items-center gap-2 mt-3 py-2 px-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <Clock size={14} className="text-amber-400 flex-shrink-0" />
+            <p className="text-amber-200/90 text-xs">
+              Updates to {pendingFieldsForChurch.map((f) => PENDING_FIELD_LABELS[f] ?? f).join(", ")} are pending review and will appear once approved.
+            </p>
+          </div>
+        )}
 
         {/* Quick action buttons */}
         <div className="flex gap-2 mt-3">
@@ -731,7 +763,7 @@ export function ChurchDetailPanel({
           </div>
         )}
 
-        {/* Inline moderation: pending changes for this church */}
+        {/* Inline review: pending changes for this church */}
         {moderationMode && moderationPending && (() => {
           const pendingForChurch = moderationPending.pendingSuggestions.filter(s => s.churchId === church.id);
           if (pendingForChurch.length === 0) return null;
@@ -976,7 +1008,7 @@ export function ChurchDetailPanel({
   );
 }
 
-// --- Inline moderation section for church detail ---
+// --- Inline review section for church detail ---
 const MOD_FIELD_LABELS: Record<string, string> = { name: "Church Name", website: "Website", address: "Address" };
 
 function InlineModerationSection({
@@ -1030,7 +1062,7 @@ function InlineModerationSection({
                 disabled={isActing}
                 className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[10px] font-medium transition-colors disabled:opacity-50"
               >
-                {isActing ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}
+                {isActing ? <ThreeDotLoader size={10} className="bg-green-400" /> : <Check size={10} />}
                 Approve
               </button>
               <button

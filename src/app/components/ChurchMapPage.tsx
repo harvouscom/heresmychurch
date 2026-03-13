@@ -51,6 +51,13 @@ export function ChurchMapPage() {
     }
   }, [nav, location.pathname, location.search]);
 
+  const exitReviewView = useCallback(() => {
+    const params = new URLSearchParams(location.search);
+    params.delete("key");
+    const search = params.toString();
+    nav(location.pathname + (search ? `?${search}` : ""), { replace: true });
+  }, [nav, location.pathname, location.search]);
+
   return (
     <ChurchMap
       routeStateAbbrev={routeParams.stateAbbrev}
@@ -59,6 +66,7 @@ export function ChurchMapPage() {
       openReviewModalFromQuery={routeParams.openReviewModalFromQuery}
       clearReviewQueryParam={clearReviewQueryParam}
       moderatorKey={routeParams.moderatorKey}
+      onExitReviewView={exitReviewView}
       navigateToState={navigateToState}
       navigateToStateWithReview={navigateToStateWithReview}
       navigateToChurch={navigateToChurch}

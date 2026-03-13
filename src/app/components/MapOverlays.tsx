@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "motion/react";
-import { Loader2, X, Mail } from "lucide-react";
+import { X, Mail } from "lucide-react";
+import { ThreeDotLoader } from "./ThreeDotLoader";
 
 const CONTACT_EMAIL = "hey@heresmychurch.com";
 import { CloseButton } from "./ui/close-button";
@@ -23,7 +24,7 @@ export function LoadingOverlay({
         className="flex flex-col items-center gap-3 px-8 py-6 rounded-2xl shadow-2xl"
         style={{ backgroundColor: "rgba(30, 16, 64, 0.95)" }}
       >
-        <Loader2 size={28} className="text-purple-400 animate-spin" />
+        <ThreeDotLoader size={28} className="bg-purple-400" />
         <span className="text-white text-sm font-medium">
           {loadingStateName
             ? `Loading churches in ${loadingStateName}...`

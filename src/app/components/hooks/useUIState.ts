@@ -204,8 +204,18 @@ export function useUIState(focusedState: string | null) {
   const handleMouseMove = (e: React.MouseEvent) => {
     // Don't move the tooltip when a preview is pinned, so the View church/state button stays clickable
     if (!s.previewPinned && !s.previewStatePinned) {
-      dispatch({ type: "SET_TOOLTIP_POS", value: { x: e.clientX, y: e.clientY } });
+      // Only update position when a hover tooltip is actually shown, so it doesn't chase the cursor when no tooltip is visible
+      const hasHover = s.hoveredState != null || s.hoveredChurch != null || s.hoveredCounty != null;
+      if (hasHover) {
+        dispatch({ type: "SET_TOOLTIP_POS", value: { x: e.clientX, y: e.clientY } });
+      }
     }
+  };
+
+  const handleMouseLeave = () => {
+    dispatch({ type: "SET_HOVERED_STATE", value: null });
+    dispatch({ type: "SET_HOVERED_CHURCH", value: null });
+    dispatch({ type: "SET_HOVERED_COUNTY", value: null });
   };
 
   return {
@@ -229,5 +239,6 @@ export function useUIState(focusedState: string | null) {
     addChurchForState: s.addChurchForState, setAddChurchForState,
     showSummary: s.showSummary, setShowSummary, summaryRef, showLegend: s.showLegend, setShowLegend,
     handleMouseMove,
+    handleMouseLeave,
   };
 }

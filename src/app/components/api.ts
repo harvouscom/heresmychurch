@@ -770,6 +770,10 @@ export interface PendingSuggestionItem {
   currentValue: string | null;
   votes: number;
   submissions: { value: string; count: number }[];
+  churchName?: string;
+  churchCity?: string;
+  churchState?: string;
+  churchShortId?: string;
 }
 
 export interface PendingChurchItem {
@@ -787,20 +791,34 @@ export interface PendingChurchItem {
   submittedAt: number;
 }
 
+export interface InReviewSuggestionItem {
+  churchId: string;
+  field: string;
+  byMe?: boolean;
+}
+
+export interface InReviewChurchItem {
+  churchId: string;
+  byMe?: boolean;
+}
+
 export interface ModeratorPendingResponse {
   pendingSuggestions: PendingSuggestionItem[];
   pendingChurches: PendingChurchItem[];
+  inReviewSuggestions?: InReviewSuggestionItem[];
+  inReviewChurches?: InReviewChurchItem[];
   error?: string;
 }
 
 export async function fetchModeratorPending(
   moderatorKey: string
 ): Promise<ModeratorPendingResponse> {
-  const res = await fetchWithTimeout(
+  const res = await fetchWithRetry(
     `${BASE_URL}/moderate/pending?key=${encodeURIComponent(moderatorKey)}`,
-    { headers }
+    { headers, timeoutMs: 60000 },
+    2
   );
-  if (res.status === 401) throw new Error("Invalid moderator key");
+  if (res.status === 401) throw new Error("Invalid review key");
   if (!res.ok) throw new Error(`Failed to fetch pending: ${res.status}`);
   return res.json();
 }
@@ -814,7 +832,7 @@ export async function moderateApproveSuggestion(
     `${BASE_URL}/moderate/approve/suggestion?key=${encodeURIComponent(moderatorKey)}`,
     { method: "POST", headers, body: JSON.stringify({ churchId, field }) }
   );
-  if (res.status === 401) throw new Error("Invalid moderator key");
+  if (res.status === 401) throw new Error("Invalid review key");
   if (!res.ok) throw new Error(`Failed to approve: ${res.status}`);
   return res.json();
 }
@@ -828,7 +846,7 @@ export async function moderateRejectSuggestion(
     `${BASE_URL}/moderate/reject/suggestion?key=${encodeURIComponent(moderatorKey)}`,
     { method: "POST", headers, body: JSON.stringify({ churchId, field }) }
   );
-  if (res.status === 401) throw new Error("Invalid moderator key");
+  if (res.status === 401) throw new Error("Invalid review key");
   if (!res.ok) throw new Error(`Failed to reject: ${res.status}`);
   return res.json();
 }
@@ -841,7 +859,7 @@ export async function moderateApproveChurch(
     `${BASE_URL}/moderate/approve/church?key=${encodeURIComponent(moderatorKey)}`,
     { method: "POST", headers, body: JSON.stringify({ churchId }) }
   );
-  if (res.status === 401) throw new Error("Invalid moderator key");
+  if (res.status === 401) throw new Error("Invalid review key");
   if (!res.ok) throw new Error(`Failed to approve church: ${res.status}`);
   return res.json();
 }
@@ -854,7 +872,37 @@ export async function moderateRejectChurch(
     `${BASE_URL}/moderate/reject/church?key=${encodeURIComponent(moderatorKey)}`,
     { method: "POST", headers, body: JSON.stringify({ churchId }) }
   );
-  if (res.status === 401) throw new Error("Invalid moderator key");
+  if (res.status === 401) throw new Error("Invalid review key");
   if (!res.ok) throw new Error(`Failed to reject church: ${res.status}`);
+  return res.json();
+}
+
+export async function addToInReview(
+  moderatorKey: string,
+  type: "suggestion" | "church",
+  churchId: string,
+  field?: string
+): Promise<{ success: boolean }> {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/moderate/in-review/add?key=${encodeURIComponent(moderatorKey)}`,
+    { method: "POST", headers, body: JSON.stringify({ type, churchId, ...(type === "suggestion" && field != null ? { field } : {}) }) }
+  );
+  if (res.status === 401) throw new Error("Invalid review key");
+  if (!res.ok) throw new Error(`Failed to add to in-review: ${res.status}`);
+  return res.json();
+}
+
+export async function removeFromInReview(
+  moderatorKey: string,
+  type: "suggestion" | "church",
+  churchId: string,
+  field?: string
+): Promise<{ success: boolean }> {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/moderate/in-review/remove?key=${encodeURIComponent(moderatorKey)}`,
+    { method: "POST", headers, body: JSON.stringify({ type, churchId, ...(type === "suggestion" && field != null ? { field } : {}) }) }
+  );
+  if (res.status === 401) throw new Error("Invalid review key");
+  if (!res.ok) throw new Error(`Failed to remove from in-review: ${res.status}`);
   return res.json();
 }

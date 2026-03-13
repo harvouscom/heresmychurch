@@ -4,7 +4,7 @@ import {
   ArrowLeft,
   ChevronDown,
   Check,
-  ShieldCheck,
+  CheckCheck,
 } from "lucide-react";
 import type { Church } from "./church-data";
 import { churchNeedsReview } from "./church-data";
@@ -38,10 +38,14 @@ import { fetchNationalReviewStats, fetchModeratorPending } from "./api";
 import type { NationalReviewStatsResponse, ModeratorPendingResponse } from "./api";
 import { useIsMobile } from "./ui/use-mobile";
 import { PendingAlertsPill } from "./PendingAlertsPill";
+import { ThreeDotLoader } from "./ThreeDotLoader";
 import { AnnouncementsPill } from "./AnnouncementsPill";
-import { ModerationPill } from "./ModerationPill";
+import { ReviewPill } from "./ReviewPill";
 
-type ModerationPendingData = Pick<ModeratorPendingResponse, "pendingSuggestions" | "pendingChurches">;
+type ModerationPendingData = Pick<
+  ModeratorPendingResponse,
+  "pendingSuggestions" | "pendingChurches" | "inReviewSuggestions" | "inReviewChurches"
+>;
 import { reportIssueEnabled } from "../config/pendingAlerts";
 import { useReducer, useEffect, useMemo, useState } from "react";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
@@ -63,6 +67,7 @@ interface ChurchMapProps {
   openReviewModalFromQuery?: boolean;
   clearReviewQueryParam?: () => void;
   moderatorKey?: string | null;
+  onExitReviewView?: () => void;
   navigateToState: (abbrev: string) => void;
   navigateToStateWithReview: (abbrev: string) => void;
   navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => void;
@@ -76,6 +81,7 @@ export function ChurchMap({
   openReviewModalFromQuery = false,
   clearReviewQueryParam,
   moderatorKey,
+  onExitReviewView,
   navigateToState,
   navigateToStateWithReview,
   navigateToChurch,
@@ -148,6 +154,13 @@ export function ChurchMap({
     document.cookie = "hmc_seen_about=1; path=/; max-age=31536000; SameSite=Lax";
   };
 
+  // Pending suggestion field names for the selected church (so all visitors see "updates pending review")
+  const pendingFieldsForChurch = useMemo(() => {
+    if (!d.selectedChurch?.id || !d.statePendingSuggestions?.length) return [];
+    const p = d.statePendingSuggestions.find((x) => x.churchId === d.selectedChurch!.id);
+    return p ? Object.keys(p.fields) : [];
+  }, [d.selectedChurch?.id, d.statePendingSuggestions]);
+
   // Compute churches that need review (missing 2+ of address, service times, denomination)
   const incompleteChurches = useMemo(() => {
     return d.churches.filter(churchNeedsReview);
@@ -188,7 +201,7 @@ export function ChurchMap({
     }
   }, [local.showVerificationModal, d.focusedState]);
 
-  // Validate moderator key and load pending items
+  // Validate reviewer key and load pending items
   const refreshModeration = useMemo(() => {
     if (!moderatorKey) return () => {};
     return () => {
@@ -196,7 +209,16 @@ export function ChurchMap({
       fetchModeratorPending(moderatorKey)
         .then((data) => {
           localDispatch({ type: "SET", key: "moderationMode", value: true });
-          localDispatch({ type: "SET", key: "moderationPending", value: { pendingSuggestions: data.pendingSuggestions, pendingChurches: data.pendingChurches } });
+          localDispatch({
+            type: "SET",
+            key: "moderationPending",
+            value: {
+              pendingSuggestions: data.pendingSuggestions,
+              pendingChurches: data.pendingChurches,
+              inReviewSuggestions: data.inReviewSuggestions ?? [],
+              inReviewChurches: data.inReviewChurches ?? [],
+            },
+          });
           localDispatch({ type: "SET", key: "moderationError", value: null });
           localDispatch({ type: "SET", key: "moderationLoading", value: false });
         })
@@ -210,19 +232,28 @@ export function ChurchMap({
   useEffect(() => {
     if (moderatorKey) {
       refreshModeration();
-      // When moderator key is present, show login modal (replacing about)
+      // When reviewer key is present, show login modal (replacing about)
       if (!local.moderationMode) {
         localDispatch({ type: "SET", key: "showAbout", value: true });
       }
     }
   }, [moderatorKey]);
 
-  // Auto-dismiss login modal once moderation is validated
+  // Auto-dismiss login modal once review is validated
   useEffect(() => {
     if (local.moderationMode && local.showAbout && moderatorKey) {
       dismissAbout();
     }
   }, [local.moderationMode]);
+
+  // Exit review mode when key is removed from URL
+  useEffect(() => {
+    if (!moderatorKey) {
+      localDispatch({ type: "SET", key: "moderationMode", value: false });
+      localDispatch({ type: "SET", key: "moderationPending", value: null });
+      localDispatch({ type: "SET", key: "showModerationPanel", value: false });
+    }
+  }, [moderatorKey]);
 
   // Auto-open state review modal when navigating from national modal (?review=true)
   useEffect(() => {
@@ -267,6 +298,7 @@ export function ChurchMap({
       className={`relative size-full overflow-hidden flex ${d.selectedChurch ? 'flex-col md:flex-row' : ''}`}
       style={{ fontFamily: "'Livvic', sans-serif" }}
       onMouseMove={d.handleMouseMove}
+      onMouseLeave={d.handleMouseLeave}
     >
       {/* Map area — pure render, no hooks */}
       <MapArea
@@ -316,6 +348,7 @@ export function ChurchMap({
           localDispatch({ type: "SET", key: "showModerationPanel", value: open });
         }}
         onRefreshModeration={refreshModeration}
+        onExitReviewView={onExitReviewView}
         activePeople={activePeople}
         activeBots={activeBots}
         activeByState={displayActiveByState}
@@ -451,6 +484,8 @@ export function ChurchMap({
                 moderationPending={local.moderationPending}
                 moderatorKey={moderatorKey || ""}
                 onModerationAction={refreshModeration}
+                pendingFieldsForChurch={pendingFieldsForChurch}
+                onPendingSubmitted={d.refetchStatePendingSuggestions}
               />
             </div>
           </motion.div>
@@ -522,6 +557,7 @@ function MapArea({
   showModerationPanel,
   onModerationPanelChange,
   onRefreshModeration,
+  onExitReviewView,
   activePeople,
   activeBots,
   activeByState,
@@ -564,6 +600,7 @@ function MapArea({
   showModerationPanel: boolean;
   onModerationPanelChange: (open: boolean) => void;
   onRefreshModeration: () => void;
+  onExitReviewView?: () => void;
   activePeople: number;
   activeBots: number;
   activeByState: Record<string, number>;
@@ -573,10 +610,19 @@ function MapArea({
 }) {
   return (
     <div className="flex flex-1 flex-col relative" style={{ backgroundColor: "#F5F0E8" }}>
-      {/* Moderation banner — in-flow so it pushes content down */}
+      {/* Review banner — in-flow so it pushes content down */}
       {moderationMode && (
-        <div className="flex-shrink-0 bg-pink-100 text-pink-800 text-[11px] text-center py-1.5 px-4 backdrop-blur-sm font-medium tracking-wide">
-          You're currently in moderation view
+        <div className="flex-shrink-0 bg-pink-100 text-pink-800 text-[11px] py-1.5 px-4 backdrop-blur-sm font-medium tracking-wide flex items-center justify-center gap-3">
+          <span>You're currently in review view</span>
+          {onExitReviewView && (
+            <button
+              type="button"
+              onClick={onExitReviewView}
+              className="shrink-0 px-2 py-0.5 rounded border border-pink-300/80 bg-pink-50 hover:bg-pink-200/80 text-pink-800 text-[10px] font-medium transition-colors"
+            >
+              Exit review view
+            </button>
+          )}
         </div>
       )}
 
@@ -587,13 +633,27 @@ function MapArea({
         <div className="flex flex-col items-center justify-center min-w-0 overflow-hidden max-w-full pointer-events-auto" ref={d.summaryRef}>
           {moderationMode ? (
             <>
-              <ModerationPill
+              <ReviewPill
                 open={showModerationPanel}
                 onOpenChange={onModerationPanelChange}
                 moderatorKey={moderatorKey}
-                pending={moderationPending ?? { pendingSuggestions: [], pendingChurches: [] }}
+                pending={moderationPending ?? { pendingSuggestions: [], pendingChurches: [], inReviewSuggestions: [], inReviewChurches: [] }}
                 onRefresh={onRefreshModeration}
                 alwaysShow
+                states={d.states}
+                onOpenChurch={(churchId, churchShortId, churchState) => {
+                  const stateAbbrev =
+                    churchState ||
+                    (churchId.startsWith("community-")
+                      ? churchId.split("-")[1]
+                      : churchId.split("-")[0]) ||
+                    "";
+                  const segment =
+                    churchShortId && stateAbbrev
+                      ? churchShortId
+                      : getChurchUrlSegment({ id: churchId, shortId: churchShortId }, stateAbbrev);
+                  if (stateAbbrev && segment) navigateToChurch(stateAbbrev, segment);
+                }}
               />
             </>
           ) : (
@@ -619,7 +679,7 @@ function MapArea({
                 }}
               />
 
-              {/* Pending errors + announcements — below header pill (not in moderation view) */}
+              {/* Pending errors + announcements — below header pill (not in review view) */}
               {!d.showSummary && (
                 <div className="mt-1.5 flex flex-wrap items-center justify-center gap-2">
                   <PendingAlertsPill
@@ -669,9 +729,9 @@ function MapArea({
       </div>
       )}
 
-      {/* About Modal / Moderator Login */}
+      {/* About Modal / Reviewer Login */}
       {showAbout && (moderatorKey && !moderationMode ? (
-        <ModeratorLoginModal loading={moderationLoading} error={moderationError} onClose={onDismissAbout} />
+        <ReviewerLoginModal loading={moderationLoading} error={moderationError} onClose={onDismissAbout} />
       ) : showAbout ? (
         <AboutModal onClose={onDismissAbout} />
       ) : null)}
@@ -1000,35 +1060,8 @@ function HeaderPill({
   );
 }
 
-// --- Three-dot triangle loading animation ---
-function ThreeDotLoader() {
-  return (
-    <span
-      className="inline-flex items-center"
-      style={{ width: 10, height: 10, position: "relative", animation: "triangleSpin 1.5s linear infinite" }}
-    >
-      {/* Top dot */}
-      <span
-        className="absolute w-[3px] h-[3px] rounded-full bg-pink-300"
-        style={{ top: 0, left: "50%", transform: "translateX(-50%)", animation: "dotPulse 1.2s ease-in-out infinite", animationDelay: "0s" }}
-      />
-      {/* Bottom-left dot */}
-      <span
-        className="absolute w-[3px] h-[3px] rounded-full bg-pink-300"
-        style={{ bottom: 0, left: 0, animation: "dotPulse 1.2s ease-in-out infinite", animationDelay: "0.2s" }}
-      />
-      {/* Bottom-right dot */}
-      <span
-        className="absolute w-[3px] h-[3px] rounded-full bg-pink-300"
-        style={{ bottom: 0, right: 0, animation: "dotPulse 1.2s ease-in-out infinite", animationDelay: "0.4s" }}
-      />
-      <style>{`@keyframes dotPulse { 0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1.2); } } @keyframes triangleSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-    </span>
-  );
-}
-
-// --- Moderator Login Modal ---
-function ModeratorLoginModal({ loading, error, onClose }: { loading: boolean; error: string | null; onClose: () => void }) {
+// --- Reviewer Login Modal ---
+function ReviewerLoginModal({ loading, error, onClose }: { loading: boolean; error: string | null; onClose: () => void }) {
   return (
     <div
       className="absolute inset-0 z-50 flex items-center justify-center p-4"
@@ -1036,20 +1069,30 @@ function ModeratorLoginModal({ loading, error, onClose }: { loading: boolean; er
     >
       <div className="absolute inset-0 backdrop-blur-sm" />
       <div
-        className="relative w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden p-6 flex flex-col items-center text-center"
-        style={{ backgroundColor: "#1E1040" }}
+        className="relative w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden p-6 flex flex-col items-center text-center transition-transform duration-300 ease-out"
+        style={{
+          backgroundColor: "#1E1040",
+          boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), inset 0 -1px 0 0 rgba(0, 0, 0, 0.2)",
+          ...(loading
+            ? { animation: "reviewerCardTilt 3s cubic-bezier(0.37, 0, 0.63, 1) infinite" }
+            : { transform: "none" }),
+        }}
         onClick={(e) => e.stopPropagation()}
       >
+        <style>{`@keyframes reviewerCardTilt {
+          0%, 100% { transform: perspective(800px) rotateX(3deg) rotateY(-3deg); }
+          50% { transform: perspective(800px) rotateX(-2deg) rotateY(3deg); }
+        }`}</style>
         <div className="w-16 h-16 rounded-xl overflow-hidden mb-3">
           <img src={logoImg} alt="Here's My Church" className="w-full h-full object-cover" />
         </div>
         <div className="flex items-center justify-center gap-2 mb-4">
-          <ShieldCheck size={20} className="text-purple-400" />
-          <h2 className="text-white text-lg font-semibold">Moderator Access</h2>
+          <CheckCheck size={20} className="text-purple-400" />
+          <h2 className="text-white text-lg font-semibold">Reviewer Access</h2>
         </div>
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-4">
-            <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+            <ThreeDotLoader size={16} className="bg-purple-400" />
             <span className="text-white/60 text-sm">Validating key...</span>
           </div>
         ) : error ? (
@@ -1064,7 +1107,7 @@ function ModeratorLoginModal({ loading, error, onClose }: { loading: boolean; er
           </div>
         ) : (
           <div className="flex items-center justify-center gap-2 py-4">
-            <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+            <ThreeDotLoader size={16} className="bg-purple-400" />
             <span className="text-white/60 text-sm">Connecting...</span>
           </div>
         )}

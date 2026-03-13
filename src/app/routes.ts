@@ -6,7 +6,7 @@ import { RouteError } from "./components/RouteError";
 // /                            → National overview
 // /state/:stateAbbrev          → State view (zoomed into a state with churches)
 // /state/:stateAbbrev/:segment1/:segment2? → segment1=8-digit shortId (new) or "church" + segment2=legacy churchId
-// Moderation mode: add ?key=SECRET to any route
+// Review mode: add ?key=SECRET to any route
 export const router = createBrowserRouter([
   { path: "/", Component: ChurchMapPage, ErrorBoundary: RouteError },
   { path: "/state/:stateAbbrev", Component: ChurchMapPage, ErrorBoundary: RouteError },

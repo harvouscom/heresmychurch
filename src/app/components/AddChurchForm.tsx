@@ -8,7 +8,6 @@ import {
   MapPin,
   Church as ChurchIcon,
   AlertCircle,
-  Loader2,
   Clock,
   Phone,
   Mail,
@@ -17,6 +16,7 @@ import {
   Heart,
   ChevronDown,
 } from "lucide-react";
+import { ThreeDotLoader } from "./ThreeDotLoader";
 import type { Church } from "./church-data";
 import { DENOMINATION_GROUPS, COMMON_LANGUAGES, COMMON_MINISTRIES } from "./church-data";
 import { addChurch } from "./api";
@@ -430,7 +430,7 @@ export function AddChurchForm({
                   className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-purple-500/20 text-purple-200 text-xs font-medium hover:bg-purple-500/30 transition-colors disabled:opacity-50"
                 >
                   {submitting ? (
-                    <Loader2 size={12} className="animate-spin" />
+                    <ThreeDotLoader size={12} />
                   ) : (
                     <Plus size={12} />
                   )}
@@ -705,7 +705,7 @@ export function AddChurchForm({
               >
                 {submitting ? (
                   <>
-                    <Loader2 size={16} className="animate-spin" />
+                    <ThreeDotLoader size={16} />
                     Submitting...
                   </>
                 ) : (

@@ -839,6 +839,10 @@ const SENSITIVE_FIELDS=["name","website","address"];
 const MODERATOR_KEY=Deno.env.get("MODERATOR_KEY")||"";
 function cip(c:any):string{return c.req.header("x-forwarded-for")?.split(",")[0]?.trim()||c.req.header("x-real-ip")||"unknown";}
 function checkModKey(c:any):boolean{const k=new URL(c.req.url).searchParams.get("key")||c.req.header("x-moderator-key")||"";return!!MODERATOR_KEY&&k===MODERATOR_KEY;}
+function getModKey(c:any):string{return new URL(c.req.url).searchParams.get("key")||c.req.header("x-moderator-key")||"";}
+function inReviewKVKey(modKey:string):string{let h=0;for(let i=0;i<modKey.length;i++)h=((h<<5)-h+modKey.charCodeAt(i))|0;return`moderate:in-review:${Math.abs(h).toString(36)}`;}
+function modKeyHash(modKey:string):string{let h=0;for(let i=0;i<modKey.length;i++)h=((h<<5)-h+modKey.charCodeAt(i))|0;return Math.abs(h).toString(36);}
+const IN_REVIEW_GLOBAL_KEY="moderate:in-review:global";
 function normalizePhone(s:string):string{
   const digits=(s??"").replace(/\D/g,"");
   if(digits.length===11&&digits[0]==="1")return digits.slice(1);
@@ -1240,11 +1244,33 @@ app.get(`${P}/community/history/:churchId`,async(c)=>{
 });
 
 // ── Moderator endpoints ──
+const US_STATES_LIST=["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"];
 const moderatePendingHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     const pendingSuggestions:any[]=[];
     const allSuggestions=await kv.getByPrefix("suggestions:");
+    const statesNeeded=new Set<string>();
+    if(Array.isArray(allSuggestions)){
+      for(const entry of allSuggestions){
+        if(!entry||!Array.isArray(entry.submissions)||!entry.churchId)continue;
+        const con=consensus(entry.submissions);
+        for(const f of SENSITIVE_FIELDS){
+          const d=con[f] as any;
+          if(d&&d.votes>0&&d.value!==null){
+            const parts=entry.churchId.split("-");const st=parts[0]==="community"?parts[1]:parts[0];
+            if(st&&st.length===2)statesNeeded.add(st);
+          }
+        }
+      }
+    }
+    const churchKeys=[...statesNeeded].map(st=>`churches:${st}`);
+    const churchValues=churchKeys.length?await kv.mget(churchKeys):[];
+    const churchesByState=new Map<string,any[]>();
+    for(let i=0;i<churchKeys.length;i++){
+      const st=churchKeys[i].replace("churches:","");
+      if(Array.isArray(churchValues[i]))churchesByState.set(st,churchValues[i]);
+    }
     if(Array.isArray(allSuggestions)){
       for(const entry of allSuggestions){
         if(!entry||!Array.isArray(entry.submissions)||!entry.churchId)continue;
@@ -1254,27 +1280,62 @@ const moderatePendingHandler=async(c:any)=>{
           if(d&&d.votes>0&&d.value!==null){
             const parts=entry.churchId.split("-");const st=parts[0]==="community"?parts[1]:parts[0];
             let currentValue:string|null=null;
+            let ch:any=null;
             if(st&&st.length===2){
-              const churches=await kv.get(`churches:${st}`);
-              if(Array.isArray(churches)){const ch=churches.find((x:any)=>x.id===entry.churchId);if(ch)currentValue=f==="address"?[ch.address,ch.city,ch.state].filter(Boolean).join(", "):String(ch[f]||"");}
+              const churches=churchesByState.get(st);
+              if(Array.isArray(churches)){ch=churches.find((x:any)=>x.id===entry.churchId);if(ch)currentValue=f==="address"?[ch.address,ch.city,ch.state].filter(Boolean).join(", "):String(ch[f]||"");}
             }
-            pendingSuggestions.push({churchId:entry.churchId,field:f,proposedValue:d.value,currentValue,votes:d.votes,submissions:d.submissions||[]});
+            pendingSuggestions.push({churchId:entry.churchId,field:f,proposedValue:d.value,currentValue,churchName:ch?.name,churchCity:ch?.city,churchState:ch?.state,churchShortId:ch?.shortId,votes:d.votes,submissions:d.submissions||[]});
           }
         }
       }
     }
+    const pendingKeys=US_STATES_LIST.map(st=>`pending-churches:${st}`);
+    const pendingValues=await kv.mget(pendingKeys);
     const pendingChurches:any[]=[];
-    const states=["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"];
-    for(const st of states){
-      const store=await kv.get(`pending-churches:${st}`);
+    for(let i=0;i<pendingKeys.length;i++){
+      const store=pendingValues[i];
+      const st=US_STATES_LIST[i];
       if(!store||!Array.isArray(store.churches))continue;
       for(const ch of store.churches){if(!ch.approved)pendingChurches.push({...ch,state:st});}
     }
-    return c.json({pendingSuggestions,pendingChurches});
+    const modKey=getModKey(c);
+    const globalRaw=await kv.get(IN_REVIEW_GLOBAL_KEY);
+    const globalSugs=Array.isArray(globalRaw?.suggestions)?globalRaw.suggestions:[];
+    const globalChs=Array.isArray(globalRaw?.churches)?globalRaw.churches:[];
+    const myHash=modKey?modKeyHash(modKey):"";
+    const inReviewSuggestions=globalSugs.map((s:any)=>({churchId:s.churchId,field:s.field,byMe:s.modKeyHash===myHash}));
+    const inReviewChurches=globalChs.map((c:any)=>({churchId:c.churchId,byMe:c.modKeyHash===myHash}));
+    return c.json({pendingSuggestions,pendingChurches,inReviewSuggestions,inReviewChurches});
   }catch(e){return c.json({error:`${e}`},500);}
 };
 app.get(`${P}/moderate/pending`,moderatePendingHandler);
 app.get("/moderate/pending",moderatePendingHandler);
+
+async function removeFromInReviewKV(modKey:string,type:string,churchId:string,field?:string):Promise<void>{
+  const key=inReviewKVKey(modKey);
+  const raw=await kv.get(key)||{suggestions:[],churches:[]};
+  const suggestions=Array.isArray(raw.suggestions)?raw.suggestions:[];
+  const churches=Array.isArray(raw.churches)?raw.churches:[];
+  const mh=modKeyHash(modKey);
+  if(type==="suggestion"&&field!==undefined){
+    const next=suggestions.filter((s:any)=>!(s.churchId===churchId&&s.field===field));
+    if(next.length!==suggestions.length)await kv.set(key,{suggestions:next,churches});
+  }else if(type==="church"){
+    const next=churches.filter((id:string)=>id!==churchId);
+    if(next.length!==churches.length)await kv.set(key,{suggestions,churches:next});
+  }
+  const gRaw=(await kv.get(IN_REVIEW_GLOBAL_KEY))||{suggestions:[],churches:[]};
+  const gSugs=Array.isArray(gRaw.suggestions)?gRaw.suggestions:[];
+  const gChs=Array.isArray(gRaw.churches)?gRaw.churches:[];
+  if(type==="suggestion"&&field!==undefined){
+    const next=gSugs.filter((s:any)=>!(s.churchId===churchId&&s.field===field&&s.modKeyHash===mh));
+    if(next.length!==gSugs.length)await kv.set(IN_REVIEW_GLOBAL_KEY,{suggestions:next,churches:gChs});
+  }else if(type==="church"){
+    const next=gChs.filter((c:any)=>!(c.churchId===churchId&&c.modKeyHash===mh));
+    if(next.length!==gChs.length)await kv.set(IN_REVIEW_GLOBAL_KEY,{suggestions:gSugs,churches:next});
+  }
+}
 
 const moderateApproveSuggestionHandler=async(c:any)=>{
   try{
@@ -1291,6 +1352,7 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
     const applied=await applyApprovedCorrections(churchId,singleCon);
     ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
     await kv.set(k,ex);
+    const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);
     return c.json({success:true,applied,churchId,field,value:d.value});
   }catch(e){return c.json({error:`${e}`},500);}
 };
@@ -1306,6 +1368,7 @@ const moderateRejectSuggestionHandler=async(c:any)=>{
     if(!ex||!Array.isArray(ex.submissions))return c.json({error:"No suggestions found"},404);
     ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
     await kv.set(k,ex);
+    const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);
     return c.json({success:true,churchId,field,rejected:true});
   }catch(e){return c.json({error:`${e}`},500);}
 };
@@ -1331,6 +1394,7 @@ const moderateApproveChurchHandler=async(c:any)=>{
         await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);
       }
     }
+    const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"church",churchId);
     return c.json({success:true,churchId,approved:true});
   }catch(e){return c.json({error:`${e}`},500);}
 };
@@ -1347,10 +1411,63 @@ const moderateRejectChurchHandler=async(c:any)=>{
     if(!store||!Array.isArray(store.churches))return c.json({error:"Not found"},404);
     store.churches=store.churches.filter((x:any)=>x.id!==churchId);
     await kv.set(k,store);
+    const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"church",churchId);
     return c.json({success:true,churchId,rejected:true});
   }catch(e){return c.json({error:`${e}`},500);}
 };
 app.post(`${P}/moderate/reject/church`,moderateRejectChurchHandler);
+
+const moderateInReviewAddHandler=async(c:any)=>{
+  try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    const modKey=getModKey(c);if(!modKey)return c.json({error:"Unauthorized"},401);
+    const body=await c.req.json().catch(()=>({}));
+    const{type,churchId,field}=body;
+    if(!type||!churchId)return c.json({error:"Missing type or churchId"},400);
+    if(type!=="suggestion"&&type!=="church")return c.json({error:"Invalid type"},400);
+    if(type==="suggestion"&&field===undefined)return c.json({error:"Missing field for suggestion"},400);
+    const key=inReviewKVKey(modKey);
+    const raw=(await kv.get(key))||{suggestions:[],churches:[]};
+    const suggestions=Array.isArray(raw.suggestions)?[...raw.suggestions]:[];
+    const churches=Array.isArray(raw.churches)?[...raw.churches]:[];
+    const mh=modKeyHash(modKey);
+    if(type==="suggestion"){
+      const exists=suggestions.some((s:any)=>s.churchId===churchId&&s.field===field);
+      if(!exists)suggestions.push({churchId,field});
+    }else{
+      if(!churches.includes(churchId))churches.push(churchId);
+    }
+    await kv.set(key,{suggestions,churches});
+    const gRaw=(await kv.get(IN_REVIEW_GLOBAL_KEY))||{suggestions:[],churches:[]};
+    const gSugs=Array.isArray(gRaw.suggestions)?[...gRaw.suggestions]:[];
+    const gChs=Array.isArray(gRaw.churches)?[...gRaw.churches]:[];
+    if(type==="suggestion"){
+      if(!gSugs.some((s:any)=>s.churchId===churchId&&s.field===field))gSugs.push({churchId,field,modKeyHash:mh});
+    }else{
+      if(!gChs.some((c:any)=>c.churchId===churchId))gChs.push({churchId,modKeyHash:mh});
+    }
+    await kv.set(IN_REVIEW_GLOBAL_KEY,{suggestions:gSugs,churches:gChs});
+    return c.json({success:true});
+  }catch(e){return c.json({error:`${e}`},500);}
+};
+
+const moderateInReviewRemoveHandler=async(c:any)=>{
+  try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    const modKey=getModKey(c);if(!modKey)return c.json({error:"Unauthorized"},401);
+    const body=await c.req.json().catch(()=>({}));
+    const{type,churchId,field}=body;
+    if(!type||!churchId)return c.json({error:"Missing type or churchId"},400);
+    if(type==="suggestion"&&field===undefined)return c.json({error:"Missing field for suggestion"},400);
+    await removeFromInReviewKV(modKey,type,churchId,field);
+    return c.json({success:true});
+  }catch(e){return c.json({error:`${e}`},500);}
+};
+
+app.post(`${P}/moderate/in-review/add`,moderateInReviewAddHandler);
+app.post("/moderate/in-review/add",moderateInReviewAddHandler);
+app.post(`${P}/moderate/in-review/remove`,moderateInReviewRemoveHandler);
+app.post("/moderate/in-review/remove",moderateInReviewRemoveHandler);
 app.post("/moderate/reject/church",moderateRejectChurchHandler);
 
 // ── Church reactions (Netflix-style thumbs) ──

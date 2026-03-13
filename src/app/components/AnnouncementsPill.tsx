@@ -80,7 +80,21 @@ export function AnnouncementsPill({
                         {ann.title}
                       </p>
                       <p className="text-white/80 text-[13px] leading-relaxed">
-                        {ann.body}
+                        {typeof ann.body === "string" && ann.body.includes("hey@heresmychurch.com")
+                          ? ann.body.split("hey@heresmychurch.com").map((part, i, arr) => (
+                              <span key={i}>
+                                {part}
+                                {i < arr.length - 1 && (
+                                  <a
+                                    href="mailto:hey@heresmychurch.com"
+                                    className="text-purple-300 hover:text-purple-200 underline"
+                                  >
+                                    hey@heresmychurch.com
+                                  </a>
+                                )}
+                              </span>
+                            ))
+                          : ann.body}
                       </p>
                       {ann.date && (
                         <p className="text-purple-300/90 text-[11px]">

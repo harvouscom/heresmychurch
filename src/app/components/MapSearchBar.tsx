@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { Search, ChevronRight, Loader2, MapPin, ChevronDown, Plus } from "lucide-react";
+import { Search, ChevronRight, MapPin, ChevronDown, Plus } from "lucide-react";
+import { ThreeDotLoader } from "./ThreeDotLoader";
 import { geoAlbersUsa } from "d3-geo";
 import type { Church, StateInfo } from "./church-data";
 import { getFallbackLocation, formatAddressWithCity } from "./church-data";
@@ -476,7 +477,7 @@ export function MapSearchBar({
             <>
               {remoteLoading && !remoteSearched ? (
                 <div className="px-4 py-3 flex items-center justify-center gap-2">
-                  <Loader2 size={14} className="text-purple-400 animate-spin" />
+                  <ThreeDotLoader size={14} className="bg-purple-400" />
                   <span className="text-xs text-white/40">Searching…</span>
                 </div>
               ) : remoteSearched && remoteResults.length === 0 ? (
@@ -532,7 +533,7 @@ export function MapSearchBar({
                   )}
                   {remoteLoading && (
                     <div className="px-4 py-1.5 flex items-center justify-center border-t border-white/5">
-                      <Loader2 size={12} className="text-purple-400/50 animate-spin" />
+                      <ThreeDotLoader size={12} className="bg-purple-400/50" />
                     </div>
                   )}
                   {hasPopulated && (onAddChurch || (stateFilter && onAddChurchForState)) && (

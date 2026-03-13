@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useRef, useReducer } from "react";
+import { useMemo, useEffect, useRef, useReducer, useState } from "react";
 import { geoContains } from "d3-geo";
 import { feature } from "topojson-client";
 import type { Church, StateInfo } from "./church-data";
@@ -7,7 +7,9 @@ import {
   fetchChurches,
   populateState,
   fetchStatePopulations,
+  fetchPendingSuggestions,
 } from "./api";
+import type { PendingSuggestion } from "./api";
 import {
   GEO_URL,
   COUNTIES_GEO_URL,
@@ -71,6 +73,9 @@ export function useChurchMapData({
   // ── Core data + map-view state (consolidated reducer — absorbs old useMapView) ──
   const [ds, dd] = useReducer(dataReducer, initialDataState);
 
+  // Pending suggestions for current state (so visitors see "updates pending review")
+  const [statePendingSuggestions, setStatePendingSuggestions] = useState<PendingSuggestion[]>([]);
+
   // Convenience aliases
   const {
     states, totalChurches, focusedState, focusedStateName, churches,
@@ -97,6 +102,32 @@ export function useChurchMapData({
 
   // ── Sub-hook: loading overlay ──
   const overlay = useLoadingOverlay(loading, populating);
+
+  const refetchStatePendingSuggestions = useMemo(() => {
+    return () => {
+      if (!focusedState) return;
+      fetchPendingSuggestions(focusedState)
+        .then((res) => res.pending && setStatePendingSuggestions(res.pending))
+        .catch(() => setStatePendingSuggestions([]));
+    };
+  }, [focusedState]);
+
+  // Fetch pending suggestions for current state so all visitors see "updates pending review"
+  useEffect(() => {
+    if (!focusedState) {
+      setStatePendingSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    fetchPendingSuggestions(focusedState)
+      .then((res) => {
+        if (!cancelled && res.pending) setStatePendingSuggestions(res.pending);
+      })
+      .catch(() => {
+        if (!cancelled) setStatePendingSuggestions([]);
+      });
+    return () => { cancelled = true; };
+  }, [focusedState]);
 
   // ── Sub-hook: UI state (filters, tooltips, modals) ──
   const ui = useUIState(focusedState);
@@ -1052,8 +1083,11 @@ export function useChurchMapData({
     handleZoomIn,
     handleZoomOut,
     handleMouseMove: ui.handleMouseMove,
+    handleMouseLeave: ui.handleMouseLeave,
     handleChurchDotClick,
     onViewChurch,
+    statePendingSuggestions,
+    refetchStatePendingSuggestions,
   };
 }
 
