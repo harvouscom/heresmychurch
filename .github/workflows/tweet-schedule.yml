@@ -2,12 +2,34 @@ name: Scheduled Tweets
 
 on:
   schedule:
-    # 5x/day: 8am, 10:30am, 1pm, 3:30pm, 6pm Central (UTC-5 CDT)
+    # 3 windows/day; cron runs every 15 min in each window; server posts once at a random slot per window (UTC)
+    # Morning 12:00-13:45
+    - cron: '0 12 * * *'
+    - cron: '15 12 * * *'
+    - cron: '30 12 * * *'
+    - cron: '45 12 * * *'
     - cron: '0 13 * * *'
-    - cron: '30 15 * * *'
+    - cron: '15 13 * * *'
+    - cron: '30 13 * * *'
+    - cron: '45 13 * * *'
+    # Afternoon 17:00-18:45
+    - cron: '0 17 * * *'
+    - cron: '15 17 * * *'
+    - cron: '30 17 * * *'
+    - cron: '45 17 * * *'
     - cron: '0 18 * * *'
-    - cron: '30 20 * * *'
+    - cron: '15 18 * * *'
+    - cron: '30 18 * * *'
+    - cron: '45 18 * * *'
+    # Evening 22:00-23:45
+    - cron: '0 22 * * *'
+    - cron: '15 22 * * *'
+    - cron: '30 22 * * *'
+    - cron: '45 22 * * *'
     - cron: '0 23 * * *'
+    - cron: '15 23 * * *'
+    - cron: '30 23 * * *'
+    - cron: '45 23 * * *'
   workflow_dispatch: {}
 
 jobs:

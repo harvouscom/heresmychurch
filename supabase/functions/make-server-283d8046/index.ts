@@ -851,6 +851,8 @@ app.post(`${P}/admin/remove-churches-by-name`,async(c)=>{
 // ── Community routes ──
 const THR=1;
 const ALERT_THR=3;
+const ADD_CHURCH_RATE_LIMIT=5;
+const ADD_CHURCH_WINDOW_MS=15*60*1000;
 const SENSITIVE_FIELDS=["name","website","address"];
 const MODERATOR_KEY=Deno.env.get("MODERATOR_KEY")||"";
 function cip(c:any):string{return c.req.header("x-forwarded-for")?.split(",")[0]?.trim()||c.req.header("x-real-ip")||"unknown";}
@@ -1173,6 +1175,12 @@ app.post("/alerts/proposals/resolve",alertsProposalsResolveHandler);
 app.post(`${P}/churches/add`,async(c)=>{
   try{
     const ip=cip(c);const b=await c.req.json();
+    const rlKey=`ratelimit:add-church:${ip}`;
+    const raw=await kv.get(rlKey);
+    const now=Date.now();
+    const data=(!raw||(now-(raw.windowStart||0))>ADD_CHURCH_WINDOW_MS)?{count:1,windowStart:now}:{count:(raw.count||0)+1,windowStart:raw.windowStart||now};
+    if(data.count>ADD_CHURCH_RATE_LIMIT)return c.json({error:"Too many church submissions. Please try again later."},429);
+    await kv.set(rlKey,data);
     const{name,address:addr,city:ci,state,lat,lng,denomination,attendance,website,serviceTimes,languages,ministries,pastorName,phone,email}=b;
     if(!name||typeof name!=="string"||name.trim().length<2)return c.json({error:"Name required"},400);
     const st=String(state).toUpperCase();if(!gS(st))return c.json({error:"Invalid state"},400);
@@ -1193,7 +1201,7 @@ app.post(`${P}/churches/add`,async(c)=>{
     const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:normalizePhone(phone||"")||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
     store.churches.push(nc);await kv.set(k,store);
     const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,state:st,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
-    if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);await invalidateReviewStatsCache();}
+    if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);await invalidateReviewStatsCache();await queueChurch(churchForMain);}
     return c.json({success:true,church:nc});
   }catch(e){return c.json({error:`${e}`},500);}
 });
@@ -1585,7 +1593,7 @@ app.get(`${P}/churches/reactions/bulk`, async (c) => {
 
 // ── Twitter / X automated posting v2 ──
 const TWITTER_URL="https://api.twitter.com/2/tweets";
-const DAILY_TWEET_CAP=5;
+const DAILY_TWEET_CAP=3;
 const NATIONAL_MILESTONES=[500,1000,2500,5000,10000,25000,50000];
 const STATE_MILESTONES=[100,250,500,1000,2500];
 const COMMUNITY_MILESTONES=[100,500,1000,2500,5000];
@@ -1673,15 +1681,35 @@ function churchTweet(ch:any):string{
   return pickTemplate(templates,ch.id||name)(name,city,st,url).slice(0,280);
 }
 
-function deployTweet(msg:string):string{
-  const templates=[
-    (m:string)=>`Here's what's new: ${m}`,
-    (m:string)=>`Here's a fresh update: ${m}`,
-    (m:string)=>`Here's the latest: ${m}`,
-    (m:string)=>`Here's an improvement we just made: ${m}`,
-  ];
-  const clean=msg.replace(/\n/g," ").slice(0,220);
-  return pickTemplate(templates,clean)(clean).slice(0,280);
+const MAX_DEPLOY_TWEET_LEN = 89;
+
+/** Turn commit message into one specific, layman tweet about the actual improvement. Not random. */
+function deployTweet(msg?: string): string {
+  const raw = (msg || "").replace(/\n/g, " ").trim();
+  if (!raw) return "We shipped a small update to the map.".slice(0, MAX_DEPLOY_TWEET_LEN);
+
+  // Explicit tweet text: use "tweet: Your exact phrase" in the commit message
+  const tweetMatch = raw.match(/\btweet:\s*(.+)/i);
+  if (tweetMatch) {
+    const exact = tweetMatch[1].replace(/\n/g, " ").trim();
+    if (exact.length >= 15) return exact.slice(0, MAX_DEPLOY_TWEET_LEN);
+  }
+
+  // Humanize conventional commit into one sentence (feat/fix → We added / We fixed)
+  const noPrefix = raw.replace(/^(feat|fix|chore|refactor|docs|style)(\([^)]*\))?:\s*/i, "").trim();
+  const rest = noPrefix.slice(0, 80);
+  if (!rest) return "We shipped a small update to the map.".slice(0, MAX_DEPLOY_TWEET_LEN);
+
+  const lead = rest.charAt(0).toLowerCase() + rest.slice(1);
+  let out: string;
+  if (/^feat/i.test(raw)) out = "We added " + lead;
+  else if (/^fix/i.test(raw)) out = "We fixed " + lead;
+  else if (/^chore|^docs|^style/i.test(raw)) out = "We updated " + lead;
+  else out = "We updated " + lead;
+
+  out = out.replace(/^(We added) add /i, "$1 ").replace(/^(We fixed) fix(ed)? /i, "$1 ").replace(/^(We updated) update(d)? /i, "$1 ");
+  if (!out.endsWith(".") && !out.endsWith("!")) out += ".";
+  return out.slice(0, MAX_DEPLOY_TWEET_LEN);
 }
 
 function nationalMilestoneTweet(count:number,next:number):string{
@@ -2004,12 +2032,40 @@ async function runScheduledPost():Promise<{posted:boolean;type?:string;text?:str
   }catch(e){return{posted:false,error:`${e}`};}
 }
 
+// Random slot per window: morning 12–14 UTC, afternoon 17–19 UTC, evening 22–24 UTC (8 x 15min slots each)
+function getWindowAndSlot(now:Date):{window:string;slot:number;dateKey:string}|null{
+  const h=now.getUTCHours(),m=now.getUTCMinutes();
+  const dateKey=now.toISOString().slice(0,10);
+  if(h>=12&&h<=13){const slot=(h-12)*4+Math.floor(m/15);return{window:"morning",slot,dateKey};}
+  if(h>=17&&h<=18){const slot=(h-17)*4+Math.floor(m/15);return{window:"afternoon",slot,dateKey};}
+  if(h>=22&&h<=23){const slot=(h-22)*4+Math.floor(m/15);return{window:"evening",slot,dateKey};}
+  return null;
+}
+function chosenSlotForWindow(dateKey:string,window:string):number{
+  return Math.abs(hashCode(`${dateKey}-${window}`))%8;
+}
+
 // Twitter scheduled endpoint (called by GitHub Actions cron)
 app.post(`${P}/twitter/scheduled`,async(c)=>{
   try{
     const body=await c.req.json().catch(()=>({}));
     const secret=Deno.env.get("TWITTER_WEBHOOK_SECRET")||"";
     if(!secret||body.secret!==secret)return c.json({error:"Unauthorized"},401);
+    const force=body.force===true;
+    if(!force){
+      const now=new Date();
+      const ws=getWindowAndSlot(now);
+      if(ws){
+        const key=`twitter:window-posted:${ws.dateKey}:${ws.window}`;
+        const alreadyPosted=await kv.get(key);
+        if(alreadyPosted)return c.json({posted:false,skipped:"already posted this window"});
+        const chosen=chosenSlotForWindow(ws.dateKey,ws.window);
+        if(ws.slot!==chosen)return c.json({posted:false,skipped:"not this slot",slot:ws.slot,chosen});
+        const result=await runScheduledPost();
+        if(result.posted)await kv.set(key,true);
+        return c.json(result);
+      }
+    }
     const result=await runScheduledPost();
     return c.json(result);
   }catch(e){return c.json({error:`${e}`},500);}

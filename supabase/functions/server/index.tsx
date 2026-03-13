@@ -744,6 +744,8 @@ app.post(`${P}/admin/remove-churches-by-name`,async(c)=>{
 
 // ── Community routes ──
 const THR=1;
+const ADD_CHURCH_RATE_LIMIT=5;
+const ADD_CHURCH_WINDOW_MS=15*60*1000;
 function cip(c:any):string{return c.req.header("x-forwarded-for")?.split(",")[0]?.trim()||c.req.header("x-real-ip")||"unknown";}
 function normalizePhone(s:string):string{
   const digits=(s??"").replace(/\D/g,"");
@@ -941,6 +943,12 @@ app.get(`${P}/suggestions/:churchId`,async(c)=>{
 app.post(`${P}/churches/add`,async(c)=>{
   try{
     const ip=cip(c);const b=await c.req.json();
+    const rlKey=`ratelimit:add-church:${ip}`;
+    const raw=await kv.get(rlKey);
+    const now=Date.now();
+    const data=(!raw||(now-(raw.windowStart||0))>ADD_CHURCH_WINDOW_MS)?{count:1,windowStart:now}:{count:(raw.count||0)+1,windowStart:raw.windowStart||now};
+    if(data.count>ADD_CHURCH_RATE_LIMIT)return c.json({error:"Too many church submissions. Please try again later."},429);
+    await kv.set(rlKey,data);
     const{name,address:addr,city:ci,state,lat,lng,denomination,attendance,website,serviceTimes,languages,ministries,pastorName,phone,email}=b;
     if(!name||typeof name!=="string"||name.trim().length<2)return c.json({error:"Name required"},400);
     const st=String(state).toUpperCase();if(!gS(st))return c.json({error:"Invalid state"},400);

@@ -373,6 +373,16 @@ export async function addChurch(data: {
   if (!res.ok) {
     const text = await res.text();
     console.error(`Error adding church:`, text);
+    if (res.status === 429) {
+      let msg = "Too many submissions. Please try again later.";
+      try {
+        const body = JSON.parse(text) as { error?: string };
+        if (body?.error) msg = body.error;
+      } catch {
+        // use default msg
+      }
+      throw new Error(msg);
+    }
     throw new Error(text || `Failed to add church: ${res.status}`);
   }
   return res.json();
