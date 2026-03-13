@@ -2,6 +2,7 @@
   "name": "@figma/my-make-file",
   "private": true,
   "version": "0.0.1",
+  "license": "CC-BY-NC-4.0",
   "type": "module",
   "scripts": {
     "build": "vite build",

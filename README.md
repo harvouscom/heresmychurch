@@ -38,4 +38,4 @@ For how the app is wired (routing, data flow, API, deployment): **[docs/ARCHITEC
 
 ## License
 
-This project is open source under the **MIT License**. See [LICENSE](LICENSE) for the full text. You may use, modify, and distribute the code with attribution.
+This project is open source under the **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)** license. See [LICENSE](LICENSE) for the full text. You may use, modify, and share the code with attribution, but **not for commercial use** (you may not use it primarily to make money). [Summary of the license](https://creativecommons.org/licenses/by-nc/4.0/).
