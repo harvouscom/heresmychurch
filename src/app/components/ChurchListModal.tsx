@@ -29,6 +29,7 @@ import {
 import { AddChurchForm } from "./AddChurchForm";
 import { StateFlag } from "./StateFlag";
 import { FixedSizeList as List } from "react-window";
+import { matchQueryToChurch } from "./church-search-match";
 
 type SortField = "name" | "city" | "address" | "denomination" | "attendance";
 type SortDir = "asc" | "desc";
@@ -193,15 +194,17 @@ export function ChurchListModal({
 
   // Filter and sort
   const filteredChurches = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
+    const q = searchQuery.trim();
 
     let result = churches.filter((ch) => {
-      // Tokenized text search — every word in the query must appear somewhere
       if (q) {
-        const haystack =
-          `${ch.name} ${ch.city} ${ch.denomination} ${ch.address || ""}`.toLowerCase();
-        const tokens = q.split(/\s+/).filter(Boolean);
-        if (!tokens.every((token) => haystack.includes(token))) return false;
+        const { matched } = matchQueryToChurch(q, {
+          name: ch.name,
+          city: ch.city,
+          denomination: ch.denomination,
+          address: ch.address || "",
+        });
+        if (!matched) return false;
       }
 
       // Denomination filter

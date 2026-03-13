@@ -251,19 +251,12 @@ export function ChurchMap({
     }
   }, [moderatorKey]);
 
-  // Auto-dismiss login modal once review is validated
+  // Auto-dismiss login modal only after key is successfully validated (we have pending data)
   useEffect(() => {
-    if (local.moderationMode && local.showAbout && moderatorKey) {
+    if (moderatorKey && local.showAbout && local.moderationPending !== null) {
       dismissAbout();
     }
-  }, [local.moderationMode]);
-
-  // When key is in URL, show review banner immediately (so it persists across navigation/remount)
-  useEffect(() => {
-    if (moderatorKey) {
-      localDispatch({ type: "SET", key: "moderationMode", value: true });
-    }
-  }, [moderatorKey]);
+  }, [moderatorKey, local.showAbout, local.moderationPending]);
 
   // Exit review mode when key is removed from URL (key is the sole source of truth for review mode)
   useEffect(() => {

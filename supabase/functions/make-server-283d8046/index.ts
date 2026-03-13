@@ -318,18 +318,106 @@ function mergeUserFieldsFromExisting(existingChurches:any[],newChurches:any[]):v
   }
 }
 
+// Shared normalization and tokenization helpers for search. Keep in sync with
+// src/app/components/search-normalize.ts on the frontend.
+function normalizeSearchText(text:string):string{
+  if(!text)return"";
+  const lower=text.toLowerCase();
+  const cleaned=lower.replace(/[^a-z0-9]+/g," ");
+  return cleaned.replace(/\s+/g," ").trim();
+}
+function tokenizeSearchText(text:string):string[]{
+  const norm=normalizeSearchText(text);
+  if(!norm)return[];
+  const parts=norm.split(" ").filter(Boolean);
+  const seen=new Set<string>();
+  const tokens:string[]=[];
+  for(const p of parts){
+    if(!seen.has(p)){seen.add(p);tokens.push(p);}
+  }
+  return tokens;
+}
+
+function levenshteinDistance(a:string,b:string):number{
+  const m=a.length,n=b.length;
+  if(m===0)return n;
+  if(n===0)return m;
+  const prev=new Array<number>(n+1);
+  const curr=new Array<number>(n+1);
+  for(let j=0;j<=n;j++)prev[j]=j;
+  for(let i=1;i<=m;i++){
+    curr[0]=i;
+    const ca=a.charCodeAt(i-1);
+    for(let j=1;j<=n;j++){
+      const cb=b.charCodeAt(j-1);
+      if(ca===cb)curr[j]=prev[j-1];
+      else{
+        const insert=curr[j-1]+1;
+        const remove=prev[j]+1;
+        const replace=prev[j-1]+1;
+        curr[j]=insert<remove?(insert<replace?insert:replace):remove<replace?remove:replace;
+      }
+    }
+    for(let j=0;j<=n;j++)prev[j]=curr[j];
+  }
+  return prev[n];
+}
+
+function tokenSimilarity(a:string,b:string):number{
+  const ta=normalizeSearchText(a);
+  const tb=normalizeSearchText(b);
+  if(!ta||!tb)return 0;
+  if(ta===tb)return 1;
+  const maxLen=Math.max(ta.length,tb.length);
+  if(!maxLen)return 0;
+  const dist=levenshteinDistance(ta,tb);
+  const sim=1-dist/maxLen;
+  return sim<0?0:sim;
+}
+
 // Relevance scoring: keep in sync with src/app/components/search-scoring.ts
 const PHRASE=1000,ALL_IN_NAME=500,NAME_STARTS=300,TOK_NAME=50,TOK_LOC=30;
-function scoreMatch(q:string,n:string,ci:string,ad:string):number{
-  const tokens=q.split(/\s+/).filter(Boolean);
-  const name=n.toLowerCase(),city=ci.toLowerCase(),address=ad.toLowerCase();
+function scoreMatch(qRaw:string,n:string,ci:string,ad:string):number{
+  const qNorm=normalizeSearchText(qRaw);
+  if(!qNorm)return 0;
+  const tokens=tokenizeSearchText(qNorm);
+  if(!tokens.length)return 0;
+  const nameNorm=normalizeSearchText(n);
+  const cityNorm=normalizeSearchText(ci);
+  const addressNorm=normalizeSearchText(ad);
+  const nameTokens=tokenizeSearchText(n);
+  const cityTokens=tokenizeSearchText(ci);
+  const addressTokens=tokenizeSearchText(ad);
   let s=0;
-  if(name.includes(q))s+=PHRASE;
-  const inName=tokens.filter((t:string)=>name.includes(t));
-  if(inName.length===tokens.length)s+=ALL_IN_NAME;
-  if(tokens.length>0&&name.startsWith(tokens[0]))s+=NAME_STARTS;
-  s+=inName.length*TOK_NAME;
-  for(const t of tokens)if(city.includes(t)||address.includes(t))s+=TOK_LOC;
+  if(nameNorm.includes(qNorm))s+=PHRASE;
+  const bestSimIn=(token:string,arr:string[]):number=>{
+    let best=0;
+    for(const t of arr){
+      const sim=tokenSimilarity(token,t);
+      if(sim>best)best=sim;
+      if(best>=1)break;
+    }
+    return best;
+  };
+  const allInName=tokens.every((t:string)=>bestSimIn(t,nameTokens)>=0.9);
+  if(allInName)s+=ALL_IN_NAME;
+  if(tokens.length>0&&nameTokens.length>0){
+    const firstToken=tokens[0];
+    const firstNameToken=nameTokens[0];
+    if(tokenSimilarity(firstToken,firstNameToken)>=0.85)s+=NAME_STARTS;
+  }
+  for(const t of tokens){
+    const sim=bestSimIn(t,nameTokens);
+    if(sim>=0.9)s+=TOK_NAME;
+    else if(sim>=0.7)s+=Math.round(TOK_NAME*(sim-0.6));
+  }
+  for(const t of tokens){
+    const simCity=bestSimIn(t,cityTokens);
+    const simAddr=bestSimIn(t,addressTokens);
+    const best=simCity>simAddr?simCity:simAddr;
+    if(best>=0.85)s+=TOK_LOC;
+    else if(best>=0.7)s+=Math.round(TOK_LOC*(best-0.6));
+  }
   return s;
 }
 
@@ -430,10 +518,21 @@ app.get(`${P}/churches/search`,async(c)=>{
       if(!Array.isArray(items)){idx++;continue;}
       const isIdx=items.length>0&&items[0]?.n!==undefined;
       const scoreQ=search.length<tokens.length?search.join(" "):q;
+      const searchTokens=tokenizeSearchText(scoreQ);
       for(const e of items){
         if(candidates.length>=COLLECT_CAP)break;
         const n=isIdx?e.n:(e.name||""),ci=isIdx?e.c:(e.city||""),d=isIdx?e.d:(e.denomination||""),ad=isIdx?e.ad:(e.address||"");
-        if(search.length){const h=`${n} ${ci} ${d} ${ad}`.toLowerCase();if(!search.every((t:string)=>h.includes(t)))continue;}
+        if(searchTokens.length){
+          const blobTokens=tokenizeSearchText(`${n} ${ci} ${d} ${ad}`);
+          if(!blobTokens.length)continue;
+          const blobSet=new Set<string>(blobTokens);
+          let matchCount=0;
+          for(const t of searchTokens){
+            if(blobSet.has(t))matchCount++;
+          }
+          const minRequired=searchTokens.length<=2?searchTokens.length:Math.max(1,Math.ceil(searchTokens.length*0.6));
+          if(matchCount<minRequired)continue;
+        }
         const k=`${n.toLowerCase().replace(/[^a-z0-9]/g,"")}|${ci.toLowerCase().replace(/[^a-z0-9]/g,"")}|${ad.toLowerCase().replace(/[^a-z0-9]/g,"")}|${realSt}`;
         if(seen.has(k))continue;seen.add(k);
         const row={id:e.id,shortId:toShortId(e.id,realSt,e.shortId),name:n||"Unknown Church",city:ci,state:realSt,denomination:d||"Unknown",attendance:isIdx?e.a:e.attendance,lat:isIdx?e.la:e.lat,lng:isIdx?e.lo:e.lng,address:ad||""};

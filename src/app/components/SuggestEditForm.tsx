@@ -28,6 +28,7 @@ import { geocodeAddress } from "./AddChurchForm";
 import { normalizePhone } from "./ui/utils";
 import { CloseButton } from "./ui/close-button";
 import { STATE_NAMES, STATE_NEIGHBORS } from "./map-constants";
+import { matchQueryToChurch } from "./church-search-match";
 
 function normalizeStateAbbrev(churchState: string | undefined, churchId: string): string {
   const s = (churchState ?? "").trim();
@@ -393,39 +394,40 @@ function MainCampusSearch({
   // Local search through already-loaded state churches (instant, complete)
   const localSearch = (q: string): (SearchResult & { _tier: number })[] => {
     if (!allChurches?.length || !q) return [];
-    const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
-    if (!tokens.length) return [];
-    return allChurches
-      .filter((c) => {
-        if (c.id === currentChurchId) return false;
-        const hay = `${c.name} ${c.city || ""} ${c.denomination || ""} ${c.address || ""}`.toLowerCase();
-        return tokens.every((t) => hay.includes(t));
-      })
-      .map((c) => ({
-        id: c.id,
-        shortId: c.shortId,
+    const scored: { church: Church; score: number }[] = [];
+    for (const c of allChurches) {
+      if (c.id === currentChurchId) continue;
+      const { matched, score } = matchQueryToChurch(q, {
         name: c.name,
         city: c.city,
-        state: c.state,
         denomination: c.denomination,
-        attendance: c.attendance,
-        lat: c.lat,
-        lng: c.lng,
         address: c.address || "",
-        _tier: 0,
-      }))
-      .sort((a, b) => {
-        // Score: exact phrase match in name first, then name-starts-with, then alphabetical
-        const aName = a.name.toLowerCase(), bName = b.name.toLowerCase();
-        const aPhrase = aName.includes(q.toLowerCase()) ? 1 : 0;
-        const bPhrase = bName.includes(q.toLowerCase()) ? 1 : 0;
-        if (aPhrase !== bPhrase) return bPhrase - aPhrase;
-        const aStarts = aName.startsWith(tokens[0]) ? 1 : 0;
-        const bStarts = bName.startsWith(tokens[0]) ? 1 : 0;
-        if (aStarts !== bStarts) return bStarts - aStarts;
-        return aName.localeCompare(bName);
-      })
-      .slice(0, 50);
+      });
+      if (matched) {
+        scored.push({ church: c, score });
+      }
+    }
+
+    scored.sort((a, b) => {
+      const aName = (a.church.name || "").toLowerCase();
+      const bName = (b.church.name || "").toLowerCase();
+      if (b.score !== a.score) return b.score - a.score;
+      return aName.localeCompare(bName);
+    });
+
+    return scored.slice(0, 50).map(({ church }) => ({
+      id: church.id,
+      shortId: church.shortId,
+      name: church.name,
+      city: church.city,
+      state: church.state,
+      denomination: church.denomination,
+      attendance: church.attendance,
+      lat: church.lat,
+      lng: church.lng,
+      address: church.address || "",
+      _tier: 0,
+    }));
   };
 
   useEffect(() => {

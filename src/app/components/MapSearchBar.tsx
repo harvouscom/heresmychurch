@@ -11,6 +11,7 @@ import { scoreChurchMatch } from "./search-scoring";
 import { StateFlag } from "./StateFlag";
 import { STATE_NAMES } from "./map-constants";
 import { CloseButton } from "./ui/close-button";
+import { matchQueryToChurch } from "./church-search-match";
 
 const VIEWPORT_ZOOM_THRESHOLD = 1.5;
 
@@ -152,22 +153,28 @@ export function MapSearchBar({
   // Local search for state view (all matches, no viewport filter); ranked by name then city/address
   const localResultsRaw = useMemo(() => {
     if (!focusedState || churches.length === 0) return [];
-    const q = query.toLowerCase().trim();
+    const q = query.trim();
     if (!q) return [];
-    const tokens = q.split(/\s+/).filter(Boolean);
-    const matched: Church[] = [];
+
+    const scored: { church: Church; score: number }[] = [];
     for (const ch of churches) {
-      const haystack = `${ch.name} ${ch.city} ${ch.denomination} ${ch.address || ""}`.toLowerCase();
-      if (tokens.every((t) => haystack.includes(t))) {
-        matched.push(ch);
+      const { matched, score } = matchQueryToChurch(q, {
+        name: ch.name,
+        city: ch.city,
+        denomination: ch.denomination,
+        address: ch.address || "",
+      });
+      if (matched) {
+        scored.push({ church: ch, score });
       }
     }
-    matched.sort(
+
+    scored.sort(
       (a, b) =>
-        scoreChurchMatch(q, b) - scoreChurchMatch(q, a) ||
-        (a.name || "").localeCompare(b.name || "")
+        b.score - a.score ||
+        (a.church.name || "").localeCompare(b.church.name || "")
     );
-    return matched.slice(0, MAX_RESULTS_STATE_VIEW);
+    return scored.slice(0, MAX_RESULTS_STATE_VIEW).map((s) => s.church);
   }, [query, focusedState, churches]);
 
   const isViewportSearchMode = zoom > VIEWPORT_ZOOM_THRESHOLD && !!focusedState;
