@@ -476,9 +476,9 @@ export function MapSearchBar({
           {isNational && (
             <>
               {remoteLoading && !remoteSearched ? (
-                <div className="px-4 py-3 flex items-center justify-center gap-2">
-                  <ThreeDotLoader size={14} className="bg-purple-400" />
-                  <span className="text-xs text-white/40">Searching…</span>
+                <div className="px-4 py-3 flex items-center justify-center gap-2 text-white/40">
+                  <ThreeDotLoader size={14} />
+                  <span className="text-xs">Searching…</span>
                 </div>
               ) : remoteSearched && remoteResults.length === 0 ? (
                 <div className="px-4 py-4 text-center">
@@ -532,8 +532,8 @@ export function MapSearchBar({
                     </div>
                   )}
                   {remoteLoading && (
-                    <div className="px-4 py-1.5 flex items-center justify-center border-t border-white/5">
-                      <ThreeDotLoader size={12} className="bg-purple-400/50" />
+                    <div className="px-4 py-1.5 flex items-center justify-center border-t border-white/5 text-purple-400/50">
+                      <ThreeDotLoader size={12} />
                     </div>
                   )}
                   {hasPopulated && (onAddChurch || (stateFilter && onAddChurchForState)) && (

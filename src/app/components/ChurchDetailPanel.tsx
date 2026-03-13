@@ -1062,7 +1062,7 @@ function InlineModerationSection({
                 disabled={isActing}
                 className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[10px] font-medium transition-colors disabled:opacity-50"
               >
-                {isActing ? <ThreeDotLoader size={10} className="bg-green-400" /> : <Check size={10} />}
+                {isActing ? <ThreeDotLoader size={10} /> : <Check size={10} />}
                 Approve
               </button>
               <button

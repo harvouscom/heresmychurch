@@ -21,11 +21,11 @@ export function LoadingOverlay({
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 backdrop-blur-sm">
       <div
-        className="flex flex-col items-center gap-3 px-8 py-6 rounded-2xl shadow-2xl"
+        className="flex flex-col items-center gap-3 px-8 py-6 rounded-2xl shadow-2xl text-white"
         style={{ backgroundColor: "rgba(30, 16, 64, 0.95)" }}
       >
-        <ThreeDotLoader size={28} className="bg-purple-400" />
-        <span className="text-white text-sm font-medium">
+        <ThreeDotLoader size={28} />
+        <span className="text-sm font-medium">
           {loadingStateName
             ? `Loading churches in ${loadingStateName}...`
             : `Loading churches...`}

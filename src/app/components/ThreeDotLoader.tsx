@@ -1,6 +1,6 @@
 export function ThreeDotLoader({
   size = 10,
-  className = "bg-pink-300",
+  className = "bg-current",
 }: {
   size?: number;
   className?: string;

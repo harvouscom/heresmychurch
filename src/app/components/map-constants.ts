@@ -22,6 +22,20 @@ export const WAITING_SAYINGS = [
   { text: "David was anointed king as a teenager but waited roughly 15 years before taking the throne.", ref: "1 Samuel 16:13" },
 ];
 
+// Scripture about serving the kingdom and stewardship of time, shown while validating reviewer key
+export const REVIEW_SAYINGS = [
+  { text: "His master said to him, 'Well done, good and faithful servant. You have been faithful over a little; I will set you over much.'", ref: "Matthew 25:21" },
+  { text: "Look carefully then how you walk, not as unwise but as wise, making the best use of the time.", ref: "Ephesians 5:15-16" },
+  { text: "Whatever you do, work heartily, as for the Lord and not for men... You are serving the Lord Christ.", ref: "Colossians 3:23-24" },
+  { text: "Be steadfast, immovable, always abounding in the work of the Lord, knowing that in the Lord your labor is not in vain.", ref: "1 Corinthians 15:58" },
+  { text: "Whoever brings blessing will be enriched, and one who waters will himself be watered.", ref: "Proverbs 11:25" },
+  { text: "Seek first the kingdom of God and his righteousness.", ref: "Matthew 6:33" },
+  { text: "And let us not grow weary of doing good, for in due season we will reap, if we do not give up.", ref: "Galatians 6:9" },
+  { text: "As each has received a gift, use it to serve one another, as good stewards of God's varied grace.", ref: "1 Peter 4:10" },
+  { text: "Whoever is generous to the poor lends to the Lord, and he will repay him for his deed.", ref: "Proverbs 19:17" },
+  { text: "So then, as we have opportunity, let us do good to everyone, and especially to those who are of the household of faith.", ref: "Galatians 6:10" },
+];
+
 // Map FIPS IDs to state abbreviations for click detection
 export const FIPS_TO_STATE: Record<string, string> = {
   "01": "AL", "02": "AK", "04": "AZ", "05": "AR", "06": "CA",

@@ -33,6 +33,7 @@ import {
 } from "./MapOverlays";
 import { useChurchMapData } from "./useChurchMapData";
 import { getChurchUrlSegment } from "./url-utils";
+import { REVIEW_SAYINGS } from "./map-constants";
 import type { ChurchClickTarget } from "./ChurchDetailPanel";
 import { fetchNationalReviewStats, fetchModeratorPending } from "./api";
 import type { NationalReviewStatsResponse, ModeratorPendingResponse } from "./api";
@@ -1062,6 +1063,32 @@ function HeaderPill({
 
 // --- Reviewer Login Modal ---
 function ReviewerLoginModal({ loading, error, onClose }: { loading: boolean; error: string | null; onClose: () => void }) {
+  const [sayingIndex, setSayingIndex] = useState<number | null>(null);
+
+  // Cycle scripture while validating key (same pattern as state loading overlay: first after 1s, then every 3.5s)
+  useEffect(() => {
+    if (!loading) {
+      setSayingIndex(null);
+      return;
+    }
+    const showTimer = setTimeout(() => {
+      setSayingIndex(Math.floor(Math.random() * REVIEW_SAYINGS.length));
+    }, 1000);
+    const cycleTimer = setInterval(() => {
+      setSayingIndex((prev) => {
+        let next: number;
+        do {
+          next = Math.floor(Math.random() * REVIEW_SAYINGS.length);
+        } while (next === prev && REVIEW_SAYINGS.length > 1);
+        return next;
+      });
+    }, 3500);
+    return () => {
+      clearTimeout(showTimer);
+      clearInterval(cycleTimer);
+    };
+  }, [loading]);
+
   return (
     <div
       className="absolute inset-0 z-50 flex items-center justify-center p-4"
@@ -1091,10 +1118,32 @@ function ReviewerLoginModal({ loading, error, onClose }: { loading: boolean; err
           <h2 className="text-white text-lg font-semibold">Reviewer Access</h2>
         </div>
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-4">
-            <ThreeDotLoader size={16} className="bg-purple-400" />
-            <span className="text-white/60 text-sm">Validating key...</span>
-          </div>
+          <>
+            <div className="flex items-center justify-center gap-2 py-4 text-white/60">
+              <ThreeDotLoader size={16} />
+              <span className="text-sm">Validating key...</span>
+            </div>
+            <div className="mt-2 pt-3 border-t border-white/10 max-w-[280px] text-center relative overflow-hidden" style={{ minHeight: 72 }}>
+              <AnimatePresence mode="wait">
+                {sayingIndex !== null && (
+                  <motion.div
+                    key={sayingIndex}
+                    initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
+                    animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                    exit={{ opacity: 0, y: -12, filter: "blur(4px)" }}
+                    transition={{ duration: 0.5, ease: "easeInOut" }}
+                  >
+                    <p className="text-white/50 text-xs italic leading-relaxed">
+                      &quot;{REVIEW_SAYINGS[sayingIndex].text}&quot;
+                    </p>
+                    <p className="text-purple-400/60 text-[10px] mt-1.5 font-medium">
+                      -- {REVIEW_SAYINGS[sayingIndex].ref}
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </>
         ) : error ? (
           <div className="space-y-3 w-full">
             <p className="text-red-400 text-sm">{error}</p>
@@ -1106,9 +1155,9 @@ function ReviewerLoginModal({ loading, error, onClose }: { loading: boolean; err
             </button>
           </div>
         ) : (
-          <div className="flex items-center justify-center gap-2 py-4">
-            <ThreeDotLoader size={16} className="bg-purple-400" />
-            <span className="text-white/60 text-sm">Connecting...</span>
+          <div className="flex items-center justify-center gap-2 py-4 text-white/60">
+            <ThreeDotLoader size={16} />
+            <span className="text-sm">Connecting...</span>
           </div>
         )}
       </div>

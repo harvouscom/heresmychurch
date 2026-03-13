@@ -536,7 +536,7 @@ function MainCampusSearch({
                 } disabled:cursor-default`}
               >
                 {selectedId === r.id ? (
-                  <ThreeDotLoader size={12} className="bg-purple-400" />
+                  <span className="text-purple-400"><ThreeDotLoader size={12} /></span>
                 ) : (
                   <div className="w-2 h-2 rounded-full bg-purple-400/60 flex-shrink-0" />
                 )}

@@ -31,23 +31,40 @@ export function ChurchMapPage() {
   }, [location.pathname, location.search]);
 
   const navigateToState = useCallback(
-    (abbrev: string) => nav(`/state/${abbrev}`),
-    [nav]
+    (abbrev: string) => {
+      const path = `/state/${abbrev}`;
+      const search = location.search ? `?${location.search}` : "";
+      nav(path + search);
+    },
+    [nav, location.search]
   );
   const navigateToStateWithReview = useCallback(
-    (abbrev: string) => nav(`/state/${abbrev}?review=true`),
-    [nav]
+    (abbrev: string) => {
+      const params = new URLSearchParams(location.search);
+      params.set("review", "true");
+      nav(`/state/${abbrev}?${params.toString()}`);
+    },
+    [nav, location.search]
   );
   const navigateToChurch = useCallback(
-    (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) =>
-      nav(`/state/${stateAbbrev}/${churchShortId}`, options ?? {}),
-    [nav]
+    (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => {
+      const path = `/state/${stateAbbrev}/${churchShortId}`;
+      const search = location.search ? `?${location.search}` : "";
+      nav(path + search, options ?? {});
+    },
+    [nav, location.search]
   );
-  const navigateToNational = useCallback(() => nav("/"), [nav]);
+  const navigateToNational = useCallback(() => {
+    const search = location.search ? `?${location.search}` : "";
+    nav("/" + search);
+  }, [nav, location.search]);
 
   const clearReviewQueryParam = useCallback(() => {
-    if (new URLSearchParams(location.search).get("review") === "true") {
-      nav(location.pathname, { replace: true });
+    const params = new URLSearchParams(location.search);
+    if (params.get("review") === "true") {
+      params.delete("review");
+      const search = params.toString();
+      nav(location.pathname + (search ? `?${search}` : ""), { replace: true });
     }
   }, [nav, location.pathname, location.search]);
 
