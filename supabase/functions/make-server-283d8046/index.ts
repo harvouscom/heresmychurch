@@ -2054,13 +2054,90 @@ async function runScheduledPost():Promise<{posted:boolean;type?:string;text?:str
   }catch(e){return{posted:false,error:`${e}`};}
 }
 
+// Weekend: Saturday = 1 fun fact only, Sunday = 1 church spotlight only
+const SPOTLIGHT_LAST_VERIFIED_DAYS=90;
+const SPOTLIGHT_LAST_VERIFIED_MS=SPOTLIGHT_LAST_VERIFIED_DAYS*24*60*60*1000;
+
+function churchSpotlightTweet(ch:any):string{
+  const st=(ch.state||"").toUpperCase();
+  const sid=ch.shortId||"";
+  const url=sid?`heresmychurch.com/state/${st.toLowerCase()}/${sid}`:`heresmychurch.com/state/${st.toLowerCase()}`;
+  const name=(ch.name||"A church").slice(0,80);
+  const city=(ch.city||"").slice(0,40)||"a city";
+  const templates=[
+    (n:string,c:string,s:string,u:string)=>`This week's church spotlight: ${n} in ${c}, ${s}. ${u}`,
+    (n:string,c:string,s:string,u:string)=>`Spotlight: ${n} — ${c}, ${s}. See them on the map. ${u}`,
+    (n:string,c:string,s:string,u:string)=>`Church spotlight: ${n} in ${c}, ${s}. ${u}`,
+  ];
+  return pickTemplate(templates,ch.id||name)(name,city,st,url).slice(0,280);
+}
+
+async function runWeekendSaturday():Promise<{posted:boolean;type?:string;text?:string;error?:string}>{
+  try{
+    if(!Deno.env.get("TWITTER_API_KEY"))return{posted:false,error:"No Twitter credentials"};
+    const fact=await generateFunFact();
+    if(!fact)return{posted:false,error:"No fun fact"};
+    const result=await postTweet(fact.text);
+    const log:any[]=(await kv.get("twitter:log"))||[];
+    log.unshift({eventType:"funfact",entityId:`fact-${Date.now()}`,text:fact.text,timestamp:Date.now(),success:result.success,tweetId:result.tweetId,error:result.error});
+    await kv.set("twitter:log",log.slice(0,100));
+    return{posted:result.success,type:"funfact",text:fact.text,error:result.error};
+  }catch(e){return{posted:false,error:`${e}`};}
+}
+
+async function runWeekendSunday():Promise<{posted:boolean;type?:string;text?:string;error?:string}>{
+  try{
+    if(!Deno.env.get("TWITTER_API_KEY"))return{posted:false,error:"No Twitter credentials"};
+    const meta=await kv.get("churches:meta");const sc:Record<string,number>=meta?.stateCounts||{};
+    const stateKeys=Object.keys(sc).filter(st=>st!=="DC"&&(sc[st]||0)>20);
+    if(!stateKeys.length)return{posted:false,error:"No states with churches"};
+    const lastSpotlightId=await kv.get("twitter:last-spotlight-church-id") as string|undefined;
+    const now=Date.now();
+    const eligible:any[]=[];
+    const shuffled=stateKeys.sort(()=>Math.random()-0.5).slice(0,10);
+    for(const st of shuffled){
+      const churches=await kv.get(`churches:${st}`);
+      if(!Array.isArray(churches))continue;
+      for(const ch of churches){
+        if(ch.id===lastSpotlightId)continue;
+        const r=churchNeedsReview(ch);
+        const recentlyVerified=ch.lastVerified&&(now-(ch.lastVerified as number)<=SPOTLIGHT_LAST_VERIFIED_MS);
+        if(recentlyVerified||!r.needsReview){eligible.push(ch);}
+      }
+      if(eligible.length>=50)break;
+    }
+    if(!eligible.length)return{posted:false,error:"No spotlight church"};
+    const ch=eligible[Math.floor(Math.random()*eligible.length)];
+    const text=churchSpotlightTweet(ch);
+    const result=await postTweet(text);
+    await kv.set("twitter:last-spotlight-church-id",ch.id);
+    const log:any[]=(await kv.get("twitter:log"))||[];
+    log.unshift({eventType:"church_spotlight",entityId:ch.id,text,timestamp:Date.now(),success:result.success,tweetId:result.tweetId,error:result.error});
+    await kv.set("twitter:log",log.slice(0,100));
+    return{posted:result.success,type:"church_spotlight",text,error:result.error};
+  }catch(e){return{posted:false,error:`${e}`};}
+}
+
+// Saturday window 12:00–13:45 UTC; Sunday window 17:00–18:45 UTC (8 x 15min slots each)
+function getWeekendWindowAndSlot(now:Date):{window:string;slot:number;dateKey:string}|null{
+  const h=now.getUTCHours(),m=now.getUTCMinutes();
+  const dateKey=now.toISOString().slice(0,10);
+  const day=now.getUTCDay();
+  if(day===6&&h>=12&&h<=13){const slot=(h-12)*4+Math.floor(m/15);return{window:"saturday",slot,dateKey};}
+  if(day===0&&h>=17&&h<=18){const slot=(h-17)*4+Math.floor(m/15);return{window:"sunday",slot,dateKey};}
+  return null;
+}
+
 // Random slot per window: morning 12–14 UTC, afternoon 17–19 UTC, evening 22–24 UTC (8 x 15min slots each)
 function getWindowAndSlot(now:Date):{window:string;slot:number;dateKey:string}|null{
   const h=now.getUTCHours(),m=now.getUTCMinutes();
   const dateKey=now.toISOString().slice(0,10);
-  if(h>=12&&h<=13){const slot=(h-12)*4+Math.floor(m/15);return{window:"morning",slot,dateKey};}
-  if(h>=17&&h<=18){const slot=(h-17)*4+Math.floor(m/15);return{window:"afternoon",slot,dateKey};}
-  if(h>=22&&h<=23){const slot=(h-22)*4+Math.floor(m/15);return{window:"evening",slot,dateKey};}
+  const day=now.getUTCDay();
+  if(day>=1&&day<=5){
+    if(h>=12&&h<=13){const slot=(h-12)*4+Math.floor(m/15);return{window:"morning",slot,dateKey};}
+    if(h>=17&&h<=18){const slot=(h-17)*4+Math.floor(m/15);return{window:"afternoon",slot,dateKey};}
+    if(h>=22&&h<=23){const slot=(h-22)*4+Math.floor(m/15);return{window:"evening",slot,dateKey};}
+  }
   return null;
 }
 function chosenSlotForWindow(dateKey:string,window:string):number{
@@ -2074,22 +2151,43 @@ app.post(`${P}/twitter/scheduled`,async(c)=>{
     const secret=Deno.env.get("TWITTER_WEBHOOK_SECRET")||"";
     if(!secret||body.secret!==secret)return c.json({error:"Unauthorized"},401);
     const force=body.force===true;
-    if(!force){
-      const now=new Date();
-      const ws=getWindowAndSlot(now);
-      if(ws){
-        const key=`twitter:window-posted:${ws.dateKey}:${ws.window}`;
-        const alreadyPosted=await kv.get(key);
-        if(alreadyPosted)return c.json({posted:false,skipped:"already posted this window"});
-        const chosen=chosenSlotForWindow(ws.dateKey,ws.window);
-        if(ws.slot!==chosen)return c.json({posted:false,skipped:"not this slot",slot:ws.slot,chosen});
-        const result=await runScheduledPost();
-        if(result.posted)await kv.set(key,true);
-        return c.json(result);
-      }
+    const now=new Date();
+    const day=now.getUTCDay();
+    const dateKey=now.toISOString().slice(0,10);
+
+    if(force){
+      if(day===6){const result=await runWeekendSaturday();return c.json(result);}
+      if(day===0){const result=await runWeekendSunday();return c.json(result);}
+      const result=await runScheduledPost();
+      return c.json(result);
     }
-    const result=await runScheduledPost();
-    return c.json(result);
+
+    // Weekend: Saturday 1 fun fact, Sunday 1 church spotlight (single slot per day)
+    const weekendWs=getWeekendWindowAndSlot(now);
+    if(weekendWs){
+      const key=`twitter:${weekendWs.window}-posted:${weekendWs.dateKey}`;
+      const alreadyPosted=await kv.get(key);
+      if(alreadyPosted)return c.json({posted:false,skipped:`already posted this ${weekendWs.window}`});
+      const chosen=chosenSlotForWindow(weekendWs.dateKey,weekendWs.window);
+      if(weekendWs.slot!==chosen)return c.json({posted:false,skipped:"not this slot",slot:weekendWs.slot,chosen});
+      const result=weekendWs.window==="saturday"?await runWeekendSaturday():await runWeekendSunday();
+      if(result.posted)await kv.set(key,true);
+      return c.json(result);
+    }
+
+    // Weekday: 3 windows, random slot per window
+    const ws=getWindowAndSlot(now);
+    if(ws){
+      const key=`twitter:window-posted:${ws.dateKey}:${ws.window}`;
+      const alreadyPosted=await kv.get(key);
+      if(alreadyPosted)return c.json({posted:false,skipped:"already posted this window"});
+      const chosen=chosenSlotForWindow(ws.dateKey,ws.window);
+      if(ws.slot!==chosen)return c.json({posted:false,skipped:"not this slot",slot:ws.slot,chosen});
+      const result=await runScheduledPost();
+      if(result.posted)await kv.set(key,true);
+      return c.json(result);
+    }
+    return c.json({posted:false,error:"Outside scheduled windows"});
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
