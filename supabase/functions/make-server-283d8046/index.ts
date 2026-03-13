@@ -1594,7 +1594,9 @@ app.get(`${P}/churches/reactions/bulk`, async (c) => {
 // ── Twitter / X automated posting v2 ──
 const TWITTER_URL="https://api.twitter.com/2/tweets";
 const DAILY_TWEET_CAP=3;
-const NATIONAL_MILESTONES=[500,1000,2500,5000,10000,25000,50000];
+// National milestones used for \"we reached X churches\" tweets.
+// Includes early milestones plus higher ones for future growth.
+const NATIONAL_MILESTONES=[500,1000,2500,5000,10000,25000,50000,100000,250000,500000];
 const STATE_MILESTONES=[100,250,500,1000,2500];
 const COMMUNITY_MILESTONES=[100,500,1000,2500,5000];
 
@@ -1719,13 +1721,14 @@ function deployTweet(msg?: string): string {
   return out.slice(0, MAX_DEPLOY_TWEET_LEN);
 }
 
-function nationalMilestoneTweet(count:number,next:number):string{
+function nationalMilestoneTweet(total:number,milestone:number):string{
   const templates=[
-    (c:number,n:number)=>`Here's a milestone: ${c.toLocaleString()} churches mapped across America! Help us reach ${n.toLocaleString()}!`,
-    (c:number,n:number)=>`Here's something to celebrate: ${c.toLocaleString()} churches and counting! Next stop: ${n.toLocaleString()}.`,
-    (c:number,n:number)=>`Here's how far we've come: ${c.toLocaleString()} churches on the map. ${n.toLocaleString()} is next!`,
+    (t:number)=>`Here's a milestone: ${t.toLocaleString()} churches mapped across America! Every church added helps someone find their community.`,
+    (t:number)=>`Here's something to celebrate: ${t.toLocaleString()} churches now on the map across the U.S.!`,
+    (t:number)=>`Here's how far we've come: ${t.toLocaleString()} churches mapped so far. Thanks to everyone adding their church!`,
   ];
-  return pickTemplate(templates,`national-${count}`)(count,next).slice(0,280);
+  // Seed by the milestone we just crossed so copy is stable for that threshold.
+  return pickTemplate(templates,`national-${milestone}`)(total).slice(0,280);
 }
 
 function stateMilestoneTweet(st:string,stateName:string,count:number):string{
@@ -1901,7 +1904,7 @@ async function checkMilestonesInner(reached:{national:number[];states:Record<str
   }
   if(nationalDirty)await kv.set("twitter:milestones",reached);
   if(latestNational){
-    return{text:nationalMilestoneTweet(total,latestNational.next),id:`national-${latestNational.m}`};
+    return{text:nationalMilestoneTweet(total,latestNational.m),id:`national-${latestNational.m}`};
   }
 
   // State milestones — pre-seed passed ones, only tweet the newest per state
@@ -2101,6 +2104,33 @@ app.get(`${P}/twitter/status`,async(c)=>{
     const churchQueue:any[]=(await kv.get("twitter:church-queue"))||[];
     const deployQueue:any[]=(await kv.get("twitter:deploy-queue"))||[];
     return c.json({recentTweets:log.slice(0,20),daily,milestones,queues:{churches:churchQueue.length,deploys:deployQueue.length}});
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
+// Twitter admin reset route — clears queues and milestone tracking state
+app.post(`${P}/twitter/admin/reset`,async(c)=>{
+  try{
+    const body=await c.req.json().catch(()=>({}));
+    const secret=String(body.secret||"");
+    const expected=Deno.env.get("TWITTER_WEBHOOK_SECRET")||"";
+    if(!expected||secret!==expected)return c.json({error:"Unauthorized"},401);
+
+    const cleared:{deployQueue:boolean;churchQueue:boolean;milestones:boolean}={
+      deployQueue:false,
+      churchQueue:false,
+      milestones:false,
+    };
+
+    await kv.set("twitter:deploy-queue",[]);
+    cleared.deployQueue=true;
+
+    await kv.set("twitter:church-queue",[]);
+    cleared.churchQueue=true;
+
+    await kv.set("twitter:milestones",{national:[],states:{},accuracy:{},community:[]});
+    cleared.milestones=true;
+
+    return c.json({success:true,cleared});
   }catch(e){return c.json({error:`${e}`},500);}
 });
 

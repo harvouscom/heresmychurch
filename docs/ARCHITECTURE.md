@@ -217,6 +217,51 @@ Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurc
 
 ---
 
+## 11. X (Twitter) automation
+
+### Overview
+
+The Supabase edge function `make-server-283d8046` is responsible for all automated X posts:
+
+- New churches added (queued in `twitter:church-queue`).
+- Deploy/app updates (queued in `twitter:deploy-queue`).
+- Milestones (national/state/community/accuracy).
+- Fun facts from aggregate church data.
+
+GitHub Actions calls the `POST /twitter/scheduled` endpoint 3×/day; the server enforces a daily cap and picks church, deploy, milestone, or fun-fact posts in that order.
+
+### Status/debug endpoint
+
+- **Route:** `GET ${P}/twitter/status?secret=...`
+- **Auth:** `TWITTER_WEBHOOK_SECRET` query param.
+- **Response:** recent tweet log, per-day counters, milestone state, and queue sizes.
+
+### Admin reset endpoint
+
+Use this when you change tweet text, milestone thresholds, or queue behavior and want to clear out old state.
+
+- **Route:** `POST ${P}/twitter/admin/reset`
+- **Body:**
+
+  ```json
+  {
+    "secret": "TWITTER_WEBHOOK_SECRET"
+  }
+  ```
+
+- **What it does (all in KV):**
+  - Clears the deploy queue: sets `twitter:deploy-queue` to `[]`.
+  - Clears the church queue: sets `twitter:church-queue` to `[]`.
+  - Resets milestone tracking: sets `twitter:milestones` to `{ national: [], states: {}, accuracy: {}, community: [] }`.
+
+Typical use:
+
+1. Deploy updated edge function code.
+2. Call `POST /twitter/admin/reset` once (with the same secret used for other Twitter endpoints).
+3. Optionally call `GET /twitter/status` to confirm queues are empty and milestone state is reset.
+
+This keeps future automated posts aligned with the latest copy and logic without leaking old queued items or milestone history.
+
 ## Summary
 
 - **One page, one route component:** React Router renders **ChurchMapPage** for all routes; URL params drive state and church.
