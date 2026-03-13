@@ -1682,11 +1682,15 @@ function churchTweet(ch:any):string{
 }
 
 const MAX_DEPLOY_TWEET_LEN = 89;
+const DEPLOY_TWEET_FALLBACK = "We shipped a small update to the map.";
+
+/** Words that mean the commit is internal/dev-only — don't tweet that. */
+const DEV_JARGON = /\b(refactor|api\s+endpoint|endpoints|maintainability|readability|cors|typescript|eslint|dependencies|middleware|webhook|auth\s+token|env\s+var)\b/i;
 
 /** Turn commit message into one specific, layman tweet about the actual improvement. Not random. */
 function deployTweet(msg?: string): string {
   const raw = (msg || "").replace(/\n/g, " ").trim();
-  if (!raw) return "We shipped a small update to the map.".slice(0, MAX_DEPLOY_TWEET_LEN);
+  if (!raw) return DEPLOY_TWEET_FALLBACK.slice(0, MAX_DEPLOY_TWEET_LEN);
 
   // Explicit tweet text: use "tweet: Your exact phrase" in the commit message
   const tweetMatch = raw.match(/\btweet:\s*(.+)/i);
@@ -1698,17 +1702,20 @@ function deployTweet(msg?: string): string {
   // Humanize conventional commit into one sentence (feat/fix → We added / We fixed)
   const noPrefix = raw.replace(/^(feat|fix|chore|refactor|docs|style)(\([^)]*\))?:\s*/i, "").trim();
   const rest = noPrefix.slice(0, 80);
-  if (!rest) return "We shipped a small update to the map.".slice(0, MAX_DEPLOY_TWEET_LEN);
+  if (!rest) return DEPLOY_TWEET_FALLBACK.slice(0, MAX_DEPLOY_TWEET_LEN);
 
   const lead = rest.charAt(0).toLowerCase() + rest.slice(1);
   let out: string;
   if (/^feat/i.test(raw)) out = "We added " + lead;
   else if (/^fix/i.test(raw)) out = "We fixed " + lead;
-  else if (/^chore|^docs|^style/i.test(raw)) out = "We updated " + lead;
+  else if (/^chore|^docs|^style|^refactor/i.test(raw)) out = "We updated " + lead;
   else out = "We updated " + lead;
 
   out = out.replace(/^(We added) add /i, "$1 ").replace(/^(We fixed) fix(ed)? /i, "$1 ").replace(/^(We updated) update(d)? /i, "$1 ");
   if (!out.endsWith(".") && !out.endsWith("!")) out += ".";
+
+  // If it still sounds like internal dev notes, use the generic line instead
+  if (DEV_JARGON.test(out)) return DEPLOY_TWEET_FALLBACK.slice(0, MAX_DEPLOY_TWEET_LEN);
   return out.slice(0, MAX_DEPLOY_TWEET_LEN);
 }
 
