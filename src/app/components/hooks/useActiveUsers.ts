@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { getSupabase } from "../../lib/supabase";
 
 const CHANNEL_NAME = "active-users";
-const SESSION_STORAGE_KEY = "hmc-presence-id";
+const PRESENCE_STORAGE_KEY = "hmc-presence-id";
 
 const BOT_UA_PATTERNS = [
   /googlebot/i,
@@ -47,11 +47,11 @@ const BOT_UA_PATTERNS = [
 ];
 
 function getOrCreateSessionId(): string {
-  if (typeof sessionStorage === "undefined") return crypto.randomUUID?.() ?? "ssr";
-  let id = sessionStorage.getItem(SESSION_STORAGE_KEY);
+  if (typeof localStorage === "undefined") return crypto.randomUUID?.() ?? "ssr";
+  let id = localStorage.getItem(PRESENCE_STORAGE_KEY);
   if (!id) {
     id = crypto.randomUUID?.() ?? `fallback-${Date.now()}`;
-    sessionStorage.setItem(SESSION_STORAGE_KEY, id);
+    localStorage.setItem(PRESENCE_STORAGE_KEY, id);
   }
   return id;
 }
@@ -68,29 +68,37 @@ function detectBot(): boolean {
 type PresencePayload = { id?: string; isBot?: boolean; viewingState?: string | null };
 
 function countPeopleAndBots(state: Record<string, PresencePayload[]>): { people: number; bots: number } {
-  let people = 0;
-  let bots = 0;
+  const peopleIds = new Set<string>();
+  const botIds = new Set<string>();
   for (const key of Object.keys(state)) {
     const payloads = state[key];
     if (!Array.isArray(payloads) || payloads.length === 0) continue;
     const first = payloads[0] as PresencePayload | undefined;
-    if (first?.isBot) bots += 1;
-    else people += 1;
+    const id = first?.id;
+    if (typeof id !== "string") continue;
+    if (first?.isBot) botIds.add(id);
+    else peopleIds.add(id);
   }
-  return { people, bots };
+  return { people: peopleIds.size, bots: botIds.size };
 }
 
 function countByState(state: Record<string, PresencePayload[]>): Record<string, number> {
-  const byState: Record<string, number> = {};
+  const idsByState: Record<string, Set<string>> = {};
   for (const key of Object.keys(state)) {
     const payloads = state[key];
     if (!Array.isArray(payloads) || payloads.length === 0) continue;
     const first = payloads[0] as PresencePayload | undefined;
     if (first?.isBot) continue;
+    const id = first?.id;
     const stateAbbrev = first?.viewingState;
-    if (stateAbbrev && typeof stateAbbrev === "string") {
-      byState[stateAbbrev] = (byState[stateAbbrev] ?? 0) + 1;
+    if (typeof id === "string" && stateAbbrev && typeof stateAbbrev === "string") {
+      if (!idsByState[stateAbbrev]) idsByState[stateAbbrev] = new Set();
+      idsByState[stateAbbrev].add(id);
     }
+  }
+  const byState: Record<string, number> = {};
+  for (const [stateAbbrev, ids] of Object.entries(idsByState)) {
+    byState[stateAbbrev] = ids.size;
   }
   return byState;
 }

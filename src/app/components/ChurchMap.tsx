@@ -138,6 +138,17 @@ export function ChurchMap({
     showModerationPanel: false,
   });
 
+  // State-view search: when user types in search, map shows only dots for search results
+  const [stateViewSearchResultIds, setStateViewSearchResultIds] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    if (!d.focusedState) setStateViewSearchResultIds(null);
+  }, [d.focusedState]);
+
+  const churchesToShowOnMap = useMemo(() => {
+    if (!d.focusedState || stateViewSearchResultIds === null) return d.filteredChurches;
+    return d.filteredChurches.filter((c) => stateViewSearchResultIds.has(c.id));
+  }, [d.focusedState, d.filteredChurches, stateViewSearchResultIds]);
+
   const anyOverlayOpen = d.showSummary || d.showFilterPanel || d.showLegend || local.showAlertsPanel || local.showAnnouncementsPanel || local.showModerationPanel || (isNationalView && isMobile && !effectiveSearchCollapsed);
   const dismissAllOverlays = () => {
     d.setShowSummary(false);
@@ -247,7 +258,14 @@ export function ChurchMap({
     }
   }, [local.moderationMode]);
 
-  // Exit review mode when key is removed from URL
+  // When key is in URL, show review banner immediately (so it persists across navigation/remount)
+  useEffect(() => {
+    if (moderatorKey) {
+      localDispatch({ type: "SET", key: "moderationMode", value: true });
+    }
+  }, [moderatorKey]);
+
+  // Exit review mode when key is removed from URL (key is the sole source of truth for review mode)
   useEffect(() => {
     if (!moderatorKey) {
       localDispatch({ type: "SET", key: "moderationMode", value: false });
@@ -256,10 +274,11 @@ export function ChurchMap({
     }
   }, [moderatorKey]);
 
-  // Auto-open state review modal when navigating from national modal (?review=true)
+  // Auto-open state review modal when navigating from national modal (?review=true, no key)
   useEffect(() => {
     if (
       openReviewModalFromQuery &&
+      !moderatorKey &&
       clearReviewQueryParam &&
       d.focusedState &&
       d.churches.length > 0 &&
@@ -269,7 +288,7 @@ export function ChurchMap({
       localDispatch({ type: "SET", key: "showVerificationModal", value: true });
       clearReviewQueryParam();
     }
-  }, [openReviewModalFromQuery, clearReviewQueryParam, d.focusedState, d.churches.length, d.loading, d.populating]);
+  }, [openReviewModalFromQuery, moderatorKey, clearReviewQueryParam, d.focusedState, d.churches.length, d.loading, d.populating]);
 
   const { people: activePeople, bots: activeBots, byState: activeByState } = useActiveUsers(
     d.selectedChurch?.state ?? d.focusedState ?? null
@@ -356,6 +375,8 @@ export function ChurchMap({
         isLocalhost={isLocalhost}
         searchCollapsed={effectiveSearchCollapsed}
         isMobile={isMobile}
+        churchesToShowOnMap={churchesToShowOnMap}
+        onStateViewSearchResultsChange={setStateViewSearchResultIds}
       />
 
       {/* Modals (rendered outside map area to reduce nesting depth) */}
@@ -565,6 +586,8 @@ function MapArea({
   isLocalhost,
   searchCollapsed,
   isMobile,
+  churchesToShowOnMap,
+  onStateViewSearchResultsChange,
 }: {
   d: ReturnType<typeof useChurchMapData>;
   isLoadingVisible: boolean;
@@ -608,6 +631,8 @@ function MapArea({
   isLocalhost: boolean;
   searchCollapsed: boolean;
   isMobile: boolean;
+  churchesToShowOnMap: Church[];
+  onStateViewSearchResultsChange: (churchIds: Set<string> | null) => void;
 }) {
   return (
     <div className="flex flex-1 flex-col relative" style={{ backgroundColor: "#F5F0E8" }}>
@@ -754,7 +779,7 @@ function MapArea({
         focusedState={d.focusedState}
         hoveredState={d.hoveredState}
         states={d.states}
-        filteredChurches={d.filteredChurches}
+        filteredChurches={churchesToShowOnMap}
         selectedChurchId={d.selectedChurch?.id ?? null}
         onMoveEnd={handleMoveEnd}
         onStateClick={d.handleStateClick}
@@ -778,6 +803,7 @@ function MapArea({
             states={d.states}
             tooltipPos={d.tooltipPos}
             activeByState={activeByState}
+            reviewCount={moderationMode && nationalReviewStats ? (nationalReviewStats.states[stateAbbrev]?.needsReview ?? 0) : undefined}
             pinned={d.previewStatePinned}
             onViewState={d.previewStatePinned ? () => { d.clearStatePreview(); navigateToState(stateAbbrev); } : undefined}
             onClose={d.previewStatePinned ? d.clearStatePreview : undefined}
@@ -788,6 +814,7 @@ function MapArea({
         <ChurchTooltip
           church={(d.previewChurch ?? d.hoveredChurch)!}
           tooltipPos={d.tooltipPos}
+          showReviewStatus={moderationMode}
           pinned={d.previewPinned}
           onViewChurch={d.previewPinned ? d.onViewChurch : undefined}
           onClose={d.previewPinned ? d.clearPreview : undefined}
@@ -922,7 +949,7 @@ function MapArea({
         >
           {/* People with you now — bottom of map; hidden on church view (mobile and desktop) */}
           {!d.selectedChurch && ((activePeople + activeBots) > 1 || (isLocalhost && (activePeople + activeBots) >= 1)) && (() => {
-            const withYou = (activePeople + activeBots) - 1;
+            const withYou = (activePeople + activeBots) - 1; // exclude self so "people with you" = others only
             const label = withYou === 0 ? "0 people with you now" : withYou === 1 ? "1 person with you now" : `${withYou.toLocaleString()} people with you now`;
             return (
               <div className="pointer-events-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full min-w-0 truncate bg-green-500/5 border border-green-500/10 backdrop-blur-md" style={{ boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 0 rgba(0, 0, 0, 0.1)" }}>
@@ -950,6 +977,7 @@ function MapArea({
               detectedState={d.detectedState}
               zoom={d.zoom}
               center={d.center}
+              onStateViewSearchResultsChange={onStateViewSearchResultsChange}
             />
             </div>
           )}

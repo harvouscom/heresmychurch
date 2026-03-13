@@ -539,37 +539,48 @@ function churchNeedsReview(ch:any):{needsReview:boolean;missingAddress:boolean;m
   return{needsReview:missingCount>=2,missingAddress,missingServiceTimes,missingDenomination};
 }
 
+const REVIEW_STATS_CACHE_KEY="churches:review-stats";
+async function invalidateReviewStatsCache():Promise<void>{try{await kv.del(REVIEW_STATS_CACHE_KEY);}catch(_){}}
+
+async function computeReviewStats():Promise<{states:Record<string,{total:number;needsReview:number;missingAddress:number;missingServiceTimes:number;missingDenomination:number}>;totalChurches:number;totalNeedsReview:number;percentage:number;missingAddress:number;missingServiceTimes:number;missingDenomination:number}>{
+  const meta=await kv.get("churches:meta");const sc:Record<string,number>={...(meta?.stateCounts||{})};
+  if(sc["DC"]){sc["MD"]=(sc["MD"]||0)+sc["DC"];delete sc["DC"];}
+  const ps=Object.keys(sc).filter(s=>sc[s]>0);
+  if(!ps.length)return {states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingServiceTimes:0,missingDenomination:0};
+  const states:Record<string,{total:number;needsReview:number;missingAddress:number;missingServiceTimes:number;missingDenomination:number}>={};
+  let totalChurches=0,totalNeedsReview=0,missingAddress=0,missingServiceTimes=0,missingDenomination=0;
+  const BATCH=10;
+  for(let i=0;i<ps.length;i+=BATCH){
+    const batch=ps.slice(i,i+BATCH);
+    const keys=batch.map(st=>`churches:${st}`);
+    const values=await kv.mget(keys);
+    for(let j=0;j<batch.length;j++){
+      const st=batch[j];
+      let ch:any[]=values[j];
+      if(!Array.isArray(ch)||!ch.length){states[st]={total:0,needsReview:0,missingAddress:0,missingServiceTimes:0,missingDenomination:0};continue;}
+      let need=0,ma=0,ms=0,md=0;
+      for(const church of ch){
+        const r=churchNeedsReview(church);
+        if(r.needsReview)need++;
+        if(r.missingAddress)ma++;
+        if(r.missingServiceTimes)ms++;
+        if(r.missingDenomination)md++;
+      }
+      states[st]={total:ch.length,needsReview:need,missingAddress:ma,missingServiceTimes:ms,missingDenomination:md};
+      totalChurches+=ch.length;totalNeedsReview+=need;missingAddress+=ma;missingServiceTimes+=ms;missingDenomination+=md;
+    }
+  }
+  const percentage=totalChurches>0?Math.round((totalNeedsReview/totalChurches)*1000)/10:0;
+  return {states,totalChurches,totalNeedsReview,percentage,missingAddress,missingServiceTimes,missingDenomination};
+}
+
 app.get(`${P}/churches/review-stats`,async(c)=>{
   try{
-    const meta=await kv.get("churches:meta");const sc:Record<string,number>={...(meta?.stateCounts||{})};
-    if(sc["DC"]){sc["MD"]=(sc["MD"]||0)+sc["DC"];delete sc["DC"];}
-    const ps=Object.keys(sc).filter(s=>sc[s]>0);
-    if(!ps.length)return c.json({states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingServiceTimes:0,missingDenomination:0});
-    const states:Record<string,{total:number;needsReview:number;missingAddress:number;missingServiceTimes:number;missingDenomination:number}>={};
-    let totalChurches=0,totalNeedsReview=0,missingAddress=0,missingServiceTimes=0,missingDenomination=0;
-    const BATCH=10;
-    for(let i=0;i<ps.length;i+=BATCH){
-      const batch=ps.slice(i,i+BATCH);
-      const keys=batch.map(st=>`churches:${st}`);
-      const values=await kv.mget(keys);
-      for(let j=0;j<batch.length;j++){
-        const st=batch[j];
-        let ch:any[]=values[j];
-        if(!Array.isArray(ch)||!ch.length){states[st]={total:0,needsReview:0,missingAddress:0,missingServiceTimes:0,missingDenomination:0};continue;}
-        let need=0,ma=0,ms=0,md=0;
-        for(const church of ch){
-          const r=churchNeedsReview(church);
-          if(r.needsReview)need++;
-          if(r.missingAddress)ma++;
-          if(r.missingServiceTimes)ms++;
-          if(r.missingDenomination)md++;
-        }
-        states[st]={total:ch.length,needsReview:need,missingAddress:ma,missingServiceTimes:ms,missingDenomination:md};
-        totalChurches+=ch.length;totalNeedsReview+=need;missingAddress+=ma;missingServiceTimes+=ms;missingDenomination+=md;
-      }
-    }
-    const percentage=totalChurches>0?Math.round((totalNeedsReview/totalChurches)*1000)/10:0;
-    return c.json({states,totalChurches,totalNeedsReview,percentage,missingAddress,missingServiceTimes,missingDenomination});
+    const cached=await kv.get(REVIEW_STATS_CACHE_KEY);
+    if(cached&&typeof cached==="object"&&cached.states&&cached.totalChurches!=null)return c.json(cached);
+    const result=await computeReviewStats();
+    try{await kv.set(REVIEW_STATS_CACHE_KEY,result);}catch(_){}
+    return c.json(result);
   }catch(e){return c.json({states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingServiceTimes:0,missingDenomination:0,error:`${e}`},500);}
 });
 
@@ -619,6 +630,7 @@ app.post(`${P}/churches/populate/:state`,async(c)=>{
     if(force&&Array.isArray(ex)&&ex.length)mergeUserFieldsFromExisting(ex,ch);
     await kv.set(`churches:${st}`,ch);await writeIdx(st,ch);
     const meta=(await kv.get("churches:meta"))||{stateCounts:{}};meta.stateCounts[st]=ch.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);
+    await invalidateReviewStatsCache();
     return c.json({message:`Populated ${ch.length} churches for ${info.n}`,count:ch.length,communityPreserved:communityCount,state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},ardaEnriched:en});
   }catch(e){console.log(`Populate error:${e}`);return c.json({error:`${e}`},500);}
 });
@@ -661,6 +673,7 @@ app.post(`${P}/admin/refresh-attendance`,async(c)=>{
       }catch(e){console.log(`Refresh ${st} error:${e}`);}
       if(states.length>1)await new Promise(r=>setTimeout(r,500));
     }
+    await invalidateReviewStatsCache();
     return c.json({message:`Refreshed attendance for ${refreshed} state(s).`,refreshed});
   }catch(e){return c.json({error:`${e}`},500);}
 });
@@ -709,7 +722,7 @@ app.post(`${P}/admin/enrich-regrid/:state`,async(c)=>{
     }
     const noMatch=ch.length-enriched;
     await kv.set(`churches:${st}`,ch);await writeIdx(st,ch);
-
+    await invalidateReviewStatsCache();
     const after=attendanceStats(ch);
     return c.json({message:`Regrid enrichment done for ${info.n}.`,state:st,enriched,noMatch,attendanceBefore:before,attendanceAfter:after});
   }catch(e:any){
@@ -766,6 +779,7 @@ app.post(`${P}/admin/cleanup-dc`,async(c)=>{
   try{
     let d=0;for(const k of["churches:DC","churches:sidx:DC"]){if(await kv.get(k)){await kv.del(k);d++;}}
     const meta=await kv.get("churches:meta");if(meta?.stateCounts?.DC){delete meta.stateCounts.DC;await kv.set("churches:meta",meta);d++;}
+    await invalidateReviewStatsCache();
     return c.json({message:`DC cleanup done. ${d} removed.`,deleted:d});
   }catch(e){return c.json({error:`${e}`},500);}
 });
@@ -791,6 +805,7 @@ app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
       }
     }
     if(meta){meta.stateCounts=sc;meta.lastBlockedCleanup=new Date().toISOString();await kv.set("churches:meta",meta);}
+    await invalidateReviewStatsCache();
     return c.json({message:`Cleanup complete. Removed ${removedTotal} churches across ${cleanedStates} states.`,removed:removedTotal,states:cleanedStates});
   }catch(e){return c.json({error:`${e}`},500);}
 });
@@ -828,6 +843,7 @@ app.post(`${P}/admin/remove-churches-by-name`,async(c)=>{
       }
     }
     if(meta){meta.stateCounts=sc;await kv.set("churches:meta",meta);}
+    await invalidateReviewStatsCache();
     return c.json({message:`Removed ${removedMain} church(es) from main list and ${removedPending} from pending.`,removedMain,removedPending});
   }catch(e){return c.json({error:`${e}`},500);}
 });
@@ -908,14 +924,15 @@ function applyCalibrationToChurches(churches:any[],cal:{medians:Record<string,nu
   }
 }
 
-async function applyApprovedCorrections(churchId:string,con:Record<string,any>):Promise<boolean>{
+type ApplyResult={updated:boolean;state?:string;churches?:any[];corrections?:Record<string,any>};
+async function applyApprovedCorrections(churchId:string,con:Record<string,any>):Promise<ApplyResult>{
   const corrections:Record<string,any>={};
   for(const[field,data]of Object.entries(con)){if((data as any).approved&&(data as any).value!==null)corrections[field]=(data as any).value;}
-  if(!Object.keys(corrections).length)return false;
+  if(!Object.keys(corrections).length)return {updated:false};
   const parts=churchId.split("-");const st=parts[0]==="community"?parts[1]:parts[0];
-  if(!st||st.length!==2)return false;
+  if(!st||st.length!==2)return {updated:false};
   const key=`churches:${st}`;const churches=await kv.get(key);
-  if(!Array.isArray(churches))return false;
+  if(!Array.isArray(churches))return {updated:false};
   let updated=false;
   for(const ch of churches){
     if(ch.id===churchId){
@@ -950,18 +967,23 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>):
     }
   }
   if(updated){
-    await kv.set(key,churches);await writeIdx(st,churches);
-    try{await kv.del(`calibration:${st}`);}catch(_){}
-    const statsKey="community:stats";const stats=(await kv.get(statsKey))||{totalCorrections:0,churchesImproved:[],totalConfirmations:0,corrections:[]};
-    const improved=Array.isArray(stats.churchesImproved)?stats.churchesImproved:[];
-    if(!improved.includes(churchId))improved.push(churchId);
-    stats.churchesImproved=improved;stats.totalCorrections=(stats.totalCorrections||0)+Object.keys(corrections).length;
-    const history=Array.isArray(stats.corrections)?stats.corrections:[];
-    for(const[f,v]of Object.entries(corrections))history.unshift({churchId,field:f,value:v,appliedAt:Date.now()});
-    stats.corrections=history.slice(0,500);stats.lastUpdated=Date.now();
-    await kv.set(statsKey,stats);
+    await kv.set(key,churches);
+    await invalidateReviewStatsCache();
+    return {updated:true,state:st,churches,corrections};
   }
-  return updated;
+  return {updated:false};
+}
+async function runDeferredIndexAndStats(st:string,churches:any[],churchId:string,corrections:Record<string,any>):Promise<void>{
+  await writeIdx(st,churches);
+  try{await kv.del(`calibration:${st}`);}catch(_){}
+  const statsKey="community:stats";const stats=(await kv.get(statsKey))||{totalCorrections:0,churchesImproved:[],totalConfirmations:0,corrections:[]};
+  const improved=Array.isArray(stats.churchesImproved)?stats.churchesImproved:[];
+  if(!improved.includes(churchId))improved.push(churchId);
+  stats.churchesImproved=improved;stats.totalCorrections=(stats.totalCorrections||0)+Object.keys(corrections).length;
+  const history=Array.isArray(stats.corrections)?stats.corrections:[];
+  for(const[f,v]of Object.entries(corrections))history.unshift({churchId,field:f,value:v,appliedAt:Date.now()});
+  stats.corrections=history.slice(0,500);stats.lastUpdated=Date.now();
+  await kv.set(statsKey,stats);
 }
 
 app.post(`${P}/suggestions`,async(c)=>{
@@ -987,7 +1009,8 @@ app.post(`${P}/suggestions`,async(c)=>{
       return c.json({success:true,field,consensus:con[field],allFields:con,applied:false,needsModeration:true});
     }
     const applied=await applyApprovedCorrections(churchId,con);
-    return c.json({success:true,field,consensus:con[field],allFields:con,applied});
+    if(applied.updated&&applied.state&&applied.churches&&applied.corrections){void runDeferredIndexAndStats(applied.state,applied.churches,churchId,applied.corrections).catch(()=>{});}
+    return c.json({success:true,field,consensus:con[field],allFields:con,applied:applied.updated});
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
@@ -1170,7 +1193,7 @@ app.post(`${P}/churches/add`,async(c)=>{
     const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:normalizePhone(phone||"")||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
     store.churches.push(nc);await kv.set(k,store);
     const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,state:st,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
-    if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);}
+    if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);await invalidateReviewStatsCache();}
     return c.json({success:true,church:nc});
   }catch(e){return c.json({error:`${e}`},500);}
 });
@@ -1245,6 +1268,7 @@ app.get(`${P}/community/history/:churchId`,async(c)=>{
 
 // ── Moderator endpoints ──
 const US_STATES_LIST=["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"];
+const MODERATE_BATCH=10;
 const moderatePendingHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
@@ -1265,11 +1289,14 @@ const moderatePendingHandler=async(c:any)=>{
       }
     }
     const churchKeys=[...statesNeeded].map(st=>`churches:${st}`);
-    const churchValues=churchKeys.length?await kv.mget(churchKeys):[];
     const churchesByState=new Map<string,any[]>();
-    for(let i=0;i<churchKeys.length;i++){
-      const st=churchKeys[i].replace("churches:","");
-      if(Array.isArray(churchValues[i]))churchesByState.set(st,churchValues[i]);
+    for(let i=0;i<churchKeys.length;i+=MODERATE_BATCH){
+      const batch=churchKeys.slice(i,i+MODERATE_BATCH);
+      const values=await kv.mget(batch);
+      for(let j=0;j<batch.length;j++){
+        const st=batch[j].replace("churches:","");
+        if(Array.isArray(values[j]))churchesByState.set(st,values[j]);
+      }
     }
     if(Array.isArray(allSuggestions)){
       for(const entry of allSuggestions){
@@ -1290,14 +1317,17 @@ const moderatePendingHandler=async(c:any)=>{
         }
       }
     }
-    const pendingKeys=US_STATES_LIST.map(st=>`pending-churches:${st}`);
-    const pendingValues=await kv.mget(pendingKeys);
     const pendingChurches:any[]=[];
-    for(let i=0;i<pendingKeys.length;i++){
-      const store=pendingValues[i];
-      const st=US_STATES_LIST[i];
-      if(!store||!Array.isArray(store.churches))continue;
-      for(const ch of store.churches){if(!ch.approved)pendingChurches.push({...ch,state:st});}
+    for(let i=0;i<US_STATES_LIST.length;i+=MODERATE_BATCH){
+      const batch=US_STATES_LIST.slice(i,i+MODERATE_BATCH);
+      const pendingKeys=batch.map(st=>`pending-churches:${st}`);
+      const pendingValues=await kv.mget(pendingKeys);
+      for(let j=0;j<batch.length;j++){
+        const store=pendingValues[j];
+        const st=batch[j];
+        if(!store||!Array.isArray(store.churches))continue;
+        for(const ch of store.churches){if(!ch.approved)pendingChurches.push({...ch,state:st});}
+      }
     }
     const modKey=getModKey(c);
     const globalRaw=await kv.get(IN_REVIEW_GLOBAL_KEY);
@@ -1340,20 +1370,27 @@ async function removeFromInReviewKV(modKey:string,type:string,churchId:string,fi
 const moderateApproveSuggestionHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
-    const{churchId,field}=await c.req.json();
+    const{churchId,field,value:editedValue}=await c.req.json();
     if(!churchId||!field)return c.json({error:"Missing churchId or field"},400);
     const k=`suggestions:${churchId}`;const ex=await kv.get(k);
     if(!ex||!Array.isArray(ex.submissions))return c.json({error:"No suggestions found"},404);
-    const con=consensus(ex.submissions);
-    const d=con[field] as any;
-    if(!d||d.value===null)return c.json({error:"No value to approve"},400);
+    let valueToApply:any;
+    if(editedValue!==undefined&&editedValue!==null&&String(editedValue).trim()!==""){
+      valueToApply=String(editedValue).trim();
+    }else{
+      const con=consensus(ex.submissions);
+      const d=con[field] as any;
+      if(!d||d.value===null)return c.json({error:"No value to approve"},400);
+      valueToApply=d.value;
+    }
     const singleCon:Record<string,any>={};
-    singleCon[field]={approved:true,value:d.value,votes:d.votes,needed:THR};
+    singleCon[field]={approved:true,value:valueToApply,votes:0,needed:THR};
     const applied=await applyApprovedCorrections(churchId,singleCon);
     ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
     await kv.set(k,ex);
     const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);
-    return c.json({success:true,applied,churchId,field,value:d.value});
+    if(applied.updated&&applied.state&&applied.churches&&applied.corrections){void runDeferredIndexAndStats(applied.state,applied.churches,churchId,applied.corrections).catch(()=>{});}
+    return c.json({success:true,applied:applied.updated,churchId,field,value:valueToApply});
   }catch(e){return c.json({error:`${e}`},500);}
 };
 app.post(`${P}/moderate/approve/suggestion`,moderateApproveSuggestionHandler);
@@ -2010,6 +2047,7 @@ app.post(`${P}/migrate/apply-pending`,async(c)=>{
     let correctionsApplied=0,churchesMerged=0;
     // 1. Apply all pending corrections (skip sensitive fields — those need moderator approval)
     const allSuggestions=await kv.getByPrefix("suggestions:");
+    const toDefer:{st:string;churches:any[];churchId:string;corrections:Record<string,any>}[]=[];
     if(Array.isArray(allSuggestions)){
       for(const entry of allSuggestions){
         if(!entry||!Array.isArray(entry.submissions)||!entry.churchId)continue;
@@ -2019,9 +2057,10 @@ app.post(`${P}/migrate/apply-pending`,async(c)=>{
         for(const[f,d]of Object.entries(con)){if(!SENSITIVE_FIELDS.includes(f))safeCon[f]=d;}
         if(!Object.keys(safeCon).length)continue;
         const applied=await applyApprovedCorrections(entry.churchId,safeCon);
-        if(applied)correctionsApplied++;
+        if(applied.updated&&applied.state&&applied.churches&&applied.corrections){correctionsApplied++;toDefer.push({st:applied.state,churches:applied.churches,churchId:entry.churchId,corrections:applied.corrections});}
       }
     }
+    for(const d of toDefer){await runDeferredIndexAndStats(d.st,d.churches,d.churchId,d.corrections);}
     // 2. Merge all pending churches into main data
     const states=["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"];
     for(const st of states){

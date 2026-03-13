@@ -1,9 +1,10 @@
-import { CheckCheck, ChevronDown, Check, X, MapPin, Globe, ChevronRight } from "lucide-react";
+import { CheckCheck, ChevronDown, Check, X, MapPin, Globe, ChevronRight, Pencil } from "lucide-react";
 import { ThreeDotLoader } from "./ThreeDotLoader";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   moderateApproveSuggestion,
+  moderateApproveSuggestionWithValue,
   moderateRejectSuggestion,
   moderateApproveChurch,
   moderateRejectChurch,
@@ -61,6 +62,8 @@ export function ReviewPill({
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"needing" | "inReview">("needing");
+  const [editing, setEditing] = useState<{ churchId: string; field: string; value: string } | null>(null);
+  const [optimisticRemoved, setOptimisticRemoved] = useState<Set<string>>(new Set());
 
   const inReviewSugs = pending.inReviewSuggestions ?? [];
   const inReviewChs = pending.inReviewChurches ?? [];
@@ -69,31 +72,51 @@ export function ReviewPill({
   const myReviewSuggestionSet = new Set(inReviewSugs.filter((x) => x.byMe).map((x) => `${x.churchId}:${x.field}`));
   const myReviewChurchSet = new Set(inReviewChs.filter((c): c is InReviewChurchItem => typeof c === "object" && c != null && c.byMe === true).map((c) => c.churchId));
 
+  const notRemoved = (key: string) => !optimisticRemoved.has(key);
   const needingSuggestions = pending.pendingSuggestions.filter(
-    (s) => !inReviewSuggestionSet.has(`${s.churchId}:${s.field}`)
+    (s) => !inReviewSuggestionSet.has(`${s.churchId}:${s.field}`) && notRemoved(`s:${s.churchId}:${s.field}`)
   );
-  const needingChurches = pending.pendingChurches.filter((ch) => !inReviewChurchSet.has(ch.id));
-  const inReviewSuggestionsList = pending.pendingSuggestions.filter((s) =>
-    inReviewSuggestionSet.has(`${s.churchId}:${s.field}`)
+  const needingChurches = pending.pendingChurches.filter((ch) => !inReviewChurchSet.has(ch.id) && notRemoved(`c:${ch.id}`));
+  const inReviewSuggestionsList = pending.pendingSuggestions.filter(
+    (s) => inReviewSuggestionSet.has(`${s.churchId}:${s.field}`) && notRemoved(`s:${s.churchId}:${s.field}`)
   );
-  const inReviewChurchesList = pending.pendingChurches.filter((ch) => inReviewChurchSet.has(ch.id));
+  const inReviewChurchesList = pending.pendingChurches.filter((ch) => inReviewChurchSet.has(ch.id) && notRemoved(`c:${ch.id}`));
 
   const needingCount = needingSuggestions.length + needingChurches.length;
   const inReviewCount = inReviewSuggestionsList.length + inReviewChurchesList.length;
   const totalPending = pending.pendingSuggestions.length + pending.pendingChurches.length;
 
-  const handleAction = async (actionFn: () => Promise<any>, actionId: string) => {
+  const handleAction = async (actionFn: () => Promise<any>, actionId: string, optimisticKey?: string) => {
     setActionLoading(actionId);
     setError(null);
+    if (optimisticKey) setOptimisticRemoved((prev) => new Set(prev).add(optimisticKey));
     try {
       await actionFn();
       onRefresh();
+      return true;
     } catch (err: any) {
+      if (optimisticKey) setOptimisticRemoved((prev) => { const n = new Set(prev); n.delete(optimisticKey); return n; });
       setError(err.message || "Action failed");
+      return false;
     } finally {
       setActionLoading(null);
     }
   };
+
+  // Clear optimistic keys once refreshed data no longer contains those items
+  useEffect(() => {
+    setOptimisticRemoved((prev) => {
+      if (prev.size === 0) return prev;
+      const suggestionKeys = new Set(pending.pendingSuggestions.map((s) => `s:${s.churchId}:${s.field}`));
+      const churchKeys = new Set(pending.pendingChurches.map((ch) => `c:${ch.id}`));
+      const next = new Set(prev);
+      for (const k of next) {
+        if (k.startsWith("s:") && !suggestionKeys.has(k)) next.delete(k);
+        if (k.startsWith("c:") && !churchKeys.has(k)) next.delete(k);
+      }
+      return next;
+    });
+  }, [pending.pendingSuggestions, pending.pendingChurches]);
 
   if (!alwaysShow && totalPending === 0 && !open) return null;
 
@@ -233,48 +256,100 @@ export function ReviewPill({
                                 Current: <span className="text-white/60">{s.currentValue}</span>
                               </p>
                             )}
-                            <p className="text-white text-sm">
-                              Proposed:{" "}
-                              {isWebsite && /^https?:\/\//i.test(s.proposedValue) ? (
-                                <a
-                                  href={s.proposedValue}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-purple-400/90 underline hover:text-purple-300"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  {s.proposedValue}
-                                </a>
-                              ) : (
-                                <span className="text-purple-400/90">{proposedDisplay}</span>
-                              )}
-                            </p>
-                            <div className="flex gap-2 pt-0.5 flex-wrap">
-                              <button
-                                onClick={() => handleAction(() => addToInReview(moderatorKey, "suggestion", s.churchId, s.field), `add-${actionId}`)}
-                                disabled={actionLoading === `add-${actionId}`}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-[11px] font-medium transition-colors disabled:opacity-50"
-                              >
-                                {actionLoading === `add-${actionId}` ? <ThreeDotLoader size={12} /> : null}
-                                Add to up next
-                              </button>
-                              <button
-                                onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.churchId, s.field), actionId)}
-                                disabled={isActing}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[11px] font-medium transition-colors disabled:opacity-50"
-                              >
-                                {isActing ? <ThreeDotLoader size={12} /> : <Check size={12} />}
-                                Approve
-                              </button>
-                              <button
-                                onClick={() => handleAction(() => moderateRejectSuggestion(moderatorKey, s.churchId, s.field), actionId)}
-                                disabled={isActing}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-[11px] font-medium transition-colors disabled:opacity-50"
-                              >
-                                <X size={12} />
-                                Reject
-                              </button>
-                            </div>
+                            {editing?.churchId === s.churchId && editing?.field === s.field ? (
+                              <div className="space-y-2">
+                                <label className="text-white/70 text-xs font-medium">Edit value then approve</label>
+                                {s.field === "address" ? (
+                                  <textarea
+                                    value={editing.value}
+                                    onChange={(e) => setEditing((prev) => (prev ? { ...prev, value: e.target.value } : null))}
+                                    className="w-full min-h-[72px] px-2.5 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-purple-400/50"
+                                    placeholder="Address, city, state or JSON"
+                                  />
+                                ) : (
+                                  <input
+                                    type={s.field === "website" ? "url" : "text"}
+                                    value={editing.value}
+                                    onChange={(e) => setEditing((prev) => (prev ? { ...prev, value: e.target.value } : null))}
+                                    className="w-full px-2.5 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-purple-400/50"
+                                    placeholder={s.field === "website" ? "https://..." : "Value"}
+                                  />
+                                )}
+                                <div className="flex gap-2 flex-wrap">
+                                  <button
+                                    onClick={() => handleAction(
+                                      () => moderateApproveSuggestionWithValue(moderatorKey, s.churchId, s.field, editing.value),
+                                      `edit-${actionId}`,
+                                      `s:${s.churchId}:${s.field}`
+                                    ).then((ok) => ok && setEditing(null))}
+                                    disabled={actionLoading === `edit-${actionId}` || !editing.value.trim()}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                  >
+                                    {actionLoading === `edit-${actionId}` ? <ThreeDotLoader size={12} /> : <Check size={12} />}
+                                    Approve edited
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditing(null)}
+                                    className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-[11px] font-medium transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <p className="text-white text-sm">
+                                  Proposed:{" "}
+                                  {isWebsite && /^https?:\/\//i.test(s.proposedValue) ? (
+                                    <a
+                                      href={s.proposedValue}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-purple-400/90 underline hover:text-purple-300"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {s.proposedValue}
+                                    </a>
+                                  ) : (
+                                    <span className="text-purple-400/90">{proposedDisplay}</span>
+                                  )}
+                                </p>
+                                <div className="flex gap-2 pt-0.5 flex-wrap">
+                                  <button
+                                    onClick={() => handleAction(() => addToInReview(moderatorKey, "suggestion", s.churchId, s.field), `add-${actionId}`)}
+                                    disabled={actionLoading === `add-${actionId}`}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                  >
+                                    {actionLoading === `add-${actionId}` ? <ThreeDotLoader size={12} /> : null}
+                                    Add to up next
+                                  </button>
+                                  <button
+                                    onClick={() => setEditing({ churchId: s.churchId, field: s.field, value: s.proposedValue })}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 text-[11px] font-medium transition-colors"
+                                  >
+                                    <Pencil size={12} />
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.churchId, s.field), actionId, `s:${s.churchId}:${s.field}`)}
+                                    disabled={isActing}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                  >
+                                    {isActing ? <ThreeDotLoader size={12} /> : <Check size={12} />}
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={() => handleAction(() => moderateRejectSuggestion(moderatorKey, s.churchId, s.field), actionId, `s:${s.churchId}:${s.field}`)}
+                                    disabled={isActing}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                  >
+                                    <X size={12} />
+                                    Reject
+                                  </button>
+                                </div>
+                              </>
+                            )}
                           </div>
                         );
                       })}
@@ -316,7 +391,7 @@ export function ReviewPill({
                                 Add to up next
                               </button>
                               <button
-                                onClick={() => handleAction(() => moderateApproveChurch(moderatorKey, ch.id), actionId)}
+                                onClick={() => handleAction(() => moderateApproveChurch(moderatorKey, ch.id), actionId, `c:${ch.id}`)}
                                 disabled={isActing}
                                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[11px] font-medium transition-colors disabled:opacity-50"
                               >
@@ -324,7 +399,7 @@ export function ReviewPill({
                                 Approve
                               </button>
                               <button
-                                onClick={() => handleAction(() => moderateRejectChurch(moderatorKey, ch.id), actionId)}
+                                onClick={() => handleAction(() => moderateRejectChurch(moderatorKey, ch.id), actionId, `c:${ch.id}`)}
                                 disabled={isActing}
                                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-[11px] font-medium transition-colors disabled:opacity-50"
                               >
@@ -392,49 +467,101 @@ export function ReviewPill({
                                 Current: <span className="text-white/60">{s.currentValue}</span>
                               </p>
                             )}
-                            <p className="text-white text-sm">
-                              Proposed:{" "}
-                              {isWebsite && /^https?:\/\//i.test(s.proposedValue) ? (
-                                <a
-                                  href={s.proposedValue}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-purple-400/90 underline hover:text-purple-300"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  {s.proposedValue}
-                                </a>
-                              ) : (
-                                <span className="text-purple-400/90">{proposedDisplay}</span>
-                              )}
-                            </p>
-                            {isMine && (
-                              <div className="flex gap-2 pt-0.5 flex-wrap">
-                                <button
-                                  onClick={() => handleAction(() => removeFromInReview(moderatorKey, "suggestion", s.churchId, s.field), `remove-${actionId}`)}
-                                  disabled={actionLoading === `remove-${actionId}`}
-                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-[11px] font-medium transition-colors disabled:opacity-50"
-                                >
-                                  {actionLoading === `remove-${actionId}` ? <ThreeDotLoader size={12} /> : null}
-                                  Remove from up next
-                                </button>
-                                <button
-                                  onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.churchId, s.field), actionId)}
-                                  disabled={isActing}
-                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[11px] font-medium transition-colors disabled:opacity-50"
-                                >
-                                  {isActing ? <ThreeDotLoader size={12} /> : <Check size={12} />}
-                                  Approve
-                                </button>
-                                <button
-                                  onClick={() => handleAction(() => moderateRejectSuggestion(moderatorKey, s.churchId, s.field), actionId)}
-                                  disabled={isActing}
-                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-[11px] font-medium transition-colors disabled:opacity-50"
-                                >
-                                  <X size={12} />
-                                  Reject
-                                </button>
+                            {editing?.churchId === s.churchId && editing?.field === s.field ? (
+                              <div className="space-y-2">
+                                <label className="text-white/70 text-xs font-medium">Edit value then approve</label>
+                                {s.field === "address" ? (
+                                  <textarea
+                                    value={editing.value}
+                                    onChange={(e) => setEditing((prev) => (prev ? { ...prev, value: e.target.value } : null))}
+                                    className="w-full min-h-[72px] px-2.5 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-purple-400/50"
+                                    placeholder="Address, city, state or JSON"
+                                  />
+                                ) : (
+                                  <input
+                                    type={s.field === "website" ? "url" : "text"}
+                                    value={editing.value}
+                                    onChange={(e) => setEditing((prev) => (prev ? { ...prev, value: e.target.value } : null))}
+                                    className="w-full px-2.5 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-purple-400/50"
+                                    placeholder={s.field === "website" ? "https://..." : "Value"}
+                                  />
+                                )}
+                                <div className="flex gap-2 flex-wrap">
+                                  <button
+                                    onClick={() => handleAction(
+                                      () => moderateApproveSuggestionWithValue(moderatorKey, s.churchId, s.field, editing.value),
+                                      `edit-${actionId}`,
+                                      `s:${s.churchId}:${s.field}`
+                                    ).then((ok) => ok && setEditing(null))}
+                                    disabled={actionLoading === `edit-${actionId}` || !editing.value.trim()}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                  >
+                                    {actionLoading === `edit-${actionId}` ? <ThreeDotLoader size={12} /> : <Check size={12} />}
+                                    Approve edited
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditing(null)}
+                                    className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-[11px] font-medium transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
                               </div>
+                            ) : (
+                              <>
+                                <p className="text-white text-sm">
+                                  Proposed:{" "}
+                                  {isWebsite && /^https?:\/\//i.test(s.proposedValue) ? (
+                                    <a
+                                      href={s.proposedValue}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-purple-400/90 underline hover:text-purple-300"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {s.proposedValue}
+                                    </a>
+                                  ) : (
+                                    <span className="text-purple-400/90">{proposedDisplay}</span>
+                                  )}
+                                </p>
+                                {isMine && (
+                                  <div className="flex gap-2 pt-0.5 flex-wrap">
+                                    <button
+                                      onClick={() => handleAction(() => removeFromInReview(moderatorKey, "suggestion", s.churchId, s.field), `remove-${actionId}`)}
+                                      disabled={actionLoading === `remove-${actionId}`}
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                    >
+                                      {actionLoading === `remove-${actionId}` ? <ThreeDotLoader size={12} /> : null}
+                                      Remove from up next
+                                    </button>
+                                    <button
+                                      onClick={() => setEditing({ churchId: s.churchId, field: s.field, value: s.proposedValue })}
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 text-[11px] font-medium transition-colors"
+                                    >
+                                      <Pencil size={12} />
+                                      Edit
+                                    </button>
+                                    <button
+onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.churchId, s.field), actionId, `s:${s.churchId}:${s.field}`)}
+                                    disabled={isActing}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                  >
+                                    {isActing ? <ThreeDotLoader size={12} /> : <Check size={12} />}
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={() => handleAction(() => moderateRejectSuggestion(moderatorKey, s.churchId, s.field), actionId, `s:${s.churchId}:${s.field}`)}
+                                      disabled={isActing}
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                    >
+                                      <X size={12} />
+                                      Reject
+                                    </button>
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
                         );
@@ -484,7 +611,7 @@ export function ReviewPill({
                                   Remove from up next
                                 </button>
                                 <button
-                                  onClick={() => handleAction(() => moderateApproveChurch(moderatorKey, ch.id), actionId)}
+                                  onClick={() => handleAction(() => moderateApproveChurch(moderatorKey, ch.id), actionId, `c:${ch.id}`)}
                                   disabled={isActing}
                                   className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[11px] font-medium transition-colors disabled:opacity-50"
                                 >
@@ -492,7 +619,7 @@ export function ReviewPill({
                                   Approve
                                 </button>
                                 <button
-                                  onClick={() => handleAction(() => moderateRejectChurch(moderatorKey, ch.id), actionId)}
+                                  onClick={() => handleAction(() => moderateRejectChurch(moderatorKey, ch.id), actionId, `c:${ch.id}`)}
                                   disabled={isActing}
                                   className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-[11px] font-medium transition-colors disabled:opacity-50"
                                 >

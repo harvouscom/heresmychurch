@@ -30,12 +30,9 @@ export function ChurchMapPage() {
     return { stateAbbrev, churchShortId, legacyChurchId, openReviewModalFromQuery, moderatorKey };
   }, [location.pathname, location.search]);
 
+  // location.search already includes the leading "?" (or is ""), so append as-is to avoid "??"
   const navigateToState = useCallback(
-    (abbrev: string) => {
-      const path = `/state/${abbrev}`;
-      const search = location.search ? `?${location.search}` : "";
-      nav(path + search);
-    },
+    (abbrev: string) => nav(`/state/${abbrev}${location.search}`),
     [nav, location.search]
   );
   const navigateToStateWithReview = useCallback(
@@ -47,17 +44,14 @@ export function ChurchMapPage() {
     [nav, location.search]
   );
   const navigateToChurch = useCallback(
-    (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => {
-      const path = `/state/${stateAbbrev}/${churchShortId}`;
-      const search = location.search ? `?${location.search}` : "";
-      nav(path + search, options ?? {});
-    },
+    (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) =>
+      nav(`/state/${stateAbbrev}/${churchShortId}${location.search}`, options ?? {}),
     [nav, location.search]
   );
-  const navigateToNational = useCallback(() => {
-    const search = location.search ? `?${location.search}` : "";
-    nav("/" + search);
-  }, [nav, location.search]);
+  const navigateToNational = useCallback(
+    () => nav(`/${location.search}`),
+    [nav, location.search]
+  );
 
   const clearReviewQueryParam = useCallback(() => {
     const params = new URLSearchParams(location.search);

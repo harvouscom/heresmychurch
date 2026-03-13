@@ -5,7 +5,7 @@ import { ThreeDotLoader } from "./ThreeDotLoader";
 const CONTACT_EMAIL = "hey@heresmychurch.com";
 import { CloseButton } from "./ui/close-button";
 import { StateFlag } from "./StateFlag";
-import { getSizeCategory, getFallbackLocation } from "./church-data";
+import { getSizeCategory, getFallbackLocation, churchNeedsReview } from "./church-data";
 import type { Church } from "./church-data";
 import { formatFullAddress } from "./AddressInput";
 import { WAITING_SAYINGS } from "./map-constants";
@@ -146,6 +146,7 @@ export function StateTooltip({
   states,
   tooltipPos,
   activeByState = {},
+  reviewCount,
   pinned = false,
   onViewState,
   onClose,
@@ -154,6 +155,7 @@ export function StateTooltip({
   states: { abbrev: string; name: string; isPopulated: boolean; churchCount: number }[];
   tooltipPos: { x: number; y: number };
   activeByState?: Record<string, number>;
+  reviewCount?: number;
   pinned?: boolean;
   onViewState?: () => void;
   onClose?: () => void;
@@ -191,6 +193,11 @@ export function StateTooltip({
       {activeCount > 0 && (
         <div className="text-xs text-green-400/90 mt-1">
           {activeCount === 1 ? "1 person viewing now" : `${activeCount.toLocaleString()} people viewing now`}
+        </div>
+      )}
+      {reviewCount != null && reviewCount > 0 && (
+        <div className="text-pink-300 text-[11px] font-medium mt-1">
+          {reviewCount.toLocaleString()} need review
         </div>
       )}
       {pinned && onViewState && (
@@ -243,12 +250,14 @@ export function CountyTooltip({
 export function ChurchTooltip({
   church,
   tooltipPos,
+  showReviewStatus = false,
   pinned = false,
   onViewChurch,
   onClose,
 }: {
   church: Church;
   tooltipPos: { x: number; y: number };
+  showReviewStatus?: boolean;
   pinned?: boolean;
   onViewChurch?: (church: Church) => void;
   onClose?: () => void;
@@ -304,6 +313,11 @@ export function ChurchTooltip({
         />
         {church.denomination === "Other" || church.denomination === "Unknown" ? "Unspecified" : church.denomination}
       </div>
+      {showReviewStatus && churchNeedsReview(church) && (
+        <div className="text-pink-300 text-[11px] font-medium mt-1">
+          Needs review
+        </div>
+      )}
       {pinned && onViewChurch && (
         <button
           type="button"

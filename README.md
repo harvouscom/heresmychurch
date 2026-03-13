@@ -1,64 +1,35 @@
 
 # Here's My Church
 
-An interactive map of Christian churches in the U.S. Find your church or find a new church. 100% free and crowd-sourced.
-
-[heresmychurch.com](https://heresmychurch.com)
+An interactive map of Christian churches in the U.S. — find your church or find a new one. Free, open-source, crowd-sourced, no account needed. **[heresmychurch.com](https://heresmychurch.com)**
 
 ## The Story
 
 I woke up one morning to a text from my best friend with an idea: make a church finder interactive map. I was like... uhhh yes!
 
-Church data is still surprisingly hard to come by. All the current church directories are old and outdated. So this idea felt like it could actually be really helpful — a place where people can find churches while also allowing crowd-sourced info to keep the data as accurate as possible.
+Church data is surprisingly hard to come by; most directories are old and outdated. This felt like a chance to help — a place to find churches where crowd-sourced updates keep the data accurate.
 
-What started as a Figma Make project called "Church America Map" turned into **Here's My Church** after the first version got over 10k views, 100+ likes and bookmarks on X, and saw 300 visits on day 1. At that point I had to create a brand and get a domain.
+What started as a Figma Make project called "Church America Map" became **Here's My Church** after the first version got 10k+ views, 100+ likes/bookmarks on X, and 300 visits on day 1. That’s when I created the brand and got a domain.
 
-This project is made by me, [Derek Castelli](https://github.com/harvouscom), who's also building [Harvous](https://github.com/harvouscom/harvous) — a Bible notes app.
+By [Derek Castelli](https://github.com/harvouscom), who’s also building [Harvous](https://github.com/harvouscom/harvous) — a Bible notes app.
 
-## What is Here's My Church?
+## What it does
 
-Here's My Church is a free, open-source, interactive map that helps people discover Christian churches across all 50 U.S. states. No account needed.
+- **Browse** — click any state to see its churches on the map
+- **Search** by name across states; **filter** by denomination (25+), size, and language
+- **View** details: address, website, service times, pastor, ministries
+- **Contribute** — add churches or suggest edits (crowd-sourced)
+- **Bilingual detection** — estimates language from name patterns, demographics, and confirmations
 
-- **Browse** churches on an interactive U.S. map — click any state to see its churches
-- **Search** by church name across states
-- **Filter** by denomination (25+), attendance size, and language
-- **View** church details like address, website, service times, pastor, ministries, and more
-- **Contribute** by adding new churches or suggesting edits to existing ones — all crowd-sourced
-- **Bilingual detection** — estimates language offerings based on church name patterns, state demographics, and community confirmations
+Goal: make it easy to find a church near you with data that’s actually up to date.
 
-The goal is simple: make it easy for anyone to find a church near them, with data that's actually up to date.
+For how the app is wired (routing, data flow, API, deployment): **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
 ## Tech Stack
 
-**Frontend**
-- [React](https://react.dev) 18 — UI framework
-- [TypeScript](https://www.typescriptlang.org) — type safety
-- [Vite](https://vite.dev) — build tool & dev server
-- [React Router](https://reactrouter.com) v7 — URL-driven navigation
+**Frontend:** [React](https://react.dev) 18, [TypeScript](https://www.typescriptlang.org), [Vite](https://vite.dev), [React Router](https://reactrouter.com) v7 · **Styling:** [Tailwind](https://tailwindcss.com) v4, [shadcn/ui](https://ui.shadcn.com), [Radix](https://www.radix-ui.com), [Lucide](https://lucide.dev), [Motion](https://motion.dev) · **Mapping:** [react-simple-maps](https://www.react-simple-maps.io), [d3-geo](https://d3js.org/d3-geo), [TopoJSON](https://github.com/topojson/topojson) · **Backend:** [Supabase](https://supabase.com), [Hono](https://hono.dev)
 
-**Styling**
-- [Tailwind CSS](https://tailwindcss.com) v4 — utility-first CSS
-- [shadcn/ui](https://ui.shadcn.com) — component primitives
-- [Radix UI](https://www.radix-ui.com) — accessible unstyled components
-- [Lucide](https://lucide.dev) — icons
-- [Motion](https://motion.dev) — animations
-
-**Mapping**
-- [react-simple-maps](https://www.react-simple-maps.io) — D3-based map rendering
-- [d3-geo](https://d3js.org/d3-geo) — geographic projections
-- [TopoJSON](https://github.com/topojson/topojson) — geographic data format
-
-**Backend**
-- [Supabase](https://supabase.com) — serverless functions & database
-- [Hono](https://hono.dev) — lightweight HTTP framework for edge functions
-
-**Data Sources**
-- OpenStreetMap church data with denomination matching and building footprint geometry for attendance estimation
-- ARDA (Association of Religion Data Archives) reference data for denomination-based attendance estimates
-- U.S. Census population data for regional scaling (state/county from Census POPESTIMATE2023)
-- Community-submitted churches and corrections
-
-To refresh state and national population totals from the latest Census county estimates, run `node scripts/generate-state-populations.mjs` then redeploy the Supabase functions.
+**Data:** OpenStreetMap (churches, denomination matching, building footprints); ARDA (attendance estimates); U.S. Census (state/county population); community submissions. To refresh population data: `node scripts/generate-state-populations.mjs` then redeploy Supabase functions.
 
 ## Credits
 

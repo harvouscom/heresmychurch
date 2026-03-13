@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { Search, ChevronRight, MapPin, ChevronDown, Plus } from "lucide-react";
+import { Search, ChevronRight, MapPin, ChevronDown, ChevronUp, Plus } from "lucide-react";
 import { ThreeDotLoader } from "./ThreeDotLoader";
 import { geoAlbersUsa } from "d3-geo";
 import type { Church, StateInfo } from "./church-data";
@@ -29,6 +29,8 @@ interface MapSearchBarProps {
   detectedState?: string | null;
   zoom?: number;
   center?: [number, number];
+  /** When in state view, report search result church IDs so the map can show only those dots. */
+  onStateViewSearchResultsChange?: (churchIds: Set<string> | null) => void;
 }
 
 /** Max results for national (remote) search dropdown */
@@ -53,11 +55,13 @@ export function MapSearchBar({
   detectedState,
   zoom = 1,
   center = [-96, 38],
+  onStateViewSearchResultsChange,
 }: MapSearchBarProps) {
   const [query, setQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [searchAllMode, setSearchAllMode] = useState(false);
+  const [resultsDropdownVisible, setResultsDropdownVisible] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -101,6 +105,7 @@ export function MapSearchBar({
 
     setQuery("");
     setSelectedIndex(-1);
+    setResultsDropdownVisible(true);
     setRemoteResults([]);
     setRemoteSearched(false);
     setShowStateDropdown(false);
@@ -191,6 +196,20 @@ export function MapSearchBar({
     if (!isViewportSearchMode || searchAllMode || !churchesInView) return localResultsRaw;
     return localResultsRaw.filter((ch) => churchesInView.has(ch.id));
   }, [localResultsRaw, isViewportSearchMode, searchAllMode, churchesInView]);
+
+  // Report state-view search result IDs to parent (for map dots) — only when the set actually changes
+  const lastReportedIdsRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!onStateViewSearchResultsChange) return;
+    const nextValue: Set<string> | null =
+      focusedState && query.trim()
+        ? new Set(localResults.map((c) => c.id))
+        : null;
+    const sig = nextValue === null ? "null" : [...nextValue].sort().join(",");
+    if (sig === lastReportedIdsRef.current) return;
+    lastReportedIdsRef.current = sig;
+    onStateViewSearchResultsChange(nextValue);
+  }, [focusedState, query, localResults, onStateViewSearchResultsChange]);
 
   // Debounced server search for national view
   useEffect(() => {
@@ -367,7 +386,7 @@ export function MapSearchBar({
       )}
 
       {/* Results dropdown — rendered above the input */}
-      {showDropdown && !showStateDropdown && (
+      {showDropdown && !showStateDropdown && resultsDropdownVisible && (
         <div
           className="mb-2 rounded-xl shadow-2xl overflow-hidden max-h-[50vh] overflow-y-auto"
           style={{ backgroundColor: "rgba(30, 16, 64, 0.97)" }}
@@ -599,12 +618,27 @@ export function MapSearchBar({
           }
           className="flex-1 bg-transparent text-white text-[15px] placeholder:text-white outline-none min-w-0"
         />
+        {query.trim().length > 0 && (
+          <button
+            type="button"
+            aria-label={resultsDropdownVisible ? "Hide results" : "Show results"}
+            className="rounded-full flex items-center justify-center hover:bg-white/10 transition-colors flex-shrink-0 w-6 h-6"
+            onClick={() => setResultsDropdownVisible((v) => !v)}
+          >
+            {resultsDropdownVisible ? (
+              <ChevronUp size={14} className="text-white/50" />
+            ) : (
+              <ChevronDown size={14} className="text-white/50" />
+            )}
+          </button>
+        )}
         {(query || stateFilter) && (
           <CloseButton
             ariaLabel="Clear search"
             onClick={() => {
               if (query) {
                 setQuery("");
+                setResultsDropdownVisible(true);
                 inputRef.current?.focus();
               } else {
                 setStateFilter(null);
