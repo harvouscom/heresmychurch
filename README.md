@@ -23,7 +23,7 @@ By [Derek Castelli](https://github.com/harvouscom), who’s also building [Harvo
 
 Goal: make it easy to find a church near you with data that’s actually up to date.
 
-For how the app is wired (routing, data flow, API, deployment): **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
+For how the app is wired (routing, data flow, API, deployment): **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**. New to React? Start with **[docs/LEARNING-REACT-IN-THIS-APP.md](docs/LEARNING-REACT-IN-THIS-APP.md)**.
 
 ## Tech Stack
 

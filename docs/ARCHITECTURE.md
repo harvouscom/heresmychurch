@@ -1,5 +1,7 @@
 # App architecture and how it works
 
+**New to React?** See [Learning React in this app](LEARNING-REACT-IN-THIS-APP.md) for concepts and how the frontend fits together.
+
 This doc explains how **Here's My Church** is built: what it does, how the frontend and backend connect, how data flows from URL to map, and where key features live. Use it as a top-to-bottom read or a reference when navigating the codebase.
 
 ---
