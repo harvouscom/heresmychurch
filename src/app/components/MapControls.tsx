@@ -37,7 +37,7 @@ export function MapControls({
   minZoom?: number;
   compact?: boolean;
 }) {
-  const zoomInDisabled = zoom >= 300;
+  const zoomInDisabled = zoom >= 500;
   const zoomOutDisabled = zoom <= minZoom;
   const sizeClass = compact ? "w-8 h-8" : "w-9 h-9";
   const iconSize = compact ? 14 : 16;

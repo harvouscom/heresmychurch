@@ -975,7 +975,7 @@ export function useChurchMapData({
   const handleResetView = () => navigateToNational();
   // In state view, don't allow zooming out past the initial state zoom.
   const minZoom = focusedState ? getStateZoom(focusedState) : 1;
-  const handleZoomIn = () => setZoom((z) => Math.min(z * 1.5, 300));
+  const handleZoomIn = () => setZoom((z) => Math.min(z * 1.5, 500));
   const handleZoomOut = () => setZoom((z) => Math.max(z / 1.5, minZoom));
   const preloadChurch = (church: Church) => { refs.current.preloadedChurch = church; };
 
