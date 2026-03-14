@@ -971,12 +971,24 @@ export function useChurchMapData({
     }
   };
 
-  const clearTransition = () => dd({ type: "SET_TRANSITIONING", value: false });
+  const clearTransition = () => {
+    dd({ type: "SET_TRANSITIONING", value: false });
+    dd({ type: "SET_ZOOM_TRANSITIONING", value: false });
+  };
   const handleResetView = () => navigateToNational();
   // In state view, don't allow zooming out past the initial state zoom.
   const minZoom = focusedState ? getStateZoom(focusedState) : 1;
-  const handleZoomIn = () => setZoom((z) => Math.min(z * 1.5, 500));
-  const handleZoomOut = () => setZoom((z) => Math.max(z / 1.5, minZoom));
+  const ZOOM_TRANSITION_MS = 320;
+  const handleZoomIn = () => {
+    dd({ type: "SET_ZOOM_TRANSITIONING", value: true });
+    setZoom((z) => Math.min(z * 1.5, 500));
+    setTimeout(() => dd({ type: "SET_ZOOM_TRANSITIONING", value: false }), ZOOM_TRANSITION_MS);
+  };
+  const handleZoomOut = () => {
+    dd({ type: "SET_ZOOM_TRANSITIONING", value: true });
+    setZoom((z) => Math.max(z / 1.5, minZoom));
+    setTimeout(() => dd({ type: "SET_ZOOM_TRANSITIONING", value: false }), ZOOM_TRANSITION_MS);
+  };
   const preloadChurch = (church: Church) => { refs.current.preloadedChurch = church; };
 
   const handleChurchDotClick = (church: Church, e?: { clientX: number; clientY: number }) => {
@@ -1015,6 +1027,7 @@ export function useChurchMapData({
     minZoom,
     center, setCenter,
     isTransitioning: ds.isTransitioning,
+    zoomTransitioning: ds.zoomTransitioning,
     clearTransition,
     moveEndSuppressedUntilRef: refs as { current: { moveEndSuppressedUntil: number } },
     // Data
@@ -1119,6 +1132,7 @@ type DataState = {
   zoom: number;
   center: [number, number];
   isTransitioning: boolean;
+  zoomTransitioning: boolean;
   countyFeatures: Map<string, any> | null;
 };
 
@@ -1138,6 +1152,7 @@ type DataAction =
   | { type: "SET_ZOOM"; value: number | ((p: number) => number) }
   | { type: "SET_CENTER"; value: [number, number] }
   | { type: "SET_TRANSITIONING"; value: boolean }
+  | { type: "SET_ZOOM_TRANSITIONING"; value: boolean }
   | { type: "SET_COUNTY_FEATURES"; value: Map<string, any> | null }
   | { type: "RESET_TO_NATIONAL" };
 
@@ -1157,6 +1172,7 @@ const initialDataState: DataState = {
   zoom: 1,
   center: [-96, 38] as [number, number],
   isTransitioning: false,
+  zoomTransitioning: false,
   countyFeatures: null,
 };
 
@@ -1204,6 +1220,8 @@ function dataReducer(state: DataState, action: DataAction): DataState {
       return { ...state, center: action.value };
     case "SET_TRANSITIONING":
       return state.isTransitioning === action.value ? state : { ...state, isTransitioning: action.value };
+    case "SET_ZOOM_TRANSITIONING":
+      return state.zoomTransitioning === action.value ? state : { ...state, zoomTransitioning: action.value };
     case "SET_COUNTY_FEATURES":
       return { ...state, countyFeatures: action.value };
     case "RESET_TO_NATIONAL":

@@ -43,6 +43,7 @@ interface MapCanvasProps {
   onChurchClick: (church: Church) => void;
   onChurchHover: (church: Church | null) => void;
   isTransitioning: boolean;
+  zoomTransitioning?: boolean;
   onUserInteractionStart?: () => void;
   countyStats: CountyStats | null;
   hoveredCounty: string | null;
@@ -66,6 +67,7 @@ export const MapCanvas = memo(function MapCanvas({
   onChurchClick,
   onChurchHover,
   isTransitioning,
+  zoomTransitioning = false,
   onUserInteractionStart,
   countyStats,
   hoveredCounty,
@@ -100,9 +102,11 @@ export const MapCanvas = memo(function MapCanvas({
     [isTouchDevice]
   );
 
+  const transitionClass = isTransitioning ? 'map-transitioning' : zoomTransitioning ? 'map-zoom-transitioning' : '';
+
   return (
     <div
-      className={isTransitioning ? 'map-transitioning' : ''}
+      className={transitionClass}
       style={{ width: '100%', height: '100%', touchAction: 'none' }}
       onTouchStart={markTouch}
       onWheel={handleWheel}

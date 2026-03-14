@@ -113,6 +113,11 @@ export function ChurchMap({
 
   const handleMoveEnd = (coords: [number, number], z: number) => {
     if (Date.now() < d.moveEndSuppressedUntilRef.current.moveEndSuppressedUntil) return;
+    // Let pinch/trackpad zoom out all the way to national (zoom 1); then switch to national view
+    if (d.focusedState && z <= 1) {
+      d.handleResetView();
+      return;
+    }
     d.setCenter(coords);
     d.setZoom(z);
   };
@@ -768,7 +773,7 @@ function MapArea({
       <MapCanvas
         center={d.center}
         zoom={d.zoom}
-        minZoom={d.minZoom}
+        minZoom={1}
         maxZoom={500}
         focusedState={d.focusedState}
         hoveredState={d.hoveredState}
@@ -783,6 +788,7 @@ function MapArea({
         onChurchHover={d.setHoveredChurch}
         isTransitioning={d.isTransitioning}
         onUserInteractionStart={d.clearTransition}
+        zoomTransitioning={d.zoomTransitioning}
         countyStats={d.countyStats ?? null}
         hoveredCounty={d.hoveredCounty ?? null}
         onCountyHover={d.setHoveredCounty}

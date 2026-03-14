@@ -205,3 +205,8 @@
 .map-transitioning .rsm-zoomable-group {
   transition: transform 800ms cubic-bezier(0.25, 0.1, 0.25, 1);
 }
+
+/* Subtle motion for zoom in/out (buttons or trackpad) */
+.map-zoom-transitioning .rsm-zoomable-group {
+  transition: transform 320ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
