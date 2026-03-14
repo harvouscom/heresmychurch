@@ -213,7 +213,16 @@ export function HelpModal({
                 Is this open source?
               </AccordionTrigger>
               <AccordionContent className="text-white/70">
-                Yes. The project is open source under the MIT license. You can find the code on{" "}
+                Yes. The project is open source under the{" "}
+                <a
+                  href="https://creativecommons.org/licenses/by-nc/4.0/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-white/90 transition-colors"
+                >
+                  Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)
+                </a>{" "}
+                license. You can find the code on{" "}
                 <a
                   href="https://github.com/harvouscom/Heresmychurch"
                   target="_blank"
