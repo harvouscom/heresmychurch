@@ -101,9 +101,9 @@ export const ChurchDots = memo(function ChurchDots({
     );
   }, [projected, center, zoom, projection]);
 
-  // Sort by radius ascending so smaller (lower-attendance) circles render last and appear on top — easier to select when overlapping
+  // Sort by radius descending so smaller (lower-attendance) dots render last and appear on top — easier to select when overlapping
   const visibleBySize = useMemo(
-    () => [...visible].sort((a, b) => a.r - b.r),
+    () => [...visible].sort((a, b) => b.r - a.r),
     [visible]
   );
 
@@ -138,10 +138,9 @@ export const ChurchDots = memo(function ChurchDots({
     if (!disableHover) onChurchHover(null);
   }, [onChurchHover, disableHover]);
 
-  // Dots grow in screen size as you zoom in (slightly bigger per zoom). Desktop a bit smaller overall; mobile scaled down more.
-  const isNarrow = typeof window !== "undefined" && window.innerWidth < 768;
+  // Dots grow in screen size as you zoom in (slightly bigger per zoom). 40% smaller overall (scale 0.6).
   const zoomDiv = Math.pow(zoom, 0.7);
-  const dotScale = isNarrow ? 0.6 : 0.75;
+  const dotScale = 0.6;
 
   // If context/projection not ready yet, render nothing
   if (!projection || visible.length === 0) return null;
