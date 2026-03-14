@@ -259,6 +259,7 @@ export function HelpModal({
           >
             Close
           </button>
+          <p className="text-white/25 text-[10px] text-center mt-1.5">Version {__APP_VERSION__}</p>
         </div>
       </div>
     </div>

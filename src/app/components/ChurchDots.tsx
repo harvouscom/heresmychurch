@@ -138,10 +138,9 @@ export const ChurchDots = memo(function ChurchDots({
     if (!disableHover) onChurchHover(null);
   }, [onChurchHover, disableHover]);
 
-  // Dots grow in screen size as you zoom in (slightly bigger per zoom). On mobile, grow a bit less so they don't dominate.
+  // Dots grow in screen size as you zoom in (slightly bigger per zoom). On mobile, scale down so they don't dominate.
   const isNarrow = typeof window !== "undefined" && window.innerWidth < 768;
-  const zoomDiv = isNarrow ? Math.pow(zoom, 0.7) : Math.pow(zoom, 0.45);
-  // Scale down dot size on small screens so they don't dominate the map.
+  const zoomDiv = Math.pow(zoom, 0.7);
   const dotScale = isNarrow ? 0.6 : 1;
 
   // If context/projection not ready yet, render nothing

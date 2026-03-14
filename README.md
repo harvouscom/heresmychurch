@@ -36,6 +36,10 @@ For how the app is wired (routing, data flow, API, deployment): **[docs/ARCHITEC
 - [shadcn/ui](https://ui.shadcn.com) — MIT licensed component library
 - Originally built with [Figma Make](https://www.figma.com/make) — the [original project](https://www.figma.com/design/DDx89YVARqkAInuPhDGvFY/Here-s-My-Church)
 
+## Changelog
+
+See **[CHANGELOG.md](CHANGELOG.md)** for version history and release notes. Project start (1.0): **2026-03-09**. Current version: **1.110.0**.
+
 ## License
 
 This project is open source under the **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)** license. See [LICENSE](LICENSE) for the full text. You may use, modify, and share the code with attribution, but **not for commercial use** (you may not use it primarily to make money). [Summary of the license](https://creativecommons.org/licenses/by-nc/4.0/).

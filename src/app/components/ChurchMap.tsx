@@ -1255,6 +1255,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
             Start Finding Churches
           </button>
           <p className="text-white/30 text-[11px] text-center mt-2.5 text-pretty">Started by Derek Castelli, who's also building a Bible notes app called <a href="https://harvous.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-white/50 transition-colors">Harvous</a>. If you need any help email <a href="mailto:hey@heresmychurch.com" className="underline hover:text-white/50 transition-colors">hey@heresmychurch.com</a></p>
+          <p className="text-white/25 text-[10px] text-center mt-1.5">Version {__APP_VERSION__}</p>
         </div>
       </div>
     </div>
