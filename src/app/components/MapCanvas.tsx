@@ -3,7 +3,7 @@
  * Contains ComposableMap, ZoomableGroup, state/county Geographies,
  * the background click-rect, ChurchDots, and StateActiveLabels.
  */
-import { memo, useState, useCallback } from "react";
+import { memo, useState, useCallback, useSyncExternalStore } from "react";
 import {
   ComposableMap,
   Geographies,
@@ -69,8 +69,26 @@ export const MapCanvas = memo(function MapCanvas({
   hoveredCounty,
   onCountyHover,
 }: MapCanvasProps) {
-  const [isTouchDevice, setIsTouchDevice] = useState(false);
-  const markTouch = useCallback(() => setIsTouchDevice(true), []);
+  // Detect touch/hover-less device from first paint so we never show hover tooltips on mobile.
+  // (hover: none) = primary input can't hover (e.g. phones). Fallback: (pointer: coarse) or first touch.
+  const hoverNone = useSyncExternalStore(
+    (cb) => {
+      const m = window.matchMedia("(hover: none)");
+      m.addEventListener("change", cb);
+      return () => m.removeEventListener("change", cb);
+    },
+    () => typeof window !== "undefined" && window.matchMedia("(hover: none)").matches,
+    () => false
+  );
+  const [touchSeen, setTouchSeen] = useState(false);
+  const markTouch = useCallback(() => {
+    setTouchSeen(true);
+    // Clear any hover state set by synthetic mouse events from the tap
+    onStateHover(null);
+    onChurchHover(null);
+    onCountyHover(null);
+  }, [onStateHover, onChurchHover, onCountyHover]);
+  const isTouchDevice = hoverNone || touchSeen;
 
   return (
     <div

@@ -981,8 +981,15 @@ export function useChurchMapData({
 
   const handleChurchDotClick = (church: Church, e?: { clientX: number; clientY: number }) => {
     ui.setHoveredChurch(null);
-    const pos = e ? { x: e.clientX, y: e.clientY } : ui.tooltipPos;
-    ui.setPinnedPreview(church, pos);
+    if (isMobile) {
+      const pos = e ? { x: e.clientX, y: e.clientY } : ui.tooltipPos;
+      ui.setPinnedPreview(church, pos);
+    } else {
+      const stateAbbrev = focusedState ?? church.state;
+      if (stateAbbrev) {
+        navigateToChurch(stateAbbrev, getChurchUrlSegment(church, stateAbbrev));
+      }
+    }
   };
 
   const onViewChurch = (church: Church) => {
@@ -994,8 +1001,12 @@ export function useChurchMapData({
 
   const handleStateClick = (abbrev: string, e?: { clientX: number; clientY: number }) => {
     if (focusedState) return;
-    const pos = e ? { x: e.clientX, y: e.clientY } : ui.tooltipPos;
-    ui.setPinnedStatePreview(abbrev, pos);
+    if (isMobile) {
+      const pos = e ? { x: e.clientX, y: e.clientY } : ui.tooltipPos;
+      ui.setPinnedStatePreview(abbrev, pos);
+    } else {
+      navigateToState(abbrev);
+    }
   };
 
   return {
