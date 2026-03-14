@@ -105,7 +105,7 @@ export const MapCanvas = memo(function MapCanvas({
         center={center}
         zoom={zoom}
         minZoom={minZoom}
-        maxZoom={200}
+        maxZoom={300}
         onMoveStart={() => { if (onUserInteractionStart) onUserInteractionStart(); }}
         onMoveEnd={({ coordinates, zoom: z }: { coordinates: [number, number]; zoom: number }) => {
           if (coordinates && coordinates[0] != null && coordinates[1] != null) {
