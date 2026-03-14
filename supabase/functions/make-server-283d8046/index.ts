@@ -2099,6 +2099,48 @@ async function runScheduledPost():Promise<{posted:boolean;type?:string;text?:str
   }catch(e){return{posted:false,error:`${e}`};}
 }
 
+// Monday morning: weekly community impact recap (overrides that slot)
+const ONE_WEEK_MS=7*24*60*60*1000;
+
+async function generateWeeklyRecap():Promise<string|null>{
+  try{
+    const now=Date.now();
+    const cutoff=now-ONE_WEEK_MS;
+    const log:any[]=(await kv.get("twitter:log"))||[];
+    const churchAddedCount=log.filter((e:any)=>e.eventType==="church_added"&&e.timestamp>cutoff).length;
+    const stats=(await kv.get("community:stats"))||{totalCorrections:0};
+    const currentCorrections=stats.totalCorrections||0;
+    const lastCorrections=(await kv.get("twitter:weekly-recap-last-corrections")) as number|undefined;
+    const correctionsDelta=lastCorrections!=null?Math.max(0,currentCorrections-lastCorrections):currentCorrections;
+
+    if(churchAddedCount===0&&correctionsDelta===0)return null;
+    const parts:string[]=[];
+    if(churchAddedCount>0)parts.push(`${churchAddedCount} new church${churchAddedCount===1?"":"es"} on the map`);
+    if(correctionsDelta>0)parts.push(`${correctionsDelta.toLocaleString()} data correction${correctionsDelta===1?"":"s"}`);
+    const line=parts.join(", ");
+    const text=`This week's community impact: ${line}. Thanks for making the map better for everyone!`;
+    return text.length<=280?text:null;
+  }catch(_){return null;}
+}
+
+async function runMondayRecap():Promise<{posted:boolean;type?:string;text?:string;error?:string}>{
+  try{
+    if(!Deno.env.get("TWITTER_API_KEY"))return{posted:false,error:"No Twitter credentials"};
+    const dateKey=new Date().toISOString().slice(0,10);
+    if(await kv.get(`twitter:weekly-recap-posted:${dateKey}`))return{posted:false,error:"Weekly recap already posted this Monday"};
+    const text=await generateWeeklyRecap();
+    if(!text)return{posted:false,error:"No weekly recap"};
+    const result=await postTweet(text);
+    await kv.set(`twitter:weekly-recap-posted:${dateKey}`,true);
+    const stats=(await kv.get("community:stats"))||{totalCorrections:0};
+    await kv.set("twitter:weekly-recap-last-corrections",stats.totalCorrections||0);
+    const log:any[]=(await kv.get("twitter:log"))||[];
+    log.unshift({eventType:"weekly_recap",entityId:`recap-${dateKey}`,text,timestamp:Date.now(),success:result.success,tweetId:result.tweetId,error:result.error});
+    await kv.set("twitter:log",log.slice(0,100));
+    return{posted:result.success,type:"weekly_recap",text,error:result.error};
+  }catch(e){return{posted:false,error:`${e}`};}
+}
+
 // Weekend: Saturday = 1 fun fact only, Sunday = 1 church spotlight only
 const SPOTLIGHT_LAST_VERIFIED_DAYS=90;
 const SPOTLIGHT_LAST_VERIFIED_MS=SPOTLIGHT_LAST_VERIFIED_DAYS*24*60*60*1000;
@@ -2203,6 +2245,7 @@ app.post(`${P}/twitter/scheduled`,async(c)=>{
     if(force){
       if(day===6){const result=await runWeekendSaturday();return c.json(result);}
       if(day===0){const result=await runWeekendSunday();return c.json(result);}
+      if(day===1){const recapResult=await runMondayRecap();if(recapResult.posted)return c.json(recapResult);}
       const result=await runScheduledPost();
       return c.json(result);
     }
@@ -2220,7 +2263,7 @@ app.post(`${P}/twitter/scheduled`,async(c)=>{
       return c.json(result);
     }
 
-    // Weekday: 3 windows, random slot per window
+    // Weekday: 3 windows, random slot per window. Monday morning = weekly recap slot (overrides normal post).
     const ws=getWindowAndSlot(now);
     if(ws){
       const key=`twitter:window-posted:${ws.dateKey}:${ws.window}`;
@@ -2228,6 +2271,16 @@ app.post(`${P}/twitter/scheduled`,async(c)=>{
       if(alreadyPosted)return c.json({posted:false,skipped:"already posted this window"});
       const chosen=chosenSlotForWindow(ws.dateKey,ws.window);
       if(ws.slot!==chosen)return c.json({posted:false,skipped:"not this slot",slot:ws.slot,chosen});
+      if(day===1&&ws.window==="morning"){
+        const recapAlready=await kv.get(`twitter:weekly-recap-posted:${ws.dateKey}`);
+        if(!recapAlready){
+          const recapResult=await runMondayRecap();
+          if(recapResult.posted){
+            await kv.set(key,true);
+            return c.json(recapResult);
+          }
+        }
+      }
       const result=await runScheduledPost();
       if(result.posted)await kv.set(key,true);
       return c.json(result);
