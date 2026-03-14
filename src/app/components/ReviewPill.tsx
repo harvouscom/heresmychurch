@@ -13,25 +13,13 @@ import {
 } from "./api";
 import type { PendingSuggestionItem, PendingChurchItem, InReviewSuggestionItem, InReviewChurchItem } from "./api";
 import { CloseButton } from "./ui/close-button";
-import { parseAddressValue, formatFullAddress } from "./AddressInput";
+import { formatModerationDisplayValue } from "./formatModerationValue";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Church Name",
   website: "Website",
   address: "Address",
 };
-
-function formatProposedDisplay(field: string, proposedValue: string): string {
-  if (field === "address" && proposedValue?.trim().startsWith("{")) {
-    try {
-      const p = parseAddressValue(proposedValue.trim());
-      return formatFullAddress(p.address, p.city, p.state);
-    } catch {
-      return proposedValue;
-    }
-  }
-  return proposedValue;
-}
 
 type StateInfo = { abbrev: string; name: string; isPopulated: boolean; churchCount: number };
 
@@ -218,7 +206,7 @@ export function ReviewPill({
                         const isActing = actionLoading === actionId;
                         const churchDisplayName = s.churchName || s.churchId;
                         const whereabouts = [s.churchCity, s.churchState].filter(Boolean).join(" \u00b7 ");
-                        const proposedDisplay = formatProposedDisplay(s.field, s.proposedValue);
+                        const proposedDisplay = formatModerationDisplayValue(s.field, s.proposedValue);
                         const isWebsite = s.field === "website";
                         return (
                           <div
@@ -426,7 +414,7 @@ export function ReviewPill({
                         const isMine = myReviewSuggestionSet.has(`${s.churchId}:${s.field}`);
                         const churchDisplayName = s.churchName || s.churchId;
                         const whereabouts = [s.churchCity, s.churchState].filter(Boolean).join(" \u00b7 ");
-                        const proposedDisplay = formatProposedDisplay(s.field, s.proposedValue);
+                        const proposedDisplay = formatModerationDisplayValue(s.field, s.proposedValue);
                         const isWebsite = s.field === "website";
                         return (
                           <div

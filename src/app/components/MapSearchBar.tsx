@@ -281,6 +281,7 @@ export function MapSearchBar({
       if (onPreloadChurch && result.lat && result.lng) {
         onPreloadChurch({
           id: result.id,
+          shortId: result.shortId,
           name: result.name,
           city: result.city,
           state: result.state,

@@ -868,6 +868,18 @@ export function useChurchMapData({
     );
 
     if (church) {
+      // Don't overwrite correct selection when current church already matches route (e.g. from search preload)
+      const currentMatchesRoute =
+        selectedChurch &&
+        churchMatchesRouteSegment(selectedChurch, routeChurchKey!, focusedState ?? "");
+      if (currentMatchesRoute && selectedChurch!.id !== church.id) {
+        if (routeLegacyChurchId && focusedState) {
+          navigateToChurch(focusedState, getChurchUrlSegment(selectedChurch!, focusedState), {
+            replace: true,
+          });
+        }
+        return;
+      }
       if (!selectedChurch || selectedChurch.id !== church.id) {
         setSelectedChurch(church);
         moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8));

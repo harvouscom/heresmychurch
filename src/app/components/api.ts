@@ -934,3 +934,55 @@ export async function removeFromInReview(
   if (!res.ok) throw new Error(`Failed to remove from in-review: ${res.status}`);
   return res.json();
 }
+
+// ── Audit log (moderator-only) ──
+export interface AuditLogEntry {
+  id: number;
+  church_id: string | null;
+  church_name: string | null;
+  church_city_state: string | null;
+  state: string;
+  action: string;
+  field: string | null;
+  old_value: unknown;
+  new_value: unknown;
+  source: string;
+  actor_type: string | null;
+  actor_id: string | null;
+  created_at: string;
+}
+
+export async function fetchAuditRecent(
+  moderatorKey: string,
+  limit = 200
+): Promise<{ entries: AuditLogEntry[] }> {
+  const url = `${BASE_URL}/audit/recent?key=${encodeURIComponent(moderatorKey)}&limit=${Math.min(500, Math.max(1, limit))}`;
+  const res = await fetchWithRetry(url, { headers, cache: "no-store" });
+  if (res.status === 401) throw new Error("Invalid review key");
+  if (!res.ok) throw new Error(`Failed to fetch audit: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchAuditByState(
+  stateAbbrev: string,
+  moderatorKey: string,
+  limit = 200
+): Promise<{ state: string; entries: AuditLogEntry[] }> {
+  const url = `${BASE_URL}/audit/state/${encodeURIComponent(stateAbbrev)}?key=${encodeURIComponent(moderatorKey)}&limit=${Math.min(500, Math.max(1, limit))}`;
+  const res = await fetchWithRetry(url, { headers, cache: "no-store" });
+  if (res.status === 401) throw new Error("Invalid review key");
+  if (!res.ok) throw new Error(`Failed to fetch audit: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchAuditByChurch(
+  churchId: string,
+  moderatorKey: string,
+  limit = 100
+): Promise<{ churchId: string; entries: AuditLogEntry[] }> {
+  const url = `${BASE_URL}/audit/church/${encodeURIComponent(churchId)}?key=${encodeURIComponent(moderatorKey)}&limit=${Math.min(500, Math.max(1, limit))}`;
+  const res = await fetchWithRetry(url, { headers, cache: "no-store" });
+  if (res.status === 401) throw new Error("Invalid review key");
+  if (!res.ok) throw new Error(`Failed to fetch audit: ${res.status}`);
+  return res.json();
+}

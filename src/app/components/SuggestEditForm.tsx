@@ -21,7 +21,7 @@ import {
   Search,
 } from "lucide-react";
 import { ThreeDotLoader } from "./ThreeDotLoader";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { ServiceTimesInput } from "./ServiceTimesInput";
 import { AddressInput, serializeAddress, parseAddressValue } from "./AddressInput";
 import { geocodeAddress } from "./AddChurchForm";
@@ -56,6 +56,8 @@ interface SuggestEditFormProps {
   onChurchUpdated?: () => void;
   /** Called when user submits an edit that needs moderation (e.g. so parent can refetch pending list) */
   onPendingSubmitted?: () => void;
+  /** Field names with pending suggestions from server (persists across close/reopen, prevents duplicate submit) */
+  pendingFieldsForChurch?: string[];
 }
 
 type EditableField = "name" | "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email" | "homeCampusId";
@@ -129,11 +131,17 @@ function getCurrentValue(church: Church, field: EditableField): string {
   }
 }
 
-export function SuggestEditForm({ church, allChurches, onClose, focusField, onChurchUpdated, onPendingSubmitted }: SuggestEditFormProps) {
+export function SuggestEditForm({ church, allChurches, onClose, focusField, onChurchUpdated, onPendingSubmitted, pendingFieldsForChurch = [] }: SuggestEditFormProps) {
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<Set<string>>(new Set());
   const [pendingModeration, setPendingModeration] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+
+  // Server-backed + just-submitted pending: persists across close/reopen and prevents duplicate submissions
+  const effectivePending = useMemo(
+    () => new Set<string>([...pendingModeration, ...pendingFieldsForChurch]),
+    [pendingModeration, pendingFieldsForChurch]
+  );
   // Track which fields are in "edit mode" (user wants to submit their own value)
   const [editingFields, setEditingFields] = useState<Set<string>>(new Set());
   const [values, setValues] = useState<Record<string, string>>({});
@@ -263,7 +271,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
                 allChurches={allChurches}
                 submitting={submitting}
                 submitted={submitted}
-                pendingModeration={pendingModeration}
+                pendingModeration={effectivePending}
                 isEditing={editingFields.has(fieldConfig.key)}
                 onStartEdit={() => {
                   setEditingFields(prev => new Set(prev).add(fieldConfig.key));
@@ -307,7 +315,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
                 allChurches={allChurches}
                 submitting={submitting}
                 submitted={submitted}
-                pendingModeration={pendingModeration}
+                pendingModeration={effectivePending}
                 isEditing={editingFields.has(fieldConfig.key)}
                 onStartEdit={() => {
                   setEditingFields(prev => new Set(prev).add(fieldConfig.key));
@@ -339,11 +347,11 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
               </div>
             )}
 
-            {pendingModeration.size > 0 && (
+            {effectivePending.size > 0 && (
               <div className="flex items-center gap-2 rounded-lg p-3 bg-amber-500/10 border border-amber-500/20">
                 <Clock size={14} className="text-amber-400 flex-shrink-0" />
                 <p className="text-amber-300/80 text-xs">
-                  Changes to {Array.from(pendingModeration).join(", ")} require review and will be applied once approved.
+                  Changes to {Array.from(effectivePending).map((f) => FIELD_CONFIG.find(c => c.key === f)?.label ?? f).join(", ")} require review and will be applied once approved.
                 </p>
               </div>
             )}
@@ -658,23 +666,21 @@ function FieldCard({
         </div>
       )}
 
-      {/* Just submitted feedback */}
-      {justSubmitted && (
-        pendingModeration.has(key) ? (
-          <div className="flex items-center gap-2 py-2 px-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-2">
-            <Clock size={12} className="text-amber-400" />
-            <span className="text-amber-300/90 text-xs font-medium">Submitted for review</span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 py-2 px-2.5 rounded-lg bg-green-500/10 border border-green-500/15 mb-2">
-            <Check size={12} className="text-green-400" />
-            <span className="text-green-400 text-xs font-medium">Updated!</span>
-          </div>
-        )
-      )}
+      {/* Submitted for review: show persistently and do not show Edit (prevents duplicate submissions) */}
+      {pendingModeration.has(key) ? (
+        <div className="flex items-center gap-2 py-2 px-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-2">
+          <Clock size={12} className="text-amber-400" />
+          <span className="text-amber-300/90 text-xs font-medium">Submitted for review</span>
+        </div>
+      ) : justSubmitted ? (
+        <div className="flex items-center gap-2 py-2 px-2.5 rounded-lg bg-green-500/10 border border-green-500/15 mb-2">
+          <Check size={12} className="text-green-400" />
+          <span className="text-green-400 text-xs font-medium">Updated!</span>
+        </div>
+      ) : null}
 
-      {/* Edit controls */}
-      {!justSubmitted && (
+      {/* Edit controls: hidden when field is already submitted for review */}
+      {!pendingModeration.has(key) && !justSubmitted && (
         <>
           {/* Action buttons: Edit (to show input) */}
           {!isEditing && (

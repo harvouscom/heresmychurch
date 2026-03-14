@@ -18,6 +18,7 @@ import { FilterPanel } from "./FilterPanel";
 import { MapLegend } from "./MapLegend";
 import { MapControls } from "./MapControls";
 import { HelpModal } from "./HelpModal";
+import { AuditModal } from "./AuditModal";
 import { MapCanvas } from "./MapCanvas";
 import { VerificationModal, NationalReviewModal } from "./VerificationModal";
 import { StateFlag } from "./StateFlag";
@@ -133,6 +134,7 @@ export function ChurchMap({
     forceEditForm: false,
     showAbout: !hasSeenAbout && !routeStateAbbrev,
     showHelp: false,
+    showAudit: false,
     showAlertsPanel: false,
     showAnnouncementsPanel: false,
     alertsPanelOpenedViaReportIssue: false,
@@ -194,6 +196,8 @@ export function ChurchMap({
   const onShowAbout = () => localDispatch({ type: "SET", key: "showAbout", value: true });
   const onShowHelp = () => localDispatch({ type: "SET", key: "showHelp", value: true });
   const onDismissHelp = () => localDispatch({ type: "SET", key: "showHelp", value: false });
+  const onShowAudit = () => localDispatch({ type: "SET", key: "showAudit", value: true });
+  const onDismissAudit = () => localDispatch({ type: "SET", key: "showAudit", value: false });
 
   // Fetch national review stats when at national level
   useEffect(() => {
@@ -340,6 +344,9 @@ export function ChurchMap({
         showHelp={local.showHelp}
         onDismissHelp={onDismissHelp}
         onShowHelp={onShowHelp}
+        showAudit={local.showAudit}
+        onShowAudit={onShowAudit}
+        onDismissAudit={onDismissAudit}
         showReportIssue={reportIssueEnabled}
         onReportIssue={reportIssueEnabled ? () => {
           onDismissHelp();
@@ -525,6 +532,7 @@ type LocalState = {
   forceEditForm: boolean;
   showAbout: boolean;
   showHelp: boolean;
+  showAudit: boolean;
   showAlertsPanel: boolean;
   showAnnouncementsPanel: boolean;
   alertsPanelOpenedViaReportIssue: boolean;
@@ -562,6 +570,9 @@ function MapArea({
   showHelp,
   onDismissHelp,
   onShowHelp,
+  showAudit,
+  onShowAudit,
+  onDismissAudit,
   showReportIssue,
   onReportIssue,
   showAlertsPanel,
@@ -607,6 +618,9 @@ function MapArea({
   showHelp: boolean;
   onDismissHelp: () => void;
   onShowHelp: () => void;
+  showAudit: boolean;
+  onShowAudit: () => void;
+  onDismissAudit: () => void;
   showReportIssue: boolean;
   onReportIssue?: () => void;
   showAlertsPanel: boolean;
@@ -769,6 +783,16 @@ function MapArea({
         />
       )}
 
+      {/* Audit / Change history modal (review mode) */}
+      {showAudit && moderatorKey && (
+        <AuditModal
+          onClose={onDismissAudit}
+          moderatorKey={moderatorKey}
+          focusedStateAbbrev={d.focusedState}
+          navigateToChurch={navigateToChurch}
+        />
+      )}
+
       {/* Map canvas */}
       <MapCanvas
         center={d.center}
@@ -901,6 +925,8 @@ function MapArea({
             }}
             onShowAbout={onShowAbout}
             onShowHelp={onShowHelp}
+            showAuditButton={moderationMode}
+            onShowAudit={onShowAudit}
             zoom={d.zoom}
             compact
           />

@@ -32,6 +32,7 @@ import { SuggestEditForm } from "./SuggestEditForm";
 import { CloseButton } from "./ui/close-button";
 import { groupServiceTimesByDay, parseServiceTimesForDisplay } from "./ServiceTimesInput";
 import { formatFullAddress } from "./AddressInput";
+import { formatModerationDisplayValue } from "./formatModerationValue";
 import { formatPhoneDisplay } from "./ui/utils";
 import { withSiteRef } from "./url-utils";
 import { confirmChurchData, fetchCorrectionHistory, fetchReactions, submitReaction, moderateApproveSuggestion, moderateRejectSuggestion } from "./api";
@@ -461,6 +462,7 @@ export function ChurchDetailPanel({
         focusField={editFocusField}
         onChurchUpdated={onChurchUpdated}
         onPendingSubmitted={onPendingSubmitted}
+        pendingFieldsForChurch={pendingFieldsForChurch}
       />
     );
   }
@@ -1043,18 +1045,47 @@ function InlineModerationSection({
       {items.map((s) => {
         const id = `${s.churchId}-${s.field}`;
         const isActing = actionLoading === id;
+        const currentDisplay = formatModerationDisplayValue(s.field, s.currentValue);
+        const proposedDisplay = formatModerationDisplayValue(s.field, s.proposedValue);
+        const isWebsite = s.field === "website";
+        const currentIsUrl = isWebsite && /^https?:\/\//i.test(s.currentValue ?? "");
+        const proposedIsUrl = isWebsite && /^https?:\/\//i.test(s.proposedValue);
         return (
           <div key={id} className="space-y-1">
             <span className="text-purple-300 text-[10px] uppercase tracking-wider font-semibold">
               {MOD_FIELD_LABELS[s.field] || s.field}
             </span>
-            {s.currentValue && (
+            {s.currentValue != null && s.currentValue !== "" && (
               <p className="text-white/50 text-xs">
-                Current: <span className="text-white/70">{s.currentValue}</span>
+                Current:{" "}
+                {currentIsUrl ? (
+                  <a
+                    href={s.currentValue!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-white/70 underline hover:text-white/90"
+                  >
+                    {currentDisplay || s.currentValue}
+                  </a>
+                ) : (
+                  <span className="text-white/70">{currentDisplay}</span>
+                )}
               </p>
             )}
             <p className="text-white text-xs">
-              Proposed: <span className="text-green-300 font-medium">{s.proposedValue}</span>
+              Proposed:{" "}
+              {proposedIsUrl ? (
+                <a
+                  href={s.proposedValue}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-green-300 font-medium underline hover:text-green-200"
+                >
+                  {proposedDisplay || s.proposedValue}
+                </a>
+              ) : (
+                <span className="text-green-300 font-medium">{proposedDisplay}</span>
+              )}
             </p>
             <div className="flex gap-2 pt-0.5">
               <button
