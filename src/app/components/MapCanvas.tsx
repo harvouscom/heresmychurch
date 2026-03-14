@@ -75,7 +75,7 @@ export const MapCanvas = memo(function MapCanvas({
   return (
     <div
       className={isTransitioning ? 'map-transitioning' : ''}
-      style={{ width: '100%', height: '100%' }}
+      style={{ width: '100%', height: '100%', touchAction: 'none' }}
       onTouchStart={markTouch}
     >
     <ComposableMap
@@ -87,7 +87,7 @@ export const MapCanvas = memo(function MapCanvas({
         center={center}
         zoom={zoom}
         minZoom={minZoom}
-        maxZoom={120}
+        maxZoom={200}
         onMoveStart={() => { if (onUserInteractionStart) onUserInteractionStart(); }}
         onMoveEnd={({ coordinates, zoom: z }: { coordinates: [number, number]; zoom: number }) => {
           if (coordinates && coordinates[0] != null && coordinates[1] != null) {
@@ -111,6 +111,7 @@ export const MapCanvas = memo(function MapCanvas({
           onStateClick={onStateClick}
           onResetView={onResetView}
           onStateHover={onStateHover}
+          disableHover={isTouchDevice}
         />
 
         {focusedState && (
@@ -131,6 +132,7 @@ export const MapCanvas = memo(function MapCanvas({
             center={center}
             onChurchClick={onChurchClick}
             onChurchHover={onChurchHover}
+            disableHover={isTouchDevice}
           />
         )}
       </ZoomableGroup>
@@ -147,6 +149,7 @@ const StateGeographies = memo(function StateGeographies({
   onStateClick,
   onResetView,
   onStateHover,
+  disableHover = false,
 }: {
   focusedState: string | null;
   hoveredState: string | null;
@@ -154,6 +157,7 @@ const StateGeographies = memo(function StateGeographies({
   onStateClick: (abbrev: string, e?: React.MouseEvent) => void;
   onResetView: () => void;
   onStateHover: (abbrev: string | null) => void;
+  disableHover?: boolean;
 }) {
   return (
     <Geographies geography={GEO_URL}>
@@ -163,7 +167,7 @@ const StateGeographies = memo(function StateGeographies({
           const stateAbbrev = FIPS_TO_STATE[fipsId];
           const stateInfo = states.find((s) => s.abbrev === stateAbbrev);
           const isFocused = focusedState === stateAbbrev;
-          const isHovered = hoveredState === stateAbbrev;
+          const isHovered = !disableHover && hoveredState === stateAbbrev;
 
           const churchCount = stateInfo?.churchCount || 0;
           const tier = getStateTier(churchCount);
@@ -188,8 +192,8 @@ const StateGeographies = memo(function StateGeographies({
                   onResetView();
                 }
               }}
-              onMouseEnter={() => onStateHover(stateAbbrev || null)}
-              onMouseLeave={() => onStateHover(null)}
+              onMouseEnter={disableHover ? undefined : () => onStateHover(stateAbbrev || null)}
+              onMouseLeave={disableHover ? undefined : () => onStateHover(null)}
               style={{
                 default: { outline: "none", cursor: focusedState && isFocused ? "default" : "pointer" },
                 hover: { outline: "none", cursor: focusedState && isFocused ? "default" : "pointer" },

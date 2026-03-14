@@ -27,6 +27,8 @@ interface ChurchDotsProps {
   center: [number, number];
   onChurchClick: (church: Church, e?: React.MouseEvent<SVGGElement>) => void;
   onChurchHover: (church: Church | null) => void;
+  /** When true (e.g. touch device), hover does not set tooltip — only tap/preview does. */
+  disableHover?: boolean;
 }
 
 interface ProjectedChurch {
@@ -45,6 +47,7 @@ export const ChurchDots = memo(function ChurchDots({
   center,
   onChurchClick,
   onChurchHover,
+  disableHover = false,
 }: ChurchDotsProps) {
   const context = useMapContext();
   const projection = context?.projection;
@@ -121,25 +124,24 @@ export const ChurchDots = memo(function ChurchDots({
 
   const handleMouseOver = useCallback(
     (e: React.MouseEvent<SVGGElement>) => {
+      if (disableHover) return;
       const id = (e.target as SVGElement).getAttribute("data-id");
       if (id) {
         const ch = churchById.get(id);
         if (ch) onChurchHover(ch);
       }
     },
-    [churchById, onChurchHover]
+    [churchById, onChurchHover, disableHover]
   );
 
   const handleMouseOut = useCallback(() => {
-    onChurchHover(null);
-  }, [onChurchHover]);
+    if (!disableHover) onChurchHover(null);
+  }, [onChurchHover, disableHover]);
 
-  // On narrow viewports (mobile), r/zoom keeps dots at a constant but tiny pixel
-  // size. Using sqrt(zoom) instead lets dots grow as you zoom in — the behaviour
-  // users expect when pinch-zooming to tap a specific church.
-  const isNarrow = typeof window !== "undefined" && window.innerWidth < 768;
-  const zoomDiv = isNarrow ? Math.pow(zoom, 0.75) : zoom;
+  // Constant screen-space dot size at all zoom levels for easier tap/select on mobile and desktop.
+  const zoomDiv = zoom;
   // Scale down dot size on small screens so they don't dominate the map.
+  const isNarrow = typeof window !== "undefined" && window.innerWidth < 768;
   const dotScale = isNarrow ? 0.6 : 1;
 
   // If context/projection not ready yet, render nothing
