@@ -101,10 +101,14 @@ export const ChurchDots = memo(function ChurchDots({
     );
   }, [projected, center, zoom, projection]);
 
-  // Sort by radius descending so smaller (lower-attendance) dots render last and appear on top — easier to select when overlapping
+  // When zoomed out, larger dots on top. When zoomed in (e.g. state/city level), smaller dots on top so they're visible and clickable when overlapping.
+  const ZOOM_SMALL_DOTS_ON_TOP = 5;
   const visibleBySize = useMemo(
-    () => [...visible].sort((a, b) => b.r - a.r),
-    [visible]
+    () =>
+      [...visible].sort((a, b) =>
+        zoom >= ZOOM_SMALL_DOTS_ON_TOP ? b.r - a.r : a.r - b.r
+      ),
+    [visible, zoom]
   );
 
   // ── Event delegation handlers (one per parent <g>) ──
