@@ -21,6 +21,7 @@ export function MapControls({
   onShowHelp,
   zoom,
   minZoom = 1,
+  maxZoom = 500,
   compact = false,
 }: {
   focusedState: string | null;
@@ -35,9 +36,10 @@ export function MapControls({
   onShowHelp: () => void;
   zoom: number;
   minZoom?: number;
+  maxZoom?: number;
   compact?: boolean;
 }) {
-  const zoomInDisabled = zoom >= 500;
+  const zoomInDisabled = zoom >= maxZoom;
   const zoomOutDisabled = zoom <= minZoom;
   const sizeClass = compact ? "w-8 h-8" : "w-9 h-9";
   const iconSize = compact ? 14 : 16;

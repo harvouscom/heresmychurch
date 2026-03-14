@@ -30,6 +30,7 @@ interface MapCanvasProps {
   center: [number, number];
   zoom: number;
   minZoom?: number;
+  maxZoom?: number;
   focusedState: string | null;
   hoveredState: string | null;
   states: StateInfo[];
@@ -52,6 +53,7 @@ export const MapCanvas = memo(function MapCanvas({
   center,
   zoom,
   minZoom = 1,
+  maxZoom = 500,
   focusedState,
   hoveredState,
   states,
@@ -90,11 +92,20 @@ export const MapCanvas = memo(function MapCanvas({
   }, [onStateHover, onChurchHover, onCountyHover]);
   const isTouchDevice = hoverNone || touchSeen;
 
+  // On desktop (non-touch), prevent wheel from scrolling the page so only the map zooms.
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      if (!isTouchDevice) e.preventDefault();
+    },
+    [isTouchDevice]
+  );
+
   return (
     <div
       className={isTransitioning ? 'map-transitioning' : ''}
       style={{ width: '100%', height: '100%', touchAction: 'none' }}
       onTouchStart={markTouch}
+      onWheel={handleWheel}
     >
     <ComposableMap
       projection="geoAlbersUsa"
@@ -105,7 +116,7 @@ export const MapCanvas = memo(function MapCanvas({
         center={center}
         zoom={zoom}
         minZoom={minZoom}
-        maxZoom={500}
+        maxZoom={maxZoom}
         onMoveStart={() => { if (onUserInteractionStart) onUserInteractionStart(); }}
         onMoveEnd={({ coordinates, zoom: z }: { coordinates: [number, number]; zoom: number }) => {
           if (coordinates && coordinates[0] != null && coordinates[1] != null) {

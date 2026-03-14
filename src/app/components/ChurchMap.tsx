@@ -769,6 +769,7 @@ function MapArea({
         center={d.center}
         zoom={d.zoom}
         minZoom={d.minZoom}
+        maxZoom={500}
         focusedState={d.focusedState}
         hoveredState={d.hoveredState}
         states={d.states}
@@ -876,6 +877,7 @@ function MapArea({
             onZoomOut={d.handleZoomOut}
             onResetView={d.handleResetView}
             minZoom={d.minZoom}
+            maxZoom={500}
             onToggleFilter={() => {
               d.setShowFilterPanel((v) => {
                 if (!v) { d.setShowSummary(false); d.setShowLegend(false); d.setSearchCollapsed(true); }
