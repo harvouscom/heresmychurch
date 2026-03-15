@@ -381,9 +381,10 @@ export const COMMON_LANGUAGES = [
 
 // Common ministry categories for form UI
 export const COMMON_MINISTRIES = [
-  "Youth", "Children's", "Young Adults", "Women's", "Men's",
+  "Youth", "Children's", "College", "Young Adults", "Women's", "Men's",
   "Worship / Music", "Small Groups", "Outreach / Missions",
   "Food Pantry", "Recovery / Support Groups", "Senior Adults",
   "Marriage & Family", "Counseling", "Prayer", "Discipleship",
   "Sports", "Media / Production", "Hospitality",
+  "Deaf / ASL", "Special Needs", "Prison",
 ];
