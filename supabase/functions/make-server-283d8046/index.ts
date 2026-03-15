@@ -295,10 +295,20 @@ function toShortId(id:string,state:string,existingShortId?:string):string{
   let h=0;for(let i=0;i<id.length;i++)h=((h<<5)-h+id.charCodeAt(i))|0;
   return Math.abs(h).toString().padStart(8,"0").slice(0,8);
 }
+/** Assign unique 8-digit shortIds per state; resolves collisions so each church has a distinct segment. */
+function addShortIdsUnique(ch:any[],st:string):any[]{
+  const used=new Set<string>();
+  return ch.map((c:any)=>{
+    let sid=toShortId(c.id,c.state||st,c.shortId);
+    while(used.has(sid))sid=Math.floor(10000000+Math.random()*90000000).toString();
+    used.add(sid);
+    return {...c,shortId:sid};
+  });
+}
 function addShortIds(ch:any[],st:string):any[]{return ch.map((c:any)=>({...c,shortId:toShortId(c.id,c.state||st,c.shortId)}));}
 
-// ── Search index ──
-function buildIdx(ch:any[]){return ch.map((c:any)=>({id:c.id,n:c.name||"",c:c.city||"",d:c.denomination||"",a:c.attendance||0,ad:c.address||"",la:c.lat||0,lo:c.lng||0}));}
+// ── Search index (include shortId so search returns unique segment per church) ──
+function buildIdx(ch:any[]){return ch.map((c:any)=>({id:c.id,shortId:c.shortId,n:c.name||"",c:c.city||"",d:c.denomination||"",a:c.attendance||0,ad:c.address||"",la:c.lat||0,lo:c.lng||0}));}
 async function writeIdx(st:string,ch:any[]){await kv.set(`churches:sidx:${st}`,buildIdx(ch));}
 
 // Preserve user/community-submitted fields when overwriting cache (populate force, refresh-attendance).
@@ -536,7 +546,8 @@ app.get(`${P}/churches/search`,async(c)=>{
         }
         const k=`${n.toLowerCase().replace(/[^a-z0-9]/g,"")}|${ci.toLowerCase().replace(/[^a-z0-9]/g,"")}|${ad.toLowerCase().replace(/[^a-z0-9]/g,"")}|${realSt}`;
         if(seen.has(k))continue;seen.add(k);
-        const row={id:e.id,shortId:toShortId(e.id,realSt,e.shortId),name:n||"Unknown Church",city:ci,state:realSt,denomination:d||"Unknown",attendance:isIdx?e.a:e.attendance,lat:isIdx?e.la:e.lat,lng:isIdx?e.lo:e.lng,address:ad||""};
+        const sid=(e.shortId&&/^\d{8}$/.test(e.shortId))?e.shortId:toShortId(e.id,realSt,e.shortId);
+        const row={id:e.id,shortId:sid,name:n||"Unknown Church",city:ci,state:realSt,denomination:d||"Unknown",attendance:isIdx?e.a:e.attendance,lat:isIdx?e.la:e.lat,lng:isIdx?e.lo:e.lng,address:ad||""};
         candidates.push({score:scoreMatch(scoreQ,n,ci,ad),...row});
       }
       if(lastPriorityIdx>=0&&idx<=lastPriorityIdx&&candidates.length>=limit)break;
@@ -692,7 +703,7 @@ app.get(`${P}/churches/:state`,async(c)=>{
     if(st==="MD"){try{const dc=await kv.get("churches:DC");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));for(const x of dc)if(!ids.has(x.id))ch.push({...x,state:"MD"});}}catch(_){}}
     const corrections=await getApprovedCorrectionsForState(st);
     mergeCorrectionsIntoChurches(ch,corrections);
-    const withShort=addShortIds(ch,st);
+    const withShort=addShortIdsUnique(ch,st);
     let cal=await kv.get(`calibration:${st}`);
     if(!cal||!cal.medians){cal=await computeCalibrationForState(st,ch);try{await kv.set(`calibration:${st}`,cal);}catch(_){}}
     if(Object.keys(cal.medians||{}).length)applyCalibrationToChurches(withShort,cal);
@@ -727,7 +738,8 @@ app.post(`${P}/churches/populate/:state`,async(c)=>{
       }
     }
     if(force&&Array.isArray(ex)&&ex.length)mergeUserFieldsFromExisting(ex,ch);
-    await kv.set(`churches:${st}`,ch);await writeIdx(st,ch);
+    const chWithShort=addShortIdsUnique(ch,st);
+    await kv.set(`churches:${st}`,chWithShort);await writeIdx(st,chWithShort);
     void recordChurchAudit({state:st,action:"state_populated",old_value:Array.isArray(ex)?{churchCount:ex.length}:undefined,new_value:{churchCount:ch.length},source:"populate",actor_type:"system"});
     const meta=(await kv.get("churches:meta"))||{stateCounts:{}};meta.stateCounts[st]=ch.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);
     await invalidateReviewStatsCache();
@@ -2395,7 +2407,7 @@ app.post(`${P}/migrate/apply-pending`,async(c)=>{
         mainChurches.push({id:pc.id,shortId:pc.shortId||toShortId(pc.id,st),name:pc.name,address:pc.address,city:pc.city,state:st,lat:pc.lat,lng:pc.lng,denomination:pc.denomination,attendance:pc.attendance,website:pc.website,serviceTimes:pc.serviceTimes,languages:pc.languages,ministries:pc.ministries,pastorName:pc.pastorName,phone:pc.phone,email:pc.email,lastVerified:Date.now()});
         churchesMerged++;added=true;
       }
-      if(added){await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);}
+      if(added){const unique=addShortIdsUnique(mainChurches,st);await kv.set(mainKey,unique);await writeIdx(st,unique);}
       await kv.set(`pending-churches:${st}`,store);
     }
     return c.json({success:true,correctionsApplied,churchesMerged});
