@@ -944,7 +944,7 @@ function applyCalibrationToChurches(churches:any[],cal:{medians:Record<string,nu
   }
 }
 
-type ApplyResult={updated:boolean;state?:string;churches?:any[];corrections?:Record<string,any>};
+type ApplyResult={updated:boolean;state?:string;churches?:any[];corrections?:Record<string,any>;previousValues?:Record<string,string>};
 type AuditContext={source:string;actorIp?:string;actorModKey?:string};
 async function applyApprovedCorrections(churchId:string,con:Record<string,any>,auditContext?:AuditContext):Promise<ApplyResult>{
   const corrections:Record<string,any>={};
@@ -955,13 +955,16 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>,a
   const key=`churches:${st}`;const churches=await kv.get(key);
   if(!Array.isArray(churches))return {updated:false};
   const auditEntries:{field:string;oldVal:unknown;newVal:unknown}[]=[];
+  const previousValues:Record<string,string>={};
   let updated=false;let auditChurchName:string|null=null;let auditChurchCityState:string|null=null;
   for(const ch of churches){
     if(ch.id===churchId){
       auditChurchName=ch.name||null;auditChurchCityState=[ch.city,ch.state].filter(Boolean).join(", ")||null;
       for(const[f,v]of Object.entries(corrections)){
         const oldVal=(ch as any)[f];
+        const oldValForStorage=f==="address"?[ch.address,ch.city,ch.state].filter(Boolean).join(", "):String(oldVal??"");
         auditEntries.push({field:f,oldVal,newVal:v});
+        previousValues[f]=oldValForStorage;
         if(f==="attendance"){ch.attendance=parseInt(v)||ch.attendance;}
         else if(f==="languages"||f==="ministries"){ch[f]=String(v).split(",").map((s:string)=>s.trim()).filter(Boolean);}
         else if(f==="address"){
@@ -995,7 +998,7 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>,a
     await kv.set(key,churches);
     if(auditContext){const opts=auditContext.actorModKey?{hashModKey:auditContext.actorModKey}:auditContext.actorIp?{hashIp:auditContext.actorIp}:undefined;for(const e of auditEntries){await recordChurchAudit({church_id:churchId,church_name:auditChurchName,church_city_state:auditChurchCityState,state:st,action:"field_updated",field:e.field,old_value:e.oldVal,new_value:e.newVal,source:auditContext.source},opts);}}
     await invalidateReviewStatsCache();
-    return {updated:true,state:st,churches,corrections};
+    return {updated:true,state:st,churches,corrections,previousValues};
   }
   return {updated:false};
 }
@@ -1351,8 +1354,13 @@ const moderatePendingHandler=async(c:any)=>{
               const churches=churchesByState.get(st);
               if(Array.isArray(churches)){ch=churches.find((x:any)=>x.id===entry.churchId);if(ch)currentValue=f==="address"?[ch.address,ch.city,ch.state].filter(Boolean).join(", "):String(ch[f]||"");}
             }
-            if(valuesMatchForReview(f,currentValue,d.value))continue;
-            pendingSuggestions.push({churchId:entry.churchId,field:f,proposedValue:d.value,currentValue,churchName:ch?.name,churchCity:ch?.city,churchState:ch?.state,churchShortId:ch?.shortId,votes:d.votes,submissions:d.submissions||[]});
+            let alreadyApplied=false;
+            if(valuesMatchForReview(f,currentValue,d.value)){
+              const storedPrev=(entry as any).previousValues?.[f];
+              if(storedPrev!=null&&String(storedPrev).trim()!==""){currentValue=String(storedPrev);alreadyApplied=true;}
+              else continue;
+            }
+            pendingSuggestions.push({churchId:entry.churchId,field:f,proposedValue:d.value,currentValue,churchName:ch?.name,churchCity:ch?.city,churchState:ch?.state,churchShortId:ch?.shortId,votes:d.votes,submissions:d.submissions||[],alreadyApplied});
           }
         }
       }
@@ -1426,6 +1434,7 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
     const singleCon:Record<string,any>={};
     singleCon[field]={approved:true,value:valueToApply,votes:0,needed:THR};
     const applied=await applyApprovedCorrections(churchId,singleCon,{source:"moderate_approve",actorModKey:getModKey(c)});
+    if(applied.previousValues){ex.previousValues=ex.previousValues||{};for(const[f,val]of Object.entries(applied.previousValues))ex.previousValues[f]=val;}
     ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
     await kv.set(k,ex);
     const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);

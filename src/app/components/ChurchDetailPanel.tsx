@@ -1055,6 +1055,9 @@ function InlineModerationSection({
             <span className="text-purple-300 text-[10px] uppercase tracking-wider font-semibold">
               {MOD_FIELD_LABELS[s.field] || s.field}
             </span>
+            {s.alreadyApplied && (
+              <p className="text-[10px] uppercase tracking-wider text-amber-400/90 font-medium">Already applied</p>
+            )}
             {s.currentValue != null && s.currentValue !== "" && (
               <p className="text-white/50 text-xs">
                 Current:{" "}

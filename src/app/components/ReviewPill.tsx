@@ -1,4 +1,4 @@
-import { CheckCheck, ChevronDown, Check, X, MapPin, Globe, ChevronRight, Pencil } from "lucide-react";
+import { CheckCheck, ChevronDown, Check, X, MapPin, Globe, ChevronRight, Pencil, ListEnd } from "lucide-react";
 import { ThreeDotLoader } from "./ThreeDotLoader";
 import { AnimatePresence, motion } from "motion/react";
 import { useState, useEffect } from "react";
@@ -244,6 +244,9 @@ export function ReviewPill({
                                 Current: <span className="text-white/60">{s.currentValue}</span>
                               </p>
                             )}
+                            {s.alreadyApplied && (
+                              <p className="text-[10px] uppercase tracking-wider text-amber-400/90 font-medium">Already applied</p>
+                            )}
                             {editing?.churchId === s.churchId && editing?.field === s.field ? (
                               <div className="space-y-2">
                                 <label className="text-white/70 text-xs font-medium">Edit value then approve</label>
@@ -309,7 +312,7 @@ export function ReviewPill({
                                     disabled={actionLoading === `add-${actionId}`}
                                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-[11px] font-medium transition-colors disabled:opacity-50"
                                   >
-                                    {actionLoading === `add-${actionId}` ? <ThreeDotLoader size={12} /> : null}
+                                    {actionLoading === `add-${actionId}` ? <ThreeDotLoader size={12} /> : <ListEnd size={12} />}
                                     Add to up next
                                   </button>
                                   <button
@@ -375,7 +378,7 @@ export function ReviewPill({
                                 disabled={actionLoading === `add-${actionId}`}
                                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-[11px] font-medium transition-colors disabled:opacity-50"
                               >
-                                {actionLoading === `add-${actionId}` ? <ThreeDotLoader size={12} /> : null}
+                                {actionLoading === `add-${actionId}` ? <ThreeDotLoader size={12} /> : <ListEnd size={12} />}
                                 Add to up next
                               </button>
                               <button
@@ -454,6 +457,9 @@ export function ReviewPill({
                               <p className="text-white/60 text-sm">
                                 Current: <span className="text-white/60">{s.currentValue}</span>
                               </p>
+                            )}
+                            {s.alreadyApplied && (
+                              <p className="text-[10px] uppercase tracking-wider text-amber-400/90 font-medium">Already applied</p>
                             )}
                             {editing?.churchId === s.churchId && editing?.field === s.field ? (
                               <div className="space-y-2">

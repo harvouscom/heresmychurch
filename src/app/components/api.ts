@@ -784,6 +784,8 @@ export interface PendingSuggestionItem {
   churchCity?: string;
   churchState?: string;
   churchShortId?: string;
+  /** True when this suggestion was already applied; currentValue is the stored value before that apply */
+  alreadyApplied?: boolean;
 }
 
 export interface PendingChurchItem {
