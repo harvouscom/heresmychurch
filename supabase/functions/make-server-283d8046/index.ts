@@ -1733,8 +1733,8 @@ function churchTweet(ch:any):string{
     (n:string,c:string,s:string,u:string)=>`Here's your newest addition: ${n} in ${c}, ${s}. ${u}`,
   ];
   const st=(ch.state||"").toUpperCase();
-  const sid=ch.shortId||"";
-  const url=sid?`heresmychurch.com/state/${st.toLowerCase()}/${sid}`:`heresmychurch.com/state/${st.toLowerCase()}`;
+  const sid=(ch.shortId&&/^\d{8}$/.test(ch.shortId))?ch.shortId:toShortId(ch.id||"",ch.state||"",ch.shortId);
+  const url=`heresmychurch.com/state/${st.toLowerCase()}/${sid}`;
   const name=(ch.name||"A church").slice(0,80);
   const city=(ch.city||"").slice(0,40)||"a city";
   return pickTemplate(templates,ch.id||name)(name,city,st,url).slice(0,280);
@@ -2147,8 +2147,8 @@ const SPOTLIGHT_LAST_VERIFIED_MS=SPOTLIGHT_LAST_VERIFIED_DAYS*24*60*60*1000;
 
 function churchSpotlightTweet(ch:any):string{
   const st=(ch.state||"").toUpperCase();
-  const sid=ch.shortId||"";
-  const url=sid?`heresmychurch.com/state/${st.toLowerCase()}/${sid}`:`heresmychurch.com/state/${st.toLowerCase()}`;
+  const sid=(ch.shortId&&/^\d{8}$/.test(ch.shortId))?ch.shortId:toShortId(ch.id||"",ch.state||"",ch.shortId);
+  const url=`heresmychurch.com/state/${st.toLowerCase()}/${sid}`;
   const name=(ch.name||"A church").slice(0,80);
   const city=(ch.city||"").slice(0,40)||"a city";
   const templates=[
