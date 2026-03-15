@@ -1301,6 +1301,13 @@ app.get(`${P}/community/history/:churchId`,async(c)=>{
 // ── Moderator endpoints ──
 const US_STATES_LIST=["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"];
 const MODERATE_BATCH=10;
+function normForCompare(s:string|null|undefined):string{if(s==null)return "";return String(s).trim().replace(/\s+/g," ");}
+function valuesMatchForReview(field:string,current:string|null,proposed:string):boolean{
+  const a=normForCompare(current);const b=normForCompare(proposed);
+  if(!a&&!b)return true;
+  if(field==="website")return a.toLowerCase()===b.toLowerCase();
+  return a===b;
+}
 const moderatePendingHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
@@ -1344,6 +1351,7 @@ const moderatePendingHandler=async(c:any)=>{
               const churches=churchesByState.get(st);
               if(Array.isArray(churches)){ch=churches.find((x:any)=>x.id===entry.churchId);if(ch)currentValue=f==="address"?[ch.address,ch.city,ch.state].filter(Boolean).join(", "):String(ch[f]||"");}
             }
+            if(valuesMatchForReview(f,currentValue,d.value))continue;
             pendingSuggestions.push({churchId:entry.churchId,field:f,proposedValue:d.value,currentValue,churchName:ch?.name,churchCity:ch?.city,churchState:ch?.state,churchShortId:ch?.shortId,votes:d.votes,submissions:d.submissions||[]});
           }
         }
