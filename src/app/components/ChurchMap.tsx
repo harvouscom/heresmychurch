@@ -686,8 +686,8 @@ function MapArea({
 }) {
   return (
     <div className="flex flex-1 flex-col relative" style={{ backgroundColor: "#F5F0E8" }}>
-      {/* Review banner — in-flow so it pushes content down */}
-      {moderationMode && (
+      {/* Review banner — only when key is in URL (so it disappears on navigate without key) */}
+      {moderatorKey && moderationMode && (
         <div className="flex-shrink-0 bg-pink-100 text-pink-800 text-[11px] py-1.5 px-4 backdrop-blur-sm font-medium tracking-wide flex items-center justify-center gap-3">
           <span>You're currently in review view</span>
           {onExitReviewView && (
@@ -707,7 +707,7 @@ function MapArea({
       {!isLoadingVisible && d.states.length > 0 && (
       <div className="absolute top-4 left-4 right-4 z-40 flex flex-row items-center justify-center animate-in fade-in duration-300 pointer-events-none">
         <div className="flex flex-col items-center justify-center min-w-0 overflow-hidden max-w-full pointer-events-auto" ref={d.summaryRef}>
-          {moderationMode ? (
+          {moderatorKey && moderationMode ? (
             <>
               <ReviewPill
                 open={showModerationPanel}
@@ -870,7 +870,7 @@ function MapArea({
             states={d.states}
             tooltipPos={d.tooltipPos}
             activeByState={activeByState}
-            reviewCount={moderationMode && nationalReviewStats ? (nationalReviewStats.states[stateAbbrev]?.needsReview ?? 0) : undefined}
+            reviewCount={moderatorKey && moderationMode && nationalReviewStats ? (nationalReviewStats.states[stateAbbrev]?.needsReview ?? 0) : undefined}
             pinned={d.previewStatePinned}
             onViewState={d.previewStatePinned ? () => { d.clearStatePreview(); navigateToState(stateAbbrev); } : undefined}
             onClose={d.previewStatePinned ? d.clearStatePreview : undefined}
@@ -881,7 +881,7 @@ function MapArea({
         <ChurchTooltip
           church={(d.previewChurch ?? d.hoveredChurch)!}
           tooltipPos={d.tooltipPos}
-          showReviewStatus={moderationMode}
+          showReviewStatus={!!(moderatorKey && moderationMode)}
           pinned={d.previewPinned}
           onViewChurch={d.previewPinned ? d.onViewChurch : undefined}
           onClose={d.previewPinned ? d.clearPreview : undefined}
@@ -994,7 +994,7 @@ function MapArea({
             }}
             onShowAbout={onShowAbout}
             onShowHelp={onShowHelp}
-            showAuditButton={moderationMode}
+            showAuditButton={!!(moderatorKey && moderationMode)}
             onShowAudit={onShowAudit}
             zoom={d.zoom}
             compact
