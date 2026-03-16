@@ -223,6 +223,13 @@ export function ChurchMap({
   const onShowAudit = () => localDispatch({ type: "SET", key: "showAudit", value: true });
   const onDismissAudit = () => localDispatch({ type: "SET", key: "showAudit", value: false });
 
+  const handleExitReviewView = useCallback(() => {
+    localDispatch({ type: "SET", key: "moderationMode", value: false });
+    localDispatch({ type: "SET", key: "moderationPending", value: null });
+    localDispatch({ type: "SET", key: "showModerationPanel", value: false });
+    onExitReviewView?.();
+  }, [onExitReviewView]);
+
   // Fetch national review stats when at national level
   useEffect(() => {
     if (!d.focusedState) {
@@ -398,7 +405,7 @@ export function ChurchMap({
           localDispatch({ type: "SET", key: "showModerationPanel", value: open });
         }}
         onRefreshModeration={refreshModeration}
-        onExitReviewView={onExitReviewView}
+        onExitReviewView={handleExitReviewView}
         activePeople={activePeople}
         activeBots={activeBots}
         activeByState={displayActiveByState}
