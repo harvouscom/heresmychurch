@@ -520,8 +520,10 @@ export function ChurchMap({
                 church={d.selectedChurch}
                 allChurches={d.filteredChurches}
                 onClose={() => {
-                  if (d.focusedState) navigateToState(d.focusedState);
-                  else navigateToNational();
+                  if (d.focusedState) {
+                    if (d.focusedCounty) navigateToCounty(d.focusedState, d.focusedCounty);
+                    else navigateToState(d.focusedState);
+                  } else navigateToNational();
                 }}
                 onChurchClick={(target: ChurchClickTarget) => {
                   const state = target.state;
