@@ -1462,10 +1462,12 @@ const moderatePendingHandler=async(c:any)=>{
             let ch:any=null;
             if(st&&st.length===2){
               const churches=churchesByState.get(st);
-              if(Array.isArray(churches)){ch=churches.find((x:any)=>x.id===entry.churchId);if(ch)currentValue=f==="address"?[ch.address,ch.city,ch.state].filter(Boolean).join(", "):String(ch[f]||"");}
+              if(Array.isArray(churches)){ch=churches.find((x:any)=>x.id===entry.churchId);if(ch){if(f==="address")currentValue=[ch.address,ch.city,ch.state].filter(Boolean).join(", ");else if(f==="name")currentValue=String(ch.name??"");else if(f==="website")currentValue=String(ch.website??"");else currentValue=String(ch[f]||"");}}
             }
+            let proposedForMatch=d.value;
+            if(f==="address"&&String(d.value).trim().startsWith("{")){try{const o=JSON.parse(d.value)as Record<string,unknown>;proposedForMatch=[o.address,o.city,o.state].map((x:unknown)=>String(x??"").trim()).filter(Boolean).join(", ");}catch(_){}}
             let alreadyApplied=false;
-            if(valuesMatchForReview(f,currentValue,d.value)){
+            if(valuesMatchForReview(f,currentValue,proposedForMatch)){
               const storedPrev=(entry as any).previousValues?.[f];
               if(storedPrev!=null&&String(storedPrev).trim()!==""){currentValue=String(storedPrev);alreadyApplied=true;}
               else continue;

@@ -1019,7 +1019,13 @@ export function ChurchDetailPanel({
 }
 
 // --- Inline review section for church detail ---
-const MOD_FIELD_LABELS: Record<string, string> = { name: "Church Name", website: "Website", address: "Address" };
+const MOD_FIELD_LABELS: Record<string, string> = {
+  name: "Church Name",
+  website: "Website",
+  address: "Address",
+  reportClosed: "Church closed / doesn't exist",
+  reportDuplicate: "Duplicate of another church",
+};
 
 function InlineModerationSection({
   items,
