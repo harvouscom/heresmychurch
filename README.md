@@ -29,7 +29,7 @@ For how the app is wired (routing, data flow, API, deployment): **[docs/ARCHITEC
 
 **Frontend:** [React](https://react.dev) 18, [TypeScript](https://www.typescriptlang.org), [Vite](https://vite.dev), [React Router](https://reactrouter.com) v7 · **Styling:** [Tailwind](https://tailwindcss.com) v4, [shadcn/ui](https://ui.shadcn.com), [Radix](https://www.radix-ui.com), [Lucide](https://lucide.dev), [Motion](https://motion.dev) · **Mapping:** [react-simple-maps](https://www.react-simple-maps.io), [d3-geo](https://d3js.org/d3-geo), [TopoJSON](https://github.com/topojson/topojson) · **Backend:** [Supabase](https://supabase.com), [Hono](https://hono.dev)
 
-**Data:** OpenStreetMap (churches, denomination matching, building footprints); ARDA (attendance estimates); U.S. Census (state/county population); community submissions. To refresh population data: `node scripts/generate-state-populations.mjs` then redeploy Supabase functions.
+**Data:** OpenStreetMap (churches, denomination matching, building footprints); ARDA (attendance estimates); U.S. Census (state/county population); community submissions. To refresh population data: `node scripts/generate-state-populations.mjs` then redeploy Supabase functions. For how data flows from these sources into the app (ingestion, storage, transformation, consumption), see **[docs/DATA-FLOW.md](docs/DATA-FLOW.md)**.
 
 ## Credits
 

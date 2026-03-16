@@ -98,6 +98,8 @@ flowchart TB
 
 ## 5. Data flow (frontend)
 
+For a full trace of data from sources (Census, OSM, CDN, user input) through storage and transformation to the UI, see [DATA-FLOW.md](DATA-FLOW.md).
+
 ### useChurchMapData
 
 Central hook used by ChurchMap: [src/app/components/useChurchMapData.ts](src/app/components/useChurchMapData.ts).
