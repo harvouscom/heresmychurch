@@ -213,27 +213,43 @@ export function StateTooltip({
   );
 }
 
-// --- County Tooltip (state view hover over county) ---
+// --- County Tooltip (state view hover over county, or pinned on mobile) ---
 export function CountyTooltip({
   countyFips,
   countyStats,
   tooltipPos,
+  pinned = false,
+  onViewCounty,
+  onClose,
 }: {
   countyFips: string;
   countyStats: { byFips: Record<string, { churchCount: number; peoplePer: number; name?: string }> };
   tooltipPos: { x: number; y: number };
+  pinned?: boolean;
+  onViewCounty?: () => void;
+  onClose?: () => void;
 }) {
   const data = countyStats.byFips[countyFips];
   if (!data) return null;
+  const interactive = pinned && (onViewCounty || onClose);
   return (
     <div
-      className="fixed z-50 pointer-events-none rounded-lg shadow-xl px-4 py-2.5"
+      className={`fixed z-[60] rounded-xl shadow-xl px-4 py-3 ${interactive ? "" : "pointer-events-none"}`}
       style={{
         left: tooltipPos.x + 16,
         top: tooltipPos.y - 40,
-        backgroundColor: "rgba(30, 16, 64, 0.95)",
+        minWidth: 160,
+        backgroundColor: "rgba(30, 16, 64, 0.96)",
       }}
     >
+      {pinned && onClose && (
+        <CloseButton
+          onClick={onClose}
+          size="md"
+          className="absolute -right-4 -top-4 shadow-md transition-colors"
+          style={{ backgroundColor: "rgba(30, 16, 64, 0.9)" }}
+        />
+      )}
       {data.name && (
         <div className="text-sm font-semibold text-white">
           {data.name}
@@ -242,6 +258,15 @@ export function CountyTooltip({
       <div className={data.name ? "text-xs text-purple-300 mt-0.5" : "text-sm text-white"}>
         {data.churchCount.toLocaleString()} churches · 1 per {data.peoplePer.toLocaleString()} people
       </div>
+      {pinned && onViewCounty && (
+        <button
+          type="button"
+          onClick={onViewCounty}
+          className="mt-3 w-full py-2 rounded-lg text-sm font-medium bg-purple-500 hover:bg-purple-600 text-white"
+        >
+          View county
+        </button>
+      )}
     </div>
   );
 }

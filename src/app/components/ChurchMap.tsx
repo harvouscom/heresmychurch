@@ -858,7 +858,7 @@ function MapArea({
         hoveredCounty={d.hoveredCounty ?? null}
         onCountyHover={d.setHoveredCounty}
         focusedCounty={d.focusedCounty ?? null}
-        onCountyClick={(fips) => { if (d.focusedState) navigateToCounty(d.focusedState, fips); }}
+        onCountyClick={d.handleCountyClick}
       />
 
       {/* Tooltips */}
@@ -887,17 +887,31 @@ function MapArea({
           onClose={d.previewPinned ? d.clearPreview : undefined}
         />
       )}
-      {d.focusedState && d.hoveredCounty && d.countyStats && !(d.previewChurch ?? d.hoveredChurch) && (
+      {d.focusedState && d.previewCountyPinned && d.previewCounty && d.countyStats && !d.previewChurch && (
+        <CountyTooltip
+          countyFips={d.previewCounty}
+          countyStats={d.countyStats}
+          tooltipPos={d.tooltipPos}
+          pinned
+          onViewCounty={() => {
+            const fips = d.previewCounty;
+            d.clearCountyPreview();
+            if (d.focusedState && fips) navigateToCounty(d.focusedState, fips);
+          }}
+          onClose={d.clearCountyPreview}
+        />
+      )}
+      {d.focusedState && d.hoveredCounty && d.countyStats && !(d.previewChurch ?? d.hoveredChurch) && !d.previewCountyPinned && (
         <CountyTooltip countyFips={d.hoveredCounty} countyStats={d.countyStats} tooltipPos={d.tooltipPos} />
       )}
 
-      {/* Click-outside backdrop: dismiss pinned church or state preview */}
-      {(d.previewPinned || d.previewStatePinned) && (
+      {/* Click-outside backdrop: dismiss pinned church, state, or county preview */}
+      {(d.previewPinned || d.previewStatePinned || d.previewCountyPinned) && (
         <div
           className="absolute inset-0 z-[45]"
           aria-hidden
-          onClick={() => { d.clearPreview(); d.clearStatePreview(); }}
-          onTouchEnd={(e) => { e.preventDefault(); d.clearPreview(); d.clearStatePreview(); }}
+          onClick={() => { d.clearPreview(); d.clearStatePreview(); d.clearCountyPreview(); }}
+          onTouchEnd={(e) => { e.preventDefault(); d.clearPreview(); d.clearStatePreview(); d.clearCountyPreview(); }}
         />
       )}
 

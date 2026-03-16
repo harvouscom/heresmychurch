@@ -1104,6 +1104,16 @@ export function useChurchMapData({
     }
   };
 
+  const handleCountyClick = (fips: string, e?: { clientX: number; clientY: number }) => {
+    if (!focusedState) return;
+    if (isMobile) {
+      const pos = e ? { x: e.clientX, y: e.clientY } : ui.tooltipPos;
+      ui.setPinnedCountyPreview(fips, pos);
+    } else {
+      navigateToCounty(focusedState, fips);
+    }
+  };
+
   return {
     // Map state (was in useMapView, now in data reducer)
     zoom, setZoom,
@@ -1136,8 +1146,12 @@ export function useChurchMapData({
     previewStatePinned: ui.previewStatePinned,
     clearStatePreview: ui.clearStatePreview,
     handleStateClick,
+    handleCountyClick,
     hoveredCounty: ui.hoveredCounty,
     setHoveredCounty: ui.setHoveredCounty,
+    previewCounty: ui.previewCounty,
+    previewCountyPinned: ui.previewCountyPinned,
+    clearCountyPreview: ui.clearCountyPreview,
     tooltipPos: ui.tooltipPos,
     showFilterPanel: ui.showFilterPanel,
     setShowFilterPanel: ui.setShowFilterPanel,

@@ -15,6 +15,9 @@ interface UIState {
   previewState: string | null;
   previewStatePinned: boolean;
   hoveredCounty: string | null;
+  /** County shown in pinned tooltip (state view, mobile); tap county to pin, then "View county" to navigate */
+  previewCounty: string | null;
+  previewCountyPinned: boolean;
   tooltipPos: { x: number; y: number };
   showFilterPanel: boolean;
   searchCollapsed: boolean;
@@ -40,6 +43,8 @@ type UIAction =
   | { type: "SET_PREVIEW_STATE"; value: string | null }
   | { type: "SET_PREVIEW_STATE_PINNED"; value: boolean }
   | { type: "SET_HOVERED_COUNTY"; value: string | null }
+  | { type: "SET_PREVIEW_COUNTY"; value: string | null }
+  | { type: "SET_PREVIEW_COUNTY_PINNED"; value: boolean }
   | { type: "SET_TOOLTIP_POS"; value: { x: number; y: number } }
   | { type: "SET_SHOW_FILTER_PANEL"; value: boolean | ((prev: boolean) => boolean) }
   | { type: "SET_SEARCH_COLLAPSED"; value: boolean }
@@ -71,6 +76,10 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       return state.previewStatePinned === action.value ? state : { ...state, previewStatePinned: action.value };
     case "SET_HOVERED_COUNTY":
       return state.hoveredCounty === action.value ? state : { ...state, hoveredCounty: action.value };
+    case "SET_PREVIEW_COUNTY":
+      return state.previewCounty === action.value ? state : { ...state, previewCounty: action.value };
+    case "SET_PREVIEW_COUNTY_PINNED":
+      return state.previewCountyPinned === action.value ? state : { ...state, previewCountyPinned: action.value };
     case "SET_TOOLTIP_POS":
       return { ...state, tooltipPos: action.value };
     case "SET_SHOW_FILTER_PANEL": {
@@ -122,6 +131,8 @@ const initialUIState: UIState = {
   previewState: null,
   previewStatePinned: false,
   hoveredCounty: null,
+  previewCounty: null,
+  previewCountyPinned: false,
   tooltipPos: { x: 0, y: 0 },
   showFilterPanel: false,
   searchCollapsed: typeof window !== "undefined" && window.innerWidth < 768,
@@ -161,6 +172,8 @@ export function useUIState(focusedState: string | null) {
     dispatch({ type: "SET_PREVIEW_PINNED", value: false });
     dispatch({ type: "SET_PREVIEW_STATE", value: null });
     dispatch({ type: "SET_PREVIEW_STATE_PINNED", value: false });
+    dispatch({ type: "SET_PREVIEW_COUNTY", value: null });
+    dispatch({ type: "SET_PREVIEW_COUNTY_PINNED", value: false });
     dispatch({ type: "SET_ADD_CHURCH_FOR_STATE", value: null });
   }, [focusedState]);
 
@@ -186,6 +199,15 @@ export function useUIState(focusedState: string | null) {
     dispatch({ type: "SET_PREVIEW_STATE", value: null });
     dispatch({ type: "SET_PREVIEW_STATE_PINNED", value: false });
   };
+  const setPinnedCountyPreview = (fips: string, pos: { x: number; y: number }) => {
+    dispatch({ type: "SET_TOOLTIP_POS", value: pos });
+    dispatch({ type: "SET_PREVIEW_COUNTY", value: fips });
+    dispatch({ type: "SET_PREVIEW_COUNTY_PINNED", value: true });
+  };
+  const clearCountyPreview = () => {
+    dispatch({ type: "SET_PREVIEW_COUNTY", value: null });
+    dispatch({ type: "SET_PREVIEW_COUNTY_PINNED", value: false });
+  };
   const setHoveredState = (v: string | null) => dispatch({ type: "SET_HOVERED_STATE", value: v });
   const setHoveredCounty = (v: string | null) => dispatch({ type: "SET_HOVERED_COUNTY", value: v });
   const setShowFilterPanel = (v: boolean | ((prev: boolean) => boolean)) => dispatch({ type: "SET_SHOW_FILTER_PANEL", value: v });
@@ -203,7 +225,7 @@ export function useUIState(focusedState: string | null) {
   const toggleDenom = (label: string) => dispatch({ type: "TOGGLE_DENOM", label });
   const handleMouseMove = (e: React.MouseEvent) => {
     // Don't move the tooltip when a preview is pinned, so the View church/state button stays clickable
-    if (!s.previewPinned && !s.previewStatePinned) {
+    if (!s.previewPinned && !s.previewStatePinned && !s.previewCountyPinned) {
       // Only update position when a hover tooltip is actually shown, so it doesn't chase the cursor when no tooltip is visible
       const hasHover = s.hoveredState != null || s.hoveredChurch != null || s.hoveredCounty != null;
       if (hasHover) {
@@ -227,6 +249,8 @@ export function useUIState(focusedState: string | null) {
     previewState: s.previewState, previewStatePinned: s.previewStatePinned,
     setPinnedStatePreview, clearStatePreview,
     hoveredCounty: s.hoveredCounty, setHoveredCounty,
+    previewCounty: s.previewCounty, previewCountyPinned: s.previewCountyPinned,
+    setPinnedCountyPreview, clearCountyPreview,
     tooltipPos: s.tooltipPos,
     showFilterPanel: s.showFilterPanel, setShowFilterPanel,
     searchCollapsed: s.searchCollapsed, setSearchCollapsed,
