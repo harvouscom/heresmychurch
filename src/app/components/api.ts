@@ -252,7 +252,7 @@ export async function fetchSuggestions(
 
 export async function submitSuggestion(
   churchId: string,
-  field: "name" | "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email" | "homeCampusId",
+  field: "name" | "website" | "address" | "reportClosed" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email" | "homeCampusId",
   value: string
 ): Promise<SubmitSuggestionResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/suggestions`, {

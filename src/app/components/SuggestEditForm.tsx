@@ -60,7 +60,9 @@ interface SuggestEditFormProps {
   pendingFieldsForChurch?: string[];
 }
 
-type EditableField = "name" | "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email" | "homeCampusId";
+type EditableField = "name" | "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email" | "homeCampusId" | "reportClosed";
+
+const REPORT_CLOSED_LABEL = "Church has closed or doesn't exist anymore";
 
 const FIELD_CONFIG: {
   key: EditableField;
@@ -106,6 +108,7 @@ function isFieldEmpty(church: Church, field: EditableField): boolean {
     case "phone": return !church.phone;
     case "email": return !church.email;
     case "homeCampusId": return !church.homeCampusId;
+    case "reportClosed": return false;
   }
 }
 
@@ -128,6 +131,7 @@ function getCurrentValue(church: Church, field: EditableField): string {
     case "phone": return church.phone || "";
     case "email": return church.email || "";
     case "homeCampusId": return church.homeCampusId || "";
+    case "reportClosed": return "";
   }
 }
 
@@ -136,6 +140,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
   const [submitted, setSubmitted] = useState<Set<string>>(new Set());
   const [pendingModeration, setPendingModeration] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [showReportClosedConfirm, setShowReportClosedConfirm] = useState(false);
 
   // Server-backed + just-submitted pending: persists across close/reopen and prevents duplicate submissions
   const effectivePending = useMemo(
@@ -351,15 +356,79 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
               <div className="flex items-center gap-2 rounded-lg p-3 bg-amber-500/10 border border-amber-500/20">
                 <Clock size={14} className="text-amber-400 flex-shrink-0" />
                 <p className="text-amber-300/80 text-xs">
-                  Changes to {Array.from(effectivePending).map((f) => FIELD_CONFIG.find(c => c.key === f)?.label ?? f).join(", ")} require review and will be applied once approved.
+                  Changes to {Array.from(effectivePending).map((f) => f === "reportClosed" ? REPORT_CLOSED_LABEL : FIELD_CONFIG.find(c => c.key === f)?.label ?? f).join(", ")} require review and will be applied once approved.
                 </p>
               </div>
             )}
 
+            {/* Church closed / doesn't exist — requires review */}
+            <div className="pt-2 border-t border-white/5">
+              {effectivePending.has("reportClosed") ? (
+                <div className="flex items-center gap-2 rounded-lg p-3 bg-amber-500/10 border border-amber-500/20">
+                  <Clock size={14} className="text-amber-400 flex-shrink-0" />
+                  <p className="text-amber-300/80 text-xs">
+                    Report submitted — pending review. This church will be removed from the list if approved.
+                  </p>
+                </div>
+              ) : submitting === "reportClosed" ? (
+                <div className="flex items-center gap-2 rounded-lg p-3 bg-white/5 border border-white/10">
+                  <ThreeDotLoader className="text-white/60" />
+                  <p className="text-white/60 text-xs">Submitting…</p>
+                </div>
+              ) : showReportClosedConfirm ? (
+                <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-4 space-y-3">
+                  <p className="text-red-200/90 text-sm">
+                    Are you sure? This will submit a report for review. If approved, this church will be removed from the map.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowReportClosedConfirm(false)}
+                      className="flex-1 px-3 py-2 rounded-lg text-sm font-medium text-white/80 bg-white/10 hover:bg-white/15 border border-white/10 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setShowReportClosedConfirm(false);
+                        setSubmitting("reportClosed");
+                        setError(null);
+                        try {
+                          const result = await submitSuggestion(church.id, "reportClosed", "closed");
+                          setPendingModeration((prev) => new Set([...prev, "reportClosed"]));
+                          onPendingSubmitted?.();
+                          if (!result.needsModeration) onChurchUpdated?.();
+                        } catch (err: any) {
+                          setError(err.message ?? "Failed to submit report");
+                        } finally {
+                          setSubmitting(null);
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-500 transition-colors"
+                    >
+                      Yes, submit report
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowReportClosedConfirm(true)}
+                  className="w-full flex items-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-colors text-left"
+                >
+                  <AlertCircle size={16} className="text-red-400 flex-shrink-0" />
+                  <span className="text-red-300/90 text-sm font-medium">
+                    {REPORT_CLOSED_LABEL}
+                  </span>
+                </button>
+              )}
+            </div>
+
         {/* Info note */}
         <div className="pt-3 border-t border-white/5 text-pretty">
           <p className="text-white/55 text-[10px] leading-relaxed text-center">
-            Most edits are applied immediately. Changes to name, website, and address require a brief review.
+            Most edits are applied immediately. Changes to name, website, address, and reporting a church as closed require a brief review.
           </p>
         </div>
       </div>

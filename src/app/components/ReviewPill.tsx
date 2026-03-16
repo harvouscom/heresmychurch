@@ -19,6 +19,7 @@ const FIELD_LABELS: Record<string, string> = {
   name: "Church Name",
   website: "Website",
   address: "Address",
+  reportClosed: "Church closed / doesn't exist",
 };
 
 type StateInfo = { abbrev: string; name: string; isPopulated: boolean; churchCount: number };

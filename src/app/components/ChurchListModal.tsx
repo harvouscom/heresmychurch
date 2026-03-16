@@ -47,6 +47,8 @@ interface ChurchListModalProps {
   churches: Church[];
   stateName: string;
   stateAbbrev: string;
+  /** When set (e.g. from county view), list is county-filtered and title shows county name. */
+  countyName?: string | null;
   statePopulation?: number | null;
   onClose: () => void;
   onChurchClick?: (church: Church) => void;
@@ -60,6 +62,7 @@ export function ChurchListModal({
   churches,
   stateName,
   stateAbbrev,
+  countyName = null,
   statePopulation,
   onClose,
   onChurchClick,
@@ -355,7 +358,9 @@ export function ChurchListModal({
                 <div className="flex items-center gap-2">
                   <StateFlag abbrev={stateAbbrev} size="sm" />
                   <h2 className="text-white font-semibold text-base leading-tight">
-                    Churches in {stateName}
+                    Churches in {countyName
+                      ? (countyName.includes("County") ? countyName : `${countyName} County`)
+                      : stateName}
                   </h2>
                 </div>
                 <p className="text-white/40 text-xs mt-0.5">

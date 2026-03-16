@@ -17,6 +17,8 @@ import {
   STATE_TO_FIPS,
   filterToStateBounds,
   getStateZoom,
+  getCountyCenter,
+  getCountyZoom,
 } from "./map-constants";
 import { COUNTY_POPULATIONS } from "./data/county-populations";
 import { getChurchUrlSegment } from "./url-utils";
@@ -40,11 +42,14 @@ import { useChurchFilters } from "./hooks/useChurchFilters";
 
 interface UseChurchMapDataArgs {
   routeStateAbbrev: string | null;
+  routeCountyFips: string | null;
   routeChurchShortId: string | null;
   routeLegacyChurchId: string | null;
   navigateToState: (abbrev: string) => void;
-  navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => void;
+  navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean; countyFips?: string }) => void;
   navigateToNational: () => void;
+  navigateToCounty: (stateAbbrev: string, countyFips: string) => void;
+  navigateToStateOnly: (stateAbbrev: string) => void;
   isMobile?: boolean;
 }
 
@@ -63,11 +68,14 @@ function filterToStatePolygon(
 
 export function useChurchMapData({
   routeStateAbbrev,
+  routeCountyFips,
   routeChurchShortId,
   routeLegacyChurchId,
   navigateToState,
   navigateToChurch,
   navigateToNational,
+  navigateToCounty,
+  navigateToStateOnly,
   isMobile,
 }: UseChurchMapDataArgs) {
   // ── Core data + map-view state (consolidated reducer — absorbs old useMapView) ──
@@ -184,9 +192,20 @@ export function useChurchMapData({
     };
   }, [focusedState, countyFeatures, churches]);
 
+  // Focused county (when in state view and route has county segment)
+  const focusedCounty = focusedState && routeCountyFips ? routeCountyFips : null;
+
+  // When in county view, scope church list to county for filters + map
+  const viewChurches = useMemo(() => {
+    if (!focusedCounty || !countyFeatures?.size) return churches;
+    const feat = countyFeatures.get(focusedCounty);
+    if (!feat) return churches;
+    return churches.filter((ch) => geoContains(feat, [ch.lng, ch.lat]));
+  }, [focusedCounty, countyFeatures, churches]);
+
   // ── Sub-hook: filtered churches + derived stats ──
   const filters = useChurchFilters(
-    churches,
+    viewChurches,
     ui.activeSize,
     ui.activeDenominations,
     ui.languageFilter,
@@ -213,6 +232,7 @@ export function useChurchMapData({
     } | null,
     prevRouteState: null as string | null,
     prevRouteChurch: null as string | null,
+    prevRouteCountyFips: null as string | null,
     statesLoaded: false,
     moveEndSuppressedUntil: 0,
     transitionVersion: 0,
@@ -256,12 +276,28 @@ export function useChurchMapData({
     return shiftPx / (svgScale * targetZoom * 16.8);
   };
 
-  const moveToChurchView = (lng: number, lat: number, targetZoom: number) => {
+  // When church is provided and we have county features, zoom to the county that contains the church so the church view stays "within" the county.
+  const moveToChurchView = (lng: number, lat: number, targetZoom: number, church?: Church | null) => {
+    let center: [number, number] = [lng, lat];
+    let zoom = targetZoom;
+    if (church && focusedState && countyFeatures?.size) {
+      const stateFips = STATE_TO_FIPS[focusedState];
+      if (stateFips) {
+        for (const [fips, feat] of countyFeatures.entries()) {
+          if (String(fips).substring(0, 2) !== stateFips) continue;
+          if (geoContains(feat, [church.lng, church.lat])) {
+            center = getCountyCenter(feat);
+            zoom = getCountyZoom(feat);
+            break;
+          }
+        }
+      }
+    }
     if (!isMobile) {
-      moveToView([lng, lat], targetZoom);
+      moveToView(center, zoom);
       return;
     }
-    moveToView([lng, lat - getMobileLatOffset(targetZoom)], targetZoom);
+    moveToView([center[0], center[1] - getMobileLatOffset(zoom)], zoom);
   };
 
   const allStatesLoaded = useMemo(
@@ -537,7 +573,7 @@ export function useChurchMapData({
         refs.current.pendingTransition = null;
         setLoadingStateName("");
         overlay.setForceLoadingVisible(false);
-        moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8));
+        moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8), church);
         return;
       }
     }
@@ -568,7 +604,7 @@ export function useChurchMapData({
         const church = filtered.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
         if (church) {
           setSelectedChurch(church);
-          moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8));
+          moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8), church);
         }
 
         if (data.churches.length === 2000) {
@@ -584,7 +620,7 @@ export function useChurchMapData({
                 const fc = ff.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
                 if (fc) {
                   setSelectedChurch(fc);
-                  moveToChurchView(fc.lng, fc.lat, Math.max(ds.zoom, 8));
+                  moveToChurchView(fc.lng, fc.lat, Math.max(ds.zoom, 8), fc);
                 }
               }
               const sd = await fetchStates();
@@ -619,7 +655,7 @@ export function useChurchMapData({
         const church = freshFiltered.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
         if (church) {
           setSelectedChurch(church);
-          moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8));
+          moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8), church);
         }
         const statesData = await fetchStates();
         if (!isStale()) {
@@ -876,20 +912,45 @@ export function useChurchMapData({
         if (routeLegacyChurchId && focusedState) {
           navigateToChurch(focusedState, getChurchUrlSegment(selectedChurch!, focusedState), {
             replace: true,
+            countyFips: routeCountyFips ?? undefined,
           });
         }
         return;
       }
       if (!selectedChurch || selectedChurch.id !== church.id) {
         setSelectedChurch(church);
-        moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8));
+        moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8), church);
       }
       // Redirect legacy URL to canonical (numeric segment)
       if (routeLegacyChurchId && focusedState) {
-        navigateToChurch(focusedState, getChurchUrlSegment(church, focusedState), { replace: true });
+        navigateToChurch(focusedState, getChurchUrlSegment(church, focusedState), {
+          replace: true,
+          countyFips: routeCountyFips ?? undefined,
+        });
       }
     }
-  }, [routeChurchShortId, routeLegacyChurchId, routeChurchKey, churches, selectedChurch?.id, focusedState, navigateToChurch]);
+  }, [routeChurchShortId, routeLegacyChurchId, routeChurchKey, routeCountyFips, churches, selectedChurch?.id, focusedState, navigateToChurch]);
+
+  // Sync map view when entering or leaving county view (routeCountyFips or countyFeatures load)
+  const lastMovedToCountyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusedState) return;
+    if (routeCountyFips && countyFeatures?.size) {
+      const feat = countyFeatures.get(routeCountyFips);
+      if (feat && lastMovedToCountyRef.current !== routeCountyFips) {
+        lastMovedToCountyRef.current = routeCountyFips;
+        refs.current.prevRouteCountyFips = routeCountyFips;
+        moveToView(getCountyCenter(feat), getCountyZoom(feat));
+      }
+    } else {
+      if (refs.current.prevRouteCountyFips !== null) {
+        refs.current.prevRouteCountyFips = null;
+        lastMovedToCountyRef.current = null;
+        const si = states.find((s) => s.abbrev === focusedState);
+        if (si) moveToView([si.lng, si.lat], getStateZoom(focusedState));
+      }
+    }
+  }, [routeCountyFips, focusedState, countyFeatures, states]);
 
   // Re-center map when isMobile changes while viewing a church
   const prevIsMobileRef = useRef(isMobile);
@@ -988,8 +1049,14 @@ export function useChurchMapData({
     dd({ type: "SET_ZOOM_TRANSITIONING", value: false });
   };
   const handleResetView = () => navigateToNational();
-  // In state view, don't allow zooming out past the initial state zoom.
-  const minZoom = focusedState ? getStateZoom(focusedState) : 1;
+  const handleBackToState = () => {
+    if (focusedState) navigateToStateOnly(focusedState);
+  };
+  // In state/county view, don't allow zooming out past the initial view zoom.
+  // When in county view, use state zoom as min so the user can zoom out to state level (then we navigate to state in handleMoveEnd).
+  const minZoom = useMemo(() => {
+    return focusedState ? getStateZoom(focusedState) : 1;
+  }, [focusedState]);
   const ZOOM_TRANSITION_MS = 320;
   const handleZoomIn = () => {
     dd({ type: "SET_ZOOM_TRANSITIONING", value: true });
@@ -1011,7 +1078,9 @@ export function useChurchMapData({
     } else {
       const stateAbbrev = focusedState ?? church.state;
       if (stateAbbrev) {
-        navigateToChurch(stateAbbrev, getChurchUrlSegment(church, stateAbbrev));
+        navigateToChurch(stateAbbrev, getChurchUrlSegment(church, stateAbbrev), {
+          countyFips: routeCountyFips ?? undefined,
+        });
       }
     }
   };
@@ -1019,7 +1088,9 @@ export function useChurchMapData({
   const onViewChurch = (church: Church) => {
     ui.clearPreview();
     if (focusedState) {
-      navigateToChurch(focusedState, getChurchUrlSegment(church, focusedState));
+      navigateToChurch(focusedState, getChurchUrlSegment(church, focusedState), {
+        countyFips: routeCountyFips ?? undefined,
+      });
     }
   };
 
@@ -1110,6 +1181,9 @@ export function useChurchMapData({
     sizeCounts: filters.sizeCounts,
     summaryStats: filters.summaryStats,
     countyStats,
+    countyFeatures,
+    focusedCounty,
+    handleBackToState,
     // Actions
     loadStateData,
     refetchCurrentStateChurches,

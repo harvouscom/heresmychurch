@@ -79,6 +79,8 @@ interface SummaryPanelProps {
   onShowAddChurch: () => void;
   onShowVerification?: () => void;
   countyStats?: CountyStatsForSummary | null;
+  /** When in focused county view, show county-level summary. */
+  focusedCounty?: string | null;
 }
 
 export function SummaryPanel({
@@ -95,7 +97,9 @@ export function SummaryPanel({
   onShowAddChurch,
   onShowVerification,
   countyStats,
+  focusedCounty = null,
 }: SummaryPanelProps) {
+  const countyData = focusedCounty && countyStats?.byFips[focusedCounty];
   return (
     <motion.div
       initial={{ opacity: 0, y: -8, scale: 0.97 }}
@@ -109,13 +113,25 @@ export function SummaryPanel({
       <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-white/8 flex-shrink-0">
         <span className="flex items-center gap-1.5 text-xs font-medium text-white uppercase tracking-widest">
           {focusedState && <StateFlag abbrev={focusedState} size="sm" />}
-          {focusedState ? `${focusedStateName} Summary` : "Summary"}
+          {focusedCounty && countyData
+            ? `${countyData.name.includes("County") ? countyData.name : `${countyData.name} County`}, ${focusedStateName}`
+            : focusedState
+              ? `${focusedStateName} Summary`
+              : "Summary"}
         </span>
         <CloseButton onClick={onClose} />
       </div>
 
       <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1 min-h-0">
-        {summaryStats.type === "state" ? (
+        {focusedCounty && countyData ? (
+          <CountySummaryContent
+            countyName={countyData.name}
+            churchCount={churches.length}
+            population={countyData.population}
+            peoplePer={countyData.peoplePer}
+            stats={summaryStats.type === "state" ? summaryStats : undefined}
+          />
+        ) : summaryStats.type === "state" ? (
           <StateSummaryContent
             stats={summaryStats}
             focusedState={focusedState!}
@@ -179,6 +195,94 @@ export function SummaryPanel({
         </div>
       )}
     </motion.div>
+  );
+}
+
+function CountySummaryContent({
+  countyName,
+  churchCount,
+  population,
+  peoplePer,
+  stats,
+}: {
+  countyName: string;
+  churchCount: number;
+  population: number;
+  peoplePer: number;
+  stats?: StateSummaryData;
+}) {
+  const displayName = countyName.includes("County") ? countyName : `${countyName} County`;
+  const countyFacts = stats?.interestingFacts?.filter(
+    (f) => f.label !== "County that could use more churches"
+  ) ?? [];
+
+  return (
+    <>
+      <p className="text-white/70 text-xs leading-relaxed">
+        <span className="font-medium text-purple-300">{displayName}</span> has{" "}
+        <span className="font-medium text-white">{churchCount.toLocaleString()} churches</span>
+        {population > 0 && (
+          <> and a population of <span className="font-medium text-white">{population.toLocaleString()}</span> — about{" "}
+            <span className="font-medium text-white">1 church per {peoplePer.toLocaleString()} people</span>.</>
+        )}
+      </p>
+      {stats && stats.totalAttendance > 0 && (
+        <p className="text-white/70 text-xs leading-relaxed">
+          Estimated combined weekly attendance:{" "}
+          <span className="font-medium text-white">~{stats.totalAttendance.toLocaleString()}</span>.
+        </p>
+      )}
+
+      <FactsList facts={countyFacts} />
+
+      {stats && stats.topDenoms.length > 0 && (
+        <div>
+          <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-medium block mb-1.5">
+            Top Denominations
+          </span>
+          <div className="space-y-0.5">
+            {stats.topDenoms.map(([label, count]) => {
+              const pct = churchCount > 0 ? (count / churchCount) * 100 : 0;
+              return (
+                <div key={label} className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/4">
+                  <span className="text-white text-[11px] font-medium truncate min-w-0 flex-1">{label}</span>
+                  <div className="w-16 h-1 rounded-full bg-white/8 overflow-hidden flex-shrink-0">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.max(pct, 2)}%`,
+                        background: "linear-gradient(90deg, #A855F7, #6B21A8)",
+                      }}
+                    />
+                  </div>
+                  <span className="text-white/40 text-[10px] flex-shrink-0 w-8 text-right">{pct < 1 ? "<1" : Math.round(pct)}%</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {stats && stats.topSizes.some((s) => s.count > 0) && (
+        <div>
+          <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-medium block mb-2">
+            By Attendance Size
+          </span>
+          <div className="space-y-1">
+            {stats.topSizes.filter((s) => s.count > 0).map((s) => (
+              <div key={s.label} className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-white/4">
+                <div
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: s.color }}
+                />
+                <span className="text-white/70 text-xs flex-1">{s.label}</span>
+                <span className="text-white/40 text-xs font-medium">{s.count.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

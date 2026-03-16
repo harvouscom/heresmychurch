@@ -1,3 +1,5 @@
+import { geoCentroid, geoBounds } from "d3-geo";
+
 // Bible-themed sayings about waiting, shown during loading
 export const WAITING_SAYINGS = [
   { text: "But they that wait upon the Lord shall renew their strength; they shall mount up with wings as eagles.", ref: "Isaiah 40:31" },
@@ -242,4 +244,27 @@ export function getStateZoom(abbrev: string): number {
   if (diagonal <= 0) return REFERENCE_ZOOM;
   const zoom = REFERENCE_ZOOM * (REFERENCE_DIAGONAL / diagonal);
   return Math.min(MAX_STATE_ZOOM, Math.max(MIN_STATE_ZOOM, Math.round(zoom * 10) / 10));
+}
+
+// County geometry helpers (for focused county view). Feature = GeoJSON Feature or compatible.
+/** Returns [lng, lat] center of a county feature. */
+export function getCountyCenter(feature: GeoJSON.Geometry | GeoJSON.Feature): [number, number] {
+  const c = geoCentroid(feature as GeoJSON.Geometry);
+  return [c[0], c[1]];
+}
+
+const COUNTY_REFERENCE_DIAGONAL = 2; // typical county bbox diagonal in degrees
+const COUNTY_REFERENCE_ZOOM = 12;
+const MIN_COUNTY_ZOOM = 8;
+const MAX_COUNTY_ZOOM = 120;
+
+/** Returns zoom level so the county fits the viewport. */
+export function getCountyZoom(feature: GeoJSON.Geometry | GeoJSON.Feature): number {
+  const [[west, south], [east, north]] = geoBounds(feature as GeoJSON.Geometry);
+  const latSpan = north - south;
+  const lngSpan = east - west;
+  const diagonal = Math.sqrt(latSpan * latSpan + lngSpan * lngSpan);
+  if (diagonal <= 0) return COUNTY_REFERENCE_ZOOM;
+  const zoom = COUNTY_REFERENCE_ZOOM * (COUNTY_REFERENCE_DIAGONAL / diagonal);
+  return Math.min(MAX_COUNTY_ZOOM, Math.max(MIN_COUNTY_ZOOM, Math.round(zoom * 10) / 10));
 }

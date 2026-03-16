@@ -3,13 +3,16 @@
  * Contains ComposableMap, ZoomableGroup, state/county Geographies,
  * the background click-rect, ChurchDots, and StateActiveLabels.
  */
-import { memo, useState, useCallback, useSyncExternalStore } from "react";
+import { memo, useState, useCallback, useRef, useSyncExternalStore, useEffect } from "react";
 import {
   ComposableMap,
   Geographies,
   Geography,
   ZoomableGroup,
+  useMapContext,
+  useZoomPanContext,
 } from "react-simple-maps";
+import { geoContains } from "d3-geo";
 import { ChurchDots } from "./ChurchDots";
 import type { Church, StateInfo } from "./church-data";
 import {
@@ -48,6 +51,9 @@ interface MapCanvasProps {
   countyStats: CountyStats | null;
   hoveredCounty: string | null;
   onCountyHover: (fips: string | null) => void;
+  focusedCounty: string | null;
+  onCountyClick: (fips: string) => void;
+  countyFeatures: Map<string, unknown> | null;
 }
 
 export const MapCanvas = memo(function MapCanvas({
@@ -72,6 +78,9 @@ export const MapCanvas = memo(function MapCanvas({
   countyStats,
   hoveredCounty,
   onCountyHover,
+  focusedCounty,
+  onCountyClick,
+  countyFeatures,
 }: MapCanvasProps) {
   // Detect touch/hover-less device from first paint so we never show hover tooltips on mobile.
   // (hover: none) = primary input can't hover (e.g. phones). Fallback: (pointer: coarse) or first touch.
@@ -94,6 +103,52 @@ export const MapCanvas = memo(function MapCanvas({
   }, [onStateHover, onChurchHover, onCountyHover]);
   const isTouchDevice = hoverNone || touchSeen;
 
+  // County click when user clicks (no pan). We detect "click" via map's onMoveEnd: if the map
+  // didn't move (same center), it was a click. Pan works because we never block mousedown.
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const centerRef = useRef(center);
+  centerRef.current = center;
+  const countyClickPendingRef = useRef<{ fips: string; startCenter: [number, number] } | null>(null);
+  const onCountyClickRef = useRef(onCountyClick);
+  onCountyClickRef.current = onCountyClick;
+
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      const container = mapContainerRef.current;
+      if (!container || !container.contains(e.target as Node)) return;
+      const target = (e.target as Element)?.closest?.("[data-fips]");
+      const fips = target?.getAttribute?.("data-fips") ?? (target as HTMLElement)?.dataset?.fips;
+      if (fips) {
+        countyClickPendingRef.current = { fips, startCenter: centerRef.current };
+      } else {
+        countyClickPendingRef.current = null;
+      }
+    };
+
+    document.addEventListener("mousedown", onMouseDown, true);
+    return () => document.removeEventListener("mousedown", onMouseDown, true);
+  }, []);
+
+  const handleMoveEnd = useCallback(
+    (args: { coordinates: [number, number]; zoom: number }) => {
+      const { coordinates, zoom: z } = args;
+      if (coordinates && coordinates[0] != null && coordinates[1] != null) {
+        onMoveEnd(coordinates, z);
+      }
+      const pending = countyClickPendingRef.current;
+      countyClickPendingRef.current = null;
+      if (pending && coordinates) {
+        const [lon, lat] = coordinates;
+        const [sLon, sLat] = pending.startCenter;
+        const distSq = (lon - sLon) ** 2 + (lat - sLat) ** 2;
+        if (distSq < 1e-8) {
+          onCountyClickRef.current(pending.fips);
+        }
+      }
+    },
+    [onMoveEnd]
+  );
+
   // On desktop (non-touch), prevent wheel from scrolling the page so only the map zooms.
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
@@ -106,6 +161,7 @@ export const MapCanvas = memo(function MapCanvas({
 
   return (
     <div
+      ref={mapContainerRef}
       className={transitionClass}
       style={{ width: '100%', height: '100%', touchAction: 'none' }}
       onTouchStart={markTouch}
@@ -122,11 +178,7 @@ export const MapCanvas = memo(function MapCanvas({
         minZoom={minZoom}
         maxZoom={maxZoom}
         onMoveStart={() => { if (onUserInteractionStart) onUserInteractionStart(); }}
-        onMoveEnd={({ coordinates, zoom: z }: { coordinates: [number, number]; zoom: number }) => {
-          if (coordinates && coordinates[0] != null && coordinates[1] != null) {
-            onMoveEnd(coordinates, z);
-          }
-        }}
+        onMoveEnd={handleMoveEnd}
       >
         {focusedState && (
           <rect
@@ -147,12 +199,21 @@ export const MapCanvas = memo(function MapCanvas({
           disableHover={isTouchDevice}
         />
 
+        {focusedState && countyFeatures?.size && (
+          <CountyClickOverlay
+            focusedState={focusedState}
+            countyFeatures={countyFeatures}
+            onCountyClick={onCountyClick}
+          />
+        )}
         {focusedState && (
           <CountyGeographies
             focusedState={focusedState}
             countyStats={countyStats}
             hoveredCounty={hoveredCounty}
             onCountyHover={onCountyHover}
+            focusedCounty={focusedCounty}
+            onCountyClick={onCountyClick}
             disableHover={isTouchDevice}
           />
         )}
@@ -173,6 +234,29 @@ export const MapCanvas = memo(function MapCanvas({
     </div>
   );
 });
+
+/* ── County click overlay: hit-test so county click works even when dots or zoom capture the event ── */
+function CountyClickOverlay({
+  focusedState,
+  countyFeatures,
+}: {
+  focusedState: string;
+  countyFeatures: Map<string, unknown>;
+  onCountyClick: (fips: string) => void;
+}) {
+  // Transparent overlay below county paths; county click is handled by path data-fips + div capture (click vs drag).
+  return (
+    <rect
+      x={-2000}
+      y={-2000}
+      width={4000}
+      height={4000}
+      fill="transparent"
+      pointerEvents="none"
+      style={{ cursor: "pointer" }}
+    />
+  );
+}
 
 /* ── State boundaries ── */
 const StateGeographies = memo(function StateGeographies({
@@ -246,12 +330,16 @@ const CountyGeographies = memo(function CountyGeographies({
   countyStats,
   hoveredCounty,
   onCountyHover,
+  focusedCounty,
+  onCountyClick,
   disableHover,
 }: {
   focusedState: string;
   countyStats: CountyStats | null;
   hoveredCounty: string | null;
   onCountyHover: (fips: string | null) => void;
+  focusedCounty: string | null;
+  onCountyClick: (fips: string) => void;
   disableHover?: boolean;
 }) {
   const stateFips = STATE_TO_FIPS[focusedState];
@@ -269,22 +357,27 @@ const CountyGeographies = memo(function CountyGeographies({
               ? getCountyPerCapitaColor(data.perCapita, countyStats?.sortedByPerCapita ?? [])
               : "rgba(255, 255, 255, 0.8)";
             const isHovered = !disableHover && hoveredCounty === fips;
+            const isFocused = focusedCounty === fips;
+            const effectiveFill = isFocused ? "#D4B8E8" : isHovered ? "#D4B8E8" : fill;
+            const effectiveStroke = isFocused ? "rgba(107, 33, 168, 0.8)" : isHovered ? "rgba(107, 33, 168, 0.6)" : "rgba(107, 33, 168, 0.25)";
+            const effectiveStrokeWidth = isFocused ? 1 : isHovered ? 0.8 : 0.4;
             return (
-              <Geography
-                key={geo.rsmKey}
-                geography={geo}
-                fill={isHovered ? "#D4B8E8" : fill}
-                stroke={isHovered ? "rgba(107, 33, 168, 0.6)" : "rgba(107, 33, 168, 0.25)"}
-                strokeWidth={isHovered ? 0.8 : 0.4}
-                pointerEvents={disableHover ? "none" : "auto"}
-                onMouseEnter={disableHover ? undefined : () => onCountyHover(fips)}
-                onMouseLeave={disableHover ? undefined : () => onCountyHover(null)}
-                style={{
-                  default: { outline: "none", cursor: "default" },
-                  hover: { outline: "none", cursor: "default" },
-                  pressed: { outline: "none", cursor: "default" },
-                }}
-              />
+              <g key={geo.rsmKey} data-fips={fips} style={{ cursor: "pointer" }}>
+                <Geography
+                  geography={geo}
+                  fill={effectiveFill}
+                  stroke={effectiveStroke}
+                  strokeWidth={effectiveStrokeWidth}
+                  pointerEvents={disableHover ? "none" : "auto"}
+                  onMouseEnter={disableHover ? undefined : () => onCountyHover(fips)}
+                  onMouseLeave={disableHover ? undefined : () => onCountyHover(null)}
+                  style={{
+                    default: { outline: "none", cursor: "pointer" },
+                    hover: { outline: "none", cursor: "pointer" },
+                    pressed: { outline: "none", cursor: "pointer" },
+                  }}
+                />
+              </g>
             );
           })
       }

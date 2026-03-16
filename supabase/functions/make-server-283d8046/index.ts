@@ -883,7 +883,7 @@ const THR=1;
 const ALERT_THR=3;
 const ADD_CHURCH_RATE_LIMIT=5;
 const ADD_CHURCH_WINDOW_MS=15*60*1000;
-const SENSITIVE_FIELDS=["name","website","address"];
+const SENSITIVE_FIELDS=["name","website","address","reportClosed"];
 const MODERATOR_KEY=Deno.env.get("MODERATOR_KEY")||"";
 function cip(c:any):string{return c.req.header("x-forwarded-for")?.split(",")[0]?.trim()||c.req.header("x-real-ip")||"unknown";}
 function checkModKey(c:any):boolean{const k=new URL(c.req.url).searchParams.get("key")||c.req.header("x-moderator-key")||"";return!!MODERATOR_KEY&&k===MODERATOR_KEY;}
@@ -897,7 +897,7 @@ function normalizePhone(s:string):string{
   if(digits.length<10)return "";
   return digits;
 }
-const VF=["name","website","address","attendance","denomination","serviceTimes","languages","ministries","pastorName","phone","email","homeCampusId"];
+const VF=["name","website","address","reportClosed","attendance","denomination","serviceTimes","languages","ministries","pastorName","phone","email","homeCampusId"];
 function consensus(subs:any[]){
   const res:Record<string,any>={};
   for(const f of VF){
@@ -1037,6 +1037,7 @@ app.post(`${P}/suggestions`,async(c)=>{
     if(field==="homeCampusId"){const v=String(value).trim();if(!v)return c.json({error:"Main campus ID required"},400);if(!stateFromChurchId(v))return c.json({error:"Invalid church ID format"},400);}
     let storeValue=String(value).trim();
     if(!storeValue)return c.json({error:"Value is required"},400);
+    if(field==="reportClosed"){storeValue="closed";}
     if(field==="name"&&storeValue.length<2)return c.json({error:"Church name must be at least 2 characters"},400);
     if(field==="phone"){storeValue=normalizePhone(storeValue);if(!storeValue)return c.json({error:"Invalid phone number"},400);}
     const k=`suggestions:${churchId}`;const ex=(await kv.get(k))||{churchId,submissions:[]};
@@ -1442,6 +1443,36 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
       const d=con[field] as any;
       if(!d||d.value===null)return c.json({error:"No value to approve"},400);
       valueToApply=d.value;
+    }
+    if(field==="reportClosed"){
+      const parts=churchId.split("-");const st=parts[0]==="community"?parts[1]:parts[0];
+      if(!st||st.length!==2)return c.json({error:"Invalid church ID"},400);
+      let auditChurchName:string|null=null;let auditChurchCityState:string|null=null;
+      const mainKey=`churches:${st}`;const mainChurches=await kv.get(mainKey);
+      if(Array.isArray(mainChurches)){
+        const ch=mainChurches.find((x:any)=>x.id===churchId);
+        if(ch){auditChurchName=ch.name||null;auditChurchCityState=[ch.city,ch.state].filter(Boolean).join(", ")||null;}
+        const filtered=mainChurches.filter((x:any)=>x.id!==churchId);
+        if(filtered.length!==mainChurches.length){
+          await kv.set(mainKey,filtered);
+          await writeIdx(st,filtered);
+          const meta=await kv.get("churches:meta");if(meta){meta.stateCounts=meta.stateCounts||{};meta.stateCounts[st]=filtered.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);}
+        }
+      }
+      const pendingKey=`pending-churches:${st}`;const store=await kv.get(pendingKey);
+      if(store&&Array.isArray(store.churches)&&store.churches.length){
+        const pendingCh=store.churches.find((x:any)=>x.id===churchId);
+        if(pendingCh&&!auditChurchName){auditChurchName=pendingCh.name||null;auditChurchCityState=[pendingCh.city,pendingCh.state].filter(Boolean).join(", ")||null;}
+        const before=store.churches.length;
+        store.churches=store.churches.filter((x:any)=>x.id!==churchId);
+        if(store.churches.length!==before)await kv.set(pendingKey,store);
+      }
+      await invalidateReviewStatsCache();
+      if(st){void recordChurchAudit({church_id:churchId,church_name:auditChurchName,church_city_state:auditChurchCityState,state:st,action:"church_removed",field:"reportClosed",new_value:valueToApply,source:"moderate_approve"},{hashModKey:getModKey(c)});}
+      ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
+      await kv.set(k,ex);
+      const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);
+      return c.json({success:true,applied:true,churchId,field,value:valueToApply});
     }
     const singleCon:Record<string,any>={};
     singleCon[field]={approved:true,value:valueToApply,votes:0,needed:THR};

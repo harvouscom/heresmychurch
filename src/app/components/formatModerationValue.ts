@@ -6,6 +6,7 @@ import { parseAddressValue, formatFullAddress } from "./AddressInput";
  * - website, name, etc.: returned as-is
  */
 export function formatModerationDisplayValue(field: string, value: string | null | undefined): string {
+  if (field === "reportClosed") return "Reported as closed";
   if (value == null || value === "") return "";
   const trimmed = value.trim();
   if (field === "address" && trimmed.startsWith("{")) {

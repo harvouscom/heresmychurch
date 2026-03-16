@@ -34,7 +34,7 @@ import {
 } from "./MapOverlays";
 import { useChurchMapData } from "./useChurchMapData";
 import { getChurchUrlSegment } from "./url-utils";
-import { REVIEW_SAYINGS } from "./map-constants";
+import { getStateZoom, REVIEW_SAYINGS } from "./map-constants";
 import type { ChurchClickTarget } from "./ChurchDetailPanel";
 import { fetchNationalReviewStats, fetchModeratorPending } from "./api";
 import type { NationalReviewStatsResponse, ModeratorPendingResponse } from "./api";
@@ -49,7 +49,7 @@ type ModerationPendingData = Pick<
   "pendingSuggestions" | "pendingChurches" | "inReviewSuggestions" | "inReviewChurches"
 >;
 import { reportIssueEnabled } from "../config/pendingAlerts";
-import { useReducer, useEffect, useMemo, useState } from "react";
+import { useReducer, useEffect, useMemo, useState, useCallback } from "react";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 
 /** Set to true to temporarily hide All States button, Map Key, and action controls (zoom/filter). */
@@ -64,6 +64,7 @@ const SAMPLE_ACTIVE_BY_STATE: Record<string, number> = {
 
 interface ChurchMapProps {
   routeStateAbbrev: string | null;
+  routeCountyFips: string | null;
   routeChurchShortId: string | null;
   routeLegacyChurchId: string | null;
   openReviewModalFromQuery?: boolean;
@@ -72,12 +73,15 @@ interface ChurchMapProps {
   onExitReviewView?: () => void;
   navigateToState: (abbrev: string) => void;
   navigateToStateWithReview: (abbrev: string) => void;
-  navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => void;
+  navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean; countyFips?: string }) => void;
   navigateToNational: () => void;
+  navigateToCounty: (stateAbbrev: string, countyFips: string) => void;
+  navigateToStateOnly: (stateAbbrev: string) => void;
 }
 
 export function ChurchMap({
   routeStateAbbrev,
+  routeCountyFips,
   routeChurchShortId,
   routeLegacyChurchId,
   openReviewModalFromQuery = false,
@@ -88,18 +92,31 @@ export function ChurchMap({
   navigateToStateWithReview,
   navigateToChurch,
   navigateToNational,
+  navigateToCounty,
+  navigateToStateOnly,
 }: ChurchMapProps) {
   const isMobile = useIsMobile();
 
   const d = useChurchMapData({
     routeStateAbbrev,
+    routeCountyFips,
     routeChurchShortId,
     routeLegacyChurchId,
     navigateToState,
     navigateToChurch,
     navigateToNational,
+    navigateToCounty,
+    navigateToStateOnly,
     isMobile,
   });
+
+  // When in county view, preserve county in URL when navigating to a church
+  const navigateToChurchWithContext = useCallback(
+    (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => {
+      navigateToChurch(stateAbbrev, churchShortId, { ...options, countyFips: d.focusedCounty ?? undefined });
+    },
+    [navigateToChurch, d.focusedCounty]
+  );
 
   const isLoadingVisible = d.loading || d.populating || d.forceLoadingVisible;
   const showErrorOverlay = d.error && d.focusedState && !d.loading && !d.populating && !d.forceLoadingVisible && d.churches.length === 0;
@@ -117,6 +134,11 @@ export function ChurchMap({
     // Let pinch/trackpad zoom out all the way to national (zoom 1); then switch to national view
     if (d.focusedState && z <= 1) {
       d.handleResetView();
+      return;
+    }
+    // When in county view, zooming out to state level switches to state view
+    if (d.focusedCounty && d.focusedState && z <= getStateZoom(d.focusedState)) {
+      navigateToStateOnly(d.focusedState);
       return;
     }
     d.setCenter(coords);
@@ -332,7 +354,8 @@ export function ChurchMap({
         dismissAllOverlays={dismissAllOverlays}
         handleMoveEnd={handleMoveEnd}
         navigateToState={navigateToState}
-        navigateToChurch={navigateToChurch}
+        navigateToChurch={navigateToChurchWithContext}
+        navigateToCounty={navigateToCounty}
         onShowVerification={onShowVerification}
         onShowNationalReviewModal={() => localDispatch({ type: "SET", key: "showNationalReviewModal", value: true })}
         pendingReviewCount={local.pendingReviewCount}
@@ -387,24 +410,25 @@ export function ChurchMap({
       {/* Modals (rendered outside map area to reduce nesting depth) */}
       {d.showListModal && d.focusedState && (
         <ChurchListModal
-          churches={d.churches}
+          churches={d.focusedCounty ? d.filteredChurches : d.churches}
           stateName={d.focusedStateName}
           stateAbbrev={d.focusedState}
+          countyName={d.focusedCounty ? (d.countyStats?.byFips[d.focusedCounty]?.name ?? null) : null}
           statePopulation={d.statePopulations[d.focusedState] || null}
           onClose={() => d.setShowListModal(false)}
           onChurchClick={(church: Church) => {
             d.setShowListModal(false);
-            if (d.focusedState) navigateToChurch(d.focusedState, getChurchUrlSegment(church, d.focusedState));
+            if (d.focusedState) navigateToChurchWithContext(d.focusedState, getChurchUrlSegment(church, d.focusedState));
           }}
           onSelectChurchForEdit={(church: Church) => {
             d.setShowListModal(false);
             d.setSelectedChurch(church);
-            if (d.focusedState) navigateToChurch(d.focusedState, getChurchUrlSegment(church, d.focusedState));
+            if (d.focusedState) navigateToChurchWithContext(d.focusedState, getChurchUrlSegment(church, d.focusedState));
             setTimeout(() => localDispatch({ type: "SET", key: "forceEditForm", value: true }), 50);
           }}
           onChurchAdded={(state, shortId) => {
             d.setShowListModal(false);
-            d.refetchCurrentStateChurches().then(() => navigateToChurch(state, shortId));
+            d.refetchCurrentStateChurches().then(() => navigateToChurchWithContext(state, shortId));
           }}
         />
       )}
@@ -419,13 +443,13 @@ export function ChurchMap({
             d.setShowAddChurchFromSummary(false);
             d.setAddChurchForState(null);
             d.setSelectedChurch(church);
-            if (d.focusedState) navigateToChurch(d.focusedState, getChurchUrlSegment(church, d.focusedState));
+            if (d.focusedState) navigateToChurchWithContext(d.focusedState, getChurchUrlSegment(church, d.focusedState));
             setTimeout(() => localDispatch({ type: "SET", key: "forceEditForm", value: true }), 50);
           }}
           onChurchAdded={(state, shortId) => {
             d.setShowAddChurchFromSummary(false);
             d.setAddChurchForState(null);
-            d.refetchCurrentStateChurches().then(() => navigateToChurch(state, shortId));
+            d.refetchCurrentStateChurches().then(() => navigateToChurchWithContext(state, shortId));
           }}
         />
       )}
@@ -441,13 +465,13 @@ export function ChurchMap({
             d.setAddChurchForState(null);
             if (stateAbbrev) {
               d.setSelectedChurch(church);
-              navigateToChurch(stateAbbrev, getChurchUrlSegment(church, stateAbbrev));
+              navigateToChurchWithContext(stateAbbrev, getChurchUrlSegment(church, stateAbbrev));
               setTimeout(() => localDispatch({ type: "SET", key: "forceEditForm", value: true }), 50);
             }
           }}
           onChurchAdded={(state, shortId) => {
             d.setAddChurchForState(null);
-            navigateToChurch(state, shortId);
+            navigateToChurchWithContext(state, shortId);
           }}
         />
       )}
@@ -461,7 +485,7 @@ export function ChurchMap({
           onClose={() => localDispatch({ type: "SET", key: "showVerificationModal", value: false })}
           onChurchClick={(church: Church) => {
             localDispatch({ type: "SET", key: "showVerificationModal", value: false });
-            if (d.focusedState) navigateToChurch(d.focusedState, getChurchUrlSegment(church, d.focusedState));
+            if (d.focusedState) navigateToChurchWithContext(d.focusedState, getChurchUrlSegment(church, d.focusedState));
             // Defer so the new ChurchDetailPanel mounts before the flag is set
             setTimeout(() => localDispatch({ type: "SET", key: "forceEditForm", value: true }), 50);
           }}
@@ -502,7 +526,7 @@ export function ChurchMap({
                 onChurchClick={(target: ChurchClickTarget) => {
                   const state = target.state;
                   const shortId = "shortId" in target && target.shortId ? target.shortId : getChurchUrlSegment(target as Church, state);
-                  if (state) navigateToChurch(state, shortId);
+                  if (state) navigateToChurchWithContext(state, shortId);
                 }}
                 externalShowEditForm={local.forceEditForm}
                 onEditFormClosed={() => localDispatch({ type: "SET", key: "forceEditForm", value: false })}
@@ -559,6 +583,7 @@ function MapArea({
   handleMoveEnd,
   navigateToState,
   navigateToChurch,
+  navigateToCounty,
   onShowVerification,
   onShowNationalReviewModal,
   pendingReviewCount,
@@ -606,7 +631,8 @@ function MapArea({
   dismissAllOverlays: () => void;
   handleMoveEnd: (coords: [number, number], z: number) => void;
   navigateToState: (abbrev: string) => void;
-  navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => void;
+  navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean; countyFips?: string }) => void;
+  navigateToCounty: (stateAbbrev: string, countyFips: string) => void;
   onShowVerification: () => void;
   onShowNationalReviewModal: () => void;
   pendingReviewCount: number;
@@ -699,6 +725,7 @@ function MapArea({
               <HeaderPill
                 focusedState={d.focusedState}
                 focusedStateName={d.focusedStateName}
+                focusedCountyName={(d.focusedCounty && d.countyStats?.byFips[d.focusedCounty]?.name) ?? null}
                 filteredCount={d.filteredChurches.length}
                 totalChurches={d.totalChurches}
                 allStatesLoaded={d.allStatesLoaded}
@@ -739,11 +766,12 @@ function MapArea({
                     summaryStats={d.summaryStats as SummaryStats}
                     focusedState={d.focusedState}
                     focusedStateName={d.focusedStateName}
-                    churches={d.churches}
+                    churches={d.focusedCounty ? d.filteredChurches : d.churches}
                     totalChurches={d.totalChurches}
                     allStatesLoaded={d.allStatesLoaded}
                     statePopulations={d.statePopulations}
                     countyStats={d.countyStats ?? null}
+                    focusedCounty={d.focusedCounty ?? null}
                     onClose={() => d.setShowSummary(false)}
                     onNavigateToState={(abbrev) => {
                       d.setShowSummary(false);
@@ -797,7 +825,7 @@ function MapArea({
       <MapCanvas
         center={d.center}
         zoom={d.zoom}
-        minZoom={1}
+        minZoom={d.minZoom}
         maxZoom={500}
         focusedState={d.focusedState}
         hoveredState={d.hoveredState}
@@ -814,8 +842,11 @@ function MapArea({
         onUserInteractionStart={d.clearTransition}
         zoomTransitioning={d.zoomTransitioning}
         countyStats={d.countyStats ?? null}
+        countyFeatures={d.countyFeatures ?? null}
         hoveredCounty={d.hoveredCounty ?? null}
         onCountyHover={d.setHoveredCounty}
+        focusedCounty={d.focusedCounty ?? null}
+        onCountyClick={(fips) => { if (d.focusedState) navigateToCounty(d.focusedState, fips); }}
       />
 
       {/* Tooltips */}
@@ -886,6 +917,18 @@ function MapArea({
       {!isLoadingVisible && (
         <div className="absolute left-4 bottom-4 z-30 flex flex-col gap-2 items-start pointer-events-none">
           <div className="pointer-events-auto flex flex-col gap-2 items-start">
+          {(d.focusedCounty || d.selectedChurch) && d.focusedState && (
+            <button
+              onClick={d.handleBackToState}
+              title={`Back to ${d.focusedStateName}`}
+              aria-label={`Back to ${d.focusedStateName}`}
+              className="flex items-center gap-1.5 h-8 pl-2 pr-2.5 rounded-full shadow-md transition-colors hover:opacity-90 text-white text-xs font-medium"
+              style={{ backgroundColor: "rgba(107, 33, 168, 0.9)" }}
+            >
+              <ArrowLeft size={14} color="#fff" />
+              Back to {d.focusedStateName}
+            </button>
+          )}
           {(d.focusedState || d.selectedChurch) && (
             <button
               onClick={d.handleResetView}
@@ -1020,6 +1063,7 @@ function MapArea({
 function HeaderPill({
   focusedState,
   focusedStateName,
+  focusedCountyName,
   filteredCount,
   totalChurches,
   allStatesLoaded,
@@ -1034,6 +1078,7 @@ function HeaderPill({
 }: {
   focusedState: string | null;
   focusedStateName: string;
+  focusedCountyName?: string | null;
   filteredCount: number;
   totalChurches: number;
   allStatesLoaded: boolean;
@@ -1065,9 +1110,15 @@ function HeaderPill({
               {filteredCount === 0 ? "Loading churches" : `${filteredCount.toLocaleString()} churches`}
               {" in "}
             </span>
-            <span className="text-white font-medium flex items-center gap-1.5">
-              <StateFlag abbrev={focusedState} size="sm" />
-              {focusedStateName}
+            <span className="text-white font-medium flex items-center gap-1.5 min-w-0 truncate">
+              {focusedCountyName ? (
+                <><span className="truncate">{focusedCountyName.includes("County") ? focusedCountyName : `${focusedCountyName} County`}</span><StateFlag abbrev={focusedState} size="sm" className="flex-shrink-0" /></>
+              ) : (
+                <>
+                  <StateFlag abbrev={focusedState} size="sm" className="flex-shrink-0" />
+                  <span className="truncate">{focusedStateName}</span>
+                </>
+              )}
             </span>
           </span>
         ) : (
