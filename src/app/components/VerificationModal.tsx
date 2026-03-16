@@ -59,6 +59,8 @@ interface VerificationModalProps {
   stateAbbrev: string;
   stateName: string;
   churches: Church[];
+  /** When set, modal is scoped to this county (churches list and header reflect county). */
+  countyName?: string | null;
   /** When provided, use this church's data for stats when it appears in churches (e.g. after edit or detail load). */
   selectedChurch?: Church | null;
   onClose: () => void;
@@ -72,6 +74,7 @@ export function VerificationModal({
   stateAbbrev,
   stateName,
   churches,
+  countyName = null,
   selectedChurch,
   onClose,
   onChurchClick,
@@ -81,6 +84,10 @@ export function VerificationModal({
   const incompleteChurches = useMemo(() => churches.filter(churchNeedsReview), [churches]);
 
   const incompleteTotal = incompleteChurches.length;
+  const scopeLabel = countyName ? "county" : "state";
+  const headerSubtitle = countyName
+    ? (countyName.includes("County") ? `${countyName}, ${stateName}` : `${countyName} County, ${stateName}`)
+    : stateName;
 
   return (
     <div
@@ -109,7 +116,7 @@ export function VerificationModal({
                 Churches Needing Review
               </h2>
               <p className="text-white/40 text-xs mt-0.5">
-                {stateName} &middot; {incompleteTotal} church{incompleteTotal !== 1 ? "es" : ""} missing 2+ critical fields
+                {headerSubtitle} &middot; {incompleteTotal} church{incompleteTotal !== 1 ? "es" : ""} missing 2+ critical fields
               </p>
             </div>
           </div>
@@ -118,9 +125,10 @@ export function VerificationModal({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto min-h-0 px-5 py-3">
-          <CommunityImpactCard stateAbbrev={stateAbbrev} className="mb-3" />
+          {!countyName && <CommunityImpactCard stateAbbrev={stateAbbrev} className="mb-3" />}
           <IncompleteChurchesList
             churches={incompleteChurches}
+            scopeLabel={scopeLabel}
             onChurchClick={(church) => {
               onClose();
               onChurchClick?.(church);
@@ -144,10 +152,12 @@ export function VerificationModal({
 
 function IncompleteChurchesList({
   churches,
+  scopeLabel = "state",
   onChurchClick,
   onAddChurch,
 }: {
   churches: Church[];
+  scopeLabel?: "state" | "county";
   onChurchClick?: (church: Church) => void;
   onAddChurch?: () => void;
 }) {
@@ -173,7 +183,7 @@ function IncompleteChurchesList({
         <CheckCircle2 size={32} className="text-green-400/40" />
         <p className="text-white/40 text-sm font-medium">All caught up!</p>
         <p className="text-white/25 text-xs text-center max-w-[240px]">
-          No churches are missing critical information in this state.
+          No churches are missing critical information in this {scopeLabel}.
         </p>
       </div>
     );

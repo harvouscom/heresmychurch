@@ -203,9 +203,11 @@ export function ChurchMap({
   }, [d.selectedChurch?.id, d.statePendingSuggestions]);
 
   // Compute churches that need review (missing 2+ of address, service times, denomination)
+  // When in county view, scope to county; otherwise state
   const incompleteChurches = useMemo(() => {
-    return d.churches.filter(churchNeedsReview);
-  }, [d.churches]);
+    const list = d.focusedCounty ? d.filteredChurches : d.churches;
+    return list.filter(churchNeedsReview);
+  }, [d.focusedCounty, d.filteredChurches, d.churches]);
 
   // Set review count based on incomplete churches
   useEffect(() => {
@@ -480,7 +482,8 @@ export function ChurchMap({
         <VerificationModal
           stateAbbrev={d.focusedState}
           stateName={d.focusedStateName}
-          churches={d.churches}
+          churches={d.focusedCounty ? d.filteredChurches : d.churches}
+          countyName={d.focusedCounty ? (d.countyStats?.byFips[d.focusedCounty]?.name ?? null) : null}
           selectedChurch={d.selectedChurch}
           onClose={() => localDispatch({ type: "SET", key: "showVerificationModal", value: false })}
           onChurchClick={(church: Church) => {
