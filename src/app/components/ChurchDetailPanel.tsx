@@ -26,7 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { ThreeDotLoader } from "./ThreeDotLoader";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useOptimistic, useTransition } from "react";
 import { motion } from "motion/react";
 import { SuggestEditForm } from "./SuggestEditForm";
 import { CloseButton } from "./ui/close-button";
@@ -290,10 +290,29 @@ export function ChurchDetailPanel({
   const [confirmed, setConfirmed] = useState(false);
   const [correctionHistory, setCorrectionHistory] = useState<CorrectionHistoryEntry[]>([]);
   const [reactionsLoading, setReactionsLoading] = useState(true);
-  const [myReaction, setMyReaction] = useState<ReactionType | null>(null);
-  const [counts, setCounts] = useState<ReactionCounts>({ not_for_me: 0, like: 0, love: 0 });
+  const [serverReactionState, setServerReactionState] = useState<{
+    counts: ReactionCounts;
+    myReaction: ReactionType | null;
+  }>({ counts: { not_for_me: 0, like: 0, love: 0 }, myReaction: null });
+  const [optimisticReactionState, addOptimisticReaction] = useOptimistic(
+    serverReactionState,
+    (current, pendingReaction: ReactionType) => {
+      const isToggle = current.myReaction === pendingReaction;
+      const newCounts = { ...current.counts };
+      if (isToggle) {
+        newCounts[pendingReaction] = Math.max(0, newCounts[pendingReaction] - 1);
+        return { counts: newCounts, myReaction: null };
+      }
+      if (current.myReaction) {
+        newCounts[current.myReaction] = Math.max(0, newCounts[current.myReaction] - 1);
+      }
+      newCounts[pendingReaction]++;
+      return { counts: newCounts, myReaction: pendingReaction };
+    }
+  );
+  const { counts, myReaction } = optimisticReactionState;
   const [reactionAnimKeys, setReactionAnimKeys] = useState({ not_for_me: 0, like: 0, love: 0 });
-  const [reactionSubmitting, setReactionSubmitting] = useState(false);
+  const [isReacting, startReactionTransition] = useTransition();
   const [reactionError, setReactionError] = useState(false);
   const hasSubmittedReaction = useRef(false);
   const sizeCat = getSizeCategory(church.attendance);
@@ -394,13 +413,11 @@ export function ChurchDetailPanel({
   useEffect(() => {
     setReactionsLoading(true);
     setReactionError(false);
-    setMyReaction(null);
-    setCounts({ not_for_me: 0, like: 0, love: 0 });
+    setServerReactionState({ counts: { not_for_me: 0, like: 0, love: 0 }, myReaction: null });
     fetchReactions(church.id)
       .then((data) => {
         if (!hasSubmittedReaction.current) {
-          setMyReaction(data.myReaction);
-          setCounts(data.counts);
+          setServerReactionState({ counts: data.counts, myReaction: data.myReaction });
         }
       })
       .catch((err) => {
@@ -423,35 +440,24 @@ export function ChurchDetailPanel({
     }
   };
 
-  const handleReaction = async (reaction: ReactionType) => {
+  const handleReaction = (reaction: ReactionType) => {
     setReactionAnimKeys((k) => ({ ...k, [reaction]: k[reaction] + 1 }));
     hasSubmittedReaction.current = true;
     setReactionError(false);
 
-    // Optimistic update — applied immediately so the UI feels instant.
-    const isToggle = myReaction === reaction;
-    const newCounts = { ...counts };
-    if (isToggle) {
-      newCounts[reaction] = Math.max(0, newCounts[reaction] - 1);
-      setMyReaction(null);
-    } else {
-      if (myReaction) newCounts[myReaction] = Math.max(0, newCounts[myReaction] - 1);
-      newCounts[reaction]++;
-      setMyReaction(reaction);
-    }
-    setCounts(newCounts);
-
-    setReactionSubmitting(true);
-    try {
-      const res = await submitReaction(church.id, reaction);
-      setCounts(res.counts);
-      if (res.myReaction !== undefined) setMyReaction(res.myReaction);
-    } catch (err) {
-      console.error("Failed to submit reaction:", err);
-      setReactionError(true);
-    } finally {
-      setReactionSubmitting(false);
-    }
+    startReactionTransition(async () => {
+      addOptimisticReaction(reaction);
+      try {
+        const res = await submitReaction(church.id, reaction);
+        setServerReactionState({
+          counts: res.counts,
+          myReaction: res.myReaction ?? null,
+        });
+      } catch (err) {
+        console.error("Failed to submit reaction:", err);
+        setReactionError(true);
+      }
+    });
   };
 
   if (showEditForm) {
@@ -608,7 +614,7 @@ export function ChurchDetailPanel({
                     key={reaction}
                     type="button"
                     onClick={() => handleReaction(reaction)}
-                    disabled={reactionSubmitting}
+                    disabled={isReacting}
                     className={`group flex-1 flex flex-col items-center gap-2 px-3 py-2.5 rounded-xl border transition-colors min-w-0 ${
                       isSelected
                         ? "bg-purple-600 border-purple-600 text-white"
