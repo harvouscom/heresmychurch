@@ -1,5 +1,6 @@
 import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
+import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 import { recordChurchAudit, queryAuditRecent, queryAuditByState, queryAuditByChurch } from "./audit.ts";
 import { generateOgImage } from "./og-image.tsx";
@@ -1312,6 +1313,78 @@ app.get(`${P}/community/history/:churchId`,async(c)=>{
     const history=Array.isArray(stats.corrections)?stats.corrections.filter((h:any)=>h.churchId===churchId):[];
     return c.json({churchId,history});
   }catch(e){return c.json({churchId:c.req.param("churchId"),history:[],error:`${e}`},500);}
+});
+
+// ── Monthly impact snapshots (reporting) ──
+const MONTHLY_SNAPSHOTS_TABLE="monthly_impact_snapshots";
+function supabaseMonthly(){return createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);}
+function communityStatsByState(stats:any,states:string[]):Record<string,{totalCorrections:number;churchesImproved:number}>{
+  const corrections=Array.isArray(stats?.corrections)?stats.corrections:[];
+  const improved=Array.isArray(stats?.churchesImproved)?stats.churchesImproved:[];
+  const byState:Record<string,{totalCorrections:number;churchesImproved:number}>={};
+  for(const st of states){
+    const prefix1=st+"-";const prefix2="community-"+st+"-";
+    const match=(id:string)=>id.startsWith(prefix1)||id.startsWith(prefix2);
+    byState[st]={totalCorrections:corrections.filter((h:any)=>h&&match(String(h.churchId||""))).length,churchesImproved:improved.filter((id:string)=>match(String(id))).length};
+  }
+  return byState;
+}
+function statePopulation(abbrev:string):number{
+  if(abbrev==="MD")return (POP["MD"]||0)+(POP["DC"]||0);
+  return POP[abbrev]||0;
+}
+app.post(`${P}/internal/monthly-stats`,async(c)=>{
+  try{
+    const secret=Deno.env.get("MONTHLY_STATS_SECRET")||Deno.env.get("TWITTER_WEBHOOK_SECRET")||"";
+    const body=await c.req.json().catch(()=>({}));
+    if(!secret||body?.secret!==secret)return c.json({error:"Unauthorized"},401);
+    const monthParam=(body.month||"").toString().trim()||new Date().toISOString().slice(0,7);
+    const m=monthParam.match(/^(\d{4})-(\d{2})$/);
+    const monthDate=m?`${m[1]}-${m[2]}-01`:new Date().toISOString().slice(0,7)+"-01";
+    const sb=supabaseMonthly();
+    if(body.baseline&&typeof body.baseline==="object"){
+      const pct=Number(body.baseline.pct_needs_review);
+      const {error}=await sb.from(MONTHLY_SNAPSHOTS_TABLE).upsert({month:monthDate,state_abbrev:"",total_churches:body.baseline.total_churches??0,total_needs_review:body.baseline.total_needs_review??0,pct_needs_review:Number.isFinite(pct)?pct:74,missing_address:0,missing_service_times:0,missing_denomination:0,total_corrections:0,churches_improved:0,population:null,people_per_church:null,churches_per_10k:null},{onConflict:"month,state_abbrev"});
+      if(error)return c.json({error:error.message},500);
+      return c.json({ok:true,month:monthDate,baseline:true});
+    }
+    const review=await computeReviewStats();
+    const commStats=(await kv.get("community:stats"))||{totalCorrections:0,churchesImproved:[],corrections:[]};
+    const commByState=communityStatsByState(commStats,Object.keys(review.states));
+    const improvedTotal=Array.isArray(commStats.churchesImproved)?commStats.churchesImproved.length:0;
+    const rows:Array<{month:string;state_abbrev:string;total_churches:number;total_needs_review:number;pct_needs_review:number;missing_address:number;missing_service_times:number;missing_denomination:number;total_corrections:number;churches_improved:number;population:number|null;people_per_church:number|null;churches_per_10k:number|null}>=[];
+    const totalPop=Object.keys(POP).reduce((s,k)=>(k==="DC"?s:s+(POP[k]||0)),0);
+    const nationalPeoplePer=review.totalChurches>0&&totalPop>0?Math.round(totalPop/review.totalChurches):null;
+    const nationalChurchesPer10k=review.totalChurches>0&&totalPop>0?(review.totalChurches/totalPop)*10000:null;
+    rows.push({month:monthDate,state_abbrev:"",total_churches:review.totalChurches,total_needs_review:review.totalNeedsReview,pct_needs_review:review.percentage,missing_address:review.missingAddress,missing_service_times:review.missingServiceTimes,missing_denomination:review.missingDenomination,total_corrections:commStats.totalCorrections||0,churches_improved:improvedTotal,population:totalPop,people_per_church:nationalPeoplePer,churches_per_10k:nationalChurchesPer10k});
+    for(const [st,data] of Object.entries(review.states)){
+      const comm=commByState[st]||{totalCorrections:0,churchesImproved:0};
+      const pop=statePopulation(st);
+      const peoplePer=pop>0&&data.total>0?Math.round(pop/data.total):null;
+      const per10k=pop>0&&data.total>0?(data.total/pop)*10000:null;
+      rows.push({month:monthDate,state_abbrev:st,total_churches:data.total,total_needs_review:data.needsReview,pct_needs_review:data.total>0?Math.round((data.needsReview/data.total)*1000)/10:0,missing_address:data.missingAddress,missing_service_times:data.missingServiceTimes,missing_denomination:data.missingDenomination,total_corrections:comm.totalCorrections,churches_improved:comm.churchesImproved,population:pop||null,people_per_church:peoplePer,churches_per_10k:per10k});
+    }
+    const {error}=await sb.from(MONTHLY_SNAPSHOTS_TABLE).upsert(rows,{onConflict:"month,state_abbrev"});
+    if(error)return c.json({error:error.message},500);
+    return c.json({ok:true,month:monthDate,rows:rows.length});
+  }catch(e){return c.json({error:String(e)},500);}
+});
+app.get(`${P}/monthly-stats`,async(c)=>{
+  try{
+    const month=c.req.query("month");
+    const state=c.req.query("state");
+    const from=c.req.query("from");
+    const to=c.req.query("to");
+    const sb=supabaseMonthly();
+    let q=sb.from(MONTHLY_SNAPSHOTS_TABLE).select("*").order("month",{ascending:false});
+    if(month){const m=month.match(/^(\d{4})-(\d{2})$/);if(m)q=q.eq("month",m[0]+"-01");}
+    if(state&&state.length===2)q=q.eq("state_abbrev",state.toUpperCase());
+    if(from){const m=from.match(/^(\d{4})-(\d{2})$/);if(m)q=q.gte("month",m[0]+"-01");}
+    if(to){const m=to.match(/^(\d{4})-(\d{2})$/);if(m)q=q.lte("month",m[0]+"-01");}
+    const {data,error}=await q.limit(500);
+    if(error)return c.json({error:error.message},500);
+    return c.json({rows:data||[]});
+  }catch(e){return c.json({error:String(e)},500);}
 });
 
 // ── Moderator endpoints ──

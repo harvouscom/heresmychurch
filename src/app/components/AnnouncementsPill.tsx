@@ -53,7 +53,7 @@ export function AnnouncementsPill({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.97 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="mt-2 rounded-2xl shadow-2xl overflow-hidden w-[min(360px,calc(100vw-3.5rem))] max-h-[70vh] flex flex-col border border-purple-500/20"
+            className="mt-2 rounded-2xl shadow-2xl overflow-hidden w-[min(360px,calc(100vw-3.5rem))] max-h-[390px] flex flex-col border border-purple-500/20"
             style={{
               backgroundColor: "rgba(30, 16, 64, 0.97)",
               boxShadow:

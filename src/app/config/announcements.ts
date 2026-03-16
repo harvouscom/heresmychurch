@@ -8,8 +8,14 @@ export interface Announcement {
 
 export const announcements: Announcement[] = [
   {
+    id: "county-view",
+    title: "View by county per state",
+    body: "Instead of just the state view, go deeper by selecting a county to find a church or review said churches.",
+    date: "Mar 15, 2026",
+  },
+  {
     id: "core-info-review",
-    title: "Updates to main church info requires review",
+    title: "Sensitive church info requires review",
     body: "Changes to church name, website, or address now go through review (currently just me, Derek). Want to help? Email hey@heresmychurch.com. This helps prevent bots and spam from altering this info.",
     date: "Mar 13, 2025",
   },

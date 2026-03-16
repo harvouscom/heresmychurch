@@ -1,0 +1,26 @@
+name: Monthly impact snapshot
+
+on:
+  schedule:
+    # 1st of each month at 14:00 UTC
+    - cron: '0 14 1 * *'
+  workflow_dispatch: {}
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record monthly stats
+        env:
+          SUPABASE_FUNCTION_URL: ${{ secrets.SUPABASE_FUNCTION_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          MONTHLY_STATS_SECRET: ${{ secrets.MONTHLY_STATS_SECRET }}
+          TWITTER_WEBHOOK_SECRET: ${{ secrets.TWITTER_WEBHOOK_SECRET }}
+        run: |
+          SECRET="${MONTHLY_STATS_SECRET}"
+          if [ -z "$SECRET" ]; then SECRET="${TWITTER_WEBHOOK_SECRET}"; fi
+          curl -sf -X POST "${SUPABASE_FUNCTION_URL}/internal/monthly-stats" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -d "{\"secret\":\"${SECRET}\"}" \
+            || echo "Monthly stats recording failed (non-fatal)"
