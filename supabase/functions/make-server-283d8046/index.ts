@@ -884,7 +884,7 @@ const THR=1;
 const ALERT_THR=3;
 const ADD_CHURCH_RATE_LIMIT=5;
 const ADD_CHURCH_WINDOW_MS=15*60*1000;
-const SENSITIVE_FIELDS=["name","website","address","reportClosed"];
+const SENSITIVE_FIELDS=["name","website","address","reportClosed","reportDuplicate"];
 const MODERATOR_KEY=Deno.env.get("MODERATOR_KEY")||"";
 function cip(c:any):string{return c.req.header("x-forwarded-for")?.split(",")[0]?.trim()||c.req.header("x-real-ip")||"unknown";}
 function checkModKey(c:any):boolean{const k=new URL(c.req.url).searchParams.get("key")||c.req.header("x-moderator-key")||"";return!!MODERATOR_KEY&&k===MODERATOR_KEY;}
@@ -892,13 +892,31 @@ function getModKey(c:any):string{return new URL(c.req.url).searchParams.get("key
 function inReviewKVKey(modKey:string):string{let h=0;for(let i=0;i<modKey.length;i++)h=((h<<5)-h+modKey.charCodeAt(i))|0;return`moderate:in-review:${Math.abs(h).toString(36)}`;}
 function modKeyHash(modKey:string):string{let h=0;for(let i=0;i<modKey.length;i++)h=((h<<5)-h+modKey.charCodeAt(i))|0;return Math.abs(h).toString(36);}
 const IN_REVIEW_GLOBAL_KEY="moderate:in-review:global";
+/** Server-side geocoding via Nominatim (OpenStreetMap). Returns null on failure — never throws. */
+async function geocodeAddress(street:string,city:string,stateAbbrev:string):Promise<{lat:number;lng:number}|null>{
+  const s=(street??"").trim(),c=(city??"").trim(),st=(stateAbbrev??"").trim().toUpperCase().slice(0,2);
+  if(!s||!c||!st)return null;
+  const q=`${s}, ${c}, ${st}, USA`;
+  try{
+    const url=`https://nominatim.openstreetmap.org/search?${new URLSearchParams({q,format:"json",limit:"1",countrycodes:"us"})}`;
+    const res=await fetch(url,{headers:{"User-Agent":"HereIsMyChurch/1.0 (church map app)"}});
+    if(!res.ok)return null;
+    const data=await res.json();
+    const first=Array.isArray(data)?data[0]:null;
+    if(!first||first.lat==null||first.lon==null)return null;
+    const lat=parseFloat(first.lat),lng=parseFloat(first.lon);
+    if(isNaN(lat)||isNaN(lng))return null;
+    if(lat<18||lat>72||lng<-180||lng>-65)return null;
+    return {lat,lng};
+  }catch{return null;}
+}
 function normalizePhone(s:string):string{
   const digits=(s??"").replace(/\D/g,"");
   if(digits.length===11&&digits[0]==="1")return digits.slice(1);
   if(digits.length<10)return "";
   return digits;
 }
-const VF=["name","website","address","reportClosed","attendance","denomination","serviceTimes","languages","ministries","pastorName","phone","email","homeCampusId"];
+const VF=["name","website","address","reportClosed","reportDuplicate","attendance","denomination","serviceTimes","languages","ministries","pastorName","phone","email","homeCampusId"];
 function consensus(subs:any[]){
   const res:Record<string,any>={};
   for(const f of VF){
@@ -982,6 +1000,7 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>,a
         else if(f==="languages"||f==="ministries"){ch[f]=String(v).split(",").map((s:string)=>s.trim()).filter(Boolean);}
         else if(f==="address"){
           const val=String(v).trim();
+          let gotCoords=false;
           if(val.startsWith("{")){
             try{
               const o=JSON.parse(val) as Record<string,unknown>;
@@ -990,13 +1009,17 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>,a
               (ch as any).state=String(o.state??"").trim().toUpperCase().slice(0,2);
               const lat=typeof o.lat==="number"&&!isNaN(o.lat)?o.lat:undefined;
               const lng=typeof o.lng==="number"&&!isNaN(o.lng)?o.lng:undefined;
-              if(lat!=null&&lng!=null&&lat>=18&&lat<=72&&lng>=-180&&lng<=-65){(ch as any).lat=lat;(ch as any).lng=lng;}
+              if(lat!=null&&lng!=null&&lat>=18&&lat<=72&&lng>=-180&&lng<=-65){(ch as any).lat=lat;(ch as any).lng=lng;gotCoords=true;}
             }catch{ (ch as any).address=val; }
           }else{
             const parts=val.split(",").map((s:string)=>s.trim());
             (ch as any).address=parts[0]??"";
             (ch as any).city=parts[1]??"";
             (ch as any).state=(parts[2]??"").toUpperCase().slice(0,2);
+          }
+          if(!gotCoords){
+            const geo=await geocodeAddress((ch as any).address,(ch as any).city,(ch as any).state);
+            if(geo){(ch as any).lat=geo.lat;(ch as any).lng=geo.lng;}
           }
         }
         else if(f==="phone"){(ch as any).phone=normalizePhone(String(v))||undefined;}
@@ -1039,6 +1062,7 @@ app.post(`${P}/suggestions`,async(c)=>{
     let storeValue=String(value).trim();
     if(!storeValue)return c.json({error:"Value is required"},400);
     if(field==="reportClosed"){storeValue="closed";}
+    if(field==="reportDuplicate"){if(!stateFromChurchId(storeValue))return c.json({error:"Invalid church ID format"},400);if(storeValue===churchId)return c.json({error:"Cannot report self as duplicate"},400);}
     if(field==="name"&&storeValue.length<2)return c.json({error:"Church name must be at least 2 characters"},400);
     if(field==="phone"){storeValue=normalizePhone(storeValue);if(!storeValue)return c.json({error:"Invalid phone number"},400);}
     const k=`suggestions:${churchId}`;const ex=(await kv.get(k))||{churchId,submissions:[]};
@@ -1517,6 +1541,25 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
       if(!d||d.value===null)return c.json({error:"No value to approve"},400);
       valueToApply=d.value;
     }
+    // For address approvals, ensure lat/lng coordinates are present (geocode if missing)
+    if(field==="address"){
+      let val=String(valueToApply).trim();
+      if(!val.startsWith("{")){
+        const parts=val.split(",").map((s:string)=>s.trim());
+        const geo=await geocodeAddress(parts[0]??"",parts[1]??"",parts[2]??"");
+        val=JSON.stringify({address:parts[0]??"",city:parts[1]??"",state:(parts[2]??"").toUpperCase().slice(0,2),...(geo?{lat:geo.lat,lng:geo.lng}:{})});
+        valueToApply=val;
+      }else{
+        try{
+          const o=JSON.parse(val) as Record<string,any>;
+          if(o.lat==null||o.lng==null||(typeof o.lat!=="number")||(typeof o.lng!=="number")){
+            const geo=await geocodeAddress(String(o.address??""),String(o.city??""),String(o.state??""));
+            if(geo){o.lat=geo.lat;o.lng=geo.lng;}
+            valueToApply=JSON.stringify(o);
+          }
+        }catch{}
+      }
+    }
     if(field==="reportClosed"){
       const parts=churchId.split("-");const st=parts[0]==="community"?parts[1]:parts[0];
       if(!st||st.length!==2)return c.json({error:"Invalid church ID"},400);
@@ -1542,6 +1585,36 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
       }
       await invalidateReviewStatsCache();
       if(st){void recordChurchAudit({church_id:churchId,church_name:auditChurchName,church_city_state:auditChurchCityState,state:st,action:"church_removed",field:"reportClosed",new_value:valueToApply,source:"moderate_approve"},{hashModKey:getModKey(c)});}
+      ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
+      await kv.set(k,ex);
+      const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);
+      return c.json({success:true,applied:true,churchId,field,value:valueToApply});
+    }
+    if(field==="reportDuplicate"){
+      const parts=churchId.split("-");const st=parts[0]==="community"?parts[1]:parts[0];
+      if(!st||st.length!==2)return c.json({error:"Invalid church ID"},400);
+      let auditChurchName:string|null=null;let auditChurchCityState:string|null=null;
+      const mainKey=`churches:${st}`;const mainChurches=await kv.get(mainKey);
+      if(Array.isArray(mainChurches)){
+        const ch=mainChurches.find((x:any)=>x.id===churchId);
+        if(ch){auditChurchName=ch.name||null;auditChurchCityState=[ch.city,ch.state].filter(Boolean).join(", ")||null;}
+        const filtered=mainChurches.filter((x:any)=>x.id!==churchId);
+        if(filtered.length!==mainChurches.length){
+          await kv.set(mainKey,filtered);
+          await writeIdx(st,filtered);
+          const meta=await kv.get("churches:meta");if(meta){meta.stateCounts=meta.stateCounts||{};meta.stateCounts[st]=filtered.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);}
+        }
+      }
+      const pendingKey=`pending-churches:${st}`;const store=await kv.get(pendingKey);
+      if(store&&Array.isArray(store.churches)&&store.churches.length){
+        const pendingCh=store.churches.find((x:any)=>x.id===churchId);
+        if(pendingCh&&!auditChurchName){auditChurchName=pendingCh.name||null;auditChurchCityState=[pendingCh.city,pendingCh.state].filter(Boolean).join(", ")||null;}
+        const before=store.churches.length;
+        store.churches=store.churches.filter((x:any)=>x.id!==churchId);
+        if(store.churches.length!==before)await kv.set(pendingKey,store);
+      }
+      await invalidateReviewStatsCache();
+      if(st){void recordChurchAudit({church_id:churchId,church_name:auditChurchName,church_city_state:auditChurchCityState,state:st,action:"church_removed",field:"reportDuplicate",new_value:valueToApply,source:"moderate_approve"},{hashModKey:getModKey(c)});}
       ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
       await kv.set(k,ex);
       const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);

@@ -46,6 +46,7 @@ const PENDING_FIELD_LABELS: Record<string, string> = {
   website: "Website",
   address: "Address",
   reportClosed: "Church has closed or doesn't exist anymore",
+  reportDuplicate: "This church is a duplicate",
   attendance: "Attendance",
   denomination: "Denomination",
   serviceTimes: "Service times",

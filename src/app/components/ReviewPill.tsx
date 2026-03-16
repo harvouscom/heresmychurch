@@ -20,7 +20,15 @@ const FIELD_LABELS: Record<string, string> = {
   website: "Website",
   address: "Address",
   reportClosed: "Church closed / doesn't exist",
+  reportDuplicate: "Duplicate of another church",
 };
+
+function canonicalStateFromChurchId(id: string): string | null {
+  const parts = id.trim().split("-");
+  if (parts[0] === "community" && parts[1]) return parts[1];
+  if (parts[0]?.length === 2) return parts[0];
+  return null;
+}
 
 type StateInfo = { abbrev: string; name: string; isPopulated: boolean; churchCount: number };
 
@@ -219,17 +227,32 @@ export function ReviewPill({
                                 {FIELD_LABELS[s.field] || s.field}
                               </span>
                               {onOpenChurch && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    onOpenChurch(s.churchId, s.churchShortId, s.churchState);
-                                    onOpenChange(false);
-                                  }}
-                                  className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-purple-300 bg-purple-500/15 border border-purple-500/25 hover:bg-purple-500/25 hover:text-purple-200 transition-colors"
-                                >
-                                  View church
-                                  <ChevronRight size={10} />
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      onOpenChurch(s.churchId, s.churchShortId, s.churchState);
+                                      onOpenChange(false);
+                                    }}
+                                    className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-purple-300 bg-purple-500/15 border border-purple-500/25 hover:bg-purple-500/25 hover:text-purple-200 transition-colors"
+                                  >
+                                    View church
+                                    <ChevronRight size={10} />
+                                  </button>
+                                  {s.field === "reportDuplicate" && s.proposedValue?.trim() && canonicalStateFromChurchId(s.proposedValue) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        onOpenChurch(s.proposedValue!.trim(), undefined, canonicalStateFromChurchId(s.proposedValue!)!);
+                                        onOpenChange(false);
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-amber-300 bg-amber-500/15 border border-amber-500/25 hover:bg-amber-500/25 hover:text-amber-200 transition-colors"
+                                    >
+                                      View duplicate-of church
+                                      <ChevronRight size={10} />
+                                    </button>
+                                  )}
+                                </>
                               )}
                             </div>
                             <div className="flex flex-col min-w-0">
@@ -433,17 +456,32 @@ export function ReviewPill({
                                 <span className="text-[10px] text-white/50 font-medium">In review by another moderator</span>
                               )}
                               {onOpenChurch && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    onOpenChurch(s.churchId, s.churchShortId, s.churchState);
-                                    onOpenChange(false);
-                                  }}
-                                  className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-purple-300 bg-purple-500/15 border border-purple-500/25 hover:bg-purple-500/25 hover:text-purple-200 transition-colors"
-                                >
-                                  View church
-                                  <ChevronRight size={10} />
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      onOpenChurch(s.churchId, s.churchShortId, s.churchState);
+                                      onOpenChange(false);
+                                    }}
+                                    className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-purple-300 bg-purple-500/15 border border-purple-500/25 hover:bg-purple-500/25 hover:text-purple-200 transition-colors"
+                                  >
+                                    View church
+                                    <ChevronRight size={10} />
+                                  </button>
+                                  {s.field === "reportDuplicate" && s.proposedValue?.trim() && canonicalStateFromChurchId(s.proposedValue) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        onOpenChurch(s.proposedValue!.trim(), undefined, canonicalStateFromChurchId(s.proposedValue!)!);
+                                        onOpenChange(false);
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-amber-300 bg-amber-500/15 border border-amber-500/25 hover:bg-amber-500/25 hover:text-amber-200 transition-colors"
+                                    >
+                                      View duplicate-of church
+                                      <ChevronRight size={10} />
+                                    </button>
+                                  )}
+                                </>
                               )}
                             </div>
                             <div className="flex flex-col min-w-0">

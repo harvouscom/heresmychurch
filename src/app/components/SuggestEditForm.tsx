@@ -60,9 +60,10 @@ interface SuggestEditFormProps {
   pendingFieldsForChurch?: string[];
 }
 
-type EditableField = "name" | "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email" | "homeCampusId" | "reportClosed";
+type EditableField = "name" | "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email" | "homeCampusId" | "reportClosed" | "reportDuplicate";
 
 const REPORT_CLOSED_LABEL = "Church has closed or doesn't exist anymore";
+const REPORT_DUPLICATE_LABEL = "This church is a duplicate";
 
 const FIELD_CONFIG: {
   key: EditableField;
@@ -109,6 +110,7 @@ function isFieldEmpty(church: Church, field: EditableField): boolean {
     case "email": return !church.email;
     case "homeCampusId": return !church.homeCampusId;
     case "reportClosed": return false;
+    case "reportDuplicate": return false;
   }
 }
 
@@ -132,6 +134,7 @@ function getCurrentValue(church: Church, field: EditableField): string {
     case "email": return church.email || "";
     case "homeCampusId": return church.homeCampusId || "";
     case "reportClosed": return "";
+    case "reportDuplicate": return "";
   }
 }
 
@@ -141,6 +144,9 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
   const [pendingModeration, setPendingModeration] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [showReportClosedConfirm, setShowReportClosedConfirm] = useState(false);
+  const [showDuplicatePicker, setShowDuplicatePicker] = useState(false);
+  const [selectedCanonicalChurchId, setSelectedCanonicalChurchId] = useState<string | null>(null);
+  const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
 
   // Server-backed + just-submitted pending: persists across close/reopen and prevents duplicate submissions
   const effectivePending = useMemo(
@@ -356,13 +362,13 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
               <div className="flex items-center gap-2 rounded-lg p-3 bg-amber-500/10 border border-amber-500/20">
                 <Clock size={14} className="text-amber-400 flex-shrink-0" />
                 <p className="text-amber-300/80 text-xs">
-                  Changes to {Array.from(effectivePending).map((f) => f === "reportClosed" ? REPORT_CLOSED_LABEL : FIELD_CONFIG.find(c => c.key === f)?.label ?? f).join(", ")} require review and will be applied once approved.
+                  Changes to {Array.from(effectivePending).map((f) => f === "reportClosed" ? REPORT_CLOSED_LABEL : f === "reportDuplicate" ? REPORT_DUPLICATE_LABEL : FIELD_CONFIG.find(c => c.key === f)?.label ?? f).join(", ")} require review and will be applied once approved.
                 </p>
               </div>
             )}
 
             {/* Church closed / doesn't exist — requires review */}
-            <div className="pt-2 border-t border-white/5">
+            <div className="pt-2 border-t border-white/5 space-y-2">
               {effectivePending.has("reportClosed") ? (
                 <div className="flex items-center gap-2 rounded-lg p-3 bg-amber-500/10 border border-amber-500/20">
                   <Clock size={14} className="text-amber-400 flex-shrink-0" />
@@ -425,10 +431,97 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
               )}
             </div>
 
+            {/* This church is a duplicate — requires review */}
+            <div className="pt-2 border-t border-white/5">
+              {effectivePending.has("reportDuplicate") ? (
+                <div className="flex items-center gap-2 rounded-lg p-3 bg-amber-500/10 border border-amber-500/20">
+                  <Clock size={14} className="text-amber-400 flex-shrink-0" />
+                  <p className="text-amber-300/80 text-xs">
+                    Duplicate report submitted — pending review. This church will be removed from the list if approved.
+                  </p>
+                </div>
+              ) : submitting === "reportDuplicate" ? (
+                <div className="flex items-center gap-2 rounded-lg p-3 bg-white/5 border border-white/10">
+                  <ThreeDotLoader className="text-white/60" />
+                  <p className="text-white/60 text-xs">Submitting…</p>
+                </div>
+              ) : showDuplicateConfirm && selectedCanonicalChurchId ? (
+                <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-4 space-y-3">
+                  <p className="text-amber-200/90 text-sm">
+                    Are you sure? This will report that <strong>{church.name}</strong> is a duplicate of{" "}
+                    <strong>{allChurches?.find((c) => c.id === selectedCanonicalChurchId)?.name ?? "the selected church"}</strong>.
+                    The report will be reviewed.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDuplicateConfirm(false);
+                        setSelectedCanonicalChurchId(null);
+                      }}
+                      className="flex-1 px-3 py-2 rounded-lg text-sm font-medium text-white/80 bg-white/10 hover:bg-white/15 border border-white/10 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const canonicalId = selectedCanonicalChurchId;
+                        setShowDuplicateConfirm(false);
+                        setSelectedCanonicalChurchId(null);
+                        setSubmitting("reportDuplicate");
+                        setError(null);
+                        try {
+                          const result = await submitSuggestion(church.id, "reportDuplicate", canonicalId);
+                          setPendingModeration((prev) => new Set([...prev, "reportDuplicate"]));
+                          onPendingSubmitted?.();
+                          if (!result.needsModeration) onChurchUpdated?.();
+                        } catch (err: any) {
+                          setError(err.message ?? "Failed to submit report");
+                        } finally {
+                          setSubmitting(null);
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-500 transition-colors"
+                    >
+                      Yes, submit report
+                    </button>
+                  </div>
+                </div>
+              ) : showDuplicatePicker ? (
+                <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 space-y-2">
+                  <p className="text-amber-200/90 text-xs font-medium">Search for the church that is already in the list (the one to keep):</p>
+                  <MainCampusSearch
+                    currentChurchId={church.id}
+                    churchState={church.state ?? ""}
+                    allChurches={allChurches}
+                    onSelect={(churchId) => {
+                      setSelectedCanonicalChurchId(churchId);
+                      setShowDuplicatePicker(false);
+                      setShowDuplicateConfirm(true);
+                    }}
+                    submitting={submitting === "reportDuplicate"}
+                    onCancel={() => setShowDuplicatePicker(false)}
+                  />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowDuplicatePicker(true)}
+                  className="w-full flex items-center gap-2 px-4 py-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition-colors text-left"
+                >
+                  <Link2 size={16} className="text-amber-400 flex-shrink-0" />
+                  <span className="text-amber-300/90 text-sm font-medium">
+                    {REPORT_DUPLICATE_LABEL}
+                  </span>
+                </button>
+              )}
+            </div>
+
         {/* Info note */}
         <div className="pt-3 border-t border-white/5 text-pretty">
           <p className="text-white/55 text-[10px] leading-relaxed text-center">
-            Most edits are applied immediately. Changes to name, website, address, and reporting a church as closed require a brief review.
+            Most edits are applied immediately. Changes to name, website, address, reporting a church as closed, or reporting a duplicate require a brief review.
           </p>
         </div>
       </div>
