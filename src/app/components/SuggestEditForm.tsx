@@ -367,8 +367,10 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
               </div>
             )}
 
+            {/* Church closed / duplicate — same vertical spacing as Data looks correct / Update Church Info */}
+            <div className="pt-2 border-t border-white/5 flex flex-col gap-2">
             {/* Church closed / doesn't exist — requires review */}
-            <div className="pt-2 border-t border-white/5 space-y-2">
+            <div className="space-y-2">
               {effectivePending.has("reportClosed") ? (
                 <div className="flex items-center gap-2 rounded-lg p-3 bg-amber-500/10 border border-amber-500/20">
                   <Clock size={14} className="text-amber-400 flex-shrink-0" />
@@ -432,7 +434,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
             </div>
 
             {/* This church is a duplicate — requires review */}
-            <div className="pt-2 border-t border-white/5">
+            <div>
               {effectivePending.has("reportDuplicate") ? (
                 <div className="flex items-center gap-2 rounded-lg p-3 bg-amber-500/10 border border-amber-500/20">
                   <Clock size={14} className="text-amber-400 flex-shrink-0" />
@@ -516,6 +518,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
                   </span>
                 </button>
               )}
+            </div>
             </div>
 
         {/* Info note */}

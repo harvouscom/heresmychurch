@@ -788,7 +788,7 @@ export function ChurchDetailPanel({
 
         {/* Action buttons */}
         <div className="flex flex-col gap-2">
-          {/* Data looks correct */}
+          {/* All info looks correct */}
           <button
             onClick={handleConfirmData}
             disabled={confirming || confirmed}
@@ -803,7 +803,7 @@ export function ChurchDetailPanel({
               <>
                 <ShieldCheck size={15} className="text-green-400 group-hover:text-green-300 transition-colors" />
                 <span className="text-green-300 text-sm font-medium group-hover:text-green-200 transition-colors">
-                  Data looks correct
+                  All info looks correct
                 </span>
               </>
             )}

@@ -1697,6 +1697,59 @@ const moderateRejectChurchHandler=async(c:any)=>{
 };
 app.post(`${P}/moderate/reject/church`,moderateRejectChurchHandler);
 
+// Re-geocode churches that had address corrections applied via the suggestions system.
+// Scans all suggestion KV entries for those with previousValues.address (meaning an address
+// correction was applied). Geocodes each and updates lat/lng when significantly different.
+// Moderator-only. Rate-limited to 1 Nominatim request/sec.
+const moderateRegeocode=async(c:any)=>{
+  try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    // Find all suggestion entries with applied address corrections
+    const allSuggestions=await kv.getByPrefix("suggestions:");
+    if(!Array.isArray(allSuggestions)||!allSuggestions.length)return c.json({success:true,message:"No suggestions found",updated:0});
+    const churchIds:string[]=[];
+    for(const entry of allSuggestions){
+      if(!entry?.churchId)continue;
+      if(entry.previousValues?.address!=null)churchIds.push(entry.churchId);
+    }
+    if(!churchIds.length)return c.json({success:true,message:"No address corrections found in suggestions",suggestionsScanned:allSuggestions.length,updated:0});
+    // Group by state
+    const byState=new Map<string,string[]>();
+    for(const id of churchIds){
+      const st=stateFromChurchId(id);
+      if(!st)continue;
+      if(!byState.has(st))byState.set(st,[]);
+      byState.get(st)!.push(id);
+    }
+    let updated=0,failed=0,skipped=0,geocodeCalls=0;const details:any[]=[];
+    for(const[st,ids]of byState){
+      const key=`churches:${st}`;const churches=await kv.get(key);
+      if(!Array.isArray(churches))continue;
+      const byId=new Map<string,any>();for(const ch of churches)if(ch.id)byId.set(ch.id,ch);
+      let stateChanged=false;
+      for(const id of ids){
+        const ch=byId.get(id);if(!ch)continue;
+        const addr=(ch.address??"").trim(),city=(ch.city??"").trim(),state=(ch.state??"").trim();
+        if(!addr||!city){skipped++;continue;}
+        if(geocodeCalls>0)await new Promise(r=>setTimeout(r,1100));
+        geocodeCalls++;
+        const geo=await geocodeAddress(addr,city,state);
+        if(geo){
+          const latDiff=Math.abs((ch.lat||0)-geo.lat),lngDiff=Math.abs((ch.lng||0)-geo.lng);
+          if(latDiff>0.008||lngDiff>0.008){
+            const oldLat=ch.lat,oldLng=ch.lng;
+            ch.lat=geo.lat;ch.lng=geo.lng;updated++;stateChanged=true;
+            details.push({id,name:ch.name,state:st,oldLat,oldLng,newLat:geo.lat,newLng:geo.lng});
+          }else{skipped++;}
+        }else{failed++;}
+      }
+      if(stateChanged){await kv.set(key,churches);await writeIdx(st,churches);}
+    }
+    return c.json({success:true,suggestionsScanned:allSuggestions.length,addressCorrections:churchIds.length,statesChecked:[...byState.keys()],updated,failed,skipped,geocodeCalls,details});
+  }catch(e){return c.json({error:`${e}`},500);}
+};
+app.post(`${P}/moderate/regeocode`,moderateRegeocode);
+
 const moderateInReviewAddHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
