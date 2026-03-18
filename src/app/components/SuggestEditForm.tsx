@@ -847,15 +847,28 @@ function FieldCard({
       {/* Edit controls: hidden when field is already submitted for review */}
       {!pendingModeration.has(key) && !justSubmitted && (
         <>
-          {/* Action buttons: Edit (to show input) */}
+          {/* Action buttons: Edit (to show input); for homeCampusId when linked, also show Unlink */}
           {!isEditing && (
-            <button
-              onClick={onStartEdit}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/12 text-purple-300 text-[11px] font-medium hover:bg-purple-500/20 transition-colors cursor-pointer"
-            >
-              <Pencil size={10} />
-              {empty ? "Add" : "Edit"}
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={onStartEdit}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/12 text-purple-300 text-[11px] font-medium hover:bg-purple-500/20 transition-colors cursor-pointer"
+              >
+                <Pencil size={10} />
+                {empty ? "Add" : "Edit"}
+              </button>
+              {isMainCampusSearch && !empty && onSubmitWithValue && (
+                <button
+                  type="button"
+                  onClick={() => onSubmitWithValue("")}
+                  disabled={isSubmitting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/8 text-white/80 text-[11px] font-medium hover:bg-white/12 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmitting ? <ThreeDotLoader size={10} /> : null}
+                  Unlink from main campus
+                </button>
+              )}
+            </div>
           )}
 
           {/* Edit mode: input form */}

@@ -884,7 +884,7 @@ const THR=1;
 const ALERT_THR=3;
 const ADD_CHURCH_RATE_LIMIT=5;
 const ADD_CHURCH_WINDOW_MS=15*60*1000;
-const SENSITIVE_FIELDS=["name","website","address","reportClosed","reportDuplicate"];
+const SENSITIVE_FIELDS=["name","website","address","reportClosed","reportDuplicate","homeCampusId"];
 const MODERATOR_KEY=Deno.env.get("MODERATOR_KEY")||"";
 function cip(c:any):string{return c.req.header("x-forwarded-for")?.split(",")[0]?.trim()||c.req.header("x-real-ip")||"unknown";}
 function checkModKey(c:any):boolean{const k=new URL(c.req.url).searchParams.get("key")||c.req.header("x-moderator-key")||"";return!!MODERATOR_KEY&&k===MODERATOR_KEY;}
@@ -1054,13 +1054,14 @@ async function runDeferredIndexAndStats(st:string,churches:any[],churchId:string
 app.post(`${P}/suggestions`,async(c)=>{
   try{
     const ip=cip(c);const{churchId,field,value}=await c.req.json();
-    if(!churchId||!field||!value)return c.json({error:"Missing fields"},400);
+    if(!churchId||!field)return c.json({error:"Missing fields"},400);
+    if(value===undefined||value===null)return c.json({error:"Value is required"},400);
     if(!VF.includes(field))return c.json({error:"Invalid field"},400);
     if(field==="denomination"&&isBlockedDenomination(String(value)))return c.json({error:"Denomination not supported"},400);
     if(field==="attendance"){const n=parseInt(value);if(isNaN(n)||n<1||n>50000)return c.json({error:"Attendance 1-50000"},400);}
-    if(field==="homeCampusId"){const v=String(value).trim();if(!v)return c.json({error:"Main campus ID required"},400);if(!stateFromChurchId(v))return c.json({error:"Invalid church ID format"},400);}
+    if(field==="homeCampusId"){const v=String(value).trim();if(v&&!stateFromChurchId(v))return c.json({error:"Invalid church ID format"},400);}
     let storeValue=String(value).trim();
-    if(!storeValue)return c.json({error:"Value is required"},400);
+    if(!storeValue&&field!=="homeCampusId")return c.json({error:"Value is required"},400);
     if(field==="reportClosed"){storeValue="closed";}
     if(field==="reportDuplicate"){if(!stateFromChurchId(storeValue))return c.json({error:"Invalid church ID format"},400);if(storeValue===churchId)return c.json({error:"Cannot report self as duplicate"},400);}
     if(field==="name"&&storeValue.length<2)return c.json({error:"Church name must be at least 2 characters"},400);
@@ -1450,6 +1451,7 @@ const moderatePendingHandler=async(c:any)=>{
         if(Array.isArray(values[j]))churchesByState.set(st,values[j]);
       }
     }
+    // SENSITIVE_FIELDS includes name, website, address, reportClosed, reportDuplicate, homeCampusId. Entries are only skipped when proposed matches current (per valuesMatchForReview).
     if(Array.isArray(allSuggestions)){
       for(const entry of allSuggestions){
         if(!entry||!Array.isArray(entry.submissions)||!entry.churchId)continue;

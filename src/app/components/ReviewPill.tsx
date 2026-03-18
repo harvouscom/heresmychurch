@@ -21,6 +21,7 @@ const FIELD_LABELS: Record<string, string> = {
   address: "Address",
   reportClosed: "Church closed / doesn't exist",
   reportDuplicate: "Duplicate of another church",
+  homeCampusId: "Link to main campus",
 };
 
 function canonicalStateFromChurchId(id: string): string | null {

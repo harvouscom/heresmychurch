@@ -13,7 +13,9 @@ When changes to Supabase (e.g. edge functions under `supabase/functions/`) requi
   ```bash
   supabase functions deploy make-server-283d8046
   ```
-  (If `supabase` is not in PATH, use `npx supabase functions deploy make-server-283d8046`.)
+  If `supabase` is not in PATH, try in order:
+  1. `npx supabase functions deploy make-server-283d8046`
+  2. `node_modules/.ignored/supabase/bin/supabase functions deploy make-server-283d8046` (pnpm installs the CLI here)
 
 - If the change touches another function, deploy that function instead or in addition.
 - Prefer deploying only what changed when that’s clear; otherwise deploy the function(s) that were edited.

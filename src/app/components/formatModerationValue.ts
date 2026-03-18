@@ -8,6 +8,7 @@ import { parseAddressValue, formatFullAddress } from "./AddressInput";
 export function formatModerationDisplayValue(field: string, value: string | null | undefined): string {
   if (field === "reportClosed") return "Reported as closed";
   if (field === "reportDuplicate") return value?.trim() ? `Duplicate of church: ${value.trim()}` : "";
+  if (field === "homeCampusId") return value == null || value.trim() === "" ? "Unlink from main campus" : `Link to main campus: ${value.trim()}`;
   if (value == null || value === "") return "";
   const trimmed = value.trim();
   if (field === "address" && trimmed.startsWith("{")) {
