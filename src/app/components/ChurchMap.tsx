@@ -738,7 +738,13 @@ function MapArea({
                 focusedState={d.focusedState}
                 focusedStateName={d.focusedStateName}
                 focusedCountyName={(d.focusedCounty && d.countyStats?.byFips[d.focusedCounty]?.name) ?? null}
-                filteredCount={d.filteredChurches.length}
+                filteredCount={
+                  d.selectedChurch && d.focusedState && d.filteredChurches.length <= 1
+                    ? (d.focusedCounty
+                        ? (d.countyStats?.byFips[d.focusedCounty]?.churchCount ?? d.filteredChurches.length)
+                        : (d.states.find(s => s.abbrev === d.focusedState)?.churchCount ?? d.filteredChurches.length))
+                    : d.filteredChurches.length
+                }
                 totalChurches={d.totalChurches}
                 allStatesLoaded={d.allStatesLoaded}
                 populatedCount={d.states.filter((s) => s.isPopulated).length}

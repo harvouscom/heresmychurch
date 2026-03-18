@@ -518,7 +518,7 @@ export function ChurchDetailPanel({
               </div>
             )}
           </div>
-          <CloseButton onClick={onClose} size="lg" className="-mt-2" />
+          <CloseButton onClick={onClose} size="lg" className="md:-mt-2" />
         </div>
 
         {/* Updates pending review — visible to all visitors (not only moderators) */}
