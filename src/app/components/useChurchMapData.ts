@@ -236,6 +236,7 @@ export function useChurchMapData({
     statesLoaded: false,
     moveEndSuppressedUntil: 0,
     transitionVersion: 0,
+    lastChurchViewAppliedId: null as string | null,
   });
 
   // Keep ref in sync (no useEffect needed — direct assignment every render)
@@ -574,6 +575,7 @@ export function useChurchMapData({
         setLoadingStateName("");
         overlay.setForceLoadingVisible(false);
         moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8), church);
+        refs.current.lastChurchViewAppliedId = church.id;
         return;
       }
     }
@@ -605,6 +607,7 @@ export function useChurchMapData({
         if (church) {
           setSelectedChurch(church);
           moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8), church);
+          refs.current.lastChurchViewAppliedId = church.id;
         }
 
         if (data.churches.length === 2000) {
@@ -621,6 +624,7 @@ export function useChurchMapData({
                 if (fc) {
                   setSelectedChurch(fc);
                   moveToChurchView(fc.lng, fc.lat, Math.max(ds.zoom, 8), fc);
+                  refs.current.lastChurchViewAppliedId = fc.id;
                 }
               }
               const sd = await fetchStates();
@@ -656,6 +660,7 @@ export function useChurchMapData({
         if (church) {
           setSelectedChurch(church);
           moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8), church);
+          refs.current.lastChurchViewAppliedId = church.id;
         }
         const statesData = await fetchStates();
         if (!isStale()) {
@@ -920,6 +925,7 @@ export function useChurchMapData({
       if (!selectedChurch || selectedChurch.id !== church.id) {
         setSelectedChurch(church);
         moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8), church);
+        refs.current.lastChurchViewAppliedId = church.id;
       }
       // Redirect legacy URL to canonical (numeric segment)
       if (routeLegacyChurchId && focusedState) {
@@ -931,11 +937,33 @@ export function useChurchMapData({
     }
   }, [routeChurchShortId, routeLegacyChurchId, routeChurchKey, routeCountyFips, churches, selectedChurch?.id, focusedState, navigateToChurch]);
 
+  // Ensure church view: when route has church and selectedChurch matches, apply zoom once (or re-apply if view was skipped/overwritten)
+  useEffect(() => {
+    if (!routeChurchKey) {
+      refs.current.lastChurchViewAppliedId = null;
+      return;
+    }
+    if (churches.length === 0 || !selectedChurch || !focusedState) return;
+    if (!churchMatchesRouteSegment(selectedChurch, routeChurchKey, focusedState)) return;
+    if (refs.current.lastChurchViewAppliedId === selectedChurch.id) return;
+    refs.current.lastChurchViewAppliedId = selectedChurch.id;
+    moveToChurchView(selectedChurch.lng, selectedChurch.lat, Math.max(zoom, 8), selectedChurch);
+  }, [routeChurchKey, churches.length, selectedChurch, focusedState, zoom]);
+
   // Sync map view when entering or leaving county view (routeCountyFips or countyFeatures load)
   const lastMovedToCountyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!focusedState) return;
     if (routeCountyFips && countyFeatures?.size) {
+      // When on a church route with selected church, don't overwrite church zoom when county features load late
+      const routeChurchKey = routeChurchShortId ?? routeLegacyChurchId ?? null;
+      if (
+        routeChurchKey &&
+        selectedChurch &&
+        churchMatchesRouteSegment(selectedChurch, routeChurchKey, focusedState)
+      ) {
+        return;
+      }
       const feat = countyFeatures.get(routeCountyFips);
       if (feat && lastMovedToCountyRef.current !== routeCountyFips) {
         lastMovedToCountyRef.current = routeCountyFips;
@@ -950,7 +978,7 @@ export function useChurchMapData({
         if (si) moveToView([si.lng, si.lat], getStateZoom(focusedState));
       }
     }
-  }, [routeCountyFips, focusedState, countyFeatures, states]);
+  }, [routeCountyFips, routeChurchShortId, routeLegacyChurchId, focusedState, countyFeatures, states, selectedChurch]);
 
   // Re-center map when isMobile changes while viewing a church
   const prevIsMobileRef = useRef(isMobile);
