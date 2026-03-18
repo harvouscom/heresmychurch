@@ -6,8 +6,8 @@ export function getChurchUrlSegment(
   church: { id: string; shortId?: string },
   stateAbbrev: string
 ): string {
-  if (church.shortId && /^\d{8}$/.test(church.shortId)) {
-    return church.shortId;
+  if (church.shortId != null && /^\d{8}$/.test(String(church.shortId))) {
+    return String(church.shortId);
   }
   const st = (stateAbbrev || "").toUpperCase();
   const statePrefix = st && st.length === 2 ? `${st}-` : "";

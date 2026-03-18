@@ -23,7 +23,7 @@ import {
 import { COUNTY_POPULATIONS } from "./data/county-populations";
 import { getChurchUrlSegment } from "./url-utils";
 
-/** Match church by route segment (legacy id or numeric shortId). */
+/** Match church by route segment (legacy id or numeric shortId). Coerce shortId to string so API number still matches. */
 function churchMatchesRouteSegment(
   church: Church,
   segment: string,
@@ -31,7 +31,7 @@ function churchMatchesRouteSegment(
 ): boolean {
   return (
     church.id === segment ||
-    church.shortId === segment ||
+    (church.shortId != null && String(church.shortId) === segment) ||
     getChurchUrlSegment(church, stateAbbrev) === segment
   );
 }
@@ -937,18 +937,28 @@ export function useChurchMapData({
     }
   }, [routeChurchShortId, routeLegacyChurchId, routeChurchKey, routeCountyFips, churches, selectedChurch?.id, focusedState, navigateToChurch]);
 
-  // Ensure church view: when route has church and selectedChurch matches, apply zoom once (or re-apply if view was skipped/overwritten)
+  // Ensure church view: when route has church and selectedChurch matches, apply zoom once; or when church is in list but not selected yet, select and zoom
   useEffect(() => {
     if (!routeChurchKey) {
       refs.current.lastChurchViewAppliedId = null;
       return;
     }
-    if (churches.length === 0 || !selectedChurch || !focusedState) return;
-    if (!churchMatchesRouteSegment(selectedChurch, routeChurchKey, focusedState)) return;
-    if (refs.current.lastChurchViewAppliedId === selectedChurch.id) return;
-    refs.current.lastChurchViewAppliedId = selectedChurch.id;
-    moveToChurchView(selectedChurch.lng, selectedChurch.lat, Math.max(zoom, 8), selectedChurch);
-  }, [routeChurchKey, churches.length, selectedChurch, focusedState, zoom]);
+    if (churches.length === 0 || !focusedState) return;
+
+    const church =
+      selectedChurch && churchMatchesRouteSegment(selectedChurch, routeChurchKey, focusedState)
+        ? selectedChurch
+        : churches.find((c) => churchMatchesRouteSegment(c, routeChurchKey, focusedState));
+
+    if (!church) return;
+    if (refs.current.lastChurchViewAppliedId === church.id) return;
+
+    if (!selectedChurch || selectedChurch.id !== church.id) {
+      setSelectedChurch(church);
+    }
+    refs.current.lastChurchViewAppliedId = church.id;
+    moveToChurchView(church.lng, church.lat, Math.max(zoom, 8), church);
+  }, [routeChurchKey, churches.length, churches, selectedChurch, focusedState, zoom]);
 
   // Sync map view when entering or leaving county view (routeCountyFips or countyFeatures load)
   const lastMovedToCountyRef = useRef<string | null>(null);
