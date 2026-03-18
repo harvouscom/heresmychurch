@@ -296,15 +296,30 @@ function toShortId(id:string,state:string,existingShortId?:string):string{
   let h=0;for(let i=0;i<id.length;i++)h=((h<<5)-h+id.charCodeAt(i))|0;
   return Math.abs(h).toString().padStart(8,"0").slice(0,8);
 }
-/** Assign unique 8-digit shortIds per state; resolves collisions so each church has a distinct segment. */
+/** Assign unique 8-digit shortIds per state; resolves collisions so each church has a distinct segment.
+ *  Two-pass: first reserve stored (persisted) shortIds, then assign derived ones with deterministic collision resolution. */
 function addShortIdsUnique(ch:any[],st:string):any[]{
   const used=new Set<string>();
-  return ch.map((c:any)=>{
-    let sid=toShortId(c.id,c.state||st,c.shortId);
-    while(used.has(sid))sid=Math.floor(10000000+Math.random()*90000000).toString();
-    used.add(sid);
-    return {...c,shortId:sid};
+  const result=ch.map((c:any)=>{
+    const hasStored=c.shortId&&/^\d{8}$/.test(String(c.shortId));
+    return {...c,_hasStored:hasStored,_storedSid:hasStored?String(c.shortId):null};
   });
+  // Pass 1: reserve stored shortIds (these were persisted during populate)
+  for(const c of result){
+    if(c._hasStored&&!used.has(c._storedSid)){used.add(c._storedSid);c.shortId=c._storedSid;}
+    else if(c._hasStored){c._hasStored=false;} // collision with another stored id — re-derive
+  }
+  // Pass 2: assign shortIds for churches that don't have a reserved one
+  for(const c of result){
+    if(c._hasStored){delete c._hasStored;delete c._storedSid;continue;}
+    let sid=toShortId(c.id,c.state||st);
+    // Deterministic collision resolution: hash id + attempt
+    let attempt=1;
+    while(used.has(sid)){let h=0;const key=`${c.id}:${attempt}`;for(let i=0;i<key.length;i++)h=((h<<5)-h+key.charCodeAt(i))|0;sid=(Math.abs(h)%90000000+10000000).toString();attempt++;}
+    used.add(sid);c.shortId=sid;
+    delete c._hasStored;delete c._storedSid;
+  }
+  return result;
 }
 function addShortIds(ch:any[],st:string):any[]{return ch.map((c:any)=>({...c,shortId:toShortId(c.id,c.state||st,c.shortId)}));}
 

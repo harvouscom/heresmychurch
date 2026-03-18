@@ -596,9 +596,9 @@ export function useChurchMapData({
 
     console.log(`[ChurchMap] Church page load (silent): ${stateAbbrev} / ${churchId} [v${version}]`);
 
+    refs.current.churchLookupTriedKey = null;
     setFocusedState(stateAbbrev);
     setFocusedStateName(stateInfo.name);
-    setChurches([]);
     setSelectedChurch(null);
     setError(null);
     refs.current.pendingTransition = null;
@@ -612,13 +612,31 @@ export function useChurchMapData({
 
       if (data.churches && data.churches.length > 0) {
         const filtered = filterToStatePolygon(data.churches, stateAbbrev, refs.current.stateFeatures);
+
+        let church = filtered.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
+        if (!church) {
+          const fromUnfiltered = data.churches.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
+          if (fromUnfiltered) { filtered.push(fromUnfiltered); church = fromUnfiltered; }
+        }
         setChurches(filtered);
 
-        const church = filtered.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
         if (church) {
           setSelectedChurch(church);
           moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8), church);
           refs.current.lastChurchViewAppliedId = church.id;
+        } else {
+          // Church not found in state data (e.g. shortId collision changed its ID) — fetch directly
+          try {
+            const { church: fetched } = await fetchChurchByShortId(stateAbbrev, churchId);
+            if (!isStale() && fetched) {
+              setChurches((prev) => (prev.some((c) => c.id === fetched.id) ? prev : [...prev, fetched]));
+              setSelectedChurch(fetched);
+              moveToChurchView(fetched.lng, fetched.lat, Math.max(ds.zoom, 8), fetched);
+              refs.current.lastChurchViewAppliedId = fetched.id;
+            }
+          } catch (e) {
+            console.warn(`[ChurchMap] fetchChurchByShortId fallback failed for ${stateAbbrev}/${churchId}:`, e);
+          }
         }
 
         if (data.churches.length === 2000) {
@@ -630,8 +648,12 @@ export function useChurchMapData({
               if (isStale()) return;
               if (fresh.churches?.length) {
                 const ff = filterToStatePolygon(fresh.churches, stateAbbrev, refs.current.stateFeatures);
+                let fc = ff.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
+                if (!fc) {
+                  const fromUnfiltered = fresh.churches.find((c: any) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
+                  if (fromUnfiltered) { ff.push(fromUnfiltered); fc = fromUnfiltered; }
+                }
                 setChurches(ff);
-                const fc = ff.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
                 if (fc) {
                   setSelectedChurch(fc);
                   moveToChurchView(fc.lng, fc.lat, Math.max(ds.zoom, 8), fc);
@@ -666,12 +688,28 @@ export function useChurchMapData({
         const freshData = await fetchChurches(stateAbbrev);
         if (isStale()) return;
         const freshFiltered = filterToStatePolygon(freshData.churches || [], stateAbbrev, refs.current.stateFeatures);
+        let church = freshFiltered.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
+        if (!church) {
+          const fromUnfiltered = (freshData.churches || []).find((c: any) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
+          if (fromUnfiltered) { freshFiltered.push(fromUnfiltered); church = fromUnfiltered; }
+        }
         setChurches(freshFiltered);
-        const church = freshFiltered.find((c) => churchMatchesRouteSegment(c, churchId, stateAbbrev));
         if (church) {
           setSelectedChurch(church);
           moveToChurchView(church.lng, church.lat, Math.max(ds.zoom, 8), church);
           refs.current.lastChurchViewAppliedId = church.id;
+        } else {
+          try {
+            const { church: fetched } = await fetchChurchByShortId(stateAbbrev, churchId);
+            if (!isStale() && fetched) {
+              setChurches((prev) => (prev.some((c) => c.id === fetched.id) ? prev : [...prev, fetched]));
+              setSelectedChurch(fetched);
+              moveToChurchView(fetched.lng, fetched.lat, Math.max(ds.zoom, 8), fetched);
+              refs.current.lastChurchViewAppliedId = fetched.id;
+            }
+          } catch (e) {
+            console.warn(`[ChurchMap] fetchChurchByShortId fallback failed for ${stateAbbrev}/${churchId}:`, e);
+          }
         }
         const statesData = await fetchStates();
         if (!isStale()) {
