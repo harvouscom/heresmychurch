@@ -29,11 +29,20 @@ function churchMatchesRouteSegment(
   segment: string,
   stateAbbrev: string
 ): boolean {
-  return (
-    church.id === segment ||
-    (church.shortId != null && String(church.shortId) === segment) ||
-    getChurchUrlSegment(church, stateAbbrev) === segment
-  );
+  if (church.id === segment) return true;
+  if (church.shortId != null && String(church.shortId) === segment) return true;
+  if (getChurchUrlSegment(church, stateAbbrev) === segment) return true;
+  // Match segment to numeric part of id (e.g. OK-18899678 -> 18899678) when shortId is missing or inconsistent
+  const st = (stateAbbrev || "").toUpperCase();
+  const statePrefix = st && st.length === 2 ? `${st}-` : "";
+  if (statePrefix && church.id.startsWith(statePrefix)) {
+    const numPart = church.id.slice(statePrefix.length);
+    if (/^\d+$/.test(numPart)) {
+      const normalized = numPart.length >= 8 ? numPart.slice(0, 8) : numPart.padStart(8, "0");
+      if (normalized === segment || numPart === segment) return true;
+    }
+  }
+  return false;
 }
 
 import { useLoadingOverlay } from "./hooks/useLoadingOverlay";
