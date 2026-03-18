@@ -949,21 +949,27 @@ export function useChurchMapData({
   }, [routeChurchShortId, routeLegacyChurchId, routeChurchKey, routeCountyFips, churches, selectedChurch?.id, focusedState, navigateToChurch]);
 
   // Ensure church view: when route has church and selectedChurch matches, apply zoom once; or when church is in list but not selected yet, select and zoom; or fetch by shortId if not in list
+  const stateForChurch = focusedState ?? routeStateAbbrev ?? null;
   useEffect(() => {
     if (!routeChurchKey) {
       refs.current.lastChurchViewAppliedId = null;
       refs.current.churchLookupTriedKey = null;
       return;
     }
-    if (!focusedState) return;
+    if (!stateForChurch) return;
 
     const church =
-      selectedChurch && churchMatchesRouteSegment(selectedChurch, routeChurchKey, focusedState)
+      selectedChurch && churchMatchesRouteSegment(selectedChurch, routeChurchKey, stateForChurch)
         ? selectedChurch
-        : churches.find((c) => churchMatchesRouteSegment(c, routeChurchKey, focusedState));
+        : churches.find((c) => churchMatchesRouteSegment(c, routeChurchKey, stateForChurch));
 
     if (church) {
       if (refs.current.lastChurchViewAppliedId === church.id) return;
+      if (!focusedState && church.state) setFocusedState(church.state);
+      if (church.state && states.length > 0) {
+        const info = states.find((s) => s.abbrev === church.state);
+        if (info) setFocusedStateName(info.name);
+      }
       if (!selectedChurch || selectedChurch.id !== church.id) {
         setSelectedChurch(church);
       }
@@ -972,30 +978,38 @@ export function useChurchMapData({
       return;
     }
 
-    // Church not in list: try once per routeChurchKey to fetch by shortId (e.g. OK/18899678 when church is missing from state list)
+    // Church not in list: try once per routeChurchKey to fetch by shortId
     if (refs.current.churchLookupTriedKey === routeChurchKey) return;
     refs.current.churchLookupTriedKey = routeChurchKey;
-    fetchChurchByShortId(focusedState, routeChurchKey).then(({ church: fetched }) => {
+    fetchChurchByShortId(stateForChurch, routeChurchKey).then(({ church: fetched }) => {
       if (!fetched) return;
+      if (!focusedState && fetched.state) setFocusedState(fetched.state);
+      if (fetched.state && states.length > 0) {
+        const info = states.find((s) => s.abbrev === fetched.state);
+        if (info) setFocusedStateName(info.name);
+      }
       setChurches((prev) => (prev.some((c) => c.id === fetched.id) ? prev : [...prev, fetched]));
       setSelectedChurch(fetched);
       refs.current.lastChurchViewAppliedId = fetched.id;
       moveToChurchView(fetched.lng, fetched.lat, Math.max(zoom, 8), fetched);
     });
-  }, [routeChurchKey, churches.length, churches, selectedChurch, focusedState, zoom]);
+  }, [routeChurchKey, routeStateAbbrev, stateForChurch, churches.length, churches, selectedChurch, focusedState, states, zoom]);
 
   // Sync map view when entering or leaving county view (routeCountyFips or countyFeatures load)
   const lastMovedToCountyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!focusedState) return;
     if (routeCountyFips && countyFeatures?.size) {
-      // When on a church route with selected church, don't overwrite church zoom when county features load late
+      // When URL has a church segment, never move to county view only — wait for church view to apply (or state view if no church)
       const routeChurchKey = routeChurchShortId ?? routeLegacyChurchId ?? null;
-      if (
-        routeChurchKey &&
-        selectedChurch &&
-        churchMatchesRouteSegment(selectedChurch, routeChurchKey, focusedState)
-      ) {
+      if (routeChurchKey) {
+        if (
+          selectedChurch &&
+          churchMatchesRouteSegment(selectedChurch, routeChurchKey, focusedState)
+        ) {
+          return;
+        }
+        // Church in URL but not selected yet (still loading): don't overwrite with county zoom
         return;
       }
       const feat = countyFeatures.get(routeCountyFips);
