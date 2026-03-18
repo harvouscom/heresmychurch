@@ -5,6 +5,7 @@ import type { Church, StateInfo } from "./church-data";
 import {
   fetchStates,
   fetchChurches,
+  fetchChurchByShortId,
   populateState,
   fetchStatePopulations,
   fetchPendingSuggestions,
@@ -246,6 +247,7 @@ export function useChurchMapData({
     moveEndSuppressedUntil: 0,
     transitionVersion: 0,
     lastChurchViewAppliedId: null as string | null,
+    churchLookupTriedKey: null as string | null,
   });
 
   // Keep ref in sync (no useEffect needed — direct assignment every render)
@@ -946,27 +948,40 @@ export function useChurchMapData({
     }
   }, [routeChurchShortId, routeLegacyChurchId, routeChurchKey, routeCountyFips, churches, selectedChurch?.id, focusedState, navigateToChurch]);
 
-  // Ensure church view: when route has church and selectedChurch matches, apply zoom once; or when church is in list but not selected yet, select and zoom
+  // Ensure church view: when route has church and selectedChurch matches, apply zoom once; or when church is in list but not selected yet, select and zoom; or fetch by shortId if not in list
   useEffect(() => {
     if (!routeChurchKey) {
       refs.current.lastChurchViewAppliedId = null;
+      refs.current.churchLookupTriedKey = null;
       return;
     }
-    if (churches.length === 0 || !focusedState) return;
+    if (!focusedState) return;
 
     const church =
       selectedChurch && churchMatchesRouteSegment(selectedChurch, routeChurchKey, focusedState)
         ? selectedChurch
         : churches.find((c) => churchMatchesRouteSegment(c, routeChurchKey, focusedState));
 
-    if (!church) return;
-    if (refs.current.lastChurchViewAppliedId === church.id) return;
-
-    if (!selectedChurch || selectedChurch.id !== church.id) {
-      setSelectedChurch(church);
+    if (church) {
+      if (refs.current.lastChurchViewAppliedId === church.id) return;
+      if (!selectedChurch || selectedChurch.id !== church.id) {
+        setSelectedChurch(church);
+      }
+      refs.current.lastChurchViewAppliedId = church.id;
+      moveToChurchView(church.lng, church.lat, Math.max(zoom, 8), church);
+      return;
     }
-    refs.current.lastChurchViewAppliedId = church.id;
-    moveToChurchView(church.lng, church.lat, Math.max(zoom, 8), church);
+
+    // Church not in list: try once per routeChurchKey to fetch by shortId (e.g. OK/18899678 when church is missing from state list)
+    if (refs.current.churchLookupTriedKey === routeChurchKey) return;
+    refs.current.churchLookupTriedKey = routeChurchKey;
+    fetchChurchByShortId(focusedState, routeChurchKey).then(({ church: fetched }) => {
+      if (!fetched) return;
+      setChurches((prev) => (prev.some((c) => c.id === fetched.id) ? prev : [...prev, fetched]));
+      setSelectedChurch(fetched);
+      refs.current.lastChurchViewAppliedId = fetched.id;
+      moveToChurchView(fetched.lng, fetched.lat, Math.max(zoom, 8), fetched);
+    });
   }, [routeChurchKey, churches.length, churches, selectedChurch, focusedState, zoom]);
 
   // Sync map view when entering or leaving county view (routeCountyFips or countyFeatures load)

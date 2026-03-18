@@ -183,6 +183,51 @@ export async function fetchChurches(
   };
 }
 
+/** Fetch a single church by state and URL segment (shortId). Used when the church is not in the state list (e.g. list cap or filter). */
+export async function fetchChurchByShortId(
+  stateAbbrev: string,
+  shortId: string
+): Promise<{ church: Church | null }> {
+  const res = await fetchWithRetry(
+    `${BASE_URL}/churches/${stateAbbrev.toUpperCase()}/church/${encodeURIComponent(shortId)}`,
+    { headers, timeoutMs: 10000 }
+  );
+  if (res.status === 404) return { church: null };
+  if (!res.ok) {
+    const text = await res.text();
+    console.warn(`fetchChurchByShortId ${stateAbbrev}/${shortId}:`, text);
+    return { church: null };
+  }
+  const data = await res.json();
+  const raw = data?.church;
+  if (!raw?.id || raw.lat == null || raw.lng == null) return { church: null };
+  const church: Church = {
+    id: raw.id,
+    shortId: raw.shortId != null ? String(raw.shortId) : undefined,
+    name: raw.name ?? "Unknown",
+    city: raw.city ?? "",
+    state: raw.state ?? stateAbbrev,
+    lat: Number(raw.lat),
+    lng: Number(raw.lng),
+    attendance: Number(raw.attendance) || 0,
+    denomination: raw.denomination ?? "Unknown",
+    address: raw.address,
+    website: raw.website,
+    serviceTimes: raw.serviceTimes,
+    languages: raw.languages,
+    ministries: raw.ministries,
+    pastorName: raw.pastorName,
+    phone: raw.phone,
+    email: raw.email,
+    homeCampusId: raw.homeCampusId,
+    homeCampus: raw.homeCampus,
+    bilingualProbability: raw.bilingualProbability,
+    lastVerified: raw.lastVerified,
+    buildingSqft: raw.buildingSqft,
+  };
+  return { church };
+}
+
 export async function populateState(
   stateAbbrev: string,
   force: boolean = false

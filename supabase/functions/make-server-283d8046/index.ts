@@ -695,6 +695,28 @@ app.get(`${P}/churches/review-stats`,async(c)=>{
   }catch(e){return c.json({states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingServiceTimes:0,missingDenomination:0,error:`${e}`},500);}
 });
 
+// Lookup single church by state + shortId (must be before /churches/:state so :state/church/:shortId matches first)
+app.get(`${P}/churches/:state/church/:shortId`,async(c)=>{
+  try{
+    const st=c.req.param("state").toUpperCase(),segment=(c.req.param("shortId")||"").trim();
+    if(!segment||!gS(st))return c.json({error:"Invalid state or shortId"},400);
+    let ch=await kv.get(`churches:${st}`);
+    if(!ch||!Array.isArray(ch)||!ch.length)return c.json({church:null,error:"No data for state"},404);
+    const corrections=await getApprovedCorrectionsForState(st);
+    mergeCorrectionsIntoChurches(ch,corrections);
+    const withShort=addShortIdsUnique(ch,st);
+    const statePrefix=`${st}-`;
+    const church=withShort.find((c:any)=>{
+      if(c.id===segment)return true;
+      if(c.shortId!= null&&String(c.shortId)===segment)return true;
+      if(statePrefix&&c.id.startsWith(statePrefix)){const num=c.id.slice(statePrefix.length);if(/^\d+$/.test(num)&&(num===segment||(num.length>=8?num.slice(0,8):num.padStart(8,"0"))===segment))return true;}
+      return false;
+    });
+    if(!church)return c.json({church:null,error:"Church not found"},404);
+    return c.json({church,state:{abbrev:gS(st).a,name:gS(st).n,lat:gS(st).la,lng:gS(st).lo}});
+  }catch(e){return c.json({church:null,error:String(e)},500);}
+});
+
 app.get(`${P}/churches/:state`,async(c)=>{
   try{
     const st=c.req.param("state").toUpperCase(),info=gS(st);
