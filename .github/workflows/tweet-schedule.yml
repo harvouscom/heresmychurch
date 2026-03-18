@@ -42,8 +42,10 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           TWITTER_WEBHOOK_SECRET: ${{ secrets.TWITTER_WEBHOOK_SECRET }}
         run: |
+          FORCE=false
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then FORCE=true; fi
           curl -sf -X POST "${SUPABASE_FUNCTION_URL}/twitter/scheduled" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
-            -d "{\"secret\":\"${TWITTER_WEBHOOK_SECRET}\"}" \
+            -d "{\"secret\":\"${TWITTER_WEBHOOK_SECRET}\",\"force\":${FORCE}}" \
             || echo "Scheduled tweet failed (non-fatal)"

@@ -2585,7 +2585,13 @@ app.post(`${P}/twitter/scheduled`,async(c)=>{
       if(result.posted)await kv.set(key,true);
       return c.json(result);
     }
-    return c.json({posted:false,error:"Outside scheduled windows"});
+    // This can happen when the workflow is manually triggered without force, or when called outside windows.
+    return c.json({
+      posted:false,
+      skipped:"outside scheduled windows",
+      nowUtc: now.toISOString(),
+      dayUtc: day,
+    });
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
