@@ -2362,20 +2362,7 @@ async function runScheduledPost():Promise<{posted:boolean;type?:string;text?:str
       }
     }
 
-    // Priority 2: Deploy from queue
-    if(daily.types.deploy<2){
-      const queue:any[]=(await kv.get("twitter:deploy-queue"))||[];
-      if(queue.length>0){
-        const deploy=queue.shift()!;
-        await kv.set("twitter:deploy-queue",queue);
-        const text=deployTweet(deploy.message||"improvements");
-        const result=await postTweet(text);
-        await logTweet("deploy",`deploy-${deploy.queuedAt}`,text,result,daily);
-        return{posted:true,type:"deploy",text};
-      }
-    }
-
-    // Priority 3: Milestones
+    // Priority 2: Milestones (deploy/app-update posts removed)
     if(daily.types.milestone<1){
       const milestone=await checkMilestones();
       if(milestone){
@@ -2385,7 +2372,7 @@ async function runScheduledPost():Promise<{posted:boolean;type?:string;text?:str
       }
     }
 
-    // Priority 4: Fun facts (max 2/day)
+    // Priority 3: Fun facts (max 2/day)
     if(daily.types.funfact<2){
       const fact=await generateFunFact();
       if(fact){
