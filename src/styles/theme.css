@@ -146,13 +146,13 @@
 
   h1 {
     font-size: var(--text-2xl);
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--font-weight-normal);
     line-height: 1.5;
   }
 
   h2 {
     font-size: var(--text-xl);
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--font-weight-normal);
     line-height: 1.5;
   }
 
@@ -187,6 +187,16 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
+  }
+
+  ::selection {
+    background-color: #7c3aed;
+    color: #ffffff;
+  }
+
+  ::-moz-selection {
+    background-color: #7c3aed;
+    color: #ffffff;
   }
 }
 

@@ -83,6 +83,31 @@ export default async function handler(request: Request, context: Context): Promi
     url: SITE_URL,
   };
 
+  // Report pages — e.g. /report/launch-2026
+  if (pathParts[0] === "report" && pathParts[1]) {
+    const slug = pathParts[1];
+    try {
+      const res = await fetch(`${apiBase}/report/${slug}`, {
+        headers: { Authorization: `Bearer ${anonKey}`, "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const title = `${data.title ?? "Report"} — Here's My Church`;
+        const desc = data.subtitle
+          ? `${data.subtitle} — ${(data.bigPicture?.totalChurches ?? 0).toLocaleString()} churches across ${data.bigPicture?.statesPopulated ?? 0} states.`
+          : DEFAULT_DESCRIPTION;
+        meta = {
+          title,
+          description: desc,
+          image: `${SITE_URL}/og-image.png`,
+          url: `${SITE_URL}/report/${slug}`,
+        };
+      }
+    } catch (_) {
+      // keep default meta
+    }
+  }
+
   if (pathParts[0] === "state" && pathParts[1]) {
     const stateAbbrev = pathParts[1].toUpperCase();
     const shortId = pathParts[2];

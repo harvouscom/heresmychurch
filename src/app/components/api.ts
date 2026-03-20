@@ -1,11 +1,16 @@
 import { projectId, publicAnonKey } from "/utils/supabase/info";
 import type { Church, StateInfo } from "./church-data";
 
-const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-283d8046`;
+/** In dev, use same-origin URL so Vite proxies to Supabase (avoids browser CORS). Production hits Supabase directly. */
+const BASE_URL = import.meta.env.DEV
+  ? "/functions/v1/make-server-283d8046"
+  : `https://${projectId}.supabase.co/functions/v1/make-server-283d8046`;
 
 const headers = {
   "Content-Type": "application/json",
   Authorization: `Bearer ${publicAnonKey}`,
+  /** Supabase Edge Functions expect this alongside Authorization (matches supabase-js). */
+  apikey: publicAnonKey,
 };
 
 // Fetch with timeout via AbortController
@@ -1031,5 +1036,24 @@ export async function fetchAuditByChurch(
   const res = await fetchWithRetry(url, { headers, cache: "no-store" });
   if (res.status === 401) throw new Error("Invalid review key");
   if (!res.ok) throw new Error(`Failed to fetch audit: ${res.status}`);
+  return res.json();
+}
+
+// ── Seasonal Reports ──
+export async function fetchReport(slug: string): Promise<import("./church-data").SeasonalReport> {
+  const res = await fetchWithRetry(
+    `${BASE_URL}/report/${encodeURIComponent(slug)}`,
+    { headers, timeoutMs: 120000 }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to fetch report: ${res.status} — ${text}`);
+  }
+  return res.json();
+}
+
+export async function fetchReportList(): Promise<import("./church-data").SeasonalReportSummary[]> {
+  const res = await fetchWithRetry(`${BASE_URL}/reports`, { headers, timeoutMs: 15000 });
+  if (!res.ok) return [];
   return res.json();
 }

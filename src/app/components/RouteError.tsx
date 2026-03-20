@@ -28,7 +28,7 @@ export function RouteError() {
           <img src={logoImg} alt="Here's My Church" className="w-full h-full object-cover" />
         </div>
         <div>
-          <h1 className="text-white text-xl font-bold mb-2">
+          <h1 className="text-white text-xl font-semibold mb-2">
             Something went wrong
           </h1>
           <p className="text-white/50 text-sm leading-relaxed">

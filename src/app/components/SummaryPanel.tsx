@@ -7,6 +7,7 @@ import {
   TrendingUp,
   BookOpen,
   BarChart3,
+  FileText,
   MapPin,
   ShieldCheck,
   Check,
@@ -14,9 +15,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { Link } from "react-router";
 import { sizeCategories } from "./church-data";
-import type { StateInfo } from "./church-data";
-import { fetchCommunityStats } from "./api";
+import type { StateInfo, SeasonalReportSummary } from "./church-data";
+import { fetchCommunityStats, fetchReportList } from "./api";
 import type { CommunityStats } from "./api";
 import { StateFlag } from "./StateFlag";
 import { CloseButton } from "./ui/close-button";
@@ -429,6 +431,9 @@ function NationalSummaryContent({
       {/* Community impact (nation-wide totals) */}
       <CommunityStatsCard key="national" />
 
+      {/* Reports */}
+      <ReportLinks />
+
       {/* Top 3 states by church count — podium style */}
       {stats.topStates.length > 0 && (
         <div>
@@ -467,6 +472,90 @@ function NationalSummaryContent({
         </div>
       )}
     </>
+  );
+}
+
+function ReportLinks() {
+  const [reports, setReports] = useState<SeasonalReportSummary[]>([]);
+  const [showPrevious, setShowPrevious] = useState(false);
+
+  useEffect(() => {
+    fetchReportList().then(setReports);
+  }, []);
+
+  // Fallback to launch report if list hasn't loaded yet
+  const latest = reports[reports.length - 1];
+  const previous = reports.slice(0, -1).reverse(); // newest first, excluding latest
+  const latestSlug = latest?.slug || "launch-2026";
+
+  const latestUpdatedLabel = (() => {
+    if (!latest?.generatedAt) return null;
+    try {
+      const d = new Date(latest.generatedAt);
+      if (Number.isNaN(d.getTime())) return null;
+      return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    } catch {
+      return null;
+    }
+  })();
+
+  return (
+    <div>
+      <Link
+        to={`/report/${latestSlug}`}
+        className="flex items-center gap-2 rounded-xl bg-purple-500/10 border border-purple-500/15 px-4 py-3 hover:bg-purple-500/15 transition-colors group"
+      >
+        <FileText size={14} className="text-purple-400 flex-shrink-0" />
+        <div className="min-w-0 flex-1">
+          <span className="text-white text-[13px] font-medium group-hover:text-purple-300 transition-colors block">
+            The State of Churches in America
+          </span>
+          <span className="text-white/40 text-[10px] block mt-0.5">
+            {latestUpdatedLabel != null
+              ? `Last updated ${latestUpdatedLabel}`
+              : reports.length === 0
+                ? "Loading…"
+                : latest?.title || "Our latest report"}
+          </span>
+        </div>
+        <svg className="h-4 w-4 text-white/30 group-hover:text-purple-300 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </Link>
+      {previous.length > 0 && (
+        <div className="mt-1.5">
+          <button
+            onClick={() => setShowPrevious((v) => !v)}
+            className="flex items-center gap-1.5 text-[10px] text-white/30 hover:text-white/50 transition-colors px-1 py-1"
+          >
+            <svg
+              className={`h-3 w-3 transition-transform ${showPrevious ? "rotate-90" : ""}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            {previous.length} previous report{previous.length > 1 ? "s" : ""}
+          </button>
+          {showPrevious && (
+            <div className="mt-1 space-y-1 pl-2">
+              {previous.map((r) => (
+                <Link
+                  key={r.slug}
+                  to={`/report/${r.slug}`}
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] text-white/50 hover:text-white hover:bg-white/5 transition-colors"
+                >
+                  <BarChart3 size={11} className="text-purple-400/50 shrink-0" />
+                  <span>{r.title}</span>
+                  <span className="ml-auto text-[10px] text-white/20">
+                    {r.totalChurches.toLocaleString()}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

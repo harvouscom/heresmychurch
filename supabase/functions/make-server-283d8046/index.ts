@@ -3,7 +3,6 @@ import { cors } from "npm:hono/cors";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 import { recordChurchAudit, queryAuditRecent, queryAuditByState, queryAuditByChurch } from "./audit.ts";
-import { generateOgImage } from "./og-image.tsx";
 import { POP } from "./state-populations.ts";
 
 // ── State data ──
@@ -450,7 +449,22 @@ function scoreMatch(qRaw:string,n:string,ci:string,ad:string):number{
 
 // ── App ──
 const app=new Hono();
-app.use("/*",cors({origin:"*",allowHeaders:["Content-Type","Authorization"],allowMethods:["GET","POST","PUT","DELETE","OPTIONS"]}));
+app.use(
+  "/*",
+  cors({
+    origin: "*",
+    allowHeaders: [
+      "Content-Type",
+      "Authorization",
+      "apikey",
+      "x-client-info",
+      "X-Client-Info",
+      "Prefer",
+    ],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    maxAge: 86400,
+  }),
+);
 
 const P="/make-server-283d8046";
 
@@ -458,6 +472,8 @@ app.get(`${P}/health`,(c)=>c.json({status:"ok",v:6}));
 
 app.get(`${P}/og-image`,async(c)=>{
   try{
+    // Dynamic import: og-image pulls React + esm.sh; loading at startup can cause BOOT_ERROR on Edge.
+    const { generateOgImage } = await import("./og-image.tsx");
     const type=(c.req.query("type")||"state") as "state"|"church";
     const stateAbbrev=(c.req.query("state")||"").toUpperCase().trim();
     if(type==="state"){
@@ -969,7 +985,7 @@ function consensus(subs:any[]){
   return res;
 }
 
-function medianSorted(arr:number[]):number{
+function medianOfUnsortedArray(arr:number[]):number{
   if(!arr.length)return 0;
   const s=[...arr].sort((a,b)=>a-b),m=Math.floor(s.length/2);
   return s.length%2?s[m]:Math.round((s[m-1]+s[m])/2);
@@ -996,7 +1012,7 @@ async function computeCalibrationForState(st:string,churches:any[]):Promise<{med
     }
   }
   const medians:Record<string,number>={};
-  for(const[denom,vals]of Object.entries(denomValues))if(vals.length)medians[denom]=medianSorted(vals);
+  for(const[denom,vals]of Object.entries(denomValues))if(vals.length)medians[denom]=medianOfUnsortedArray(vals);
   return{medians,approvedChurchIds};
 }
 
@@ -2675,6 +2691,473 @@ app.post(`${P}/migrate/apply-pending`,async(c)=>{
       await kv.set(`pending-churches:${st}`,store);
     }
     return c.json({success:true,correctionsApplied,churchesMerged});
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
+// ── Seasonal Report endpoint ──
+
+const BILINGUAL_NAME_PATS=[
+  {p:/\biglesia\b/i,lang:"Spanish"},{p:/\bcristiana?\b/i,lang:"Spanish"},{p:/\bhispana?\b/i,lang:"Spanish"},
+  {p:/\blatino?a?\b/i,lang:"Spanish"},{p:/\bcomunidad\b/i,lang:"Spanish"},{p:/\bdios\b/i,lang:"Spanish"},
+  {p:/한인|한국|교회/i,lang:"Korean"},{p:/\bkorean\b/i,lang:"Korean"},
+  {p:/中[华文国]|華人|教會/i,lang:"Chinese"},{p:/\bchinese\b/i,lang:"Chinese"},
+  {p:/\bvietnamese\b/i,lang:"Vietnamese"},{p:/việt|giáo\s*xứ/i,lang:"Vietnamese"},
+  {p:/\bhaitian\b/i,lang:"Haitian Creole"},{p:/\bethiopian|eritrean\b/i,lang:"Amharic"},
+  {p:/\bfilipino|tagalog\b/i,lang:"Tagalog"},{p:/\barabic?\b/i,lang:"Arabic"},
+  {p:/\bbilingual\b/i,lang:"Bilingual"},{p:/\bmulticultural|multi-ethnic\b/i,lang:"Multilingual"},
+  {p:/\bigreja\b/i,lang:"Portuguese"},{p:/\bbrasileir[oa]\b/i,lang:"Portuguese"},
+];
+
+function detectLanguages(ch:any):string[]{
+  if(ch.languages&&Array.isArray(ch.languages)&&ch.languages.length>1)return ch.languages.filter((l:string)=>l!=="English");
+  const langs=new Set<string>();
+  for(const{p,lang}of BILINGUAL_NAME_PATS){if(p.test(ch.name||""))langs.add(lang);}
+  return [...langs];
+}
+
+const STATE_NAMES_MAP:Record<string,string>={AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",CO:"Colorado",CT:"Connecticut",DE:"Delaware",FL:"Florida",GA:"Georgia",HI:"Hawaii",ID:"Idaho",IL:"Illinois",IN:"Indiana",IA:"Iowa",KS:"Kansas",KY:"Kentucky",LA:"Louisiana",ME:"Maine",MD:"Maryland",MA:"Massachusetts",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",MT:"Montana",NE:"Nebraska",NV:"Nevada",NH:"New Hampshire",NJ:"New Jersey",NM:"New Mexico",NY:"New York",NC:"North Carolina",ND:"North Dakota",OH:"Ohio",OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",RI:"Rhode Island",SC:"South Carolina",SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VT:"Vermont",VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming"};
+
+// Denomination grouping (same logic as frontend)
+const DENOM_GROUPS:[string,string[]][]=[
+  ["Catholic",["Catholic"]],["Baptist",["Baptist"]],["Methodist",["Methodist","Wesleyan"]],
+  ["Lutheran",["Lutheran"]],["Presbyterian",["Presbyterian"]],["Episcopal",["Episcopal","Anglican"]],
+  ["Pentecostal",["Pentecostal","Foursquare","Full Gospel","Apostolic","Church of God in Christ","COGIC"]],
+  ["Assemblies of God",["Assemblies of God","Assembly of God"]],["Church of Christ",["Church of Christ"]],
+  ["Church of God",["Church of God"]],["Orthodox",["Orthodox","Coptic","Antiochian"]],
+  ["Seventh-day Adventist",["Seventh-day Adventist"]],
+  ["Evangelical",["Evangelical","Alliance","Moravian","Evangelical Free","EFCA","Free Church"]],
+  ["Nazarene",["Nazarene"]],["Congregational",["Congregational"]],
+  ["Mennonite",["Mennonite","Brethren","Hutterite"]],["Reformed",["Reformed"]],
+  ["Covenant",["Covenant"]],["Salvation Army",["Salvation Army"]],
+  ["Non-denominational",["Non-denominational","Nondenominational","Non denominational","Calvary Chapel","Vineyard","Bible Church","Bible Fellowship","Community Church","Independent"]],
+  ["Unspecified",["Other","Unknown"]],
+];
+function getDenomGroup(d:string):string{
+  for(const[label,matches]of DENOM_GROUPS){if(matches.some(m=>d.includes(m)))return label;}
+  return "Unspecified";
+}
+
+function hasWebsiteField(c:any):boolean{
+  const w=(c.website||"").trim();
+  if(!w)return false;
+  return /^https?:\/\//i.test(w)||/^www\./i.test(w)||(/\./.test(w)&&w.length>4);
+}
+function hasPhoneField(c:any):boolean{
+  const p=(c.phone||"").replace(/\D/g,"");
+  return p.length>=10;
+}
+function medianFromSortedArray(sorted:number[]):number{
+  if(!sorted.length)return 0;
+  const n=sorted.length;
+  if(n%2===1)return sorted[(n-1)/2];
+  return (sorted[n/2-1]+sorted[n/2])/2;
+}
+function quantileSorted(sorted:number[],q:number):number{
+  if(!sorted.length)return 0;
+  const pos=(sorted.length-1)*q;
+  const base=Math.floor(pos);
+  const rest=pos-base;
+  const v0=sorted[base];
+  const v1=sorted[base+1];
+  if(v1===undefined)return v0;
+  return v0+rest*(v1-v0);
+}
+
+async function computeSeasonalReport(slug:string):Promise<any>{
+  const meta=await kv.get("churches:meta");
+  const sc:Record<string,number>={...(meta?.stateCounts||{})};
+  if(sc["DC"]){sc["MD"]=(sc["MD"]||0)+sc["DC"];delete sc["DC"];}
+  const populatedStates=Object.keys(sc).filter(s=>sc[s]>0);
+
+  // Aggregate data in a single pass over all churches
+  let totalChurches=0,totalAttendance=0;
+  let totalNeedsReview=0,totalMissingAddr=0,totalMissingSvc=0,totalMissingDenom=0;
+  const denomCounts:Record<string,number>={};
+  const denomByState:Record<string,Record<string,number>>={};
+  const langCounts:Record<string,number>={};
+  const bilingualByState:Record<string,{total:number;bilingual:number}>={};
+  const stateChurchCounts:Record<string,number>={};
+  const stateReview:Record<string,{total:number;needsReview:number}>={};
+  const largest:{name:string;state:string;city:string;attendance:number;denomination:string;id:string;shortId?:string}[]=[];
+  const smallest:{name:string;state:string;city:string;attendance:number;denomination:string;id:string;shortId?:string}[]=[];
+  let nWebsite=0,nPhone=0,nContact=0,nHasSvc=0,nCampus=0,nWithMinistries=0,nFootprint=0,nVerified90=0,nVerified365=0;
+  const ministryCounts:Record<string,number>={};
+  const attendanceList:number[]=[];
+  const nowMs=Date.now();
+  const d90=90*864e5,d365=365*864e5;
+
+  const BATCH=10;
+  for(let i=0;i<populatedStates.length;i+=BATCH){
+    const batch=populatedStates.slice(i,i+BATCH);
+    const keys=batch.map(st=>`churches:${st}`);
+    const values=await kv.mget(keys);
+    for(let j=0;j<batch.length;j++){
+      const st=batch[j];
+      const ch:any[]=values[j];
+      if(!Array.isArray(ch)||!ch.length){stateChurchCounts[st]=0;stateReview[st]={total:0,needsReview:0};continue;}
+      stateChurchCounts[st]=ch.length;
+      let stNR=0;
+      if(!denomByState[st])denomByState[st]={};
+      if(!bilingualByState[st])bilingualByState[st]={total:ch.length,bilingual:0};
+      else bilingualByState[st].total=ch.length;
+
+      for(const c of ch){
+        totalChurches++;
+        totalAttendance+=(c.attendance||0);
+        // Review stats
+        const r=churchNeedsReview(c);
+        if(r.needsReview){totalNeedsReview++;stNR++;}
+        if(r.missingAddress)totalMissingAddr++;
+        if(r.missingServiceTimes)totalMissingSvc++;
+        if(r.missingDenomination)totalMissingDenom++;
+        // Denomination
+        const dg=getDenomGroup(c.denomination||"");
+        denomCounts[dg]=(denomCounts[dg]||0)+1;
+        denomByState[st][dg]=(denomByState[st][dg]||0)+1;
+        // Languages
+        const langs=detectLanguages(c);
+        if(langs.length>0){
+          bilingualByState[st].bilingual++;
+          for(const l of langs)langCounts[l]=(langCounts[l]||0)+1;
+        }
+        // Track largest/smallest
+        const entry={
+          name:c.name||"Unknown",
+          state:st,
+          city:c.city||"",
+          attendance:c.attendance||0,
+          denomination:c.denomination||"",
+          id:typeof c.id==="string"?c.id:"",
+          shortId:c.shortId!=null&&c.shortId!==undefined?String(c.shortId):undefined,
+        };
+        if(largest.length<10)largest.push(entry);
+        else{const minIdx=largest.reduce((mi,v,i,a)=>v.attendance<a[mi].attendance?i:mi,0);if(entry.attendance>largest[minIdx].attendance)largest[minIdx]=entry;}
+        if(entry.attendance>0){
+          if(smallest.length<10)smallest.push(entry);
+          else{const maxIdx=smallest.reduce((mi,v,i,a)=>v.attendance>a[mi].attendance?i:mi,0);if(entry.attendance<smallest[maxIdx].attendance)smallest[maxIdx]=entry;}
+        }
+        // Transparency: discoverability, campuses, ministries, footprint, verification, attendance distribution
+        if(hasWebsiteField(c))nWebsite++;
+        if(hasPhoneField(c))nPhone++;
+        if(hasWebsiteField(c)||hasPhoneField(c))nContact++;
+        if(!isServiceTimesMissing(c.serviceTimes))nHasSvc++;
+        if(c.homeCampusId)nCampus++;
+        if(Array.isArray(c.ministries)&&c.ministries.length>0){
+          nWithMinistries++;
+          for(const m of c.ministries){
+            const key=String(m||"").trim().slice(0,80)||"Other";
+            ministryCounts[key]=(ministryCounts[key]||0)+1;
+          }
+        }
+        if((c.buildingSqft||0)>0)nFootprint++;
+        const lv=c.lastVerified;
+        if(typeof lv==="number"&&lv>0){
+          const age=nowMs-lv;
+          if(age<=d90)nVerified90++;
+          if(age<=d365)nVerified365++;
+        }
+        const attNum=c.attendance||0;
+        if(attNum>0)attendanceList.push(attNum);
+      }
+      stateReview[st]={total:ch.length,needsReview:stNR};
+    }
+  }
+  largest.sort((a,b)=>b.attendance-a.attendance);
+  smallest.sort((a,b)=>a.attendance-b.attendance);
+  attendanceList.sort((a,b)=>a-b);
+  const attendanceMedian=Math.round(medianFromSortedArray(attendanceList));
+  const attendanceP25=Math.round(quantileSorted(attendanceList,0.25));
+  const attendanceP75=Math.round(quantileSorted(attendanceList,0.75));
+
+  // Denomination national
+  const denomNational=Object.entries(denomCounts).map(([name,count])=>({name,count,pct:totalChurches>0?Math.round(count/totalChurches*1000)/10:0})).sort((a,b)=>b.count-a.count);
+
+  // Dominant denomination per state
+  const dominantByState:Record<string,{denomination:string;count:number;pct:number}>={};
+  for(const st of populatedStates){
+    const d=denomByState[st]||{};
+    const entries=Object.entries(d).sort((a,b)=>b[1]-a[1]);
+    if(entries.length){
+      const top=entries[0];
+      const total=stateChurchCounts[st]||1;
+      dominantByState[st]={denomination:top[0],count:top[1],pct:Math.round(top[1]/total*1000)/10};
+    }
+  }
+
+  // Regional patterns: denominations where state % > 2x national %
+  const regionalPatterns:{denomination:string;strongStates:string[];nationalPct:number;regionalPct:number}[]=[];
+  for(const d of denomNational){
+    if(d.name==="Unspecified")continue;
+    const natPct=d.pct;if(natPct<1)continue;
+    const strong:string[]=[];let maxRegPct=0;
+    for(const st of populatedStates){
+      const stTotal=stateChurchCounts[st]||0;if(stTotal<20)continue;
+      const stCount=(denomByState[st]||{})[d.name]||0;
+      const stPct=stCount/stTotal*100;
+      if(stPct>natPct*2){strong.push(st);if(stPct>maxRegPct)maxRegPct=stPct;}
+    }
+    if(strong.length>0&&strong.length<=15)regionalPatterns.push({denomination:d.name,strongStates:strong.slice(0,8),nationalPct:natPct,regionalPct:Math.round(maxRegPct*10)/10});
+  }
+  regionalPatterns.sort((a,b)=>(b.regionalPct/b.nationalPct)-(a.regionalPct/a.nationalPct));
+
+  // Geo density
+  const totalPop=Object.keys(POP).reduce((s,k)=>(k==="DC"?s:s+(POP[k]||0)),0);
+  const stateMetrics:Record<string,{churches:number;population:number;churchesPer10k:number;peoplePer:number}>={};
+  const densityList:{abbrev:string;name:string;churchesPer10k:number;peoplePer:number}[]=[];
+  for(const st of populatedStates){
+    const pop=statePopulation(st);const cnt=stateChurchCounts[st]||0;
+    const per10k=pop>0&&cnt>0?(cnt/pop)*10000:0;
+    const peoplePer=pop>0&&cnt>0?Math.round(pop/cnt):0;
+    stateMetrics[st]={churches:cnt,population:pop,churchesPer10k:Math.round(per10k*100)/100,peoplePer};
+    if(pop>0&&cnt>0)densityList.push({abbrev:st,name:STATE_NAMES_MAP[st]||st,churchesPer10k:Math.round(per10k*100)/100,peoplePer});
+  }
+  densityList.sort((a,b)=>b.churchesPer10k-a.churchesPer10k);
+
+  // Data quality state breakdown
+  const dataQualityStates=populatedStates.map(st=>{
+    const sr=stateReview[st]||{total:0,needsReview:0};
+    return {abbrev:st,name:STATE_NAMES_MAP[st]||st,total:sr.total,needsReview:sr.needsReview,pct:sr.total>0?Math.round((sr.needsReview/sr.total)*1000)/10:0};
+  }).sort((a,b)=>a.pct-b.pct);
+
+  // Language distribution
+  const langDist=Object.entries(langCounts).map(([language,count])=>({language,count})).sort((a,b)=>b.count-a.count);
+  const totalBilingual=Object.values(bilingualByState).reduce((s,v)=>s+v.bilingual,0);
+
+  // Top bilingual states
+  const topBilingualStates=populatedStates
+    .filter(st=>bilingualByState[st]&&bilingualByState[st].total>10)
+    .map(st=>{const v=bilingualByState[st];return{abbrev:st,name:STATE_NAMES_MAP[st]||st,pct:Math.round(v.bilingual/v.total*1000)/10,count:v.bilingual};})
+    .sort((a,b)=>b.pct-a.pct).slice(0,10);
+
+  // Community stats
+  const commStats=(await kv.get("community:stats"))||{totalCorrections:0,churchesImproved:[],corrections:[]};
+  const commByState=communityStatsByState(commStats,populatedStates);
+  const improvedTotal=Array.isArray(commStats.churchesImproved)?commStats.churchesImproved.length:0;
+  const totalCorrections=typeof commStats.totalCorrections==="number"?commStats.totalCorrections:0;
+
+  const topMinistries=Object.entries(ministryCounts)
+    .map(([name,count])=>({name,count,pct:totalChurches>0?Math.round(count/totalChurches*1000)/10:0}))
+    .sort((a,b)=>b.count-a.count)
+    .slice(0,18);
+
+  let populationRepresented=0;
+  for(const st of populatedStates){
+    populationRepresented+=statePopulation(st);
+  }
+
+  // State rankings
+  const stateRankings=populatedStates.map(st=>{
+    const sr=stateReview[st]||{total:0,needsReview:0};
+    const dm=stateMetrics[st]||{churchesPer10k:0};
+    const comm=commByState[st]||{totalCorrections:0};
+    return{abbrev:st,name:STATE_NAMES_MAP[st]||st,churchCount:stateChurchCounts[st]||0,churchesPer10k:dm.churchesPer10k||0,pctComplete:sr.total>0?Math.round(((sr.total-sr.needsReview)/sr.total)*1000)/10:0,corrections:comm.totalCorrections};
+  }).sort((a,b)=>b.churchCount-a.churchCount);
+
+  const pctNeedsReview=totalChurches>0?Math.round(totalNeedsReview/totalChurches*1000)/10:0;
+  const pct=(n:number)=>totalChurches>0?Math.round(n/totalChurches*1000)/10:0;
+
+  // Parse season and year from slug
+  const parts=slug.split("-");
+  const season=parts[0] as "launch"|"spring"|"summer"|"fall"|"winter";
+  const year=parseInt(parts[1],10);
+
+  return{
+    slug,
+    title:seasonTitle(season,year),
+    subtitle:"The State of Churches in America",
+    season,
+    year,
+    generatedAt:new Date().toISOString(),
+    bigPicture:{
+      totalChurches,
+      statesPopulated:populatedStates.length,
+      totalAttendanceEstimate:totalAttendance,
+      populationRepresented,
+      populationRepresentedMillions:Math.round(populationRepresented/1e5)/10,
+    },
+    community:{
+      totalCorrections,
+      churchesImproved:improvedTotal,
+      correctionsPerThousandChurches:totalChurches>0?Math.round(totalCorrections/totalChurches*1000*100)/100:0,
+    },
+    dataQuality:{
+      pctNeedsReview,totalNeedsReview,
+      missingByField:[
+        {field:"Address",count:totalMissingAddr,pct:totalChurches>0?Math.round(totalMissingAddr/totalChurches*1000)/10:0},
+        {field:"Service Times",count:totalMissingSvc,pct:totalChurches>0?Math.round(totalMissingSvc/totalChurches*1000)/10:0},
+        {field:"Denomination",count:totalMissingDenom,pct:totalChurches>0?Math.round(totalMissingDenom/totalChurches*1000)/10:0},
+      ],
+      stateBreakdown:dataQualityStates,
+      pctWithWebsite:pct(nWebsite),
+      pctWithPhone:pct(nPhone),
+      pctWithContactPath:pct(nContact),
+      pctWithServiceTimes:pct(nHasSvc),
+      campusCount:nCampus,
+      campusPct:pct(nCampus),
+      pctWithMinistries:pct(nWithMinistries),
+      topMinistries,
+      pctVerifiedLast90Days:pct(nVerified90),
+      pctVerifiedLast365Days:pct(nVerified365),
+      pctWithBuildingFootprint:pct(nFootprint),
+      attendanceMedian,
+      attendanceP25,
+      attendanceP75,
+    },
+    geoDensity:{
+      national:{peoplePer:totalChurches>0&&totalPop>0?Math.round(totalPop/totalChurches):0,churchesPer10k:totalChurches>0&&totalPop>0?Math.round(totalChurches/totalPop*10000*100)/100:0},
+      mostChurched:densityList.slice(0,10),
+      leastChurched:[...densityList].reverse().slice(0,10),
+      stateMetrics,
+    },
+    denominations:{national:denomNational,dominantByState,regionalPatterns:regionalPatterns.slice(0,8)},
+    diversity:{bilingualChurches:totalBilingual,bilingualPct:totalChurches>0?Math.round(totalBilingual/totalChurches*1000)/10:0,languageDistribution:langDist,topBilingualStates},
+    spotlights:{largest:largest.slice(0,10),smallest:smallest.slice(0,10)},
+    stateRankings,
+  };
+}
+
+// Season helpers
+const SEASON_ORDER=["launch","spring","summer","fall","winter"] as const;
+const SEASON_MONTHS:{season:typeof SEASON_ORDER[number];months:number[]}[]=[
+  {season:"spring",months:[3,4,5]},
+  {season:"summer",months:[6,7,8]},
+  {season:"fall",months:[9,10,11]},
+  {season:"winter",months:[12,1,2]},
+];
+function currentSeasonSlug():{slug:string;season:string;year:number}{
+  const now=new Date();
+  const m=now.getMonth()+1,y=now.getFullYear();
+  for(const{season,months}of SEASON_MONTHS){
+    if(months.includes(m)){
+      const yr=season==="winter"&&m<=2?y-1:y;
+      return{slug:`${season}-${yr}`,season,year:yr};
+    }
+  }
+  return{slug:`spring-${y}`,season:"spring",year:y};
+}
+
+// Ordered list of all valid report slugs (launch first, then seasonal)
+function allReportSlugs():{slug:string;season:string;year:number}[]{
+  const list:{slug:string;season:string;year:number}[]=[{slug:"launch-2026",season:"launch",year:2026}];
+  const cur=currentSeasonSlug();
+  // Generate slugs from spring-2026 up to (and including) current season
+  for(let y=2026;y<=cur.year+1;y++){
+    for(const s of ["spring","summer","fall","winter"] as const){
+      const yr=s==="winter"?y+1:y; // winter-2026 covers Dec 2026–Feb 2027
+      const sl=`${s}-${y}`;
+      if(sl===cur.slug){list.push({slug:sl,season:s,year:y});return list;}
+      if(y<cur.year||(y===cur.year&&SEASON_ORDER.indexOf(s)<SEASON_ORDER.indexOf(cur.season as any))){
+        list.push({slug:sl,season:s,year:y});
+      }
+    }
+  }
+  return list;
+}
+
+function previousSlugFor(slug:string):string|null{
+  const all=allReportSlugs();
+  const idx=all.findIndex(r=>r.slug===slug);
+  return idx>0?all[idx-1].slug:null;
+}
+
+function seasonTitle(season:string,year:number):string{
+  const cap=season.charAt(0).toUpperCase()+season.slice(1);
+  return season==="launch"?"Launch Report":`${cap} ${year} Report`;
+}
+
+// Sum of per-state correction counts (may differ slightly from national `community.totalCorrections` if IDs don’t match a state prefix)
+function sumStateCorrections(r:any):number{
+  return (r.stateRankings||[]).reduce((s:number,x:any)=>s+(typeof x?.corrections==="number"?x.corrections:0),0);
+}
+
+// Compute changes between current and previous report
+function computeChanges(current:any,previous:any):any{
+  const churchesAdded=Math.max(current.bigPicture.totalChurches-previous.bigPicture.totalChurches,0);
+  const churchesRemoved=Math.max(previous.bigPicture.totalChurches-current.bigPicture.totalChurches,0);
+  const netChurchChange=current.bigPicture.totalChurches-previous.bigPicture.totalChurches;
+
+  // States added
+  const prevStates=new Set(previous.stateRankings.map((s:any)=>s.abbrev));
+  const statesAdded=current.stateRankings.filter((s:any)=>!prevStates.has(s.abbrev)).map((s:any)=>s.abbrev);
+
+  // Data quality delta (positive = improvement)
+  const dataQualityDelta=Math.round((previous.dataQuality.pctNeedsReview-current.dataQuality.pctNeedsReview)*10)/10;
+
+  // New languages
+  const prevLangs=new Set(previous.diversity.languageDistribution.map((l:any)=>l.language));
+  const newLanguages=current.diversity.languageDistribution.filter((l:any)=>!prevLangs.has(l.language)).map((l:any)=>l.language);
+
+  // Corrections since last report — prefer embedded `community` totals (same source as Big Picture) when both snapshots have them
+  let correctionsThisSeason=sumStateCorrections(current)-sumStateCorrections(previous);
+  if(typeof current.community?.totalCorrections==="number"&&typeof previous.community?.totalCorrections==="number"){
+    correctionsThisSeason=Math.max(0,current.community.totalCorrections-previous.community.totalCorrections);
+  }else{
+    correctionsThisSeason=Math.max(correctionsThisSeason,0);
+  }
+
+  let churchesImprovedDelta=0;
+  if(typeof current.community?.churchesImproved==="number"&&typeof previous.community?.churchesImproved==="number"){
+    churchesImprovedDelta=Math.max(0,current.community.churchesImproved-previous.community.churchesImproved);
+  }
+
+  // Auto-generate highlights
+  const highlights:string[]=[];
+  if(netChurchChange>0)highlights.push(`${netChurchChange.toLocaleString()} new churches added since last report.`);
+  if(statesAdded.length>0)highlights.push(`${statesAdded.length} new state${statesAdded.length>1?"s":""} covered: ${statesAdded.join(", ")}.`);
+  if(dataQualityDelta>0)highlights.push(`Data completeness improved by ${dataQualityDelta} percentage points.`);
+  if(newLanguages.length>0)highlights.push(`${newLanguages.length} new language${newLanguages.length>1?"s":""} detected: ${newLanguages.join(", ")}.`);
+  if(correctionsThisSeason>0)highlights.push(`${correctionsThisSeason.toLocaleString()} community corrections submitted.`);
+  if(churchesImprovedDelta>0)highlights.push(`${churchesImprovedDelta.toLocaleString()} church listings improved via community submissions.`);
+
+  // Denomination shifts
+  const prevTop=previous.denominations?.national?.[0];
+  const curTop=current.denominations?.national?.[0];
+  if(prevTop&&curTop&&prevTop.name!==curTop.name){
+    highlights.push(`${curTop.name} overtook ${prevTop.name} as the most common denomination.`);
+  }
+
+  return{churchesAdded,churchesRemoved,netChurchChange,statesAdded,dataQualityDelta,newLanguages,correctionsThisSeason,churchesImprovedDelta,highlights};
+}
+
+// ── GET /reports — list all available reports ──
+app.get(`${P}/reports`,async(c)=>{
+  try{
+    const slugs=allReportSlugs();
+    const list:any[]=[];
+    for(const{slug,season,year}of slugs){
+      const cached=await kv.get(`report:${slug}`);
+      if(cached&&typeof cached==="object"&&cached.slug){
+        list.push({slug,title:cached.title||seasonTitle(season,year),season,year,generatedAt:cached.generatedAt,totalChurches:cached.bigPicture?.totalChurches||0});
+      }
+    }
+    return c.json(list);
+  }catch(e){return c.json([]);}
+});
+
+app.get(`${P}/report/:slug`,async(c)=>{
+  try{
+    const slug=c.req.param("slug");
+    if(!slug||!/^[a-z]+-\d{4}$/.test(slug))return c.json({error:"Invalid report slug"},400);
+    // Check cache
+    const cacheKey=`report:${slug}`;
+    const cached=await kv.get(cacheKey);
+    if(cached&&typeof cached==="object"&&cached.slug)return c.json(cached);
+    // Validate slug is a known report
+    const known=allReportSlugs();
+    if(!known.find(r=>r.slug===slug))return c.json({error:"Report not found"},404);
+    // Compute fresh report
+    const report=await computeSeasonalReport(slug);
+    // Add comparison to previous report if available
+    const prevSlug=previousSlugFor(slug);
+    if(prevSlug){
+      const prevReport=await kv.get(`report:${prevSlug}`);
+      if(prevReport&&typeof prevReport==="object"&&prevReport.slug){
+        report.previousSlug=prevSlug;
+        report.changes=computeChanges(report,prevReport);
+      }
+    }
+    try{await kv.set(cacheKey,report);}catch(_){}
+    return c.json(report);
   }catch(e){return c.json({error:`${e}`},500);}
 });
 

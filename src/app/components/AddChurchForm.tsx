@@ -342,7 +342,7 @@ export function AddChurchForm({
                   Community Submissions
                 </span>
               </div>
-              <h2 className="text-white font-bold text-base leading-tight">
+              <h2 className="text-white font-semibold text-base leading-tight">
                 Add a Church in {stateName}
               </h2>
               <p className="text-white/40 text-[11px] mt-1 leading-relaxed">

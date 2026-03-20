@@ -107,9 +107,18 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.99.0
         version: 2.99.1
+      '@types/d3-array':
+        specifier: ^3.2.2
+        version: 3.2.2
       '@types/d3-geo':
         specifier: ^3.1.0
         version: 3.1.0
+      '@types/d3-scale':
+        specifier: ^4.0.9
+        version: 4.0.9
+      '@types/d3-shape':
+        specifier: ^3.1.8
+        version: 3.1.8
       '@types/react-window':
         specifier: ^1.8.8
         version: 1.8.8
@@ -125,9 +134,18 @@ importers:
       cmdk:
         specifier: 1.1.1
         version: 1.1.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      d3-array:
+        specifier: ^3.2.4
+        version: 3.2.4
       d3-geo:
         specifier: ^3.1.1
         version: 3.1.1
+      d3-scale:
+        specifier: ^4.0.2
+        version: 4.0.2
+      d3-shape:
+        specifier: ^3.2.0
+        version: 3.2.0
       date-fns:
         specifier: 3.6.0
         version: 3.6.0

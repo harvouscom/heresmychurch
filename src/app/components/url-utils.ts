@@ -1,3 +1,17 @@
+/** Map URL for a seasonal report spotlight row (opens church on the map). */
+export function spotlightMapHref(spotlight: {
+  id?: string;
+  shortId?: string;
+  state: string;
+}): string | null {
+  if (!spotlight.id) return null;
+  const seg = getChurchUrlSegment(
+    { id: spotlight.id, shortId: spotlight.shortId },
+    spotlight.state
+  );
+  return `/state/${spotlight.state}/${seg}`;
+}
+
 /**
  * Returns the numeric 8-digit segment to use in church URLs (e.g. /state/IA/16692500).
  * Prefers shortId when present; otherwise derives from church.id so the path never contains "STATE-" prefix.

@@ -379,6 +379,145 @@ export const COMMON_LANGUAGES = [
   "American Sign Language (ASL)", "Other",
 ];
 
+// ── Seasonal Report types ──
+
+export interface SeasonalReportBigPicture {
+  totalChurches: number;
+  statesPopulated: number;
+  totalAttendanceEstimate: number;
+  /** U.S. Census population in states where we have at least one church */
+  populationRepresented?: number;
+  /** Same as populationRepresented / 1e6, one decimal (e.g. 331.4) */
+  populationRepresentedMillions?: number;
+  /** Only for seasonal (non-launch) reports */
+  churchGrowth?: number;
+  statesAddedThisSeason?: string[];
+}
+
+/** Community-driven corrections and improvements (transparency) */
+export interface SeasonalReportCommunity {
+  totalCorrections: number;
+  churchesImproved: number;
+  /** Community corrections per 1,000 mapped churches */
+  correctionsPerThousandChurches: number;
+}
+
+export interface SeasonalReportDataQuality {
+  pctNeedsReview: number;
+  totalNeedsReview: number;
+  missingByField: { field: string; count: number; pct: number }[];
+  /** Per-state data quality */
+  stateBreakdown: { abbrev: string; name: string; total: number; needsReview: number; pct: number }[];
+  /** % of churches with a website field that looks usable */
+  pctWithWebsite?: number;
+  pctWithPhone?: number;
+  /** Website or phone present */
+  pctWithContactPath?: number;
+  /** % with non-placeholder service times */
+  pctWithServiceTimes?: number;
+  campusCount?: number;
+  campusPct?: number;
+  pctWithMinistries?: number;
+  topMinistries?: { name: string; count: number; pct: number }[];
+  /** lastVerified within last 90 / 365 days */
+  pctVerifiedLast90Days?: number;
+  pctVerifiedLast365Days?: number;
+  /** OSM building footprint available */
+  pctWithBuildingFootprint?: number;
+  /** Estimated attendance among churches with attendance &gt; 0 */
+  attendanceMedian?: number;
+  attendanceP25?: number;
+  attendanceP75?: number;
+}
+
+export interface SeasonalReportGeoDensity {
+  national: { peoplePer: number; churchesPer10k: number };
+  mostChurched: { abbrev: string; name: string; churchesPer10k: number; peoplePer: number }[];
+  leastChurched: { abbrev: string; name: string; churchesPer10k: number; peoplePer: number }[];
+  stateMetrics: Record<string, { churches: number; population: number; churchesPer10k: number; peoplePer: number }>;
+}
+
+export interface SeasonalReportDenominations {
+  national: { name: string; count: number; pct: number }[];
+  /** Largest denomination group in each state (grouped buckets) */
+  dominantByState: Record<string, { denomination: string; count: number; pct: number }>;
+  regionalPatterns: { denomination: string; strongStates: string[]; nationalPct: number; regionalPct: number }[];
+}
+
+export interface SeasonalReportDiversity {
+  bilingualChurches: number;
+  bilingualPct: number;
+  languageDistribution: { language: string; count: number }[];
+  topBilingualStates: { abbrev: string; name: string; pct: number; count: number }[];
+}
+
+export interface SeasonalReportSpotlight {
+  name: string;
+  state: string;
+  city: string;
+  attendance: number;
+  denomination: string;
+  /** Set on newly generated reports — enables “View on map” links */
+  id?: string;
+  shortId?: string;
+}
+
+export interface SeasonalReportStateRanking {
+  abbrev: string;
+  name: string;
+  churchCount: number;
+  churchesPer10k: number;
+  pctComplete: number;
+  corrections: number;
+}
+
+/** Deltas compared to the previous report (only present on non-launch reports) */
+export interface SeasonalReportChanges {
+  churchesAdded: number;
+  churchesRemoved: number;
+  netChurchChange: number;
+  statesAdded: string[];
+  dataQualityDelta: number; // positive = improvement (fewer needing review)
+  newLanguages: string[];
+  correctionsThisSeason: number;
+  /** When both reports have `community`, diff of `churchesImproved` (listings updated via community) */
+  churchesImprovedDelta?: number;
+  /** Per-section noteworthy shifts */
+  highlights: string[];
+}
+
+export interface SeasonalReportSummary {
+  slug: string;
+  title: string;
+  season: "launch" | "spring" | "summer" | "fall" | "winter";
+  year: number;
+  generatedAt: string;
+  totalChurches: number;
+}
+
+export interface SeasonalReport {
+  slug: string;
+  title: string;
+  subtitle: string;
+  season: "launch" | "spring" | "summer" | "fall" | "winter";
+  year: number;
+  generatedAt: string;
+  previousSlug?: string;
+  changes?: SeasonalReportChanges;
+  bigPicture: SeasonalReportBigPicture;
+  /** Community corrections — omitted in older cached payloads */
+  community?: SeasonalReportCommunity;
+  dataQuality: SeasonalReportDataQuality;
+  geoDensity: SeasonalReportGeoDensity;
+  denominations: SeasonalReportDenominations;
+  diversity: SeasonalReportDiversity;
+  spotlights: {
+    largest: SeasonalReportSpotlight[];
+    smallest: SeasonalReportSpotlight[];
+  };
+  stateRankings: SeasonalReportStateRanking[];
+}
+
 // Common ministry categories for form UI
 export const COMMON_MINISTRIES = [
   "Youth", "Children's", "College", "Young Adults", "Women's", "Men's",

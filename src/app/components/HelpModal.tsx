@@ -142,7 +142,7 @@ export function HelpModal({
                 What is this project?
               </AccordionTrigger>
               <AccordionContent className="text-white/70">
-                Here&apos;s My Church is a free, open-source, interactive map that helps people
+                Here&apos;s My Church (HMC) is a free, open-source, interactive map that helps people
                 discover Christian churches across all 50 U.S. states. No account needed. You can
                 browse by state, search and filter by denomination, size, or language, view church
                 details (address, website, service times, and more), and contribute by adding
@@ -196,6 +196,50 @@ export function HelpModal({
                 are primarily based on building footprint area from OpenStreetMap, with
                 denomination averages, capacity data, and regional population scaling
                 used where building data is not available.
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="how-we-compare" className="border-white/10">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+                How does HMC compare to other directories?
+              </AccordionTrigger>
+              <AccordionContent className="text-white/70 space-y-3">
+                <p>
+                  Most church directories are either a category inside a general-purpose map
+                  (like Google Maps) or paid listing sites (like Church Finder or Church.org).
+                  HMC is different:
+                </p>
+                <ul className="space-y-1.5 text-sm">
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-400 mt-0.5 shrink-0">•</span>
+                    <span><span className="text-white/90 font-medium">Attendance estimates</span> — no other directory provides this</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-400 mt-0.5 shrink-0">•</span>
+                    <span><span className="text-white/90 font-medium">Language tracking</span> — see which churches offer services in other languages</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-400 mt-0.5 shrink-0">•</span>
+                    <span><span className="text-white/90 font-medium">Community corrections</span> — a purpose-built flow for fixing church data</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-400 mt-0.5 shrink-0">•</span>
+                    <span><span className="text-white/90 font-medium">100% free</span> — no paid listings, no premium tiers, no sponsored results</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-400 mt-0.5 shrink-0">•</span>
+                    <span><span className="text-white/90 font-medium">Open source</span> — built on OpenStreetMap, fully transparent</span>
+                  </li>
+                </ul>
+                <p className="text-white/50 text-xs">
+                  See the full comparison in our{" "}
+                  <a
+                    href="/report/launch-2026#how-we-compare"
+                    className="underline hover:text-white/70 transition-colors"
+                  >
+                    Launch Report
+                  </a>
+                  .
+                </p>
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="data-updates" className="border-white/10">
