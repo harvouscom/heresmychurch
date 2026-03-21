@@ -2367,7 +2367,7 @@ export function SeasonalReportPage() {
                 </AccordionItem>
                 <AccordionItem value="methodology-numbers" className="border-stone-200/60">
                   <AccordionTrigger className="text-stone-800 hover:text-stone-900 hover:no-underline text-left">
-                    How we calculate and present the numbers
+                    How are the numbers calculated and presented?
                   </AccordionTrigger>
                   <AccordionContent className="text-stone-600 text-sm leading-relaxed">
                     <SeasonalReportMethodologyFaqDetails variant="report" />

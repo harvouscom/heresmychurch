@@ -181,7 +181,7 @@ export function HelpModal({
             </AccordionItem>
             <AccordionItem value="methodology-numbers" className="border-white/10">
               <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
-                How we calculate and present the numbers
+                How are the numbers calculated and presented?
               </AccordionTrigger>
               <AccordionContent className="text-white/70 text-sm leading-relaxed">
                 <SeasonalReportMethodologyFaqDetails variant="help" />

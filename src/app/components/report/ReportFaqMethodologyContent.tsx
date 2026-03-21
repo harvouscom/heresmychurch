@@ -59,7 +59,7 @@ export function SeasonalReportGenerationFaqBrief({
         next publish.
       </p>
       <p className={s.crossRef}>
-        Open <span className={s.em}>How we calculate and present the numbers</span> for the exact rules
+        See <span className={s.em}>How are the numbers calculated and presented?</span> for the exact rules
         behind completeness, percentages, and trends.
       </p>
     </div>
