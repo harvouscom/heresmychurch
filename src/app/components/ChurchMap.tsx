@@ -1064,7 +1064,7 @@ function MapArea({
             );
           })()}
           {!d.selectedChurch && (
-            <div className="pointer-events-auto w-full max-w-full flex flex-col items-center">
+            <div className="pointer-events-none w-full max-w-full flex flex-col items-center">
             <MapSearchBar
               churches={d.churches}
               states={d.states}

@@ -332,7 +332,7 @@ export function MapSearchBar({
   return (
     <div
       ref={containerRef}
-      className="relative z-30 w-[min(440px,70svw)]"
+      className="relative z-30 w-[min(440px,70svw)] pointer-events-auto"
     >
       {/* Collapsed state — just a search icon button */}
       {collapsed ? (

@@ -141,12 +141,18 @@ export function HelpModal({
               <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
                 What is this project?
               </AccordionTrigger>
-              <AccordionContent className="text-white/70">
-                Here&apos;s My Church (HMC) is a free, open-source, interactive map that helps people
-                discover Christian churches across all 50 U.S. states. No account needed. You can
-                browse by state, search and filter by denomination, size, or language, view church
-                details (address, website, service times, and more), and contribute by adding
-                churches or suggesting edits.
+              <AccordionContent className="text-white/70 space-y-2">
+                <p>
+                  Here&apos;s My Church (HMC) is a free, open-source, interactive map that helps people
+                  discover Christian churches across all 50 U.S. states. No account needed. You can
+                  browse by state, search and filter by denomination, size, or language, view church
+                  details (address, website, service times, and more), and contribute by adding
+                  churches or suggesting edits.
+                </p>
+                <p className="text-white/50 text-xs">
+                  Started by Derek Castelli, who&apos;s also building a Bible notes app called{" "}
+                  <a href="https://harvous.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-white/70 transition-colors">Harvous</a>.
+                </p>
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="goals" className="border-white/10">
