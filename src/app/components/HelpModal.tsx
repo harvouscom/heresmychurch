@@ -8,10 +8,7 @@ import {
 } from "./ui/accordion";
 import { CloseButton } from "./ui/close-button";
 import { reportErrorsContact } from "../config/pendingAlerts";
-import {
-  SeasonalReportGenerationFaqBrief,
-  SeasonalReportMethodologyFaqDetails,
-} from "./report/ReportFaqMethodologyContent";
+import { SeasonalReportMethodologyFaqDetails } from "./report/ReportFaqMethodologyContent";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 
 const EMAIL = "hey@heresmychurch.com";
@@ -180,14 +177,6 @@ export function HelpModal({
                 are primarily based on building footprint area from OpenStreetMap, with
                 denomination averages, capacity data, and regional population scaling
                 used where building data is not available.
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value="how-generated" className="border-white/10">
-              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
-                How is this report generated?
-              </AccordionTrigger>
-              <AccordionContent className="text-white/70 text-sm leading-relaxed">
-                <SeasonalReportGenerationFaqBrief variant="help" />
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="methodology-numbers" className="border-white/10">

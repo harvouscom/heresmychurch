@@ -1,5 +1,5 @@
 /**
- * Shared copy for seasonal report FAQs: used on the report page and in Help.
+ * Shared copy for seasonal report FAQs: methodology details also appear in Help.
  * `variant` switches typography for light (report) vs dark (help modal) surfaces.
  */
 export type ReportFaqMethodologyVariant = "report" | "help";
