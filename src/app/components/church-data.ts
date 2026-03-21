@@ -441,6 +441,14 @@ export interface SeasonalReportDenominations {
   national: { name: string; count: number; pct: number }[];
   /** Largest denomination group in each state (grouped buckets) */
   dominantByState: Record<string, { denomination: string; count: number; pct: number }>;
+  /** Per-state breakdown for report table (grouped buckets), excluding Unspecified */
+  byStateBreakdown?: Record<
+    string,
+    {
+      top: { denomination: string; count: number; pct: number }[];
+      least: { denomination: string; count: number; pct: number } | null;
+    }
+  >;
   regionalPatterns: { denomination: string; strongStates: string[]; nationalPct: number; regionalPct: number }[];
 }
 
@@ -482,6 +490,15 @@ export interface SeasonalReportChanges {
   correctionsThisSeason: number;
   /** When both reports have `community`, diff of `churchesImproved` (listings updated via community) */
   churchesImprovedDelta?: number;
+  /** Top states by net church-count growth vs previous report */
+  fastestGrowingStates?: { abbrev: string; name: string; churchCount: number; delta: number; pctChange: number }[];
+  /** Denominations with the largest share gains/losses (percentage points) */
+  denominationShifts?: {
+    gainers: { name: string; currentPct: number; previousPct: number; shareDelta: number }[];
+    losers: { name: string; currentPct: number; previousPct: number; shareDelta: number }[];
+  };
+  /** States with the largest drop in "needs review" share (percentage points) */
+  dataQualityMovers?: { abbrev: string; name: string; currentPct: number; improvement: number }[];
   /** Per-section noteworthy shifts */
   highlights: string[];
 }

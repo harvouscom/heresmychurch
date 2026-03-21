@@ -84,7 +84,7 @@ function normD(tags:Record<string,string>):string{
   if(tags.brand){const m=matchD(tags.brand);if(m)return m;}
   const name=tags.name||tags["name:en"]||"";if(name){const m=matchD(name);if(m)return m;}
   for(const k of["description","note","official_name","alt_name","website"]){if(tags[k]){const m=matchD(tags[k]);if(m)return m;}}
-  return"Non-denominational";
+  return"Unknown";
 }
 
 const DMED:Record<string,number>={"Catholic":800,"Baptist":85,"Methodist":70,"Lutheran":75,"Presbyterian":75,"Episcopal":60,"Pentecostal":75,"Assemblies of God":100,"Non-denominational":120,"Latter-day Saints":180,"Church of Christ":65,"Church of God":70,"Orthodox":60,"Seventh-day Adventist":55,"Evangelical":100,"Jehovah's Witnesses":70,"Nazarene":65,"Congregational":55,"Mennonite":55,"Amish":80,"Reformed":75,"Salvation Army":35,"Christian Science":25,"Unitarian":50,"Quaker":25,"Covenant":80,"Disciples of Christ":70};
@@ -890,6 +890,48 @@ app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
     if(meta){meta.stateCounts=sc;meta.lastBlockedCleanup=new Date().toISOString();await kv.set("churches:meta",meta);}
     await invalidateReviewStatsCache();
     return c.json({message:`Cleanup complete. Removed ${removedTotal} churches across ${cleanedStates} states.`,removed:removedTotal,states:cleanedStates});
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
+app.post(`${P}/admin/migrate-denominations`,async(c)=>{
+  try{
+    const meta=await kv.get("churches:meta");
+    const allStates=Object.keys(meta?.stateCounts||{});
+    if(!allStates.length)return c.json({message:"No states populated.",updatedStates:0,updatedChurches:0});
+    const stateParam=(c.req.query("state")||"").toUpperCase().trim();
+    const states=stateParam&&allStates.includes(stateParam)?[stateParam]:allStates;
+
+    let updatedStates=0,updatedChurches=0;
+    for(const st of states){
+      const key=`churches:${st}`;
+      const ch=await kv.get(key);
+      if(!Array.isArray(ch)||!ch.length)continue;
+
+      let changedInState=0;
+      for(const church of ch){
+        if(church?.denomination!=="Non-denominational")continue;
+        const matchedByName=matchD((church?.name||"").toString().trim());
+        if(matchedByName!=="Non-denominational"){
+          church.denomination="Unknown";
+          changedInState++;
+        }
+      }
+
+      if(changedInState>0){
+        await kv.set(key,ch);
+        await writeIdx(st,ch);
+        updatedStates++;
+        updatedChurches+=changedInState;
+        void recordChurchAudit({state:st,action:"migrate_denominations_unknown",new_value:{updated:changedInState},source:"admin_migrate",actor_type:"system"});
+      }
+    }
+
+    if(meta){
+      meta.lastDenominationMigrationAt=new Date().toISOString();
+      await kv.set("churches:meta",meta);
+    }
+    await invalidateReviewStatsCache();
+    return c.json({message:`Migration complete. Updated ${updatedChurches} churches across ${updatedStates} states.`,updatedStates,updatedChurches});
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
@@ -2874,6 +2916,7 @@ async function computeSeasonalReport(slug:string):Promise<any>{
 
   // Dominant denomination per state
   const dominantByState:Record<string,{denomination:string;count:number;pct:number}>={};
+  const byStateBreakdown:Record<string,{top:{denomination:string;count:number;pct:number}[];least:{denomination:string;count:number;pct:number}|null}>={};
   for(const st of populatedStates){
     const d=denomByState[st]||{};
     const entries=Object.entries(d).sort((a,b)=>b[1]-a[1]);
@@ -2881,6 +2924,12 @@ async function computeSeasonalReport(slug:string):Promise<any>{
       const top=entries[0];
       const total=stateChurchCounts[st]||1;
       dominantByState[st]={denomination:top[0],count:top[1],pct:Math.round(top[1]/total*1000)/10};
+      const filtered=entries.filter(([name,count])=>name!=="Unspecified"&&count>0);
+      const topTwo=filtered.slice(0,2).map(([denomination,count])=>({denomination,count,pct:Math.round(count/total*1000)/10}));
+      const least=filtered.length>=2
+        ? (()=>{const x=filtered[filtered.length-1];return{denomination:x[0],count:x[1],pct:Math.round(x[1]/total*1000)/10};})()
+        : null;
+      byStateBreakdown[st]={top:topTwo,least};
     }
   }
 
@@ -2936,7 +2985,7 @@ async function computeSeasonalReport(slug:string):Promise<any>{
   const totalCorrections=typeof commStats.totalCorrections==="number"?commStats.totalCorrections:0;
 
   const topMinistries=Object.entries(ministryCounts)
-    .map(([name,count])=>({name,count,pct:totalChurches>0?Math.round(count/totalChurches*1000)/10:0}))
+    .map(([name,count])=>({name,count,pct:nWithMinistries>0?Math.round(count/nWithMinistries*1000)/10:0}))
     .sort((a,b)=>b.count-a.count)
     .slice(0,18);
 
@@ -2954,7 +3003,14 @@ async function computeSeasonalReport(slug:string):Promise<any>{
   }).sort((a,b)=>b.churchCount-a.churchCount);
 
   const pctNeedsReview=totalChurches>0?Math.round(totalNeedsReview/totalChurches*1000)/10:0;
-  const pct=(n:number)=>totalChurches>0?Math.round(n/totalChurches*1000)/10:0;
+  const pct=(n:number)=>{
+    if(totalChurches<=0)return 0;
+    const raw=n/totalChurches*100;
+    // Avoid misleading 0%/100% due to one-decimal rounding when values are non-zero but tiny.
+    if(n>0&&raw<0.1)return 0.1;
+    if(n<totalChurches&&raw>99.9)return 99.9;
+    return Math.round(raw*10)/10;
+  };
 
   // Parse season and year from slug
   const parts=slug.split("-");
@@ -2983,9 +3039,9 @@ async function computeSeasonalReport(slug:string):Promise<any>{
     dataQuality:{
       pctNeedsReview,totalNeedsReview,
       missingByField:[
-        {field:"Address",count:totalMissingAddr,pct:totalChurches>0?Math.round(totalMissingAddr/totalChurches*1000)/10:0},
-        {field:"Service Times",count:totalMissingSvc,pct:totalChurches>0?Math.round(totalMissingSvc/totalChurches*1000)/10:0},
-        {field:"Denomination",count:totalMissingDenom,pct:totalChurches>0?Math.round(totalMissingDenom/totalChurches*1000)/10:0},
+        {field:"Address",count:totalMissingAddr,pct:pct(totalMissingAddr)},
+        {field:"Service Times",count:totalMissingSvc,pct:pct(totalMissingSvc)},
+        {field:"Denomination",count:totalMissingDenom,pct:pct(totalMissingDenom)},
       ],
       stateBreakdown:dataQualityStates,
       pctWithWebsite:pct(nWebsite),
@@ -3009,7 +3065,7 @@ async function computeSeasonalReport(slug:string):Promise<any>{
       leastChurched:[...densityList].reverse().slice(0,10),
       stateMetrics,
     },
-    denominations:{national:denomNational,dominantByState,regionalPatterns:regionalPatterns.slice(0,8)},
+    denominations:{national:denomNational,dominantByState,byStateBreakdown,regionalPatterns:regionalPatterns.slice(0,8)},
     diversity:{bilingualChurches:totalBilingual,bilingualPct:totalChurches>0?Math.round(totalBilingual/totalChurches*1000)/10:0,languageDistribution:langDist,topBilingualStates},
     spotlights:{largest:largest.slice(0,10),smallest:smallest.slice(0,10)},
     stateRankings,
@@ -3100,6 +3156,77 @@ function computeChanges(current:any,previous:any):any{
     churchesImprovedDelta=Math.max(0,current.community.churchesImproved-previous.community.churchesImproved);
   }
 
+  // Trending: fastest-growing states by church count
+  const prevStateMap=new Map((previous.stateRankings||[]).map((s:any)=>[s.abbrev,s]));
+  const fastestGrowingStates=(current.stateRankings||[])
+    .map((s:any)=>{
+      const prev=prevStateMap.get(s.abbrev);
+      if(!prev)return null;
+      const prevCount=Number(prev.churchCount||0);
+      const curCount=Number(s.churchCount||0);
+      const delta=curCount-prevCount;
+      if(delta<=0)return null;
+      const pctChange=prevCount>0?Math.round((delta/prevCount)*1000)/10:100;
+      return{
+        abbrev:s.abbrev,
+        name:s.name,
+        churchCount:curCount,
+        delta,
+        pctChange,
+      };
+    })
+    .filter((x:any)=>x)
+    .sort((a:any,b:any)=>b.delta-a.delta||b.pctChange-a.pctChange)
+    .slice(0,5);
+
+  // Trending: denomination share gainers/losers vs previous report
+  const prevDenomMap=new Map((previous.denominations?.national||[])
+    .filter((d:any)=>d?.name&&d.name!=="Unspecified")
+    .map((d:any)=>[d.name,d]));
+  const curDenomMap=new Map((current.denominations?.national||[])
+    .filter((d:any)=>d?.name&&d.name!=="Unspecified")
+    .map((d:any)=>[d.name,d]));
+  const allDenoms=new Set<string>([...prevDenomMap.keys(),...curDenomMap.keys()]);
+  const denomShiftRows=[...allDenoms].map((name)=>{
+    const prev=prevDenomMap.get(name);
+    const cur=curDenomMap.get(name);
+    const previousPct=Number(prev?.pct||0);
+    const currentPct=Number(cur?.pct||0);
+    const shareDelta=Math.round((currentPct-previousPct)*10)/10;
+    return{name,currentPct,previousPct,shareDelta};
+  }).filter((d)=>d.shareDelta!==0);
+  const denominationShifts={
+    gainers:[...denomShiftRows]
+      .filter((d)=>d.shareDelta>0)
+      .sort((a,b)=>b.shareDelta-a.shareDelta)
+      .slice(0,5),
+    losers:[...denomShiftRows]
+      .filter((d)=>d.shareDelta<0)
+      .sort((a,b)=>a.shareDelta-b.shareDelta)
+      .slice(0,5),
+  };
+
+  // Trending: states with biggest data-quality improvement
+  const prevQualityMap=new Map((previous.dataQuality?.stateBreakdown||[]).map((s:any)=>[s.abbrev,s]));
+  const dataQualityMovers=(current.dataQuality?.stateBreakdown||[])
+    .map((s:any)=>{
+      const prev=prevQualityMap.get(s.abbrev);
+      if(!prev)return null;
+      const previousPct=Number(prev.pct||0);
+      const currentPct=Number(s.pct||0);
+      const improvement=Math.round((previousPct-currentPct)*10)/10;
+      if(improvement<=0)return null;
+      return{
+        abbrev:s.abbrev,
+        name:s.name,
+        currentPct,
+        improvement,
+      };
+    })
+    .filter((x:any)=>x)
+    .sort((a:any,b:any)=>b.improvement-a.improvement)
+    .slice(0,5);
+
   // Auto-generate highlights
   const highlights:string[]=[];
   if(netChurchChange>0)highlights.push(`${netChurchChange.toLocaleString()} new churches added since last report.`);
@@ -3116,7 +3243,20 @@ function computeChanges(current:any,previous:any):any{
     highlights.push(`${curTop.name} overtook ${prevTop.name} as the most common denomination.`);
   }
 
-  return{churchesAdded,churchesRemoved,netChurchChange,statesAdded,dataQualityDelta,newLanguages,correctionsThisSeason,churchesImprovedDelta,highlights};
+  return{
+    churchesAdded,
+    churchesRemoved,
+    netChurchChange,
+    statesAdded,
+    dataQualityDelta,
+    newLanguages,
+    correctionsThisSeason,
+    churchesImprovedDelta,
+    highlights,
+    fastestGrowingStates,
+    denominationShifts,
+    dataQualityMovers,
+  };
 }
 
 // ── GET /reports — list all available reports ──
@@ -3138,10 +3278,13 @@ app.get(`${P}/report/:slug`,async(c)=>{
   try{
     const slug=c.req.param("slug");
     if(!slug||!/^[a-z]+-\d{4}$/.test(slug))return c.json({error:"Invalid report slug"},400);
+    const forceRefresh=(c.req.query("refresh")==="true"||c.req.query("fresh")==="true");
     // Check cache
     const cacheKey=`report:${slug}`;
-    const cached=await kv.get(cacheKey);
-    if(cached&&typeof cached==="object"&&cached.slug)return c.json(cached);
+    if(!forceRefresh){
+      const cached=await kv.get(cacheKey);
+      if(cached&&typeof cached==="object"&&cached.slug)return c.json(cached);
+    }
     // Validate slug is a known report
     const known=allReportSlugs();
     if(!known.find(r=>r.slug===slug))return c.json({error:"Report not found"},404);

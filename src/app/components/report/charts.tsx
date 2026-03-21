@@ -481,10 +481,20 @@ export function ChoroplethMap({
   values,
   label,
   colorRange = ["#F3E8FF", "#4C1D95"],
+  details,
 }: {
   values: Record<string, number>;
   label?: string;
   colorRange?: [string, string];
+  details?: Record<
+    string,
+    {
+      primaryLabel: string;
+      primaryValue: string;
+      secondaryLabel?: string;
+      secondaryValue?: string;
+    }
+  >;
 }) {
   const { scale, min, max } = useMemo(() => {
     const vals = Object.values(values).filter((v) => v > 0);
@@ -500,7 +510,7 @@ export function ChoroplethMap({
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, "-40px");
   const reduced = usePrefersReducedMotion();
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; name: string; value: number } | null>(null);
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; name: string; abbrev: string; value: number } | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const dismiss = useCallback(() => {
@@ -523,11 +533,26 @@ export function ChoroplethMap({
       {tooltip && (
         <Tooltip x={tooltip.x} y={tooltip.y}>
           <span className="font-medium">{tooltip.name}</span>
-          <span className="ml-1.5 text-purple-300">
-            {tooltip.value > 0 ? tooltip.value.toLocaleString() : "—"}
-          </span>
-          {label && tooltip.value > 0 && (
-            <span className="ml-0.5 text-stone-400">{label}</span>
+          {details?.[tooltip.abbrev] ? (
+            <span className="ml-1.5 inline-flex flex-col">
+              <span className="text-purple-300">
+                {details[tooltip.abbrev].primaryLabel}: {details[tooltip.abbrev].primaryValue}
+              </span>
+              {details[tooltip.abbrev].secondaryLabel && details[tooltip.abbrev].secondaryValue && (
+                <span className="text-stone-300">
+                  {details[tooltip.abbrev].secondaryLabel}: {details[tooltip.abbrev].secondaryValue}
+                </span>
+              )}
+            </span>
+          ) : (
+            <>
+              <span className="ml-1.5 text-purple-300">
+                {tooltip.value > 0 ? tooltip.value.toLocaleString() : "—"}
+              </span>
+              {label && tooltip.value > 0 && (
+                <span className="ml-0.5 text-stone-400">{label}</span>
+              )}
+            </>
           )}
         </Tooltip>
       )}
@@ -552,6 +577,7 @@ export function ChoroplethMap({
                         x: e.clientX,
                         y: e.clientY - 12,
                         name: STATE_NAMES[abbrev] ?? abbrev,
+                        abbrev,
                         value: val ?? 0,
                       });
                     }
@@ -562,6 +588,7 @@ export function ChoroplethMap({
                         x: e.clientX,
                         y: e.clientY - 12,
                         name: STATE_NAMES[abbrev] ?? abbrev,
+                        abbrev,
                         value: val ?? 0,
                       });
                     }
@@ -577,6 +604,7 @@ export function ChoroplethMap({
                           x: e.clientX,
                           y: e.clientY - 12,
                           name: STATE_NAMES[abbrev] ?? abbrev,
+                          abbrev,
                           value: val ?? 0,
                         });
                       }

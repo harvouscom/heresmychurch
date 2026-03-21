@@ -190,12 +190,12 @@
   }
 
   ::selection {
-    background-color: #7c3aed;
+    background-color: #1e1040;
     color: #ffffff;
   }
 
   ::-moz-selection {
-    background-color: #7c3aed;
+    background-color: #1e1040;
     color: #ffffff;
   }
 }

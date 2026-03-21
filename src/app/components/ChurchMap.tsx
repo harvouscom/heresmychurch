@@ -1133,7 +1133,7 @@ function HeaderPill({
       {/* Main row — toggles summary */}
       <div
         onClick={onToggle}
-        className="flex items-center justify-center gap-3 px-5 py-2.5 w-full min-w-0"
+        className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-5 py-2.5 w-full min-w-0"
       >
         <ChurchIcon size={18} className="text-purple-300 flex-shrink-0" />
         {focusedState ? (

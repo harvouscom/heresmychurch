@@ -11,6 +11,7 @@ import {
   Lightbulb,
   Trophy,
   Heart,
+  TrendingUp,
   ChevronUp,
   X,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import {
   type SectionId,
   type IconName,
 } from "./useReportScrollspy";
+import { CloseButton } from "../ui/close-button";
 
 const ICON_MAP: Record<IconName, React.ComponentType<{ className?: string }>> = {
   MapPin,
@@ -31,6 +33,7 @@ const ICON_MAP: Record<IconName, React.ComponentType<{ className?: string }>> = 
   Lightbulb,
   Trophy,
   Heart,
+  TrendingUp,
 };
 
 interface ReportTOCProps {
@@ -73,14 +76,13 @@ export function ReportTOC({ activeSection, scrollProgress, onNavigate }: ReportT
               <span className="text-xs font-semibold uppercase tracking-wider text-stone-400">
                 Contents
               </span>
-              <button
+              <CloseButton
                 onClick={() => setIsOpen(false)}
-                className="p-1 rounded-md hover:bg-stone-100 transition-colors"
-              >
-                <X className="h-3.5 w-3.5 text-stone-400" />
-              </button>
+                size="sm"
+                className="hover:bg-stone-100 active:bg-stone-200 [&>svg]:text-stone-400"
+              />
             </div>
-            <div className="py-1.5">
+            <div className="[&>*]:border-0">
               {REPORT_SECTIONS.map((section) => {
                 const isActive = section.id === activeSection;
                 const Icon = ICON_MAP[section.icon];

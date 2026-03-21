@@ -3,21 +3,27 @@ import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { useParams, Link } from "react-router";
 import { fetchCommunityStats, fetchReport, searchChurches } from "../api";
 import type { SeasonalReport, SeasonalReportChanges, SeasonalReportCommunity } from "../church-data";
-import { useReportScrollspy } from "./useReportScrollspy";
+import { useReportScrollspy, REPORT_SECTIONS, type IconName } from "./useReportScrollspy";
 import { ReportTOC } from "./ReportTOC";
 import { ReportSectionVisibleContext } from "./report-section-visible-context";
 import {
   StatCard,
   HorizontalBarChart,
-  TreemapChart,
   ChoroplethMap,
 } from "./charts";
 import { Button } from "../ui/button";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "../ui/accordion";
 import { StateFlag } from "../StateFlag";
 import { spotlightMapHref } from "../url-utils";
 import {
   Building2,
   MapPinned,
+  MapPin,
   Church,
   Map,
   SearchCheck,
@@ -29,10 +35,45 @@ import {
   Minus,
   ShieldCheck,
   ExternalLink,
+  PenLine,
+  Sparkles,
+  Ratio,
+  Link2,
+  Phone,
+  Clock,
+  GitBranch,
+  Tags,
+  Footprints,
+  CalendarCheck,
+  Languages,
+  TrendingUp,
+  Lightbulb,
+  Trophy,
+  Scale,
+  Heart,
 } from "lucide-react";
 import logoImg from "../../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 
 type LucideIcon = React.ComponentType<{ className?: string }>;
+
+const SECTION_ICON_MAP: Record<IconName, LucideIcon> = {
+  Globe,
+  TrendingUp,
+  SearchCheck,
+  MapPin,
+  Church,
+  Languages,
+  Sparkles,
+  Lightbulb,
+  Trophy,
+  Scale,
+  Heart,
+};
+
+function sectionIconFor(id: string): LucideIcon | null {
+  const entry = REPORT_SECTIONS.find((s) => s.id === id);
+  return entry ? SECTION_ICON_MAP[entry.icon] ?? null : null;
+}
 
 type SpotlightRow = SeasonalReport["spotlights"]["largest"][number];
 
@@ -54,10 +95,10 @@ function ChurchSpotlightMapButton({ c }: { c: SpotlightRow }) {
         const norm = (s: string) => s.trim().toLowerCase();
         const wantN = norm(c.name);
         const wantC = c.city ? norm(c.city) : "";
+        // Prefer exact name+city match; otherwise exact name only. Never guess with first result.
         const exact =
           results.find((r) => norm(r.name) === wantN && (!wantC || norm(r.city || "") === wantC)) ||
-          results.find((r) => norm(r.name) === wantN) ||
-          results[0];
+          results.find((r) => norm(r.name) === wantN);
         if (exact?.id) {
           const h = spotlightMapHref({
             id: exact.id,
@@ -84,7 +125,7 @@ function ChurchSpotlightMapButton({ c }: { c: SpotlightRow }) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-purple-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-purple-700"
+      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-purple-700 px-2.5 py-1 text-[11px] font-semibold text-white shadow-[0_2px_6px_rgba(88,28,135,0.4)] transition-colors hover:bg-purple-800 hover:shadow-[0_3px_8px_rgba(88,28,135,0.5)]"
     >
       {isChurchDeepLink ? "View church" : "View on map"}
       <ExternalLink className="h-3 w-3 opacity-90" strokeWidth={2.5} aria-hidden />
@@ -102,8 +143,8 @@ function useSectionCopy(r: SeasonalReport) {
     bigPicture: {
       title: "The Big Picture",
       description: isLaunch
-        ? "Here's My Church launched with an ambitious goal: build the most accurate church directory in America. Here's where we stand."
-        : `How the map has grown through ${seasonLabel} ${r.year}. Here's the latest snapshot.`,
+        ? `Here's where we stand as of ${date}.`
+        : `How the map has grown through ${seasonLabel} ${r.year}. Here's where we stand as of ${date}.`,
     },
     dataQuality: {
       title: "The Data Quality Challenge",
@@ -171,8 +212,6 @@ function Section({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    // Positive rootMargin expands the viewport for intersection — sections animate in
-    // while still below the fold (earlier, smoother stagger as you scroll).
     const obs = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -193,10 +232,12 @@ function Section({
     <section
       ref={ref}
       id={id}
-      className="scroll-mt-12 mb-8 sm:mb-10 rounded-2xl bg-white p-6 sm:p-10 shadow-sm"
+      className="scroll-mt-12 mb-8 sm:mb-10 rounded-none bg-white p-6 sm:p-10 shadow-[0_1px_4px_rgba(0,0,0,0.06),0_4px_16px_rgba(0,0,0,0.04)]"
       style={{
         opacity: visible ? 1 : 0,
-        transform: visible ? "translateY(0)" : "translateY(12px)",
+        transform: visible
+          ? "rotate(-0.3deg)"
+          : "translateY(16px) rotate(0deg)",
         transition: reducedMotion
           ? "opacity 0.2s ease-out, transform 0.2s ease-out"
           : "opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1), transform 0.48s cubic-bezier(0.22, 1, 0.36, 1)",
@@ -211,14 +252,23 @@ function Section({
 function SectionHeading({
   title,
   description,
+  icon: Icon,
 }: {
   title: string;
   description: string;
+  icon?: LucideIcon | null;
 }) {
   return (
-    <div className="mb-10">
-      <h2 className="text-xl font-semibold text-stone-900 sm:text-2xl tracking-tight">{title}</h2>
-      <p className="mt-3 text-lg text-stone-500 leading-relaxed">
+    <div className="mb-6">
+      <div className="flex items-center gap-2.5">
+        {Icon && (
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-100/60">
+            <Icon className="h-4 w-4 text-purple-700" />
+          </div>
+        )}
+        <h2 className="text-xl font-semibold text-stone-900 sm:text-2xl tracking-tight">{title}</h2>
+      </div>
+      <p className="text-pretty mt-2 text-sm text-stone-500 leading-relaxed sm:text-base">
         {description}
       </p>
     </div>
@@ -241,9 +291,9 @@ function Delta({ value, label, suffix = "" }: { value: number; label: string; su
 // ── Changes summary card (only shown for non-launch reports) ──
 function ChangeSummary({ changes, previousSlug }: { changes: SeasonalReportChanges; previousSlug: string }) {
   return (
-    <div className="mb-8 rounded-2xl bg-white p-6 sm:p-10 shadow-sm">
+    <div className="mb-8 rounded-2xl bg-white p-6 sm:p-10">
       <h2 className="text-xl font-semibold text-stone-900 sm:text-2xl tracking-tight">What Changed</h2>
-      <p className="mt-2 text-sm text-stone-500">Since the{" "}
+      <p className="text-pretty mt-2 text-sm text-stone-500">Since the{" "}
         <Link to={`/report/${previousSlug}`} className="text-purple-600 hover:text-purple-800 underline underline-offset-2">
           previous report
         </Link>
@@ -278,20 +328,122 @@ function ChangeSummary({ changes, previousSlug }: { changes: SeasonalReportChang
   );
 }
 
+function TrendingSection({ changes }: { changes?: SeasonalReportChanges }) {
+  const growing = changes?.fastestGrowingStates ?? [];
+  const movers = changes?.dataQualityMovers ?? [];
+  const gainers = changes?.denominationShifts?.gainers ?? [];
+  const losers = changes?.denominationShifts?.losers ?? [];
+  const hasContent = growing.length > 0 || movers.length > 0 || gainers.length > 0 || losers.length > 0;
+
+  return (
+    <Section id="trending">
+      <SectionHeading
+        title="Trending"
+        description="How things moved since the previous report: state growth, denomination share shifts, and quality improvements."
+        icon={sectionIconFor("trending")}
+      />
+
+      <div className="space-y-4">
+        {!hasContent && (
+          <div className="rounded-xl bg-stone-50 px-5 py-4 ring-1 ring-stone-100">
+            <h3 className="mb-2 text-lg font-semibold text-stone-900">What to expect</h3>
+            <p className="text-pretty text-sm leading-relaxed text-stone-700/80">
+              {!changes
+                ? "Trend comparisons appear once a previous report exists. Future reports will show state growth, denomination share shifts, and data quality movers."
+                : "As new seasonal reports are generated, this section will highlight where church counts are growing fastest, which denominations are gaining or losing share, and which states are improving data quality the most."}
+            </p>
+          </div>
+        )}
+        {growing.length > 0 && (
+          <div className="rounded-xl bg-stone-50 px-5 py-4 ring-1 ring-stone-100">
+            <h3 className="mb-3 text-lg font-semibold text-stone-900">Fastest-Growing States</h3>
+            <div className="space-y-2.5">
+              {growing.map((s, i) => (
+                <div key={s.abbrev} className="flex items-center justify-between gap-3 text-sm">
+                  <div className="min-w-0 text-stone-700">
+                    <span className="mr-2 text-stone-400 tabular-nums">{i + 1}.</span>
+                    <span className="font-medium text-stone-900">{s.name}</span>
+                  </div>
+                  <div className="shrink-0">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-semibold text-green-700">
+                      +{s.delta.toLocaleString()} churches
+                    </span>
+                    <span className="ml-2 text-xs text-stone-500 tabular-nums">(+{s.pctChange.toFixed(1)}%)</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {(gainers.length > 0 || losers.length > 0) && (
+          <div className="rounded-xl bg-stone-50 px-5 py-4 ring-1 ring-stone-100">
+            <h3 className="mb-3 text-lg font-semibold text-stone-900">Denomination Share Shifts</h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <h4 className="mb-2 text-sm font-semibold text-green-700">Gainers</h4>
+                <div className="space-y-2">
+                  {gainers.map((d) => (
+                    <div key={d.name} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="truncate text-stone-800">{d.name}</span>
+                      <span className="shrink-0 tabular-nums font-semibold text-green-700">+{d.shareDelta.toFixed(1)} pp</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="mb-2 text-sm font-semibold text-red-700">Losers</h4>
+                <div className="space-y-2">
+                  {losers.map((d) => (
+                    <div key={d.name} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="truncate text-stone-800">{d.name}</span>
+                      <span className="shrink-0 tabular-nums font-semibold text-red-700">{d.shareDelta.toFixed(1)} pp</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {movers.length > 0 && (
+          <div className="rounded-xl bg-stone-50 px-5 py-4 ring-1 ring-stone-100">
+            <h3 className="mb-3 text-lg font-semibold text-stone-900">Data Quality Movers</h3>
+            <div className="space-y-2.5">
+              {movers.map((s, i) => (
+                <div key={s.abbrev} className="flex items-center justify-between gap-3 text-sm">
+                  <div className="min-w-0 text-stone-700">
+                    <span className="mr-2 text-stone-400 tabular-nums">{i + 1}.</span>
+                    <span className="font-medium text-stone-900">{s.name}</span>
+                    <span className="ml-2 text-xs text-stone-500">({s.currentPct.toFixed(1)}% still needs review)</span>
+                  </div>
+                  <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-semibold text-green-700">
+                    +{s.improvement.toFixed(1)} pp improved
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Section>
+  );
+}
+
 // ── Insight card (textbook-style callout with eyebrow) ──
 const INSIGHT_COLORS = {
-  purple: { bg: "bg-purple-50", border: "border-purple-100", eyebrow: "text-purple-400" },
-  pink: { bg: "bg-pink-50", border: "border-pink-100", eyebrow: "text-pink-400" },
+  purple: { bg: "bg-purple-50", eyebrow: "text-purple-400" },
+  pink: { bg: "bg-pink-50", eyebrow: "text-pink-400" },
 } as const;
 
 function Insight({ children, eyebrow = "Key Finding", color = "purple" }: { children: React.ReactNode; eyebrow?: string; color?: keyof typeof INSIGHT_COLORS }) {
   const c = INSIGHT_COLORS[color];
   return (
-    <div className={`my-8 rounded-xl ${c.bg} border ${c.border} px-5 py-4`}>
+    <div className={`my-8 rounded-xl ${c.bg} px-5 py-4`}>
       <span className={`text-[11px] font-bold uppercase tracking-widest ${c.eyebrow}`}>
         {eyebrow}
       </span>
-      <p className="mt-1.5 text-sm sm:text-base text-stone-700/70 leading-relaxed">
+      <p className="text-pretty mt-1.5 text-sm sm:text-base text-stone-700/70 leading-relaxed">
         {children}
       </p>
     </div>
@@ -308,7 +460,7 @@ function StateDataQualityTable({
   return (
     <div className="mt-10">
       <h3 className="mb-2 text-lg font-semibold text-stone-900">States needing the most review</h3>
-      <p className="mb-4 text-sm text-stone-700/70">
+      <p className="text-pretty mb-4 text-sm text-stone-700/70">
         Share of listings missing two or more core fields (address, service times, denomination). Sorted with highest gap first — a roadmap for contributors.
       </p>
       <div className="max-h-[min(420px,55vh)] overflow-auto rounded-xl border border-stone-200/60">
@@ -345,48 +497,77 @@ function StateDataQualityTable({
   );
 }
 
-function DominantByStateTable({
+function DenominationBreakdownByStateTable({
+  breakdownByState,
   dominantByState,
 }: {
+  breakdownByState?: SeasonalReport["denominations"]["byStateBreakdown"];
   dominantByState: SeasonalReport["denominations"]["dominantByState"];
 }) {
-  const entries = Object.entries(dominantByState).sort((a, b) => a[0].localeCompare(b[0]));
+  const rows = Object.keys(dominantByState)
+    .sort((a, b) => a.localeCompare(b))
+    .map((abbrev) => {
+      const fallback = dominantByState[abbrev];
+      const b = breakdownByState?.[abbrev];
+      const dominant = b?.top?.length
+        ? b.top[0]
+        : { denomination: fallback.denomination, count: fallback.count, pct: fallback.pct };
+      return {
+        abbrev,
+        dominant: dominant ?? null,
+        least: b?.least ?? null,
+      };
+    });
+  const entries = rows;
   if (!entries.length) return null;
   return (
     <div className="mt-10">
-      <h3 className="mb-2 text-lg font-semibold text-stone-900">Dominant denomination by state</h3>
-      <p className="mb-4 text-sm text-stone-700/70">
-        Broad categories (same grouping as national totals). Useful for seeing regional tradition at a glance.
+      <h3 className="mb-2 text-lg font-semibold text-stone-900">Denomination breakdown by state</h3>
+      <p className="text-pretty mb-4 text-sm text-stone-700/70">
+        Hover or tap a state to see most/least dominant denomination shares.
       </p>
-      <div className="max-h-[min(420px,55vh)] overflow-auto rounded-xl border border-stone-200/60">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 z-10 border-b border-stone-200/60 bg-stone-50">
-            <tr>
-              <th className="px-4 py-2.5 text-left font-semibold text-stone-700/80">State</th>
-              <th className="px-4 py-2.5 text-left font-semibold text-stone-700/80">Top category</th>
-              <th className="px-4 py-2.5 text-right font-semibold text-stone-700/80">Count</th>
-              <th className="px-4 py-2.5 text-right font-semibold text-stone-700/80">% of state</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map(([abbrev, d], i) => (
-              <tr
-                key={abbrev}
-                className={`border-b border-stone-100 ${i % 2 === 1 ? "bg-stone-50/50" : ""}`}
-              >
-                <td className="px-4 py-2">
-                  <span className="inline-flex items-center gap-2 font-medium text-stone-800">
-                    <StateFlag abbrev={abbrev} size="sm" />
-                    {abbrev}
-                  </span>
-                </td>
-                <td className="px-4 py-2 text-stone-700">{d.denomination}</td>
-                <td className="px-4 py-2 text-right tabular-nums text-stone-600">{d.count.toLocaleString()}</td>
-                <td className="px-4 py-2 text-right tabular-nums text-purple-800">{d.pct}%</td>
-              </tr>
+      <ChoroplethMap
+        values={Object.fromEntries(entries.map((r) => [r.abbrev, r.dominant?.pct ?? 0]))}
+        label="% dominant"
+        details={Object.fromEntries(
+          entries.map((r) => [
+            r.abbrev,
+            {
+              primaryLabel: "Most",
+              primaryValue: r.dominant
+                ? `${r.dominant.denomination} ${r.dominant.pct}% (${r.dominant.count.toLocaleString()})`
+                : "--",
+              secondaryLabel: "Least",
+              secondaryValue: r.least
+                ? `${r.least.denomination} ${r.least.pct}% (${r.least.count.toLocaleString()})`
+                : "--",
+            },
+          ])
+        )}
+      />
+      <div className="mt-4">
+        <h4 className="text-sm font-semibold text-stone-900">States with the widest spread</h4>
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {entries
+            .filter((r) => r.dominant && r.least)
+            .map((r) => ({
+              ...r,
+              spread: (r.dominant?.pct ?? 0) - (r.least?.pct ?? 0),
+            }))
+            .sort((a, b) => b.spread - a.spread)
+            .slice(0, 6)
+            .map((r) => (
+              <div key={r.abbrev} className="rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-700">
+                <span className="inline-flex items-center gap-1.5 font-medium text-stone-900">
+                  <StateFlag abbrev={r.abbrev} size="sm" />
+                  {r.abbrev}
+                </span>
+                <span className="ml-2 text-stone-600">
+                  {r.dominant?.denomination} {r.dominant?.pct}% vs {r.least?.denomination} {r.least?.pct}%
+                </span>
+              </div>
             ))}
-          </tbody>
-        </table>
+        </div>
       </div>
     </div>
   );
@@ -422,14 +603,17 @@ function Takeaways({ report: r }: { report: SeasonalReport }) {
     });
   }
 
-  // 3. Dominant denomination surprise
-  if (dn.national[0] && dn.national[1]) {
-    const gap = dn.national[0].pct - dn.national[1].pct;
-    items.push({
-      icon: Church,
-      title: `${dn.national[0].name} leads by ${gap.toFixed(1)} points`,
-      body: `At ${dn.national[0].pct}% of all mapped churches, ${dn.national[0].name} is the most common denomination nationally. ${dn.national[1].name} follows at ${dn.national[1].pct}%. The top two alone account for ${(dn.national[0].pct + dn.national[1].pct).toFixed(1)}% of all churches.`,
-    });
+  // 3. Dominant denomination surprise (skip "Unspecified")
+  {
+    const topDenoms = dn.national.filter((d) => d.name !== "Unspecified");
+    if (topDenoms[0] && topDenoms[1]) {
+      const gap = topDenoms[0].pct - topDenoms[1].pct;
+      items.push({
+        icon: Church,
+        title: `${topDenoms[0].name} leads by ${gap.toFixed(1)} points`,
+        body: `At ${topDenoms[0].pct}% of all mapped churches, ${topDenoms[0].name} is the most common denomination nationally. ${topDenoms[1].name} follows at ${topDenoms[1].pct}%. The top two alone account for ${(topDenoms[0].pct + topDenoms[1].pct).toFixed(1)}% of all churches.`,
+      });
+    }
   }
 
   // 4. Regional concentration
@@ -526,19 +710,6 @@ function Takeaways({ report: r }: { report: SeasonalReport }) {
     });
   }
 
-  // 12. Population represented
-  if (bp.populationRepresented != null && bp.populationRepresented > 0) {
-    const m =
-      bp.populationRepresentedMillions != null
-        ? bp.populationRepresentedMillions
-        : Math.round((bp.populationRepresented / 1e6) * 10) / 10;
-    items.push({
-      icon: MapPinned,
-      title: `~${m} million people in covered states`,
-      body: `Census population in states where we list at least one church — the community footprint of what we're trying to keep accurate for seekers and leaders.`,
-    });
-  }
-
   return (
     <>
       {items.map((item, i) => {
@@ -547,9 +718,9 @@ function Takeaways({ report: r }: { report: SeasonalReport }) {
         return (
           <div
             key={i}
-            className={`group flex gap-4 rounded-xl p-5 transition-colors duration-200 ${
+            className={`group flex flex-col gap-3 rounded-xl p-5 transition-colors duration-200 sm:flex-row sm:gap-4 ${
               community
-                ? "border border-green-100/90 bg-green-50/50 hover:bg-green-50/80"
+                ? "bg-green-50/50 hover:bg-green-50/80"
                 : "bg-stone-50 hover:bg-purple-50/50"
             }`}
           >
@@ -568,7 +739,7 @@ function Takeaways({ report: r }: { report: SeasonalReport }) {
                 }`}
               />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <h4
                 className={`font-semibold transition-colors duration-200 ${
                   community
@@ -579,7 +750,7 @@ function Takeaways({ report: r }: { report: SeasonalReport }) {
                 {item.title}
               </h4>
               <p
-                className={`mt-1 text-sm leading-relaxed ${
+                className={`text-pretty mt-1 text-sm leading-relaxed ${
                   community ? "text-stone-700/85" : "text-stone-700/70"
                 }`}
               >
@@ -628,17 +799,17 @@ function DirectoryComparison({ report }: { report: SeasonalReport }) {
     <div>
       {/* Hero differentiators */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mb-10">
-        <div className="rounded-xl bg-purple-50 border border-purple-100 p-5 text-center">
+        <div className="rounded-xl bg-purple-50 p-5 text-center ring-1 ring-purple-100">
           <div className="text-2xl font-bold text-purple-700">{bp.totalChurches.toLocaleString()}</div>
           <div className="text-sm text-stone-600 mt-1">Churches mapped</div>
           <div className="text-xs text-stone-400 mt-0.5">with denomination, attendance & more</div>
         </div>
-        <div className="rounded-xl bg-purple-50 border border-purple-100 p-5 text-center">
+        <div className="rounded-xl bg-purple-50 p-5 text-center ring-1 ring-purple-100">
           <div className="text-2xl font-bold text-purple-700">{dv.languageDistribution.length}</div>
           <div className="text-sm text-stone-600 mt-1">Languages tracked</div>
           <div className="text-xs text-stone-400 mt-0.5">no other directory tracks this</div>
         </div>
-        <div className="rounded-xl bg-pink-50 border border-pink-100 p-5 text-center">
+        <div className="rounded-xl bg-pink-50 p-5 text-center ring-1 ring-pink-100">
           <div className="text-2xl font-bold text-pink-600">{(100 - dq.pctNeedsReview).toFixed(2)}%</div>
           <div className="text-sm text-stone-600 mt-1">Currently Verified</div>
           <div className="text-xs text-stone-400 mt-0.5">targeting 99% accuracy</div>
@@ -686,7 +857,7 @@ function DirectoryComparison({ report }: { report: SeasonalReport }) {
           </tbody>
         </table>
       </div>
-      <div className="mt-4 flex items-center gap-4 text-xs text-stone-400">
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-stone-400">
         <span className="inline-flex items-center gap-1"><Check className="h-3 w-3 text-green-600" /> Full support</span>
         <span className="inline-flex items-center gap-1"><Minus className="h-3 w-3 text-amber-500" /> Partial / inconsistent</span>
         <span className="inline-flex items-center gap-1"><X className="h-3 w-3 text-stone-300" /> Not available</span>
@@ -829,7 +1000,7 @@ export function SeasonalReportPage() {
       <div className="flex min-h-screen items-center justify-center bg-background px-6">
         <div className="text-center">
           <h1 className="text-2xl font-semibold text-stone-900">Report not found</h1>
-          <p className="mt-2 text-stone-700/70">{error || "This report doesn't exist yet."}</p>
+          <p className="text-pretty mt-2 text-stone-700/70">{error || "This report doesn't exist yet."}</p>
           <Link to="/" className="mt-4 inline-block text-purple-600 hover:text-stone-700 font-medium">
             Back to map
           </Link>
@@ -848,7 +1019,6 @@ export function SeasonalReportPage() {
       churchesImproved: 0,
       correctionsPerThousandChurches: 0,
     };
-  const hasPopulationStat = bp.populationRepresented != null && bp.populationRepresented > 0;
   const copy = useSectionCopy(r);
 
   return (
@@ -874,8 +1044,8 @@ export function SeasonalReportPage() {
           <h1 className="mt-8 text-2xl font-bold text-stone-900 sm:text-4xl tracking-tight leading-[1.1]">
             The State of Churches in America
           </h1>
-          <p className="mt-2 text-base sm:text-lg text-stone-500 leading-relaxed">
-            Here's My Church (HMC) is building the most accurate directory of Christian churches in America — crowd-sourced and 100% free. This is where we stand as of {new Date(r.generatedAt).toLocaleDateString("en-US", { month: "long", year: "numeric" })}.
+          <p className="text-pretty mt-2 text-base sm:text-lg text-stone-500 leading-relaxed">
+            Here's My Church (HMC) is building the most accurate directory of Christian churches in America — crowd-sourced and 100% free.
           </p>
         </div>
       </header>
@@ -893,14 +1063,9 @@ export function SeasonalReportPage() {
               <SectionHeading
                 title={copy.bigPicture.title}
                 description={copy.bigPicture.description}
+                icon={sectionIconFor("big-picture")}
               />
-              <div
-                className={
-                  hasPopulationStat
-                    ? "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:[&>*]:min-w-0"
-                    : "grid grid-cols-1 gap-4 sm:grid-cols-2 sm:[&>*]:min-w-0"
-                }
-              >
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:[&>*]:min-w-0">
                 <StatCard
                   value={bp.totalChurches}
                   label="Churches Mapped"
@@ -912,63 +1077,38 @@ export function SeasonalReportPage() {
                   sub={`${dq.totalNeedsReview.toLocaleString()} churches`}
                   color="pink"
                 />
-                {hasPopulationStat && (
-                  <StatCard
-                    value={
-                      bp.populationRepresentedMillions != null
-                        ? `${bp.populationRepresentedMillions}M`
-                        : `${(bp.populationRepresented! / 1e6).toFixed(1)}M`
-                    }
-                    label="Population represented"
-                    sub="Census population in states we cover"
-                  />
-                )}
               </div>
 
-              {/* Community involvement — dedicated green band (matches map “Community Impact” convention) */}
-              <div className="mt-8 rounded-2xl border border-green-200/90 bg-gradient-to-br from-green-50 via-emerald-50/80 to-green-50/90 p-6 shadow-[0_1px_0_0_rgba(22,101,52,0.06)] sm:p-8">
-                <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-100/90 text-green-700 ring-1 ring-green-200/80">
-                      <ShieldCheck className="h-5 w-5" aria-hidden />
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-green-700/90">
-                        Community involvement
-                      </p>
-                      <h3 className="mt-1 text-lg font-semibold text-green-950 sm:text-xl">
-                        Crowd-sourced contributions
-                      </h3>
-                      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-green-900/75">
-                        Anyone can suggest edits on the map — no account required. These numbers are how much the
-                        community has improved the directory so far.
-                      </p>
-                    </div>
-                  </div>
+              {/* Community involvement */}
+              <div className="mt-6 rounded-2xl bg-gradient-to-br from-green-50 via-emerald-50/80 to-green-50/90 px-5 py-5 ring-1 ring-green-100/80 sm:px-6">
+                <div className="flex items-center gap-2.5">
+                  <ShieldCheck className="h-5 w-5 text-green-600" aria-hidden />
+                  <h3 className="text-lg font-semibold text-green-950">Community Involvement</h3>
                 </div>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <StatCard
-                    value={communityStats.totalCorrections}
-                    label="Community corrections"
-                    sub="All-time merged submissions"
-                    color="green"
-                  />
-                  <StatCard
-                    value={communityStats.churchesImproved}
-                    label="Churches improved"
-                    sub="Listings updated via community"
-                    color="green"
-                  />
-                  <StatCard
-                    value={communityStats.correctionsPerThousandChurches}
-                    label="Corrections per 1k churches"
-                    sub="National community activity"
-                    color="green"
-                  />
+                <p className="text-pretty mt-1.5 text-sm leading-relaxed text-green-900/70">
+                  Every listing can be improved by anyone — no account needed. Pastors, members, and neighbors submit corrections
+                  that are reviewed and merged to keep the directory accurate and up to date.
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-base">
+                  <span className="inline-flex items-center gap-1.5 text-green-900/80">
+                    <PenLine className="h-4 w-4 text-green-600/70" aria-hidden />
+                    <span className="tabular-nums text-lg font-bold text-green-700">{communityStats.totalCorrections.toLocaleString()}</span>
+                    {" "}corrections merged
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-green-900/80">
+                    <Sparkles className="h-4 w-4 text-green-600/70" aria-hidden />
+                    <span className="tabular-nums text-lg font-bold text-green-700">{communityStats.churchesImproved.toLocaleString()}</span>
+                    {" "}churches improved
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-green-900/80">
+                    <Ratio className="h-4 w-4 text-green-600/70" aria-hidden />
+                    <span className="tabular-nums text-lg font-bold text-green-700">{communityStats.correctionsPerThousandChurches}</span>
+                    {" "}per 1k churches
+                  </span>
                 </div>
                 {!communityRaw && communitySupplementDone && communitySupplement == null && (
-                  <p className="mt-4 text-center text-xs text-green-800/70">
-                    Couldn&apos;t load community totals. Try refreshing — they come from the same live data as the map.
+                  <p className="text-pretty mt-1.5 text-xs text-green-800/50">
+                    Couldn&apos;t load community totals — try refreshing.
                   </p>
                 )}
               </div>
@@ -1022,17 +1162,6 @@ export function SeasonalReportPage() {
                     {bp.statesPopulated >= 50
                       ? `We've mapped churches across all 50 states — ${bp.totalChurches.toLocaleString()} and counting, representing ~${((bp.totalChurches / 380000) * 100).toFixed(0)}% of an estimated 380,000 US churches.`
                       : `We've covered ${bp.statesPopulated} of 50 states so far, with ${bp.totalChurches.toLocaleString()} churches mapped.`}
-                    {bp.populationRepresented != null && bp.populationRepresented > 0 && (
-                      <>
-                        {" "}
-                        Our mapped states include roughly{" "}
-                        {(bp.populationRepresentedMillions != null
-                          ? bp.populationRepresentedMillions
-                          : Math.round((bp.populationRepresented / 1e6) * 10) / 10
-                        ).toLocaleString()}
-                        million people (U.S. Census).
-                      </>
-                    )}
                     {` `}{topState.name} leads in data completeness at {topState.pctComplete}% verified.
                   </Insight>
                 ) : (
@@ -1045,11 +1174,14 @@ export function SeasonalReportPage() {
               })()}
             </Section>
 
+            <TrendingSection changes={r.changes} />
+
             {/* ── Data Quality ── */}
             <Section id="data-quality">
               <SectionHeading
                 title={copy.dataQuality.title}
                 description={copy.dataQuality.description}
+                icon={sectionIconFor("data-quality")}
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <StatCard
@@ -1068,32 +1200,35 @@ export function SeasonalReportPage() {
               {(dq.pctWithWebsite != null ||
                 dq.pctWithContactPath != null ||
                 dq.pctWithServiceTimes != null) && (
-                <div className="mt-8">
+                <div className="mt-6">
                   <h3 className="mb-3 text-lg font-semibold text-stone-900">Discoverability</h3>
-                  <p className="mb-4 text-sm text-stone-700/70">
-                    How easy is it for someone to find service times, contact info, or a website? These percentages help leaders and seekers see where listings are strongest.
-                  </p>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    {dq.pctWithWebsite != null && (
-                      <StatCard value={`${dq.pctWithWebsite}%`} label="Has website" sub="Looks like a real URL" />
-                    )}
-                    {dq.pctWithPhone != null && (
-                      <StatCard value={`${dq.pctWithPhone}%`} label="Has phone" sub="10+ digit number" />
-                    )}
-                    {dq.pctWithContactPath != null && (
-                      <StatCard
-                        value={`${dq.pctWithContactPath}%`}
-                        label="Website or phone"
-                        sub="At least one contact path"
-                      />
-                    )}
-                    {dq.pctWithServiceTimes != null && (
-                      <StatCard
-                        value={`${dq.pctWithServiceTimes}%`}
-                        label="Has service times"
-                        sub="Non-placeholder schedule text"
-                      />
-                    )}
+                  <div className="rounded-xl bg-stone-50 px-5 py-4 ring-1 ring-stone-100">
+                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-base">
+                      {dq.pctWithWebsite != null && (
+                        <span className="inline-flex items-center gap-1.5 text-stone-700">
+                          <Link2 className="h-4 w-4 text-purple-500/70" aria-hidden />
+                          <span className="tabular-nums text-lg font-bold text-purple-700">{dq.pctWithWebsite}%</span> website
+                        </span>
+                      )}
+                      {dq.pctWithPhone != null && (
+                        <span className="inline-flex items-center gap-1.5 text-stone-700">
+                          <Phone className="h-4 w-4 text-purple-500/70" aria-hidden />
+                          <span className="tabular-nums text-lg font-bold text-purple-700">{dq.pctWithPhone}%</span> phone
+                        </span>
+                      )}
+                      {dq.pctWithContactPath != null && (
+                        <span className="inline-flex items-center gap-1.5 text-stone-700">
+                          <SearchCheck className="h-4 w-4 text-purple-500/70" aria-hidden />
+                          <span className="tabular-nums text-lg font-bold text-purple-700">{dq.pctWithContactPath}%</span> website or phone
+                        </span>
+                      )}
+                      {dq.pctWithServiceTimes != null && (
+                        <span className="inline-flex items-center gap-1.5 text-stone-700">
+                          <Clock className="h-4 w-4 text-purple-500/70" aria-hidden />
+                          <span className="tabular-nums text-lg font-bold text-purple-700">{dq.pctWithServiceTimes}%</span> service times
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1101,60 +1236,57 @@ export function SeasonalReportPage() {
                 dq.pctWithMinistries != null ||
                 dq.pctWithBuildingFootprint != null ||
                 dq.pctVerifiedLast90Days != null) && (
-                <div className="mt-8">
-                  <h3 className="mb-3 text-lg font-semibold text-stone-900">Listings detail & confidence</h3>
-                  <p className="mb-4 text-sm text-stone-700/70">
-                    Campuses, ministries, building footprints, and recent verification — context for how rich each listing is and how we estimate attendance.
-                  </p>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    {dq.campusCount != null && (
-                      <StatCard
-                        value={dq.campusCount}
-                        label="Campus / multi-site listings"
-                        sub={dq.campusPct != null ? `${dq.campusPct}% of churches` : undefined}
-                      />
-                    )}
-                    {dq.pctWithMinistries != null && (
-                      <StatCard
-                        value={`${dq.pctWithMinistries}%`}
-                        label="Lists ministries"
-                        sub="At least one ministry tag"
-                      />
-                    )}
-                    {dq.pctWithBuildingFootprint != null && (
-                      <StatCard
-                        value={`${dq.pctWithBuildingFootprint}%`}
-                        label="Building footprint (OSM)"
-                        sub="Stronger attendance estimates"
-                      />
-                    )}
-                    {dq.pctVerifiedLast90Days != null && dq.pctVerifiedLast365Days != null && (
-                      <StatCard
-                        value={`${dq.pctVerifiedLast365Days}%`}
-                        label="Touched in last year"
-                        sub={`${dq.pctVerifiedLast90Days}% in last 90 days (lastVerified)`}
-                      />
-                    )}
+                <div className="mt-6">
+                  <h3 className="mb-3 text-lg font-semibold text-stone-900">Detail & confidence</h3>
+                  <div className="rounded-xl bg-stone-50 px-5 py-4 ring-1 ring-stone-100">
+                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-base">
+                      {dq.campusCount != null && (
+                        <span className="inline-flex items-center gap-1.5 text-stone-700">
+                          <GitBranch className="h-4 w-4 text-purple-500/70" aria-hidden />
+                          <span className="tabular-nums text-lg font-bold text-purple-700">{dq.campusCount.toLocaleString()}</span> campuses
+                          {dq.campusPct != null && <span className="text-stone-500 text-sm ml-1">({dq.campusPct}%)</span>}
+                        </span>
+                      )}
+                      {dq.pctWithMinistries != null && (
+                        <span className="inline-flex items-center gap-1.5 text-stone-700">
+                          <Tags className="h-4 w-4 text-purple-500/70" aria-hidden />
+                          <span className="tabular-nums text-lg font-bold text-purple-700">{dq.pctWithMinistries}%</span> ministries
+                        </span>
+                      )}
+                      {dq.pctWithBuildingFootprint != null && (
+                        <span className="inline-flex items-center gap-1.5 text-stone-700">
+                          <Footprints className="h-4 w-4 text-purple-500/70" aria-hidden />
+                          <span className="tabular-nums text-lg font-bold text-purple-700">{dq.pctWithBuildingFootprint}%</span> building footprint
+                        </span>
+                      )}
+                      {dq.pctVerifiedLast90Days != null && dq.pctVerifiedLast365Days != null && (
+                        <span className="inline-flex items-center gap-1.5 text-stone-700">
+                          <CalendarCheck className="h-4 w-4 text-purple-500/70" aria-hidden />
+                          <span className="tabular-nums text-lg font-bold text-purple-700">{dq.pctVerifiedLast365Days}%</span> touched this year
+                          <span className="text-stone-500 text-sm ml-1">({dq.pctVerifiedLast90Days}% last 90d)</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
               {(dq.attendanceMedian != null && dq.attendanceMedian > 0) && (
                 <div className="mt-8">
                   <h3 className="mb-3 text-lg font-semibold text-stone-900">Estimated attendance distribution</h3>
-                  <p className="mb-4 text-sm text-stone-700/70">
+                  <p className="text-pretty mb-4 text-sm text-stone-700/70">
                     Among churches with an estimate &gt; 0 — median and quartiles (not the megachurch-only spotlight list).
                   </p>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <StatCard
                       value={dq.attendanceP25 ?? "—"}
                       label="25th percentile"
-                      sub="Smaller half"
+                      sub="Lower quartile"
                     />
                     <StatCard value={dq.attendanceMedian} label="Median estimate" sub="Typical congregation size" />
                     <StatCard
                       value={dq.attendanceP75 ?? "—"}
                       label="75th percentile"
-                      sub="Larger half"
+                      sub="Upper quartile"
                     />
                   </div>
                 </div>
@@ -1196,6 +1328,7 @@ export function SeasonalReportPage() {
               <SectionHeading
                 title={copy.geoDensity.title}
                 description={copy.geoDensity.description}
+                icon={sectionIconFor("geo-density")}
               />
               <ChoroplethMap
                 values={Object.fromEntries(
@@ -1240,55 +1373,70 @@ export function SeasonalReportPage() {
               <SectionHeading
                 title={copy.denominations.title}
                 description={copy.denominations.description}
+                icon={sectionIconFor("denominations")}
               />
-              <TreemapChart data={dn.national.filter((d) => d.name !== "Unspecified")} />
-              <div className="mt-6">
-                <HorizontalBarChart
-                  data={dn.national.filter((d) => d.name !== "Unspecified").slice(0, 12).map((d) => ({
-                    label: d.name,
-                    value: d.count,
-                    pct: d.pct,
-                  }))}
-                  showPct
-                  color="#7C3AED"
-                />
-              </div>
+              <HorizontalBarChart
+                data={dn.national.filter((d) => d.name !== "Unspecified").slice(0, 12).map((d) => ({
+                  label: d.name,
+                  value: d.count,
+                  pct: d.pct,
+                }))}
+                showPct
+                color="#7C3AED"
+              />
 
               {dn.regionalPatterns.length > 0 && (
                 <div className="mt-8">
-                  <h3 className="mb-4 text-lg font-semibold text-stone-900">
-                    Regional Patterns
+                  <h3 className="mb-2 text-lg font-semibold text-stone-900">
+                    Where denominations run deep
                   </h3>
-                  <p className="mb-4 text-sm text-stone-700/70">
-                    Some denominations are much more concentrated in certain states than their national average.
+                  <p className="text-pretty mb-5 text-sm text-stone-700/70">
+                    Some traditions are everywhere, but others are especially strong in a handful of states.
+                    Here are the biggest standouts.
                   </p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {dn.regionalPatterns.slice(0, 6).map((p) => (
-                      <div
-                        key={p.denomination}
-                        className="rounded-xl bg-stone-50 p-4"
-                      >
-                        <div className="font-semibold text-stone-800">{p.denomination}</div>
-                        <div className="mt-1 text-sm text-stone-700/70">
-                          {p.nationalPct}% nationally, up to {p.regionalPct}% in{" "}
-                          <span className="inline-flex items-center gap-1 flex-wrap">
-                            {p.strongStates.slice(0, 4).map((st, j) => (
-                              <span key={st} className="inline-flex items-center gap-0.5">
-                                <StateFlag abbrev={st} size="sm" />
-                                {st}{j < Math.min(p.strongStates.length, 4) - 1 ? "," : ""}
+                  <div className="space-y-3">
+                    {dn.regionalPatterns.slice(0, 8).map((p) => {
+                      const multiplier = p.nationalPct > 0 ? Math.round(p.regionalPct / p.nationalPct) : 0;
+                      return (
+                        <div key={p.denomination} className="rounded-xl bg-stone-50 px-4 py-3.5 ring-1 ring-stone-100">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-sm font-semibold text-stone-900">{p.denomination}</span>
+                            {multiplier >= 2 && (
+                              <span className="shrink-0 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-700">
+                                {multiplier}x the national rate
                               </span>
-                            ))}
-                          </span>
+                            )}
+                          </div>
+                          <p className="text-pretty mt-1 text-sm text-stone-600">
+                            About <span className="font-semibold text-stone-800">{p.nationalPct}%</span> of churches nationally, but{" "}
+                            <span className="font-semibold text-purple-700">{p.regionalPct}%</span> in{" "}
+                            {p.strongStates.slice(0, 3).map((st, j, arr) => (
+                              <React.Fragment key={st}>
+                                <span className="font-medium text-stone-800">{st}</span>
+                                {j < arr.length - 2 ? ", " : j === arr.length - 2 ? " and " : ""}
+                              </React.Fragment>
+                            ))}.
+                          </p>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
-              <DominantByStateTable dominantByState={dn.dominantByState} />
+              <DenominationBreakdownByStateTable
+                breakdownByState={dn.byStateBreakdown}
+                dominantByState={dn.dominantByState}
+              />
               <Insight eyebrow="Key Finding">
-                {dn.national[0] && `${dn.national[0].name} churches are the most common at ${dn.national[0].pct}% of all mapped churches.`}
-                {dn.national[1] && ` ${dn.national[1].name} follows at ${dn.national[1].pct}%.`}
+                {(() => {
+                  const top = dn.national.filter((d) => d.name !== "Unspecified");
+                  return (
+                    <>
+                      {top[0] && `${top[0].name} churches are the most common at ${top[0].pct}% of all mapped churches.`}
+                      {top[1] && ` ${top[1].name} follows at ${top[1].pct}%.`}
+                    </>
+                  );
+                })()}
               </Insight>
             </Section>
 
@@ -1297,6 +1445,7 @@ export function SeasonalReportPage() {
               <SectionHeading
                 title={copy.diversity.title}
                 description={copy.diversity.description}
+                icon={sectionIconFor("diversity")}
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <StatCard
@@ -1350,6 +1499,7 @@ export function SeasonalReportPage() {
               <SectionHeading
                 title={copy.spotlights.title}
                 description={copy.spotlights.description}
+                icon={sectionIconFor("spotlights")}
               />
               <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <StatCard
@@ -1378,27 +1528,27 @@ export function SeasonalReportPage() {
                   <h3 className="mb-4 text-lg font-semibold text-stone-900">
                     Largest by Attendance
                   </h3>
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {sp.largest.slice(0, 5).map((c, i) => (
                       <div
                         key={`${c.name}-${c.state}-${i}`}
                         className="flex items-start gap-3 rounded-xl bg-stone-50 p-4"
                       >
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-purple-200/60 text-sm font-bold text-purple-950">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-purple-100/60 text-sm font-bold text-purple-700">
                           {i + 1}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="font-semibold text-stone-800 truncate min-w-0">{c.name}</div>
-                            <ChurchSpotlightMapButton c={c} />
-                          </div>
-                          <div className="text-sm text-stone-500 inline-flex items-center gap-1.5 mt-0.5">
+                          <div className="font-semibold text-stone-800 truncate min-w-0 break-words">{c.name}</div>
+                          <div className="text-sm text-stone-500 inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-0.5">
                             <StateFlag abbrev={c.state} size="sm" />
                             {c.city}, {c.state} &middot; {c.attendance.toLocaleString()} est.
                           </div>
                           {c.denomination && (
                             <div className="text-xs text-stone-400">{c.denomination}</div>
                           )}
+                          <div className="mt-2">
+                            <ChurchSpotlightMapButton c={c} />
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1408,23 +1558,23 @@ export function SeasonalReportPage() {
                   <h3 className="mb-4 text-lg font-semibold text-stone-900">
                     Smallest Congregations
                   </h3>
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {sp.smallest.slice(0, 5).map((c, i) => (
                       <div
                         key={`${c.name}-${c.state}-${i}`}
                         className="flex items-start gap-3 rounded-xl bg-stone-50 p-4"
                       >
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-purple-200/60 text-sm font-bold text-purple-950">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-purple-100/60 text-sm font-bold text-purple-700">
                           {i + 1}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="font-semibold text-stone-800 truncate min-w-0">{c.name}</div>
-                            <ChurchSpotlightMapButton c={c} />
-                          </div>
-                          <div className="text-sm text-stone-500 inline-flex items-center gap-1.5 mt-0.5">
+                          <div className="font-semibold text-stone-800 truncate min-w-0 break-words">{c.name}</div>
+                          <div className="text-sm text-stone-500 inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-0.5">
                             <StateFlag abbrev={c.state} size="sm" />
                             {c.city}, {c.state} &middot; {c.attendance.toLocaleString()} est.
+                          </div>
+                          <div className="mt-2">
+                            <ChurchSpotlightMapButton c={c} />
                           </div>
                         </div>
                       </div>
@@ -1439,6 +1589,7 @@ export function SeasonalReportPage() {
               <SectionHeading
                 title={copy.takeaways.title}
                 description={copy.takeaways.description}
+                icon={sectionIconFor("takeaways")}
               />
               <div className="space-y-4">
                 <Takeaways report={r} />
@@ -1450,6 +1601,7 @@ export function SeasonalReportPage() {
               <SectionHeading
                 title={copy.stateRankings.title}
                 description={copy.stateRankings.description}
+                icon={sectionIconFor("state-rankings")}
               />
               <StateRankingsTable data={sr} />
             </Section>
@@ -1459,11 +1611,12 @@ export function SeasonalReportPage() {
               <SectionHeading
                 title={copy.howWeCompare.title}
                 description={copy.howWeCompare.description}
+                icon={sectionIconFor("how-we-compare")}
               />
               <DirectoryComparison report={r} />
               <div className="mt-10 rounded-xl bg-stone-50 p-5">
                 <h3 className="text-sm font-semibold text-stone-700 mb-2">Our Data Sources</h3>
-                <p className="text-sm text-stone-500 leading-relaxed">
+                <p className="text-pretty text-sm text-stone-500 leading-relaxed">
                   Church data sourced from OpenStreetMap and enriched with ARDA attendance benchmarks,
                   Census population data, and community corrections. Attendance estimates derived from
                   building geometry and denomination-specific benchmarks.
@@ -1476,37 +1629,38 @@ export function SeasonalReportPage() {
               <SectionHeading
                 title="How You Can Contribute"
                 description="HMC is a community project — every correction, addition, and review makes the data better for everyone."
+                icon={sectionIconFor("contribute")}
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div className="rounded-xl bg-stone-50 p-5">
+                <div className="rounded-xl bg-stone-50 p-5 ring-1 ring-stone-100">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100/60 mb-3">
                     <SearchCheck className="h-[18px] w-[18px] text-purple-700" />
                   </div>
                   <h4 className="font-semibold text-stone-900">Review a church</h4>
-                  <p className="mt-1 text-sm text-stone-500 leading-relaxed">
+                  <p className="text-pretty mt-1 text-sm text-stone-500 leading-relaxed">
                     Find your church on the map and verify the info is correct — address, service times, denomination.
                   </p>
                 </div>
-                <div className="rounded-xl bg-stone-50 p-5">
+                <div className="rounded-xl bg-stone-50 p-5 ring-1 ring-stone-100">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100/60 mb-3">
                     <Church className="h-[18px] w-[18px] text-purple-700" />
                   </div>
                   <h4 className="font-semibold text-stone-900">Add a missing church</h4>
-                  <p className="mt-1 text-sm text-stone-500 leading-relaxed">
+                  <p className="text-pretty mt-1 text-sm text-stone-500 leading-relaxed">
                     Know a church that isn't on the map? Add it in under a minute — no account needed.
                   </p>
                 </div>
-                <div className="rounded-xl bg-stone-50 p-5">
+                <div className="rounded-xl bg-stone-50 p-5 ring-1 ring-stone-100">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100/60 mb-3">
                     <Globe className="h-[18px] w-[18px] text-purple-700" />
                   </div>
                   <h4 className="font-semibold text-stone-900">Share the project</h4>
-                  <p className="mt-1 text-sm text-stone-500 leading-relaxed">
+                  <p className="text-pretty mt-1 text-sm text-stone-500 leading-relaxed">
                     The more people who know about HMC, the faster we reach 99% accuracy. Share with your church community.
                   </p>
                 </div>
               </div>
-              <div className="mt-8 flex gap-3">
+              <div className="mt-8 flex flex-wrap gap-3">
                 <Button asChild>
                   <Link to="/">Explore the Map</Link>
                 </Button>
@@ -1521,12 +1675,137 @@ export function SeasonalReportPage() {
               </div>
             </Section>
 
-            {/* ── Footer ── */}
-            <footer className="pb-24">
-              <p className="mt-4 text-xs text-stone-400 text-center">
-                Generated {new Date(r.generatedAt).toLocaleDateString()} · heresmychurch.com
+            {/* ── FAQ ── */}
+            <div className="mt-10 mb-6">
+              <h2 className="text-lg font-semibold text-stone-900 sm:text-xl tracking-tight">
+                Common Questions
+              </h2>
+              <p className="text-pretty mt-1.5 text-sm text-stone-500">
+                Everything you need to know about Here&apos;s My Church.
               </p>
-            </footer>
+              <Accordion type="single" collapsible className="mt-4 border-stone-200/60">
+                <AccordionItem value="this-project" className="border-stone-200/60">
+                  <AccordionTrigger className="text-stone-800 hover:text-stone-900 hover:no-underline text-left">
+                    What is this project?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-stone-600 text-sm leading-relaxed">
+                    Here&apos;s My Church (HMC) is a free, open-source, interactive map that helps people
+                    discover Christian churches across all 50 U.S. states. No account needed. You can
+                    browse by state, search and filter by denomination, size, or language, view church
+                    details, and contribute by adding churches or suggesting edits.
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="goals" className="border-stone-200/60">
+                  <AccordionTrigger className="text-stone-800 hover:text-stone-900 hover:no-underline text-left">
+                    What are the goals?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-stone-600 text-sm leading-relaxed">
+                    Make it easy for anyone to find a church near them, with data that&apos;s actually
+                    up to date. We want every church to be included and kept accurate through community
+                    contributions.
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="add-church" className="border-stone-200/60">
+                  <AccordionTrigger className="text-stone-800 hover:text-stone-900 hover:no-underline text-left">
+                    How do I add a church?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-stone-600 text-sm leading-relaxed space-y-2">
+                    <p>
+                      Click any state on the map to zoom in, then use the &quot;Add a Church&quot; button
+                      in the state summary panel. You can also start a search and you&apos;ll see the
+                      option to add your church. No account is required.
+                    </p>
+                    <p className="text-stone-400 text-xs italic">
+                      We encourage you to find your church first; if it&apos;s already listed, please
+                      update the information instead of adding a duplicate.
+                    </p>
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="suggest-edit" className="border-stone-200/60">
+                  <AccordionTrigger className="text-stone-800 hover:text-stone-900 hover:no-underline text-left">
+                    How do I suggest an edit?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-stone-600 text-sm leading-relaxed">
+                    Click a church on the map to open its detail panel, then use the &quot;Update Church
+                    Info&quot; button to suggest corrections or add missing details. Submissions are
+                    reviewed and merged to keep the map accurate.
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="data-source" className="border-stone-200/60">
+                  <AccordionTrigger className="text-stone-800 hover:text-stone-900 hover:no-underline text-left">
+                    Where does the data come from?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-stone-600 text-sm leading-relaxed">
+                    We use OpenStreetMap church data with denomination matching, ARDA reference data,
+                    U.S. Census population data, and community-submitted churches and corrections.
+                    Attendance estimates are primarily based on building footprint area, with denomination
+                    averages and regional scaling used where building data isn&apos;t available.
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="how-we-compare" className="border-stone-200/60">
+                  <AccordionTrigger className="text-stone-800 hover:text-stone-900 hover:no-underline text-left">
+                    How does HMC compare to other directories?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-stone-600 text-sm leading-relaxed space-y-2">
+                    <p>
+                      Most church directories are either a category inside a general-purpose map or paid
+                      listing sites. HMC is different:
+                    </p>
+                    <ul className="space-y-1 text-sm">
+                      <li className="flex items-start gap-2"><span className="text-purple-400 mt-0.5 shrink-0">•</span><span><span className="font-medium text-stone-800">Attendance estimates</span> — no other directory provides this</span></li>
+                      <li className="flex items-start gap-2"><span className="text-purple-400 mt-0.5 shrink-0">•</span><span><span className="font-medium text-stone-800">Language tracking</span> — see which churches offer multilingual services</span></li>
+                      <li className="flex items-start gap-2"><span className="text-purple-400 mt-0.5 shrink-0">•</span><span><span className="font-medium text-stone-800">Community corrections</span> — a purpose-built flow for fixing church data</span></li>
+                      <li className="flex items-start gap-2"><span className="text-purple-400 mt-0.5 shrink-0">•</span><span><span className="font-medium text-stone-800">100% free</span> — no paid listings, no premium tiers, no sponsored results</span></li>
+                      <li className="flex items-start gap-2"><span className="text-purple-400 mt-0.5 shrink-0">•</span><span><span className="font-medium text-stone-800">Open source</span> — built on OpenStreetMap, fully transparent</span></li>
+                    </ul>
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="data-updates" className="border-stone-200/60">
+                  <AccordionTrigger className="text-stone-800 hover:text-stone-900 hover:no-underline text-left">
+                    How often is the data updated?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-stone-600 text-sm leading-relaxed">
+                    Reference data is refreshed on a regular schedule. Community submissions and
+                    corrections are reviewed and merged continuously.
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="open-source" className="border-stone-200/60">
+                  <AccordionTrigger className="text-stone-800 hover:text-stone-900 hover:no-underline text-left">
+                    Is this open source?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-stone-600 text-sm leading-relaxed">
+                    Yes. The project is open source under the{" "}
+                    <a
+                      href="https://creativecommons.org/licenses/by-nc/4.0/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline text-purple-600 hover:text-purple-800 transition-colors"
+                    >
+                      CC BY-NC 4.0
+                    </a>{" "}
+                    license. You can find the code on{" "}
+                    <a
+                      href="https://github.com/harvouscom/Heresmychurch"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline text-purple-600 hover:text-purple-800 transition-colors"
+                    >
+                      GitHub
+                    </a>.
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="expand-us" className="border-stone-200/60 border-b-0">
+                  <AccordionTrigger className="text-stone-800 hover:text-stone-900 hover:no-underline text-left">
+                    Are there plans to expand beyond the U.S.?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-stone-600 text-sm leading-relaxed">
+                    Yes. We plan to expand to other countries in the future.
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </div>
+
+            <div className="pb-24" />
           </main>
         </div>
 
@@ -1577,9 +1856,9 @@ function StateRankingsTable({
   ];
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-stone-200/60">
+    <div className="max-h-[min(420px,55vh)] overflow-auto rounded-xl border border-stone-200/60">
       <table className="w-full text-sm">
-        <thead>
+        <thead className="sticky top-0 z-10">
           <tr className="border-b border-stone-200/60 bg-stone-50">
             {columns.map((col) => (
               <th

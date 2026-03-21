@@ -6,8 +6,9 @@ import { ChurchMap } from "./ChurchMap";
  * Thin routing wrapper — parses URL params and passes navigation
  * callbacks down to ChurchMap. This keeps all React Router logic
  * in one place so ChurchMap doesn't need to import router hooks directly.
- * URLs: /state/MO (state), /state/MO/county/06037 (county), /state/MO/16692500 (shortId),
- * /state/MO/church/legacy-id (legacy), /state/MO/county/06037/16692500 (church in county).
+ * Canonical: /state/MO/16692500 (church), /state/MO/16692500?county=06037 (church + county).
+ * Legacy: /state/MO (state), /state/MO/county/06037 (county view), /state/MO/church/legacy-id,
+ * /state/MO/county/06037/16692500 (church in county path — still supported).
  */
 export function ChurchMapPage() {
   const location = useLocation();
@@ -39,7 +40,11 @@ export function ChurchMapPage() {
     const searchParams = new URLSearchParams(location.search);
     const openReviewModalFromQuery = searchParams.get("review") === "true";
     const moderatorKey = searchParams.get("key") || null;
-    return { stateAbbrev, routeCountyFips, churchShortId, legacyChurchId, openReviewModalFromQuery, moderatorKey };
+    // County from path (legacy) or from query param (canonical)
+    const queryCounty = searchParams.get("county");
+    const routeCountyFipsResolved =
+      routeCountyFips ?? (queryCounty && /^\d{5}$/.test(queryCounty) ? queryCounty : null);
+    return { stateAbbrev, routeCountyFips: routeCountyFipsResolved, churchShortId, legacyChurchId, openReviewModalFromQuery, moderatorKey };
   }, [location.pathname, location.search]);
 
   // location.search already includes the leading "?" (or is ""), so append as-is to avoid "??"
@@ -57,10 +62,11 @@ export function ChurchMapPage() {
   );
   const navigateToChurch = useCallback(
     (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean; countyFips?: string }) => {
-      const path = options?.countyFips
-        ? `/state/${stateAbbrev}/county/${options.countyFips}/${churchShortId}`
-        : `/state/${stateAbbrev}/${churchShortId}`;
-      nav(path + location.search, options ?? {});
+      const path = `/state/${stateAbbrev}/${churchShortId}`;
+      const params = new URLSearchParams(location.search);
+      if (options?.countyFips) params.set("county", options.countyFips);
+      const search = params.toString() ? `?${params.toString()}` : "";
+      nav(path + search, options ?? {});
     },
     [nav, location.search]
   );
@@ -74,7 +80,12 @@ export function ChurchMapPage() {
     [nav, location.search]
   );
   const navigateToStateOnly = useCallback(
-    (stateAbbrev: string) => nav(`/state/${stateAbbrev}${location.search}`),
+    (stateAbbrev: string) => {
+      const params = new URLSearchParams(location.search);
+      params.delete("county");
+      const search = params.toString() ? `?${params.toString()}` : "";
+      nav(`/state/${stateAbbrev}${search}`);
+    },
     [nav, location.search]
   );
 

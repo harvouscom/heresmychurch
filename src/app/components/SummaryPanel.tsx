@@ -171,7 +171,7 @@ export function SummaryPanel({
       {/* Action buttons — pinned bottom (state view only) */}
       {summaryStats.type === "state" && (
         <div className="px-5 pb-4 pt-3 border-t border-white/8 flex-shrink-0 space-y-2">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={onShowListModal}
               className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-purple-300 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/20 transition-colors cursor-pointer"
@@ -440,7 +440,7 @@ function NationalSummaryContent({
           <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-medium block mb-2">
             Most Churches
           </span>
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             {stats.topStates.map((st) => (
                 <button
                   key={st.abbrev}

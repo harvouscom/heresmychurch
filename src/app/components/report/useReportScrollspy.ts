@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 
 export const REPORT_SECTIONS = [
   { id: "big-picture", label: "The Big Picture", icon: "Globe" },
+  { id: "trending", label: "Trending", icon: "TrendingUp" },
   { id: "data-quality", label: "Data Quality", icon: "SearchCheck" },
   { id: "geo-density", label: "Where Are the Churches?", icon: "MapPin" },
   { id: "denominations", label: "Denomination Landscape", icon: "Church" },
