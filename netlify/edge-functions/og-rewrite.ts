@@ -43,6 +43,19 @@ const STATE_NAMES: Record<string, string> = {
 
 const SITE_URL = "https://heresmychurch.com";
 const DEFAULT_DESCRIPTION = "An interactive map of Christian churches in the U.S. Find your church or find a new church. 100% free and crowd-sourced.";
+const REPORT_SECTION_LABELS: Record<string, string> = {
+  "big-picture": "The Big Picture",
+  trending: "Trending",
+  "data-quality": "Data Quality",
+  "geo-density": "Where Are the Churches?",
+  denominations: "Denomination Landscape",
+  diversity: "Language & Diversity",
+  spotlights: "Church Spotlights",
+  takeaways: "Takeaways",
+  "state-rankings": "State Rankings",
+  "how-we-compare": "How We Compare",
+  contribute: "Contribute",
+};
 
 function isBot(userAgent: string): boolean {
   const ua = userAgent || "";
@@ -86,21 +99,27 @@ export default async function handler(request: Request, context: Context): Promi
   // Report pages — e.g. /report/launch-2026
   if (pathParts[0] === "report" && pathParts[1]) {
     const slug = pathParts[1];
+    const sectionId = pathParts[2];
+    const sectionLabel = sectionId ? REPORT_SECTION_LABELS[sectionId] : undefined;
     try {
       const res = await fetch(`${apiBase}/report/${slug}`, {
         headers: { Authorization: `Bearer ${anonKey}`, "Content-Type": "application/json" },
       });
       if (res.ok) {
         const data = await res.json();
-        const title = `${data.title ?? "Report"} — Here's My Church`;
-        const desc = data.subtitle
-          ? `${data.subtitle} — ${(data.bigPicture?.totalChurches ?? 0).toLocaleString()} churches across ${data.bigPicture?.statesPopulated ?? 0} states.`
-          : DEFAULT_DESCRIPTION;
+        const title = sectionLabel
+          ? `${sectionLabel} — ${data.title ?? "Report"} — Here's My Church`
+          : `${data.title ?? "Report"} — Here's My Church`;
+        const desc = sectionLabel
+          ? `${sectionLabel} — excerpt from ${data.title ?? "Report"}.`
+          : data.subtitle
+            ? `${data.subtitle} — ${(data.bigPicture?.totalChurches ?? 0).toLocaleString()} churches across ${data.bigPicture?.statesPopulated ?? 0} states.`
+            : DEFAULT_DESCRIPTION;
         meta = {
           title,
           description: desc,
-          image: `${SITE_URL}/og-image.png`,
-          url: `${SITE_URL}/report/${slug}`,
+          image: `${SITE_URL}/og-report.png`,
+          url: sectionLabel ? `${SITE_URL}/report/${slug}/${sectionId}` : `${SITE_URL}/report/${slug}`,
         };
       }
     } catch (_) {

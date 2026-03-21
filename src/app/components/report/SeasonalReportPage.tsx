@@ -75,10 +75,22 @@ function sectionIconFor(id: string): LucideIcon | null {
   return entry ? SECTION_ICON_MAP[entry.icon] ?? null : null;
 }
 
+const ALWAYS_SHAREABLE_SECTION_IDS = new Set([
+  "data-quality",
+  "geo-density",
+  "denominations",
+  "diversity",
+  "spotlights",
+  "takeaways",
+  "state-rankings",
+  "how-we-compare",
+  "contribute",
+]);
+
 type SpotlightRow = SeasonalReport["spotlights"]["largest"][number];
 
 /**
- * Purple button — opens this church on the map in a new tab.
+ * Opens this church on the map in a new tab.
  * Cached reports often omit `id`; we resolve via search API, then fall back to the state map.
  */
 function ChurchSpotlightMapButton({ c }: { c: SpotlightRow }) {
@@ -125,10 +137,10 @@ function ChurchSpotlightMapButton({ c }: { c: SpotlightRow }) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-purple-700 px-2.5 py-1 text-[11px] font-semibold text-white shadow-[0_2px_6px_rgba(88,28,135,0.4)] transition-colors hover:bg-purple-800 hover:shadow-[0_3px_8px_rgba(88,28,135,0.5)]"
+      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-stone-200/70 px-2 py-1 text-xs font-medium text-stone-400 transition-colors hover:border-purple-200 hover:text-purple-600"
     >
       {isChurchDeepLink ? "View church" : "View on map"}
-      <ExternalLink className="h-3 w-3 opacity-90" strokeWidth={2.5} aria-hidden />
+      <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
     </a>
   );
 }
@@ -253,20 +265,25 @@ function SectionHeading({
   title,
   description,
   icon: Icon,
+  action,
 }: {
   title: string;
   description: string;
   icon?: LucideIcon | null;
+  action?: React.ReactNode;
 }) {
   return (
     <div className="mb-6">
-      <div className="flex items-center gap-2.5">
-        {Icon && (
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-100/60">
-            <Icon className="h-4 w-4 text-purple-700" />
-          </div>
-        )}
-        <h2 className="text-xl font-semibold text-stone-900 sm:text-2xl tracking-tight">{title}</h2>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          {Icon && (
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-100/60">
+              <Icon className="h-4 w-4 text-purple-700" />
+            </div>
+          )}
+          <h2 className="text-xl font-semibold text-stone-900 sm:text-2xl tracking-tight">{title}</h2>
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
       </div>
       <p className="text-pretty mt-2 text-sm text-stone-500 leading-relaxed sm:text-base">
         {description}
@@ -328,12 +345,27 @@ function ChangeSummary({ changes, previousSlug }: { changes: SeasonalReportChang
   );
 }
 
-function TrendingSection({ changes }: { changes?: SeasonalReportChanges }) {
+function hasTrendingContent(changes?: SeasonalReportChanges): boolean {
+  if (!changes) return false;
+  const growing = changes.fastestGrowingStates ?? [];
+  const movers = changes.dataQualityMovers ?? [];
+  const gainers = changes.denominationShifts?.gainers ?? [];
+  const losers = changes.denominationShifts?.losers ?? [];
+  return growing.length > 0 || movers.length > 0 || gainers.length > 0 || losers.length > 0;
+}
+
+function TrendingSection({
+  changes,
+  shareAction,
+}: {
+  changes?: SeasonalReportChanges;
+  shareAction?: React.ReactNode;
+}) {
   const growing = changes?.fastestGrowingStates ?? [];
   const movers = changes?.dataQualityMovers ?? [];
   const gainers = changes?.denominationShifts?.gainers ?? [];
   const losers = changes?.denominationShifts?.losers ?? [];
-  const hasContent = growing.length > 0 || movers.length > 0 || gainers.length > 0 || losers.length > 0;
+  const hasContent = hasTrendingContent(changes);
 
   return (
     <Section id="trending">
@@ -341,8 +373,8 @@ function TrendingSection({ changes }: { changes?: SeasonalReportChanges }) {
         title="Trending"
         description="How things moved since the previous report: state growth, denomination share shifts, and quality improvements."
         icon={sectionIconFor("trending")}
+        action={hasContent ? shareAction : undefined}
       />
-
       <div className="space-y-4">
         {!hasContent && (
           <div className="rounded-xl bg-stone-50 px-5 py-4 ring-1 ring-stone-100">
@@ -868,13 +900,14 @@ function DirectoryComparison({ report }: { report: SeasonalReport }) {
 
 // ── Main page ──
 export function SeasonalReportPage() {
-  const { slug } = useParams<{ slug: string }>();
+  const { slug, sectionId } = useParams<{ slug: string; sectionId?: string }>();
   const [report, setReport] = useState<SeasonalReport | null>(null);
   /** When the stored report predates `community`, fetch live totals from the API */
   const [communitySupplement, setCommunitySupplement] = useState<SeasonalReportCommunity | null>(null);
   const [communitySupplementDone, setCommunitySupplementDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [copiedSectionId, setCopiedSectionId] = useState<string | null>(null);
   const { activeSection, scrollProgress, scrollTo } = useReportScrollspy(
     report?.generatedAt
   );
@@ -960,7 +993,7 @@ export function SeasonalReportPage() {
 
   // Scroll to hash fragment after report loads (e.g. /report/launch-2026#how-we-compare)
   useEffect(() => {
-    if (!report || loading) return;
+    if (!report || loading || sectionId) return;
     const hash = window.location.hash.replace("#", "");
     if (!hash) return;
     // Small delay to let sections render
@@ -969,30 +1002,39 @@ export function SeasonalReportPage() {
       if (el) el.scrollIntoView({ behavior: "smooth" });
     }, 300);
     return () => clearTimeout(timer);
-  }, [report, loading]);
+  }, [report, loading, sectionId]);
 
-  // SEO: update document title and meta tags for the report
+  // SEO: update document title and meta tags for the report / excerpt
   useEffect(() => {
     if (!report) return;
+    const section = sectionId ? REPORT_SECTIONS.find((s) => s.id === sectionId) : null;
+    const title = section
+      ? `${section.label} — ${report.title} — Here's My Church`
+      : `${report.title} — Here's My Church`;
     const prevTitle = document.title;
-    document.title = `${report.title} — Here's My Church`;
+    document.title = title;
 
     const setMeta = (selector: string, attr: string, content: string) => {
       const el = document.querySelector(selector);
       if (el) el.setAttribute(attr, content);
     };
-    const description = `${report.subtitle} — ${report.bigPicture.totalChurches.toLocaleString()} churches across ${report.bigPicture.statesPopulated} states.`;
+    const description = section
+      ? `${section.label} — excerpt from ${report.title}.`
+      : `${report.subtitle} — ${report.bigPicture.totalChurches.toLocaleString()} churches across ${report.bigPicture.statesPopulated} states.`;
+    const imageUrl = `${window.location.origin}/og-report.png`;
 
     setMeta('meta[name="description"]', "content", description);
-    setMeta('meta[property="og:title"]', "content", `${report.title} — Here's My Church`);
+    setMeta('meta[property="og:title"]', "content", title);
     setMeta('meta[property="og:description"]', "content", description);
     setMeta('meta[property="og:url"]', "content", window.location.href);
-    setMeta('meta[name="twitter:title"]', "content", `${report.title} — Here's My Church`);
+    setMeta('meta[property="og:image"]', "content", imageUrl);
+    setMeta('meta[name="twitter:title"]', "content", title);
     setMeta('meta[name="twitter:description"]', "content", description);
     setMeta('meta[name="twitter:url"]', "content", window.location.href);
+    setMeta('meta[name="twitter:image"]', "content", imageUrl);
 
     return () => { document.title = prevTitle; };
-  }, [report]);
+  }, [report, sectionId]);
 
   if (loading) {
     return (
@@ -1031,6 +1073,63 @@ export function SeasonalReportPage() {
       correctionsPerThousandChurches: 0,
     };
   const copy = useSectionCopy(r);
+  const isTrendingShareable = hasTrendingContent(r.changes);
+  const isExcerptMode = Boolean(sectionId);
+  const isShareableSectionId = (id: string) =>
+    ALWAYS_SHAREABLE_SECTION_IDS.has(id) || (id === "trending" && isTrendingShareable);
+  const excerptSectionId = sectionId && isShareableSectionId(sectionId) ? sectionId : null;
+  const sectionLabel = excerptSectionId
+    ? (REPORT_SECTIONS.find((s) => s.id === excerptSectionId)?.label ?? "Report section")
+    : null;
+  const copyExcerptLink = async (id: string) => {
+    if (!slug) return;
+    const url = `${window.location.origin}/report/${encodeURIComponent(slug)}/${id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedSectionId(id);
+      setTimeout(() => setCopiedSectionId((curr) => (curr === id ? null : curr)), 1800);
+    } catch {
+      // Clipboard may be blocked; fail silently.
+    }
+  };
+  const renderShareAction = (id: string) => (
+    <button
+      type="button"
+      onClick={() => { void copyExcerptLink(id); }}
+      className="inline-flex items-center gap-1 rounded-full border border-stone-200/70 px-2 py-1 text-xs font-medium text-stone-400 transition-colors hover:border-purple-200 hover:text-purple-600"
+      aria-label={`Share ${id} section`}
+    >
+      {copiedSectionId === id ? (
+        <>
+          <Check className="h-3.5 w-3.5" />
+          Copied
+        </>
+      ) : (
+        <>
+          <Link2 className="h-3.5 w-3.5" />
+          Share
+        </>
+      )}
+    </button>
+  );
+  const renderSection = (id: string, node: React.ReactNode) => {
+    if (!isExcerptMode) return node;
+    return excerptSectionId === id ? node : null;
+  };
+
+  if (isExcerptMode && !excerptSectionId) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-6">
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold text-stone-900">Section not found</h1>
+          <p className="text-pretty mt-2 text-stone-700/70">This section can't be shared as a standalone excerpt.</p>
+          <Link to={`/report/${r.slug}`} className="mt-4 inline-block text-purple-600 hover:text-stone-700 font-medium">
+            View full report
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background animate-in fade-in duration-500">
@@ -1039,7 +1138,7 @@ export function SeasonalReportPage() {
         <div className="mx-auto max-w-3xl px-6 py-8 sm:py-10">
           <div className="flex items-center justify-between">
             <Link
-              to="/"
+              to={isExcerptMode ? `/report/${r.slug}` : "/"}
               className="inline-flex items-center gap-2 text-sm text-stone-400 hover:text-purple-600 transition-colors"
             >
               <div className="w-6 h-6 rounded overflow-hidden shrink-0">
@@ -1048,16 +1147,27 @@ export function SeasonalReportPage() {
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              heresmychurch.com
+              {isExcerptMode ? "Full report" : "heresmychurch.com"}
             </Link>
             <span className="text-xs text-stone-400">{new Date(r.generatedAt).toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
           </div>
-          <h1 className="mt-8 text-2xl font-bold text-stone-900 sm:text-4xl tracking-tight leading-[1.1]">
-            The State of Churches in America
-          </h1>
-          <p className="text-pretty mt-2 text-base sm:text-lg text-stone-500 leading-relaxed">
-            Here's My Church (HMC) is building the most accurate directory of Christian churches in America — crowd-sourced and 100% free.
-          </p>
+          {!isExcerptMode && (
+            <>
+              <h1 className="mt-8 text-2xl font-bold text-stone-900 sm:text-4xl tracking-tight leading-[1.1]">
+                The State of Churches in America
+              </h1>
+              <p className="text-pretty mt-2 text-base sm:text-lg text-stone-500 leading-relaxed">
+                Here&apos;s My Church (HMC) is building the most accurate directory of Christian churches in America — crowd-sourced and 100% free.
+              </p>
+            </>
+          )}
+          {isExcerptMode && (
+            <div className="mt-8 rounded-xl border border-amber-200/70 bg-amber-100/80 px-4 py-3 sm:px-5">
+              <p className="text-sm font-medium text-amber-900/90">
+                This is an excerpt from the full report: <span className="font-semibold">{r.title}</span>.
+              </p>
+            </div>
+          )}
         </div>
       </header>
 
@@ -1065,12 +1175,12 @@ export function SeasonalReportPage() {
       <div className="mx-auto max-w-3xl px-6 pt-3 sm:pt-4">
         <main>
             {/* ── Changes from previous report (non-launch only) ── */}
-            {r.changes && r.previousSlug && (
+            {!isExcerptMode && r.changes && r.previousSlug && (
               <ChangeSummary changes={r.changes} previousSlug={r.previousSlug} />
             )}
 
             {/* ── Big Picture ── */}
-            <Section id="big-picture">
+            {renderSection("big-picture", <Section id="big-picture">
               <SectionHeading
                 title={copy.bigPicture.title}
                 description={copy.bigPicture.description}
@@ -1183,16 +1293,17 @@ export function SeasonalReportPage() {
                   </Insight>
                 );
               })()}
-            </Section>
+            </Section>)}
 
-            <TrendingSection changes={r.changes} />
+            {renderSection("trending", <TrendingSection changes={r.changes} shareAction={!isExcerptMode ? renderShareAction("trending") : undefined} />)}
 
             {/* ── Data Quality ── */}
-            <Section id="data-quality">
+            {renderSection("data-quality", <Section id="data-quality">
               <SectionHeading
                 title={copy.dataQuality.title}
                 description={copy.dataQuality.description}
                 icon={sectionIconFor("data-quality")}
+                action={!isExcerptMode ? renderShareAction("data-quality") : undefined}
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <StatCard
@@ -1332,14 +1443,15 @@ export function SeasonalReportPage() {
               <Insight eyebrow="The Gap" color="pink">
                 Our data quality goal is ambitious: a complete address, service times, and denomination for every church. Right now {dq.pctNeedsReview}% of churches are missing 2 or more of these — and that's where you come in.
               </Insight>
-            </Section>
+            </Section>)}
 
             {/* ── Geographic Density ── */}
-            <Section id="geo-density">
+            {renderSection("geo-density", <Section id="geo-density">
               <SectionHeading
                 title={copy.geoDensity.title}
                 description={copy.geoDensity.description}
                 icon={sectionIconFor("geo-density")}
+                action={!isExcerptMode ? renderShareAction("geo-density") : undefined}
               />
               <ChoroplethMap
                 values={Object.fromEntries(
@@ -1377,14 +1489,15 @@ export function SeasonalReportPage() {
                 Nationally, there's roughly 1 church for every {gd.national.peoplePer.toLocaleString()} people.
                 {gd.mostChurched[0] && ` ${gd.mostChurched[0].name} leads with ${gd.mostChurched[0].churchesPer10k} churches per 10,000 residents.`}
               </Insight>
-            </Section>
+            </Section>)}
 
             {/* ── Denomination Landscape ── */}
-            <Section id="denominations">
+            {renderSection("denominations", <Section id="denominations">
               <SectionHeading
                 title={copy.denominations.title}
                 description={copy.denominations.description}
                 icon={sectionIconFor("denominations")}
+                action={!isExcerptMode ? renderShareAction("denominations") : undefined}
               />
               <HorizontalBarChart
                 data={dn.national.filter((d) => d.name !== "Unspecified").slice(0, 12).map((d) => ({
@@ -1449,14 +1562,15 @@ export function SeasonalReportPage() {
                   );
                 })()}
               </Insight>
-            </Section>
+            </Section>)}
 
             {/* ── Diversity ── */}
-            <Section id="diversity">
+            {renderSection("diversity", <Section id="diversity">
               <SectionHeading
                 title={copy.diversity.title}
                 description={copy.diversity.description}
                 icon={sectionIconFor("diversity")}
+                action={!isExcerptMode ? renderShareAction("diversity") : undefined}
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <StatCard
@@ -1503,14 +1617,15 @@ export function SeasonalReportPage() {
                 {dv.languageDistribution[0] && `${dv.languageDistribution[0].language} is the most common non-English language, found in ${dv.languageDistribution[0].count.toLocaleString()} churches.`}
                 {dv.topBilingualStates[0] && ` ${dv.topBilingualStates[0].name} leads in language diversity with ${dv.topBilingualStates[0].pct}% of its churches offering multilingual services.`}
               </Insight>
-            </Section>
+            </Section>)}
 
             {/* ── Spotlights ── */}
-            <Section id="spotlights">
+            {renderSection("spotlights", <Section id="spotlights">
               <SectionHeading
                 title={copy.spotlights.title}
                 description={copy.spotlights.description}
                 icon={sectionIconFor("spotlights")}
+                action={!isExcerptMode ? renderShareAction("spotlights") : undefined}
               />
               <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <StatCard
@@ -1593,36 +1708,39 @@ export function SeasonalReportPage() {
                   </div>
                 </div>
               </div>
-            </Section>
+            </Section>)}
 
             {/* ── Takeaways ── */}
-            <Section id="takeaways">
+            {renderSection("takeaways", <Section id="takeaways">
               <SectionHeading
                 title={copy.takeaways.title}
                 description={copy.takeaways.description}
                 icon={sectionIconFor("takeaways")}
+                action={!isExcerptMode ? renderShareAction("takeaways") : undefined}
               />
               <div className="space-y-4">
                 <Takeaways report={r} />
               </div>
-            </Section>
+            </Section>)}
 
             {/* ── State Rankings ── */}
-            <Section id="state-rankings">
+            {renderSection("state-rankings", <Section id="state-rankings">
               <SectionHeading
                 title={copy.stateRankings.title}
                 description={copy.stateRankings.description}
                 icon={sectionIconFor("state-rankings")}
+                action={!isExcerptMode ? renderShareAction("state-rankings") : undefined}
               />
               <StateRankingsTable data={sr} />
-            </Section>
+            </Section>)}
 
             {/* ── How We Compare ── */}
-            <Section id="how-we-compare">
+            {renderSection("how-we-compare", <Section id="how-we-compare">
               <SectionHeading
                 title={copy.howWeCompare.title}
                 description={copy.howWeCompare.description}
                 icon={sectionIconFor("how-we-compare")}
+                action={!isExcerptMode ? renderShareAction("how-we-compare") : undefined}
               />
               <DirectoryComparison report={r} />
               <div className="mt-10 rounded-xl bg-stone-50 p-5">
@@ -1633,14 +1751,15 @@ export function SeasonalReportPage() {
                   building geometry and denomination-specific benchmarks.
                 </p>
               </div>
-            </Section>
+            </Section>)}
 
             {/* ── Contribute ── */}
-            <Section id="contribute">
+            {renderSection("contribute", <Section id="contribute">
               <SectionHeading
                 title="How You Can Contribute"
                 description="HMC is a community project — every correction, addition, and review makes the data better for everyone."
                 icon={sectionIconFor("contribute")}
+                action={!isExcerptMode ? renderShareAction("contribute") : undefined}
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div className="rounded-xl bg-stone-50 p-5 ring-1 ring-stone-100">
@@ -1684,10 +1803,18 @@ export function SeasonalReportPage() {
                   Copy Link
                 </Button>
               </div>
-            </Section>
+            </Section>)}
+
+            {isExcerptMode && excerptSectionId && (
+              <div className="mb-10">
+                <Button asChild className="w-full">
+                  <Link to={`/report/${r.slug}#${excerptSectionId}`}>Read the full report</Link>
+                </Button>
+              </div>
+            )}
 
             {/* ── FAQ ── */}
-            <div className="mt-10 mb-6">
+            {!isExcerptMode && <div className="mt-10 mb-6">
               <h2 className="text-lg font-semibold text-stone-900 sm:text-xl tracking-tight">
                 Common Questions
               </h2>
@@ -1814,18 +1941,18 @@ export function SeasonalReportPage() {
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
-            </div>
+            </div>}
 
             <div className="pb-24" />
           </main>
         </div>
 
       {/* Floating TOC pill — works on all screen sizes */}
-      <ReportTOC
+      {!isExcerptMode && <ReportTOC
         activeSection={activeSection}
         scrollProgress={scrollProgress}
         onNavigate={scrollTo}
-      />
+      />}
     </div>
   );
 }
