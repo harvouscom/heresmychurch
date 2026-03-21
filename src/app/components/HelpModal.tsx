@@ -8,6 +8,10 @@ import {
 } from "./ui/accordion";
 import { CloseButton } from "./ui/close-button";
 import { reportErrorsContact } from "../config/pendingAlerts";
+import {
+  SeasonalReportGenerationFaqBrief,
+  SeasonalReportMethodologyFaqDetails,
+} from "./report/ReportFaqMethodologyContent";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 
 const EMAIL = "hey@heresmychurch.com";
@@ -165,6 +169,35 @@ export function HelpModal({
                 accurate through community contributions.
               </AccordionContent>
             </AccordionItem>
+            <AccordionItem value="data-source" className="border-white/10">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+                Where does the data come from?
+              </AccordionTrigger>
+              <AccordionContent className="text-white/70">
+                We use OpenStreetMap church data with denomination matching, ARDA (Association of
+                Religion Data Archives) reference data, U.S. Census population data,
+                and community-submitted churches and corrections. Attendance estimates
+                are primarily based on building footprint area from OpenStreetMap, with
+                denomination averages, capacity data, and regional population scaling
+                used where building data is not available.
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="how-generated" className="border-white/10">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+                How is this report generated?
+              </AccordionTrigger>
+              <AccordionContent className="text-white/70 text-sm leading-relaxed">
+                <SeasonalReportGenerationFaqBrief variant="help" />
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="methodology-numbers" className="border-white/10">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+                How we calculate and present the numbers
+              </AccordionTrigger>
+              <AccordionContent className="text-white/70 text-sm leading-relaxed">
+                <SeasonalReportMethodologyFaqDetails variant="help" />
+              </AccordionContent>
+            </AccordionItem>
             <AccordionItem value="add-church" className="border-white/10">
               <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
                 How do I add a church?
@@ -189,19 +222,6 @@ export function HelpModal({
                 Click a church on the map to open its detail panel, then use the &quot;Update Church
                 Info&quot; button to suggest corrections or add missing details (address, service
                 times, website, etc.). Submissions are reviewed and merged to keep the map accurate.
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value="data-source" className="border-white/10">
-              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
-                Where does the data come from?
-              </AccordionTrigger>
-              <AccordionContent className="text-white/70">
-                We use OpenStreetMap church data with denomination matching, ARDA (Association of
-                Religion Data Archives) reference data, U.S. Census population data,
-                and community-submitted churches and corrections. Attendance estimates
-                are primarily based on building footprint area from OpenStreetMap, with
-                denomination averages, capacity data, and regional population scaling
-                used where building data is not available.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="how-we-compare" className="border-white/10">

@@ -65,6 +65,7 @@ const REPORT_SECTION_LABELS: Record<string, string> = {
   "how-we-compare": "How We Compare",
   "state-summaries": "State Summaries",
   contribute: "Contribute",
+  "common-questions": "Common Questions",
 };
 
 function isBot(userAgent: string): boolean {

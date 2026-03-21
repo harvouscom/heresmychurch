@@ -5,6 +5,10 @@ import { fetchCommunityStats, fetchReport, fetchStateReport, searchChurches } fr
 import type { SeasonalReport, SeasonalReportChanges, SeasonalReportCommunity } from "../church-data";
 import { useReportScrollspy, REPORT_SECTIONS, type IconName } from "./useReportScrollspy";
 import { ReportTOC } from "./ReportTOC";
+import {
+  SeasonalReportGenerationFaqBrief,
+  SeasonalReportMethodologyFaqDetails,
+} from "./ReportFaqMethodologyContent";
 import { ReportSectionVisibleContext } from "./report-section-visible-context";
 import {
   StatCard,
@@ -53,6 +57,7 @@ import {
   Trophy,
   Scale,
   Heart,
+  CircleHelp,
 } from "lucide-react";
 import logoImg from "../../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 
@@ -71,6 +76,7 @@ const SECTION_ICON_MAP: Record<IconName, LucideIcon> = {
   Scale,
   LayoutGrid,
   Heart,
+  CircleHelp,
 };
 
 function sectionIconFor(id: string): LucideIcon | null {
@@ -89,6 +95,7 @@ const ALWAYS_SHAREABLE_SECTION_IDS = new Set([
   "how-we-compare",
   "state-summaries",
   "contribute",
+  "common-questions",
 ]);
 
 type SpotlightRow = SeasonalReport["spotlights"]["largest"][number];
@@ -2304,12 +2311,12 @@ export function SeasonalReportPage() {
             )}
 
             {/* ── FAQ ── */}
-            {!isExcerptMode && <div className="mt-10 mb-6">
+            {renderSection("common-questions", <div id="common-questions" className="mt-10 mb-6">
               <h2 className="text-lg font-semibold text-stone-900 sm:text-xl tracking-tight">
                 Common Questions
               </h2>
               <p className="text-pretty mt-1.5 text-sm text-stone-500">
-                Everything you need to know about Here&apos;s My Church.
+                About Here&apos;s My Church and how this seasonal content is built from our data.
               </p>
               <Accordion type="single" collapsible className="mt-4 border-stone-200/60">
                 <AccordionItem value="this-project" className="border-stone-200/60">
@@ -2339,6 +2346,33 @@ export function SeasonalReportPage() {
                     contributions.
                   </AccordionContent>
                 </AccordionItem>
+                <AccordionItem value="data-source" className="border-stone-200/60">
+                  <AccordionTrigger className="text-stone-800 hover:text-stone-900 hover:no-underline text-left">
+                    Where does the data come from?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-stone-600 text-sm leading-relaxed">
+                    We use OpenStreetMap church data with denomination matching, ARDA reference data,
+                    U.S. Census population data, and community-submitted churches and corrections.
+                    Attendance estimates are primarily based on building footprint area, with denomination
+                    averages and regional scaling used where building data isn&apos;t available.
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="how-generated" className="border-stone-200/60">
+                  <AccordionTrigger className="text-stone-800 hover:text-stone-900 hover:no-underline text-left">
+                    How is this report generated?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-stone-600 text-sm leading-relaxed">
+                    <SeasonalReportGenerationFaqBrief variant="report" />
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="methodology-numbers" className="border-stone-200/60">
+                  <AccordionTrigger className="text-stone-800 hover:text-stone-900 hover:no-underline text-left">
+                    How we calculate and present the numbers
+                  </AccordionTrigger>
+                  <AccordionContent className="text-stone-600 text-sm leading-relaxed">
+                    <SeasonalReportMethodologyFaqDetails variant="report" />
+                  </AccordionContent>
+                </AccordionItem>
                 <AccordionItem value="add-church" className="border-stone-200/60">
                   <AccordionTrigger className="text-stone-800 hover:text-stone-900 hover:no-underline text-left">
                     How do I add a church?
@@ -2363,17 +2397,6 @@ export function SeasonalReportPage() {
                     Click a church on the map to open its detail panel, then use the &quot;Update Church
                     Info&quot; button to suggest corrections or add missing details. Submissions are
                     reviewed and merged to keep the map accurate.
-                  </AccordionContent>
-                </AccordionItem>
-                <AccordionItem value="data-source" className="border-stone-200/60">
-                  <AccordionTrigger className="text-stone-800 hover:text-stone-900 hover:no-underline text-left">
-                    Where does the data come from?
-                  </AccordionTrigger>
-                  <AccordionContent className="text-stone-600 text-sm leading-relaxed">
-                    We use OpenStreetMap church data with denomination matching, ARDA reference data,
-                    U.S. Census population data, and community-submitted churches and corrections.
-                    Attendance estimates are primarily based on building footprint area, with denomination
-                    averages and regional scaling used where building data isn&apos;t available.
                   </AccordionContent>
                 </AccordionItem>
                 <AccordionItem value="how-we-compare" className="border-stone-200/60">
@@ -2437,7 +2460,7 @@ export function SeasonalReportPage() {
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
-            </div>}
+            </div>)}
 
             <div className="pb-24" />
           </main>

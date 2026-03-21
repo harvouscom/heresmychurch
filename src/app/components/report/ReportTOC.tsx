@@ -13,6 +13,7 @@ import {
   Heart,
   TrendingUp,
   LayoutGrid,
+  CircleHelp,
   ChevronUp,
   X,
 } from "lucide-react";
@@ -37,6 +38,7 @@ const ICON_MAP: Record<IconName, React.ComponentType<{ className?: string }>> = 
   Heart,
   TrendingUp,
   LayoutGrid,
+  CircleHelp,
 };
 
 interface ReportTOCProps {

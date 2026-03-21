@@ -14,6 +14,7 @@ export const REPORT_SECTIONS = [
   { id: "state-summaries", label: "State Summaries", icon: "LayoutGrid" },
   { id: "how-we-compare", label: "How We Compare", icon: "Scale" },
   { id: "contribute", label: "Contribute", icon: "Heart" },
+  { id: "common-questions", label: "Common Questions", icon: "CircleHelp" },
 ] as const;
 
 export type SectionId = (typeof REPORT_SECTIONS)[number]["id"];
