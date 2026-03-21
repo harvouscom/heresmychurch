@@ -8,6 +8,15 @@
  */
 import type { Context } from "https://edge.netlify.com";
 
+/**
+ * Fallback when Netlify env vars are unset. Same values as `utils/supabase/info.tsx`
+ * (anon key is already public in the client bundle). Env vars override for other deploys.
+ */
+const DEFAULT_SUPABASE_FUNCTIONS_BASE_URL =
+  "https://epufchwxofsyuictfufy.supabase.co/functions/v1/make-server-283d8046";
+const DEFAULT_SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwdWZjaHd4b2ZzeXVpY3RmdWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5NzcxMTUsImV4cCI6MjA4ODU1MzExNX0.v11kHHpM1IsK6q81909CYkWgX5TdV8kJhCkNqSEs5QM";
+
 const BOT_UA_PATTERNS = [
   "Twitterbot",
   "facebookexternalhit",
@@ -84,11 +93,16 @@ export default async function handler(request: Request, context: Context): Promi
   const path = url.pathname;
   const pathParts = path.split("/").filter(Boolean); // ["state", "CA"] or ["state", "CA", "16692500"]
 
-  const apiBase = Deno.env.get("SUPABASE_FUNCTIONS_BASE_URL");
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  if (!apiBase || !anonKey) {
-    return context.next();
-  }
+  const apiBase = (Deno.env.get("SUPABASE_FUNCTIONS_BASE_URL") ?? DEFAULT_SUPABASE_FUNCTIONS_BASE_URL).replace(
+    /\/$/,
+    "",
+  );
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? DEFAULT_SUPABASE_ANON_KEY;
+  const supabaseHeaders: Record<string, string> = {
+    Authorization: `Bearer ${anonKey}`,
+    apikey: anonKey,
+    "Content-Type": "application/json",
+  };
 
   let meta: OgMeta = {
     title: "Here's My Church",
@@ -108,9 +122,7 @@ export default async function handler(request: Request, context: Context): Promi
       const apiPath = isStateReport
         ? `${apiBase}/report/state/${encodeURIComponent(stateAbbrev!)}/${slug}`
         : `${apiBase}/report/${slug}`;
-      const res = await fetch(apiPath, {
-        headers: { Authorization: `Bearer ${anonKey}`, "Content-Type": "application/json" },
-      });
+      const res = await fetch(apiPath, { headers: supabaseHeaders });
       if (res.ok) {
         const data = await res.json();
         const title = sectionLabel
@@ -153,9 +165,7 @@ export default async function handler(request: Request, context: Context): Promi
       };
     } else {
       try {
-        const res = await fetch(`${apiBase}/churches/${stateAbbrev}`, {
-          headers: { Authorization: `Bearer ${anonKey}`, "Content-Type": "application/json" },
-        });
+        const res = await fetch(`${apiBase}/churches/${stateAbbrev}`, { headers: supabaseHeaders });
         if (res.ok) {
           const data = await res.json();
           const churches = data.churches ?? [];
