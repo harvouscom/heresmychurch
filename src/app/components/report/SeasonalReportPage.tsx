@@ -994,7 +994,18 @@ export function SeasonalReportPage() {
     return () => { document.title = prevTitle; };
   }, [report]);
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 rounded-lg overflow-hidden animate-pulse">
+            <img src={logoImg} alt="" className="w-full h-full object-cover" />
+          </div>
+          <p className="text-sm text-stone-400">Loading report&hellip;</p>
+        </div>
+      </div>
+    );
+  }
   if (error || !report) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-6">
@@ -1022,7 +1033,7 @@ export function SeasonalReportPage() {
   const copy = useSectionCopy(r);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background animate-in fade-in duration-500">
       {/* Condensed header */}
       <header>
         <div className="mx-auto max-w-3xl px-6 py-8 sm:py-10">
