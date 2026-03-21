@@ -84,6 +84,76 @@ interface OgMeta {
   url: string;
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Crawlable HTML inside #root for bots only (no-JS). Mirrors key report copy for SEO/AEO. */
+function buildReportSeoArticle(
+  data: {
+    title?: string;
+    subtitle?: string;
+    stateName?: string;
+    bigPicture?: { totalChurches?: number; statesPopulated?: number };
+  },
+  pageUrl: string,
+  isStateReport: boolean,
+  stateAbbrev?: string,
+): string {
+  const title = data.title ?? "Seasonal report";
+  const subtitle = (data.subtitle ?? "").trim();
+  const total = data.bigPicture?.totalChurches ?? 0;
+  const statesPopulated = data.bigPicture?.statesPopulated ?? 0;
+  const stateName = (data.stateName ?? stateAbbrev ?? "").trim();
+  const heading =
+    isStateReport && stateName ? `Churches in ${stateName}: ${title}` : title;
+  const totalStr = total.toLocaleString("en-US");
+  const lead = isStateReport
+    ? `${subtitle ? `${subtitle} ` : ""}This snapshot covers ${totalStr} churches mapped on Here's My Church${
+        stateName ? ` in ${stateName}` : ""
+      }.`
+    : `${subtitle ? `${subtitle} ` : ""}Nationwide, ${totalStr} churches across ${statesPopulated} states are represented on the map.`;
+  return `<article class="hmc-report-seo-summary" style="padding:1.5rem;font-family:system-ui,sans-serif;max-width:42rem;line-height:1.5;color:#1c1917">
+<h1 style="font-size:1.375rem;margin:0 0 0.75rem;line-height:1.25">${escapeHtml(heading)}</h1>
+<p style="margin:0 0 1rem;color:#44403c;font-size:0.9375rem">${escapeHtml(lead)}</p>
+<p style="margin:0;font-size:0.9375rem"><a href="${escapeAttr(pageUrl)}">Open the full interactive report on Here's My Church</a></p>
+</article>`;
+}
+
+function buildReportsHubSeoArticle(
+  list: Array<{ slug?: string; title?: string; totalChurches?: number; generatedAt?: string }>,
+): string {
+  const sorted = [...list].sort(
+    (a, b) =>
+      new Date(b.generatedAt ?? 0).getTime() - new Date(a.generatedAt ?? 0).getTime(),
+  );
+  const items = sorted
+    .filter((r) => r.slug)
+    .map((r) => {
+      const href = `${SITE_URL}/report/${encodeURIComponent(String(r.slug))}`;
+      const count =
+        typeof r.totalChurches === "number" ? r.totalChurches.toLocaleString("en-US") : "—";
+      return `<li style="margin:0.35rem 0"><a href="${escapeAttr(href)}">${escapeHtml(
+        String(r.title ?? r.slug),
+      )}</a> — ${count} churches mapped</li>`;
+    })
+    .join("");
+  return `<article class="hmc-reports-hub-seo" style="padding:1.5rem;font-family:system-ui,sans-serif;max-width:42rem;line-height:1.5;color:#1c1917">
+<h1 style="font-size:1.375rem;margin:0 0 0.75rem">Here's My Church — seasonal reports</h1>
+<p style="margin:0 0 1rem;color:#44403c;font-size:0.9375rem">Data snapshots from the crowd-sourced church map: coverage, denominations, geography, and more.</p>
+<ul style="margin:0;padding-left:1.25rem">${items}</ul>
+<p style="margin:1rem 0 0;font-size:0.875rem;color:#78716c">Open this site in a browser for interactive maps, state-level reports, and charts.</p>
+</article>`;
+}
+
 export default async function handler(request: Request, context: Context): Promise<Response> {
   const userAgent = request.headers.get("user-agent") ?? "";
   if (!isBot(userAgent)) {
@@ -111,6 +181,30 @@ export default async function handler(request: Request, context: Context): Promi
     image: `${SITE_URL}/og-image.png`,
     url: SITE_URL,
   };
+
+  let seoRootArticle: string | null = null;
+
+  // Reports hub — /reports
+  if (pathParts[0] === "reports" && pathParts.length === 1) {
+    meta = {
+      title: "Reports & data — Here's My Church",
+      description:
+        "Seasonal snapshots of mapped churches, denominations, geography, and data quality on Here's My Church — free and crowd-sourced.",
+      image: `${SITE_URL}/og-report.png`,
+      url: `${SITE_URL}/reports`,
+    };
+    try {
+      const res = await fetch(`${apiBase}/reports`, { headers: supabaseHeaders });
+      if (res.ok) {
+        const list = await res.json();
+        if (Array.isArray(list) && list.length) {
+          seoRootArticle = buildReportsHubSeoArticle(list);
+        }
+      }
+    } catch (_) {
+      // keep meta; optional article omitted
+    }
+  }
 
   // Report pages — national (/report/:slug) and state (/report/state/:state/:slug)
   if (pathParts[0] === "report" && pathParts[1]) {
@@ -151,6 +245,7 @@ export default async function handler(request: Request, context: Context): Promi
                 ? `${SITE_URL}/report/state/${stateAbbrev}/${slug}`
                 : `${SITE_URL}/report/${slug}`),
         };
+        seoRootArticle = buildReportSeoArticle(data, meta.url, !!isStateReport, stateAbbrev);
       }
     } catch (_) {
       // keep default meta
@@ -210,11 +305,8 @@ export default async function handler(request: Request, context: Context): Promi
 
   const html = await response.text();
 
-  function escapeAttr(s: string): string {
-    return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
-
   let out = html;
+  out = out.replace(/<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i, `<meta name="description" content="${escapeAttr(meta.description)}" />`);
   out = out.replace(/<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i, `<meta property="og:title" content="${escapeAttr(meta.title)}" />`);
   out = out.replace(/<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i, `<meta property="og:url" content="${escapeAttr(meta.url)}" />`);
   out = out.replace(/<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i, `<meta property="og:image" content="${escapeAttr(meta.image)}" />`);
@@ -224,6 +316,10 @@ export default async function handler(request: Request, context: Context): Promi
   out = out.replace(/<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i, `<meta name="twitter:image" content="${escapeAttr(meta.image)}" />`);
   out = out.replace(/<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i, `<meta name="twitter:description" content="${escapeAttr(meta.description)}" />`);
   out = out.replace(/<title>[^<]*<\/title>/i, `<title>${escapeAttr(meta.title)}</title>`);
+
+  if (seoRootArticle) {
+    out = out.replace(/<div id="root"><\/div>/i, `<div id="root">${seoRootArticle}</div>`);
+  }
 
   return new Response(out, {
     status: response.status,

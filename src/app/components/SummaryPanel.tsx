@@ -199,6 +199,13 @@ export function SummaryPanel({
             previous={previousNationalReports}
             onNavigate={onClose}
           />
+          <Link
+            to="/reports"
+            onClick={onClose}
+            className="block text-center text-[11px] text-white/45 hover:text-purple-300/90 transition-colors pt-0.5"
+          >
+            All reports
+          </Link>
         </div>
       )}
 
@@ -215,6 +222,13 @@ export function SummaryPanel({
               View {focusedState} Report
             </Link>
           )}
+          <Link
+            to="/reports"
+            onClick={onClose}
+            className="block text-center text-[11px] text-white/45 hover:text-purple-300/90 transition-colors"
+          >
+            All reports
+          </Link>
           <div className="flex flex-wrap gap-2">
             <button
               onClick={onShowListModal}

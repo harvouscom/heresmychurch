@@ -18,3 +18,7 @@
 [[edge_functions]]
   function = "og-rewrite"
   path = "/report/*"
+
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/reports"
