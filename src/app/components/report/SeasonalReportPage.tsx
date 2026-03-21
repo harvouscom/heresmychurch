@@ -1148,7 +1148,7 @@ export function SeasonalReportPage() {
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              {isExcerptMode ? "Full report" : "heresmychurch.com"}
+              {isExcerptMode ? "Full report" : "Explore the map"}
             </Link>
             <span className="text-xs text-stone-400">{new Date(r.generatedAt).toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
           </div>
