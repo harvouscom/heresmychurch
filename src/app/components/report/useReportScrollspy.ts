@@ -10,21 +10,28 @@ export const REPORT_SECTIONS = [
   { id: "spotlights", label: "Church Spotlights", icon: "Sparkles" },
   { id: "takeaways", label: "Takeaways", icon: "Lightbulb" },
   { id: "state-rankings", label: "State Rankings", icon: "Trophy" },
+  /** National reports only — matches scroll order on the page (before “How we compare”) */
+  { id: "state-summaries", label: "State Summaries", icon: "LayoutGrid" },
   { id: "how-we-compare", label: "How We Compare", icon: "Scale" },
   { id: "contribute", label: "Contribute", icon: "Heart" },
 ] as const;
 
 export type SectionId = (typeof REPORT_SECTIONS)[number]["id"];
 export type IconName = (typeof REPORT_SECTIONS)[number]["icon"];
+export type ReportSection = (typeof REPORT_SECTIONS)[number];
 
 /**
  * @param reportKey When this changes (e.g. report loaded), scrollspy re-runs so the first section
  * is correct after async content mounts. Use `report?.generatedAt` or similar.
  */
-export function useReportScrollspy(reportKey?: string | null) {
+export function useReportScrollspy(
+  reportKey?: string | null,
+  sections: readonly ReportSection[] = REPORT_SECTIONS
+) {
   const [activeSection, setActiveSection] = useState<SectionId>("big-picture");
   const [scrollProgress, setScrollProgress] = useState(0);
   const rafRef = useRef(0);
+  const sectionIdsKey = sections.map((s) => s.id).join("|");
 
   useEffect(() => {
     const update = () => {
@@ -41,9 +48,9 @@ export function useReportScrollspy(reportKey?: string | null) {
       // looked like the bottom and we wrongly highlighted the last section.
       const atBottom = maxScroll > 0 && window.scrollY >= maxScroll - 100;
       if (atBottom) {
-        current = REPORT_SECTIONS[REPORT_SECTIONS.length - 1].id;
+        current = sections[sections.length - 1]?.id ?? "big-picture";
       } else {
-        for (const section of REPORT_SECTIONS) {
+        for (const section of sections) {
           const el = document.getElementById(section.id);
           // Section not in DOM yet (e.g. report still rendering) — keep default first section
           if (!el) break;
@@ -82,7 +89,7 @@ export function useReportScrollspy(reportKey?: string | null) {
       clearTimeout(t2);
       clearTimeout(t3);
     };
-  }, [reportKey]);
+  }, [reportKey, sectionIdsKey]);
 
   const scrollTo = useCallback((id: SectionId) => {
     const el = document.getElementById(id);

@@ -54,6 +54,7 @@ const REPORT_SECTION_LABELS: Record<string, string> = {
   takeaways: "Takeaways",
   "state-rankings": "State Rankings",
   "how-we-compare": "How We Compare",
+  "state-summaries": "State Summaries",
   contribute: "Contribute",
 };
 
@@ -96,13 +97,18 @@ export default async function handler(request: Request, context: Context): Promi
     url: SITE_URL,
   };
 
-  // Report pages — e.g. /report/launch-2026
+  // Report pages — national (/report/:slug) and state (/report/state/:state/:slug)
   if (pathParts[0] === "report" && pathParts[1]) {
-    const slug = pathParts[1];
-    const sectionId = pathParts[2];
+    const isStateReport = pathParts[1] === "state" && !!pathParts[2] && !!pathParts[3];
+    const stateAbbrev = isStateReport ? pathParts[2].toUpperCase() : undefined;
+    const slug = isStateReport ? pathParts[3] : pathParts[1];
+    const sectionId = isStateReport ? pathParts[4] : pathParts[2];
     const sectionLabel = sectionId ? REPORT_SECTION_LABELS[sectionId] : undefined;
     try {
-      const res = await fetch(`${apiBase}/report/${slug}`, {
+      const apiPath = isStateReport
+        ? `${apiBase}/report/state/${encodeURIComponent(stateAbbrev!)}/${slug}`
+        : `${apiBase}/report/${slug}`;
+      const res = await fetch(apiPath, {
         headers: { Authorization: `Bearer ${anonKey}`, "Content-Type": "application/json" },
       });
       if (res.ok) {
@@ -119,7 +125,13 @@ export default async function handler(request: Request, context: Context): Promi
           title,
           description: desc,
           image: `${SITE_URL}/og-report.png`,
-          url: sectionLabel ? `${SITE_URL}/report/${slug}/${sectionId}` : `${SITE_URL}/report/${slug}`,
+          url: sectionLabel
+            ? (isStateReport
+                ? `${SITE_URL}/report/state/${stateAbbrev}/${slug}/${sectionId}`
+                : `${SITE_URL}/report/${slug}/${sectionId}`)
+            : (isStateReport
+                ? `${SITE_URL}/report/state/${stateAbbrev}/${slug}`
+                : `${SITE_URL}/report/${slug}`),
         };
       }
     } catch (_) {

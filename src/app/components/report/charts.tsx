@@ -1,12 +1,16 @@
 import React, { useMemo, useEffect, useLayoutEffect, useState, useRef, useCallback, useContext } from "react";
 import { createPortal } from "react-dom";
 import { scaleLinear } from "d3-scale";
+import { geoMercator, geoPath } from "d3-geo";
+import { feature } from "topojson-client";
+import type { Feature, FeatureCollection, Geometry } from "geojson";
+import type { Topology } from "topojson-specification";
 import {
   ComposableMap,
   Geographies,
   Geography,
 } from "react-simple-maps";
-import { GEO_URL } from "../map-constants";
+import { COUNTIES_GEO_URL, GEO_URL, STATE_TO_FIPS } from "../map-constants";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { ReportSectionVisibleContext } from "./report-section-visible-context";
 
@@ -634,6 +638,286 @@ export function ChoroplethMap({
           }
         </Geographies>
       </ComposableMap>
+      {label && (
+        <div className="mt-2 flex items-center justify-center gap-2 text-xs text-stone-500">
+          <span>{min.toLocaleString()}</span>
+          <div
+            className="h-3 w-32 rounded"
+            style={{
+              background: `linear-gradient(to right, ${colorRange[0]}, ${colorRange[1]})`,
+            }}
+          />
+          <span>{max.toLocaleString()}</span>
+          <span className="ml-1">{label}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 5-digit county FIPS from a GeoJSON feature (us-atlas / topojson). */
+function countyFipsFromGeoFeature(f: Feature<Geometry | null>): string {
+  const fid = (f as Feature<Geometry | null> & { id?: string | number }).id;
+  if (fid != null && fid !== "") return String(fid).padStart(5, "0");
+  const p = f.properties as Record<string, unknown> | null | undefined;
+  if (!p) return "";
+  if (p.GEOID != null) return String(p.GEOID).padStart(5, "0");
+  if (p.geoid != null) return String(p.geoid).padStart(5, "0");
+  const st = p.STATEFP;
+  const co = p.COUNTYFP ?? p.COUNTY;
+  if (st != null && co != null) {
+    return `${String(st).padStart(2, "0")}${String(co).padStart(3, "0")}`;
+  }
+  return "";
+}
+
+/** Single-state county choropleth: Mercator + fitExtent so the state fills the frame (not tiny on a US Albers map). */
+export function CountyChoroplethMap({
+  stateAbbrev,
+  values,
+  label,
+  colorRange = ["#F3E8FF", "#4C1D95"],
+  details,
+}: {
+  stateAbbrev: string;
+  values: Record<string, number>;
+  label?: string;
+  colorRange?: [string, string];
+  details?: Record<
+    string,
+    {
+      primaryLabel: string;
+      primaryValue: string;
+      secondaryLabel?: string;
+      secondaryValue?: string;
+    }
+  >;
+}) {
+  const statePrefix = (STATE_TO_FIPS[stateAbbrev.toUpperCase()] ?? "").padStart(2, "0");
+  const { scale, min, max } = useMemo(() => {
+    const vals = Object.values(values).filter((v) => v > 0);
+    const min = Math.min(...vals, 0);
+    const max = Math.max(...vals, 1);
+    return {
+      scale: scaleLinear<string>().domain([min, max]).range(colorRange),
+      min,
+      max,
+    };
+  }, [values, colorRange]);
+
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [mapSize, setMapSize] = useState({ w: 800, h: 520 });
+  const [topo, setTopo] = useState<Topology<{ counties: { type: string; geometries: unknown[] } }> | null>(null);
+
+  useLayoutEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const update = () => {
+      const raw = el.getBoundingClientRect().width;
+      const w = Math.floor(Math.max(raw || 800, 320));
+      const h = Math.round(Math.min(Math.max(w * 0.68, 320), 640));
+      setMapSize((prev) => (prev.w !== w || prev.h !== h ? { w, h } : prev));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(COUNTIES_GEO_URL)
+      .then((r) => r.json())
+      .then((t: Topology<{ counties: { type: string; geometries: unknown[] } }>) => {
+        if (!cancelled) setTopo(t);
+      })
+      .catch(() => {
+        if (!cancelled) setTopo(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const renderedPaths = useMemo(() => {
+    if (!topo?.objects?.counties || !statePrefix) return [];
+    let fc: FeatureCollection;
+    try {
+      fc = feature(topo, topo.objects.counties) as FeatureCollection;
+    } catch {
+      return [];
+    }
+    const filtered = fc.features.filter((f) => {
+      const fips = countyFipsFromGeoFeature(f);
+      return fips.length === 5 && fips.startsWith(statePrefix);
+    });
+    if (!filtered.length) return [];
+    const collection: FeatureCollection = { type: "FeatureCollection", features: filtered };
+    const pad = 10;
+    const proj = geoMercator();
+    try {
+      proj.fitExtent(
+        [
+          [pad, pad],
+          [Math.max(mapSize.w - pad, pad + 1), Math.max(mapSize.h - pad, pad + 1)],
+        ],
+        collection as FeatureCollection<Geometry>,
+      );
+    } catch {
+      return [];
+    }
+    const pathGen = geoPath().projection(proj);
+    return filtered
+      .map((f) => {
+        const fips = countyFipsFromGeoFeature(f);
+        const val = values[fips];
+        const fillVal = val != null && val > 0 ? val : 0;
+        const name = String((f.properties as { name?: string } | null)?.name ?? fips);
+        const d = pathGen(f);
+        if (!d) return null;
+        return {
+          fips,
+          name,
+          d,
+          fill: fillVal > 0 ? scale(fillVal) : "#E7E5E0",
+          value: val ?? 0,
+        };
+      })
+      .filter(Boolean) as { fips: string; name: string; d: string; fill: string; value: number }[];
+  }, [topo, statePrefix, mapSize.w, mapSize.h, values, scale]);
+
+  const ref = wrapperRef;
+  const inView = useInView(ref, "-40px");
+  const reduced = usePrefersReducedMotion();
+  const [tooltip, setTooltip] = useState<{
+    x: number;
+    y: number;
+    name: string;
+    fips: string;
+    value: number;
+  } | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  const dismiss = useCallback(() => {
+    setHoveredId(null);
+    setTooltip(null);
+  }, []);
+
+  useTapOutside(ref, hoveredId !== null, dismiss);
+
+  return (
+    <div
+      ref={wrapperRef}
+      className="w-full relative"
+      style={{
+        opacity: reduced || inView ? 1 : 0,
+        transition: reduced ? "none" : "opacity 0.2s ease-out",
+        willChange: reduced ? undefined : inView ? "auto" : "opacity",
+      }}
+    >
+      {tooltip && (
+        <Tooltip x={tooltip.x} y={tooltip.y}>
+          <span className="font-medium">{tooltip.name}</span>
+          {details?.[tooltip.fips] ? (
+            <span className="ml-1.5 inline-flex flex-col">
+              <span className="text-purple-300">
+                {details[tooltip.fips].primaryLabel}: {details[tooltip.fips].primaryValue}
+              </span>
+              {details[tooltip.fips].secondaryLabel && details[tooltip.fips].secondaryValue && (
+                <span className="text-stone-300">
+                  {details[tooltip.fips].secondaryLabel}: {details[tooltip.fips].secondaryValue}
+                </span>
+              )}
+            </span>
+          ) : (
+            <>
+              <span className="ml-1.5 text-purple-300">
+                {tooltip.value > 0 ? tooltip.value.toLocaleString() : "—"}
+              </span>
+              {label && tooltip.value > 0 && (
+                <span className="ml-0.5 text-stone-400">{label}</span>
+              )}
+            </>
+          )}
+        </Tooltip>
+      )}
+      <div className="w-full overflow-hidden rounded-lg border border-stone-200/60 bg-stone-50/40">
+        {!topo ? (
+          <div
+            className="flex w-full items-center justify-center text-sm text-stone-400 animate-pulse"
+            style={{ aspectRatio: `${mapSize.w} / ${mapSize.h}`, minHeight: 280 }}
+          >
+            Loading map&hellip;
+          </div>
+        ) : renderedPaths.length === 0 ? (
+          <div
+            className="flex w-full items-center justify-center px-4 text-center text-sm text-stone-500"
+            style={{ aspectRatio: `${mapSize.w} / ${mapSize.h}`, minHeight: 280 }}
+          >
+            No county outlines for this state.
+          </div>
+        ) : (
+          <svg
+            viewBox={`0 0 ${mapSize.w} ${mapSize.h}`}
+            className="block w-full h-auto max-h-[min(72vh,640px)]"
+            role="img"
+            aria-label={`County map for ${stateAbbrev}`}
+          >
+            {renderedPaths.map((row) => {
+              const isHovered = hoveredId === row.fips;
+              return (
+                <path
+                  key={row.fips}
+                  d={row.d}
+                  fill={row.fill}
+                  stroke={isHovered ? "#7C3AED" : "#fff"}
+                  strokeWidth={isHovered ? 1.5 / (mapSize.w / 800) : 0.5}
+                  vectorEffect="non-scaling-stroke"
+                  className="transition-[fill,filter] duration-150"
+                  style={{
+                    cursor: "default",
+                    outline: "none",
+                    filter: isHovered ? "brightness(1.08)" : undefined,
+                  }}
+                  onMouseEnter={(e) => {
+                    setHoveredId(row.fips);
+                    setTooltip({
+                      x: e.clientX,
+                      y: e.clientY - 12,
+                      name: row.name,
+                      fips: row.fips,
+                      value: row.value,
+                    });
+                  }}
+                  onMouseMove={(e) => {
+                    setTooltip({
+                      x: e.clientX,
+                      y: e.clientY - 12,
+                      name: row.name,
+                      fips: row.fips,
+                      value: row.value,
+                    });
+                  }}
+                  onMouseLeave={dismiss}
+                  onClick={(e) => {
+                    if (hoveredId === row.fips) dismiss();
+                    else {
+                      setHoveredId(row.fips);
+                      setTooltip({
+                        x: e.clientX,
+                        y: e.clientY - 12,
+                        name: row.name,
+                        fips: row.fips,
+                        value: row.value,
+                      });
+                    }
+                  }}
+                />
+              );
+            })}
+          </svg>
+        )}
+      </div>
       {label && (
         <div className="mt-2 flex items-center justify-center gap-2 text-xs text-stone-500">
           <span>{min.toLocaleString()}</span>

@@ -408,6 +408,8 @@ export interface SeasonalReportDataQuality {
   missingByField: { field: string; count: number; pct: number }[];
   /** Per-state data quality */
   stateBreakdown: { abbrev: string; name: string; total: number; needsReview: number; pct: number }[];
+  /** Per-county (state-scoped reports) */
+  countyBreakdown?: { fips: string; name: string; total: number; needsReview: number; pct: number }[];
   /** % of churches with a website field that looks usable */
   pctWithWebsite?: number;
   pctWithPhone?: number;
@@ -435,6 +437,8 @@ export interface SeasonalReportGeoDensity {
   mostChurched: { abbrev: string; name: string; churchesPer10k: number; peoplePer: number }[];
   leastChurched: { abbrev: string; name: string; churchesPer10k: number; peoplePer: number }[];
   stateMetrics: Record<string, { churches: number; population: number; churchesPer10k: number; peoplePer: number }>;
+  /** Counties in this state only (state-scoped reports) */
+  countyMetrics?: Record<string, { churches: number; population: number; churchesPer10k: number; peoplePer: number }>;
 }
 
 export interface SeasonalReportDenominations {
@@ -449,6 +453,15 @@ export interface SeasonalReportDenominations {
       least: { denomination: string; count: number; pct: number } | null;
     }
   >;
+  /** County FIPS → dominant group (state-scoped reports) */
+  dominantByCounty?: Record<string, { denomination: string; count: number; pct: number }>;
+  byCountyBreakdown?: Record<
+    string,
+    {
+      top: { denomination: string; count: number; pct: number }[];
+      least: { denomination: string; count: number; pct: number } | null;
+    }
+  >;
   regionalPatterns: { denomination: string; strongStates: string[]; nationalPct: number; regionalPct: number }[];
 }
 
@@ -457,6 +470,8 @@ export interface SeasonalReportDiversity {
   bilingualPct: number;
   languageDistribution: { language: string; count: number }[];
   topBilingualStates: { abbrev: string; name: string; pct: number; count: number }[];
+  /** Counties in this state (state-scoped reports) */
+  topBilingualCounties?: { abbrev: string; name: string; pct: number; count: number }[];
 }
 
 export interface SeasonalReportSpotlight {
@@ -477,6 +492,26 @@ export interface SeasonalReportStateRanking {
   churchesPer10k: number;
   pctComplete: number;
   corrections: number;
+}
+
+/** State-scoped report: this state vs others using HMC meta stateCounts + Census pop */
+export interface SeasonalReportStatePeerComparison {
+  churchCount: number;
+  rankByChurchCount: number | null;
+  statesRankedByCount: number;
+  churchesPer10k: number;
+  rankByDensity: number | null;
+  statesRankedByDensity: number;
+  medianChurchCount: number;
+  medianChurchesPer10k: number;
+  totalUsMappedChurches: number;
+  pctOfUsMappedChurches: number;
+  leaderCount: { abbrev: string; name: string; count: number };
+  leaderDensity: { abbrev: string; name: string; churchesPer10k: number };
+  peersMoreChurches: { abbrev: string; name: string; count: number }[];
+  peersFewerChurches: { abbrev: string; name: string; count: number }[];
+  peersHigherDensity: { abbrev: string; name: string; churchesPer10k: number }[];
+  peersLowerDensity: { abbrev: string; name: string; churchesPer10k: number }[];
 }
 
 /** Deltas compared to the previous report (only present on non-launch reports) */
@@ -514,6 +549,9 @@ export interface SeasonalReportSummary {
 
 export interface SeasonalReport {
   slug: string;
+  scope?: "national" | "state";
+  stateAbbrev?: string;
+  stateName?: string;
   title: string;
   subtitle: string;
   season: "launch" | "spring" | "summer" | "fall" | "winter";
@@ -533,6 +571,10 @@ export interface SeasonalReport {
     smallest: SeasonalReportSpotlight[];
   };
   stateRankings: SeasonalReportStateRanking[];
+  /** County rankings (state-scoped reports; `abbrev` is 5-digit FIPS) */
+  countyRankings?: SeasonalReportStateRanking[];
+  /** How this state compares to others on HMC (state-scoped reports) */
+  statePeerComparison?: SeasonalReportStatePeerComparison;
 }
 
 // Common ministry categories for form UI

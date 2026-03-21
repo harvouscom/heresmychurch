@@ -12,6 +12,7 @@ import {
   Trophy,
   Heart,
   TrendingUp,
+  LayoutGrid,
   ChevronUp,
   X,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import {
   REPORT_SECTIONS,
   type SectionId,
   type IconName,
+  type ReportSection,
 } from "./useReportScrollspy";
 import { CloseButton } from "../ui/close-button";
 
@@ -34,19 +36,26 @@ const ICON_MAP: Record<IconName, React.ComponentType<{ className?: string }>> = 
   Trophy,
   Heart,
   TrendingUp,
+  LayoutGrid,
 };
 
 interface ReportTOCProps {
   activeSection: SectionId;
   scrollProgress: number;
   onNavigate: (id: SectionId) => void;
+  sections?: readonly ReportSection[];
 }
 
 // ── Unified floating TOC pill + compact expand ──
-export function ReportTOC({ activeSection, scrollProgress, onNavigate }: ReportTOCProps) {
+export function ReportTOC({
+  activeSection,
+  scrollProgress,
+  onNavigate,
+  sections = REPORT_SECTIONS,
+}: ReportTOCProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const current = REPORT_SECTIONS.find((s) => s.id === activeSection);
+  const current = sections.find((s) => s.id === activeSection);
   const CurrentIcon = current ? ICON_MAP[current.icon] : null;
 
   // Close on click outside
@@ -83,7 +92,7 @@ export function ReportTOC({ activeSection, scrollProgress, onNavigate }: ReportT
               />
             </div>
             <div className="[&>*]:border-0">
-              {REPORT_SECTIONS.map((section) => {
+              {sections.map((section) => {
                 const isActive = section.id === activeSection;
                 const Icon = ICON_MAP[section.icon];
                 return (

@@ -101,6 +101,15 @@ export function SummaryPanel({
   countyStats,
   focusedCounty = null,
 }: SummaryPanelProps) {
+  const [latestReportSlug, setLatestReportSlug] = useState<string>("launch-2026");
+  useEffect(() => {
+    fetchReportList()
+      .then((reports) => {
+        const latest = reports[reports.length - 1];
+        if (latest?.slug) setLatestReportSlug(latest.slug);
+      })
+      .catch(() => {});
+  }, []);
   const countyData = focusedCounty && countyStats?.byFips[focusedCounty];
   return (
     <motion.div
@@ -171,6 +180,16 @@ export function SummaryPanel({
       {/* Action buttons — pinned bottom (state view only) */}
       {summaryStats.type === "state" && (
         <div className="px-5 pb-4 pt-3 border-t border-white/8 flex-shrink-0 space-y-2">
+          {focusedState && (
+            <Link
+              to={`/report/state/${focusedState}/${latestReportSlug}`}
+              className="w-full py-2.5 rounded-xl text-xs font-semibold text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 transition-colors cursor-pointer flex items-center justify-center gap-2"
+              onClick={onClose}
+            >
+              <FileText size={13} />
+              View {focusedState} Report
+            </Link>
+          )}
           <div className="flex flex-wrap gap-2">
             <button
               onClick={onShowListModal}

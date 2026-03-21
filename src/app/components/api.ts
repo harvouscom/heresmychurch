@@ -1052,8 +1052,36 @@ export async function fetchReport(slug: string): Promise<import("./church-data")
   return res.json();
 }
 
+export async function fetchStateReport(
+  stateAbbrev: string,
+  slug: string
+): Promise<import("./church-data").SeasonalReport> {
+  const st = stateAbbrev.toUpperCase();
+  const res = await fetchWithRetry(
+    `${BASE_URL}/report/state/${encodeURIComponent(st)}/${encodeURIComponent(slug)}`,
+    { headers, timeoutMs: 120000 }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to fetch state report: ${res.status} — ${text}`);
+  }
+  return res.json();
+}
+
 export async function fetchReportList(): Promise<import("./church-data").SeasonalReportSummary[]> {
   const res = await fetchWithRetry(`${BASE_URL}/reports`, { headers, timeoutMs: 15000 });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchStateReportList(
+  stateAbbrev: string
+): Promise<import("./church-data").SeasonalReportSummary[]> {
+  const st = stateAbbrev.toUpperCase();
+  const res = await fetchWithRetry(
+    `${BASE_URL}/reports/state/${encodeURIComponent(st)}`,
+    { headers, timeoutMs: 15000 }
+  );
   if (!res.ok) return [];
   return res.json();
 }
