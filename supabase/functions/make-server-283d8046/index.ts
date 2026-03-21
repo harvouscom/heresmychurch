@@ -1426,7 +1426,7 @@ app.get(`${P}/community/stats`,async(c)=>{
     const improved=Array.isArray(stats.churchesImproved)?stats.churchesImproved:[];
     if(state&&state.length===2){
       const prefix1=state+"-";const prefix2="community-"+state+"-";
-      const match=(id: string)=>id.startsWith(prefix1)||id.startsWith(prefix2);
+      const match=(id: string)=>{const u=String(id||"").toUpperCase();return u.startsWith(prefix1)||u.startsWith(prefix2.toUpperCase());};
       const stateCorrections=corrections.filter((h: any)=>h&&match(String(h.churchId||"")));
       const stateImproved=improved.filter((id: string)=>match(String(id)));
       return c.json({totalCorrections:stateCorrections.length,churchesImproved:stateImproved.length,totalConfirmations:0,lastUpdated:stats.lastUpdated});
@@ -1452,10 +1452,35 @@ function communityStatsByState(stats:any,states:string[]):Record<string,{totalCo
   const byState:Record<string,{totalCorrections:number;churchesImproved:number}>={};
   for(const st of states){
     const prefix1=st+"-";const prefix2="community-"+st+"-";
-    const match=(id:string)=>id.startsWith(prefix1)||id.startsWith(prefix2);
+    const match=(id:string)=>{const u=String(id||"").toUpperCase();return u.startsWith(prefix1)||u.startsWith(prefix2.toUpperCase());};
     byState[st]={totalCorrections:corrections.filter((h:any)=>h&&match(String(h.churchId||""))).length,churchesImproved:improved.filter((id:string)=>match(String(id))).length};
   }
   return byState;
+}
+function countApprovedFieldsInConsensus(con:Record<string,any>):number{
+  let n=0;
+  for(const d of Object.values(con)){
+    const fd=d as {approved?:boolean;value?:unknown};
+    if(fd&&fd.approved&&fd.value!==null&&fd.value!==undefined)n++;
+  }
+  return n;
+}
+/** Per church id (uppercase): number of consensus-approved suggestion fields — not limited to global corrections history tail */
+async function approvedCorrectionFieldsByChurchForState(st:string):Promise<Record<string,number>>{
+  const byChurch:Record<string,number>={};
+  const take=(arr:unknown)=>{
+    if(!Array.isArray(arr))return;
+    for(const entry of arr as any[]){
+      if(!entry||!Array.isArray(entry.submissions)||!entry.churchId)continue;
+      const con=consensus(entry.submissions);
+      const n=countApprovedFieldsInConsensus(con);
+      if(n<1)continue;
+      byChurch[String(entry.churchId).toUpperCase()]=n;
+    }
+  };
+  take(await kv.getByPrefix(`suggestions:${st}-`));
+  take(await kv.getByPrefix(`suggestions:community-${st}-`));
+  return byChurch;
 }
 function statePopulation(abbrev:string):number{
   if(abbrev==="MD")return (POP["MD"]||0)+(POP["DC"]||0);
@@ -2922,6 +2947,8 @@ async function computeSeasonalReport(slug:string,scope:{type:"national"}|{type:"
   const denomByCounty:Record<string,Record<string,number>>={};
   const countyReview:Record<string,{total:number;needsReview:number}>={};
   const bilingualByCounty:Record<string,{total:number;bilingual:number}>={};
+  /** Map church id → county FIPS (state-scoped only; for per-county correction counts) */
+  const churchIdToCountyFips:Record<string,string>={};
 
   let countyEntries:Awaited<ReturnType<typeof loadCountyEntriesForState>>|null=null;
   if(stateScopeAbbrev){
@@ -2981,6 +3008,8 @@ async function computeSeasonalReport(slug:string,scope:{type:"national"}|{type:"
               if(!bilingualByCounty[cf])bilingualByCounty[cf]={total:0,bilingual:0};
               bilingualByCounty[cf].total++;
               if(langs.length>0)bilingualByCounty[cf].bilingual++;
+              const cid=typeof c.id==="string"?c.id:"";
+              if(cid)churchIdToCountyFips[cid.toUpperCase()]=cf;
             }
           }
         }
@@ -3106,6 +3135,18 @@ async function computeSeasonalReport(slug:string,scope:{type:"national"}|{type:"
   const improvedTotal=Array.isArray(commStats.churchesImproved)?commStats.churchesImproved.length:0;
   const totalCorrections=typeof commStats.totalCorrections==="number"?commStats.totalCorrections:0;
 
+  /** Per-county approved suggestion fields (state scope); full store scan, not history tail */
+  let correctionsByCounty:Record<string,number>|undefined=undefined;
+  if(stateScopeAbbrev){
+    correctionsByCounty={};
+    const byChurch=await approvedCorrectionFieldsByChurchForState(stateScopeAbbrev);
+    for(const [churchUpper,n]of Object.entries(byChurch)){
+      const fips=churchIdToCountyFips[churchUpper];
+      if(!fips)continue;
+      correctionsByCounty[fips]=(correctionsByCounty[fips]||0)+n;
+    }
+  }
+
   const topMinistries=Object.entries(ministryCounts)
     .map(([name,count])=>({name,count,pct:nWithMinistries>0?Math.round(count/nWithMinistries*1000)/10:0}))
     .sort((a,b)=>b.count-a.count)
@@ -3186,7 +3227,7 @@ async function computeSeasonalReport(slug:string,scope:{type:"national"}|{type:"
         churchCount:sr.total,
         churchesPer10k:dm.churchesPer10k||0,
         pctComplete:sr.total>0?Math.round(((sr.total-sr.needsReview)/sr.total)*1000)/10:0,
-        corrections:0,
+        corrections:correctionsByCounty?.[fips]??0,
       };
     }).sort((a,b)=>b.churchCount-a.churchCount);
 
@@ -3531,7 +3572,10 @@ app.get(`${P}/reports/state/:stateAbbrev`,async(c)=>{
     const slugs=allReportSlugs();
     const list:any[]=[];
     for(const{slug,season,year}of slugs){
-      let cached=await kv.get(`report:state:v3:${stateAbbrev}:${slug}`);
+      let cached=await kv.get(`report:state:v4:${stateAbbrev}:${slug}`);
+      if(!cached||typeof cached!=="object"||!cached.slug){
+        cached=await kv.get(`report:state:v3:${stateAbbrev}:${slug}`);
+      }
       if(!cached||typeof cached!=="object"||!cached.slug){
         cached=await kv.get(`report:state:v2:${stateAbbrev}:${slug}`);
       }
@@ -3583,7 +3627,7 @@ app.get(`${P}/report/state/:stateAbbrev/:slug`,async(c)=>{
     if(!/^[A-Z]{2}$/.test(stateAbbrev))return c.json({error:"Invalid state"},400);
     if(!slug||!/^[a-z]+-\d{4}$/.test(slug))return c.json({error:"Invalid report slug"},400);
     const forceRefresh=(c.req.query("refresh")==="true"||c.req.query("fresh")==="true");
-    const cacheKey=`report:state:v3:${stateAbbrev}:${slug}`;
+    const cacheKey=`report:state:v4:${stateAbbrev}:${slug}`;
     if(!forceRefresh){
       const cached=await kv.get(cacheKey);
       if(cached&&typeof cached==="object"&&cached.slug)return c.json(cached);
@@ -3593,7 +3637,10 @@ app.get(`${P}/report/state/:stateAbbrev/:slug`,async(c)=>{
     const report=await computeSeasonalReport(slug,{type:"state",stateAbbrev});
     const prevSlug=previousSlugFor(slug);
     if(prevSlug){
-      const prevReport=await kv.get(`report:state:v3:${stateAbbrev}:${prevSlug}`);
+      let prevReport=await kv.get(`report:state:v4:${stateAbbrev}:${prevSlug}`);
+      if(!prevReport||typeof prevReport!=="object"||!prevReport.slug){
+        prevReport=await kv.get(`report:state:v3:${stateAbbrev}:${prevSlug}`);
+      }
       if(prevReport&&typeof prevReport==="object"&&prevReport.slug){
         report.previousSlug=prevSlug;
         report.changes=computeChanges(report,prevReport);

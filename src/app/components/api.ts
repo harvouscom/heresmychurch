@@ -1043,7 +1043,7 @@ export async function fetchAuditByChurch(
 export async function fetchReport(slug: string): Promise<import("./church-data").SeasonalReport> {
   const res = await fetchWithRetry(
     `${BASE_URL}/report/${encodeURIComponent(slug)}`,
-    { headers, timeoutMs: 120000 }
+    { headers, timeoutMs: 120000, cache: "no-store" }
   );
   if (!res.ok) {
     const text = await res.text();
@@ -1059,7 +1059,7 @@ export async function fetchStateReport(
   const st = stateAbbrev.toUpperCase();
   const res = await fetchWithRetry(
     `${BASE_URL}/report/state/${encodeURIComponent(st)}/${encodeURIComponent(slug)}`,
-    { headers, timeoutMs: 120000 }
+    { headers, timeoutMs: 120000, cache: "no-store" }
   );
   if (!res.ok) {
     const text = await res.text();
