@@ -484,7 +484,7 @@ export function ChurchDetailPanel({
       className="h-full flex flex-col overflow-hidden rounded-[20px]"
       style={{
         backgroundColor: "#1E1040",
-        fontFamily: "'Livvic', sans-serif",
+        fontFamily: "'Livvic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
       }}
     >
       {/* Header */}

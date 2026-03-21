@@ -140,11 +140,13 @@ export function StatCard({
   value,
   label,
   sub,
+  hint,
   color = "purple",
 }: {
   value: string | number;
   label: string;
   sub?: React.ReactNode;
+  hint?: React.ReactNode;
   color?: keyof typeof STAT_COLORS;
 }) {
   const isNumber = typeof value === "number";
@@ -163,6 +165,9 @@ export function StatCard({
       <span className={`block w-full text-sm font-medium ${c.label}`}>{label}</span>
       {sub != null && sub !== "" && (
         <div className={`block w-full text-xs ${c.sub}`}>{sub}</div>
+      )}
+      {hint != null && hint !== "" && (
+        <div className="block w-full text-[11px] text-stone-400 mt-1 text-pretty">{hint}</div>
       )}
     </div>
   );

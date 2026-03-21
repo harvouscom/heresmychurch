@@ -349,7 +349,7 @@ export function ChurchMap({
   return (
     <div
       className={`relative size-full overflow-hidden flex ${d.selectedChurch ? 'flex-col md:flex-row' : ''}`}
-      style={{ fontFamily: "'Livvic', sans-serif" }}
+      style={{ fontFamily: "'Livvic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" }}
       onMouseMove={d.handleMouseMove}
       onMouseLeave={d.handleMouseLeave}
     >

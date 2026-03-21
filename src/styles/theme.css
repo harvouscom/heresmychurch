@@ -126,6 +126,7 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: 'Livvic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     overflow: hidden;
   }
 

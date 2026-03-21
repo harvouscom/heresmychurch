@@ -32,7 +32,7 @@ export class AppErrorBoundary extends React.Component<
           className="flex items-center justify-center min-h-screen"
           style={{
             backgroundColor: "#1A0E38",
-            fontFamily: "'Livvic', sans-serif",
+            fontFamily: "'Livvic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
           }}
         >
           <div className="flex flex-col items-center gap-5 px-8 py-10 rounded-2xl max-w-md text-center">

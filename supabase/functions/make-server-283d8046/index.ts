@@ -327,7 +327,7 @@ function buildIdx(ch:any[]){return ch.map((c:any)=>({id:c.id,shortId:c.shortId,n
 async function writeIdx(st:string,ch:any[]){await kv.set(`churches:sidx:${st}`,buildIdx(ch));}
 
 // Preserve user/community-submitted fields when overwriting cache (populate force, refresh-attendance).
-const USER_FIELDS_TO_PRESERVE=["homeCampusId","serviceTimes","languages","ministries","pastorName","phone","email","lastVerified","buildingSqft"] as const;
+const USER_FIELDS_TO_PRESERVE=["shortId","homeCampusId","website","serviceTimes","languages","ministries","pastorName","phone","email","lastVerified","buildingSqft"] as const;
 function mergeUserFieldsFromExisting(existingChurches:any[],newChurches:any[]):void{
   if(!Array.isArray(existingChurches)||!existingChurches.length)return;
   const oldById=new Map<string,any>();
@@ -673,24 +673,25 @@ function isAddressMeaningful(addr:string|undefined,city:string,state:string):boo
   if(cs&&an===cs)return false;
   return true;
 }
-function churchNeedsReview(ch:any):{needsReview:boolean;missingAddress:boolean;missingServiceTimes:boolean;missingDenomination:boolean}{
+function churchNeedsReview(ch:any):{needsReview:boolean;missingAddress:boolean;missingWebsite:boolean;missingServiceTimes:boolean;missingDenomination:boolean}{
   const missingAddress=!isAddressMeaningful(ch.address,ch.city||"",ch.state||"");
+  const missingWebsite=!hasWebsiteField(ch);
   const missingServiceTimes=isServiceTimesMissing(ch.serviceTimes);
   const missingDenomination=isDenomMissing(ch.denomination);
-  const missingCount=[missingAddress,missingServiceTimes,missingDenomination].filter(Boolean).length;
-  return{needsReview:missingCount>=2,missingAddress,missingServiceTimes,missingDenomination};
+  const missingCount=[missingAddress,missingWebsite,missingServiceTimes,missingDenomination].filter(Boolean).length;
+  return{needsReview:missingCount>=2,missingAddress,missingWebsite,missingServiceTimes,missingDenomination};
 }
 
 const REVIEW_STATS_CACHE_KEY="churches:review-stats";
 async function invalidateReviewStatsCache():Promise<void>{try{await kv.del(REVIEW_STATS_CACHE_KEY);}catch(_){}}
 
-async function computeReviewStats():Promise<{states:Record<string,{total:number;needsReview:number;missingAddress:number;missingServiceTimes:number;missingDenomination:number}>;totalChurches:number;totalNeedsReview:number;percentage:number;missingAddress:number;missingServiceTimes:number;missingDenomination:number}>{
+async function computeReviewStats():Promise<{states:Record<string,{total:number;needsReview:number;missingAddress:number;missingWebsite:number;missingServiceTimes:number;missingDenomination:number}>;totalChurches:number;totalNeedsReview:number;percentage:number;missingAddress:number;missingWebsite:number;missingServiceTimes:number;missingDenomination:number}>{
   const meta=await kv.get("churches:meta");const sc:Record<string,number>={...(meta?.stateCounts||{})};
   if(sc["DC"]){sc["MD"]=(sc["MD"]||0)+sc["DC"];delete sc["DC"];}
   const ps=Object.keys(sc).filter(s=>sc[s]>0);
-  if(!ps.length)return {states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingServiceTimes:0,missingDenomination:0};
-  const states:Record<string,{total:number;needsReview:number;missingAddress:number;missingServiceTimes:number;missingDenomination:number}>={};
-  let totalChurches=0,totalNeedsReview=0,missingAddress=0,missingServiceTimes=0,missingDenomination=0;
+  if(!ps.length)return {states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingWebsite:0,missingServiceTimes:0,missingDenomination:0};
+  const states:Record<string,{total:number;needsReview:number;missingAddress:number;missingWebsite:number;missingServiceTimes:number;missingDenomination:number}>={};
+  let totalChurches=0,totalNeedsReview=0,missingAddress=0,missingWebsite=0,missingServiceTimes=0,missingDenomination=0;
   const BATCH=10;
   for(let i=0;i<ps.length;i+=BATCH){
     const batch=ps.slice(i,i+BATCH);
@@ -699,21 +700,22 @@ async function computeReviewStats():Promise<{states:Record<string,{total:number;
     for(let j=0;j<batch.length;j++){
       const st=batch[j];
       let ch:any[]=values[j];
-      if(!Array.isArray(ch)||!ch.length){states[st]={total:0,needsReview:0,missingAddress:0,missingServiceTimes:0,missingDenomination:0};continue;}
-      let need=0,ma=0,ms=0,md=0;
+      if(!Array.isArray(ch)||!ch.length){states[st]={total:0,needsReview:0,missingAddress:0,missingWebsite:0,missingServiceTimes:0,missingDenomination:0};continue;}
+      let need=0,ma=0,mw=0,ms=0,md=0;
       for(const church of ch){
         const r=churchNeedsReview(church);
         if(r.needsReview)need++;
         if(r.missingAddress)ma++;
+        if(r.missingWebsite)mw++;
         if(r.missingServiceTimes)ms++;
         if(r.missingDenomination)md++;
       }
-      states[st]={total:ch.length,needsReview:need,missingAddress:ma,missingServiceTimes:ms,missingDenomination:md};
-      totalChurches+=ch.length;totalNeedsReview+=need;missingAddress+=ma;missingServiceTimes+=ms;missingDenomination+=md;
+      states[st]={total:ch.length,needsReview:need,missingAddress:ma,missingWebsite:mw,missingServiceTimes:ms,missingDenomination:md};
+      totalChurches+=ch.length;totalNeedsReview+=need;missingAddress+=ma;missingWebsite+=mw;missingServiceTimes+=ms;missingDenomination+=md;
     }
   }
   const percentage=totalChurches>0?Math.round((totalNeedsReview/totalChurches)*1000)/10:0;
-  return {states,totalChurches,totalNeedsReview,percentage,missingAddress,missingServiceTimes,missingDenomination};
+  return {states,totalChurches,totalNeedsReview,percentage,missingAddress,missingWebsite,missingServiceTimes,missingDenomination};
 }
 
 app.get(`${P}/churches/review-stats`,async(c)=>{
@@ -723,7 +725,7 @@ app.get(`${P}/churches/review-stats`,async(c)=>{
     const result=await computeReviewStats();
     try{await kv.set(REVIEW_STATS_CACHE_KEY,result);}catch(_){}
     return c.json(result);
-  }catch(e){return c.json({states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingServiceTimes:0,missingDenomination:0,error:`${e}`},500);}
+  }catch(e){return c.json({states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingWebsite:0,missingServiceTimes:0,missingDenomination:0,error:`${e}`},500);}
 });
 
 // Lookup single church by state + shortId (must be before /churches/:state so :state/church/:shortId matches first)
@@ -833,8 +835,9 @@ app.post(`${P}/admin/refresh-attendance`,async(c)=>{
         const ch=await fetchCh(st);enrichARDA(ch);applyStateScaling(ch,st);
         const existing=await kv.get(`churches:${st}`);
         if(Array.isArray(existing)&&existing.length)mergeUserFieldsFromExisting(existing,ch);
-        await kv.set(`churches:${st}`,ch);await writeIdx(st,ch);
-        void recordChurchAudit({state:st,action:"state_refreshed",old_value:Array.isArray(existing)?{churchCount:existing.length}:undefined,new_value:{churchCount:ch.length},source:"refresh",actor_type:"system"});
+        const chWithShort=addShortIdsUnique(ch,st);
+        await kv.set(`churches:${st}`,chWithShort);await writeIdx(st,chWithShort);
+        void recordChurchAudit({state:st,action:"state_refreshed",old_value:Array.isArray(existing)?{churchCount:existing.length}:undefined,new_value:{churchCount:chWithShort.length},source:"refresh",actor_type:"system"});
         if(meta){meta.stateCounts[st]=ch.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);}
         refreshed++;
       }catch(e){console.log(`Refresh ${st} error:${e}`);}
@@ -2835,8 +2838,9 @@ async function computeSeasonalReport(slug:string):Promise<any>{
     const values=await kv.mget(keys);
     for(let j=0;j<batch.length;j++){
       const st=batch[j];
-      const ch:any[]=values[j];
+      let ch:any[]=values[j];
       if(!Array.isArray(ch)||!ch.length){stateChurchCounts[st]=0;stateReview[st]={total:0,needsReview:0};continue;}
+      ch=addShortIdsUnique(ch,st);
       stateChurchCounts[st]=ch.length;
       let stNR=0;
       if(!denomByState[st])denomByState[st]={};
@@ -3040,6 +3044,7 @@ async function computeSeasonalReport(slug:string):Promise<any>{
       pctNeedsReview,totalNeedsReview,
       missingByField:[
         {field:"Address",count:totalMissingAddr,pct:pct(totalMissingAddr)},
+        {field:"Website",count:totalChurches-nWebsite,pct:pct(totalChurches-nWebsite)},
         {field:"Service Times",count:totalMissingSvc,pct:pct(totalMissingSvc)},
         {field:"Denomination",count:totalMissingDenom,pct:pct(totalMissingDenom)},
       ],

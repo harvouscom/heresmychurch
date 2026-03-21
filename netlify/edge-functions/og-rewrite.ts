@@ -111,7 +111,7 @@ export default async function handler(request: Request, context: Context): Promi
           ? `${sectionLabel} — ${data.title ?? "Report"} — Here's My Church`
           : `${data.title ?? "Report"} — Here's My Church`;
         const desc = sectionLabel
-          ? `${sectionLabel} — excerpt from ${data.title ?? "Report"}.`
+          ? `${sectionLabel} — from ${data.title ?? "Report"}.`
           : data.subtitle
             ? `${data.subtitle} — ${(data.bigPicture?.totalChurches ?? 0).toLocaleString()} churches across ${data.bigPicture?.statesPopulated ?? 0} states.`
             : DEFAULT_DESCRIPTION;

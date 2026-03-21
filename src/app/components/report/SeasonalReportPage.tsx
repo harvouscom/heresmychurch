@@ -91,10 +91,11 @@ type SpotlightRow = SeasonalReport["spotlights"]["largest"][number];
 
 /**
  * Opens this church on the map in a new tab.
- * Cached reports often omit `id`; we resolve via search API, then fall back to the state map.
+ * Uses shortId when available; otherwise resolves via search API to avoid hash collisions.
  */
 function ChurchSpotlightMapButton({ c }: { c: SpotlightRow }) {
-  const directHref = useMemo(() => spotlightMapHref(c), [c.id, c.shortId, c.state]);
+  const hasReliableId = Boolean(c.shortId && /^\d{8}$/.test(String(c.shortId)));
+  const directHref = useMemo(() => hasReliableId ? spotlightMapHref(c) : null, [hasReliableId, c.id, c.shortId, c.state]);
   const [searchHref, setSearchHref] = useState<string | null>(null);
 
   useEffect(() => {
@@ -107,7 +108,6 @@ function ChurchSpotlightMapButton({ c }: { c: SpotlightRow }) {
         const norm = (s: string) => s.trim().toLowerCase();
         const wantN = norm(c.name);
         const wantC = c.city ? norm(c.city) : "";
-        // Prefer exact name+city match; otherwise exact name only. Never guess with first result.
         const exact =
           results.find((r) => norm(r.name) === wantN && (!wantC || norm(r.city || "") === wantC)) ||
           results.find((r) => norm(r.name) === wantN);
@@ -128,9 +128,10 @@ function ChurchSpotlightMapButton({ c }: { c: SpotlightRow }) {
     };
   }, [directHref, c.name, c.city, c.state]);
 
+  const idFallbackHref = useMemo(() => !hasReliableId ? spotlightMapHref(c) : null, [hasReliableId, c.id, c.state]);
   const stateFallback = `/state/${encodeURIComponent(c.state)}`;
-  const href = directHref || searchHref || stateFallback;
-  const isChurchDeepLink = Boolean(directHref || searchHref);
+  const href = directHref || searchHref || idFallbackHref || stateFallback;
+  const isChurchDeepLink = Boolean(directHref || searchHref || idFallbackHref);
 
   return (
     <a
@@ -1004,7 +1005,7 @@ export function SeasonalReportPage() {
     return () => clearTimeout(timer);
   }, [report, loading, sectionId]);
 
-  // SEO: update document title and meta tags for the report / excerpt
+  // SEO: update document title and meta tags for the report / section page
   useEffect(() => {
     if (!report) return;
     const section = sectionId ? REPORT_SECTIONS.find((s) => s.id === sectionId) : null;
@@ -1019,7 +1020,7 @@ export function SeasonalReportPage() {
       if (el) el.setAttribute(attr, content);
     };
     const description = section
-      ? `${section.label} — excerpt from ${report.title}.`
+      ? `${section.label} — from ${report.title}.`
       : `${report.subtitle} — ${report.bigPicture.totalChurches.toLocaleString()} churches across ${report.bigPicture.statesPopulated} states.`;
     const imageUrl = `${window.location.origin}/og-report.png`;
 
@@ -1122,7 +1123,7 @@ export function SeasonalReportPage() {
       <div className="flex min-h-screen items-center justify-center bg-background px-6">
         <div className="text-center">
           <h1 className="text-2xl font-semibold text-stone-900">Section not found</h1>
-          <p className="text-pretty mt-2 text-stone-700/70">This section can't be shared as a standalone excerpt.</p>
+          <p className="text-pretty mt-2 text-stone-700/70">This section can&apos;t be shared as a standalone page.</p>
           <Link to={`/report/${r.slug}`} className="mt-4 inline-block text-purple-600 hover:text-stone-700 font-medium">
             View full report
           </Link>
@@ -1164,7 +1165,7 @@ export function SeasonalReportPage() {
           {isExcerptMode && (
             <div className="mt-8 rounded-xl border border-amber-200/70 bg-amber-100/80 px-4 py-3 sm:px-5">
               <p className="text-sm font-medium text-amber-900/90">
-                This is an excerpt from the full report: <span className="font-semibold">{r.title}</span>.
+                From the full report: <span className="font-semibold">{r.title}</span>.
               </p>
             </div>
           )}
@@ -1191,12 +1192,14 @@ export function SeasonalReportPage() {
                   value={bp.totalChurches}
                   label="Churches Mapped"
                   sub={`~${((bp.totalChurches / 380000) * 100).toFixed(0)}% of est. 380k US churches`}
+                  hint="Sourced from OpenStreetMap and community submissions"
                 />
                 <StatCard
                   value={`${dq.pctNeedsReview}%`}
                   label="Still Need Review"
                   sub={`${dq.totalNeedsReview.toLocaleString()} churches`}
                   color="pink"
+                  hint="Missing 2+ of: address, website, service times, denomination"
                 />
               </div>
 
@@ -1311,12 +1314,14 @@ export function SeasonalReportPage() {
                   label="Need More Data"
                   sub={`${dq.totalNeedsReview.toLocaleString()} churches`}
                   color="pink"
+                  hint="Missing 2+ core fields — you can help fix this"
                 />
                 <StatCard
                   value={`${(100 - dq.pctNeedsReview).toFixed(1)}%`}
                   label="Have Core Info"
-                  sub="Address + service times + denomination"
+                  sub="Address + website + service times + denomination"
                   color="pink"
+                  hint="Has at least 3 of these 4 fields filled in"
                 />
               </div>
               {(dq.pctWithWebsite != null ||
@@ -1403,12 +1408,14 @@ export function SeasonalReportPage() {
                       value={dq.attendanceP25 ?? "—"}
                       label="25th percentile"
                       sub="Lower quartile"
+                      hint="25% of churches are below this"
                     />
-                    <StatCard value={dq.attendanceMedian} label="Median estimate" sub="Typical congregation size" />
+                    <StatCard value={dq.attendanceMedian} label="Median estimate" sub="Typical congregation size" hint="Half of churches are above, half below" />
                     <StatCard
                       value={dq.attendanceP75 ?? "—"}
                       label="75th percentile"
                       sub="Upper quartile"
+                      hint="Only 25% of churches are above this"
                     />
                   </div>
                 </div>
@@ -1441,7 +1448,7 @@ export function SeasonalReportPage() {
                 />
               </div>
               <Insight eyebrow="The Gap" color="pink">
-                Our data quality goal is ambitious: a complete address, service times, and denomination for every church. Right now {dq.pctNeedsReview}% of churches are missing 2 or more of these — and that's where you come in.
+                Our data quality goal is ambitious: a complete address, website, service times, and denomination for every church. Right now {dq.pctNeedsReview}% of churches are missing 2 or more of these — and that&apos;s where you come in.
               </Insight>
             </Section>)}
 
@@ -1577,10 +1584,12 @@ export function SeasonalReportPage() {
                   value={dv.bilingualChurches}
                   label="Multilingual Churches"
                   sub={`${dv.bilingualPct}% of all churches`}
+                  hint="Detected from church names and community-submitted data"
                 />
                 <StatCard
                   value={dv.languageDistribution.length}
                   label="Languages Detected"
+                  hint="Beyond English — includes Spanish, Korean, Chinese, and more"
                 />
               </div>
               {dv.languageDistribution.length > 0 && (
@@ -1633,6 +1642,7 @@ export function SeasonalReportPage() {
                     ? `${Math.round(bp.totalAttendanceEstimate / 1000000 * 10) / 10}M`
                     : "Estimating..."}
                   label="Est. Weekly Attendance"
+                  hint="Based on building size, denomination, and community corrections"
                 />
                 {sp.largest[0] && (
                   <StatCard

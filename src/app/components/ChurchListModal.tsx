@@ -328,7 +328,7 @@ export function ChurchListModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ fontFamily: "'Livvic', sans-serif" }}
+      style={{ fontFamily: "'Livvic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" }}
     >
       {/* Backdrop */}
       <div
