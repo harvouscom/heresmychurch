@@ -8,6 +8,12 @@ export interface Announcement {
 
 export const announcements: Announcement[] = [
   {
+    id: "seasonal-reports-national-state",
+    title: "National and state seasonal reports",
+    body: "With the goal of being the most accurate church directory transparency of said data and making it public gets an upgrade through these generated reports. They will come out after every season. View them at the top dropdown.",
+    date: "Mar 21, 2026",
+  },
+  {
     id: "county-view",
     title: "View by county per state",
     body: "Instead of just the state view, go deeper by selecting a county to find a church or review said churches.",

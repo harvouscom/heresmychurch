@@ -7,6 +7,7 @@ import {
   TrendingUp,
   BookOpen,
   BarChart3,
+  ChevronDown,
   FileText,
   MapPin,
   ShieldCheck,
@@ -102,14 +103,20 @@ export function SummaryPanel({
   focusedCounty = null,
 }: SummaryPanelProps) {
   const [latestReportSlug, setLatestReportSlug] = useState<string>("launch-2026");
+  const [seasonalReports, setSeasonalReports] = useState<SeasonalReportSummary[]>([]);
   useEffect(() => {
     fetchReportList()
       .then((reports) => {
+        setSeasonalReports(reports);
         const latest = reports[reports.length - 1];
         if (latest?.slug) setLatestReportSlug(latest.slug);
       })
       .catch(() => {});
   }, []);
+  const previousNationalReports =
+    seasonalReports.length > 1
+      ? seasonalReports.slice(0, -1).reverse()
+      : [];
   const countyData = focusedCounty && countyStats?.byFips[focusedCounty];
   return (
     <motion.div
@@ -176,6 +183,24 @@ export function SummaryPanel({
           </p>
         </div>
       </div>
+
+      {/* National report — pinned bottom (matches state report CTA styling) */}
+      {summaryStats.type === "national" && (
+        <div className="px-5 pb-4 pt-3 border-t border-white/8 flex-shrink-0 space-y-2">
+          <Link
+            to={`/report/${latestReportSlug}`}
+            className="w-full py-2.5 rounded-xl text-xs font-semibold text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 transition-colors cursor-pointer flex items-center justify-center gap-2"
+            onClick={onClose}
+          >
+            <FileText size={13} />
+            View U.S. Report
+          </Link>
+          <NationalPreviousReportsExpand
+            previous={previousNationalReports}
+            onNavigate={onClose}
+          />
+        </div>
+      )}
 
       {/* Action buttons — pinned bottom (state view only) */}
       {summaryStats.type === "state" && (
@@ -450,9 +475,6 @@ function NationalSummaryContent({
       {/* Community impact (nation-wide totals) */}
       <CommunityStatsCard key="national" />
 
-      {/* Reports */}
-      <ReportLinks />
-
       {/* Top 3 states by church count — podium style */}
       {stats.topStates.length > 0 && (
         <div>
@@ -494,84 +516,47 @@ function NationalSummaryContent({
   );
 }
 
-function ReportLinks() {
-  const [reports, setReports] = useState<SeasonalReportSummary[]>([]);
-  const [showPrevious, setShowPrevious] = useState(false);
-
-  useEffect(() => {
-    fetchReportList().then(setReports);
-  }, []);
-
-  // Fallback to launch report if list hasn't loaded yet
-  const latest = reports[reports.length - 1];
-  const previous = reports.slice(0, -1).reverse(); // newest first, excluding latest
-  const latestSlug = latest?.slug || "launch-2026";
-
-  const latestUpdatedLabel = (() => {
-    if (!latest?.generatedAt) return null;
-    try {
-      const d = new Date(latest.generatedAt);
-      if (Number.isNaN(d.getTime())) return null;
-      return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-    } catch {
-      return null;
-    }
-  })();
-
+/** Older national seasonal reports — expand sits under View U.S. Report in the pinned footer. */
+function NationalPreviousReportsExpand({
+  previous,
+  onNavigate,
+}: {
+  previous: SeasonalReportSummary[];
+  onNavigate: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (previous.length === 0) return null;
   return (
-    <div>
-      <Link
-        to={`/report/${latestSlug}`}
-        className="flex items-center gap-2 rounded-xl bg-purple-500/10 border border-purple-500/15 px-4 py-3 hover:bg-purple-500/15 transition-colors group"
+    <div className="space-y-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full py-2 rounded-xl text-xs font-semibold text-white/85 bg-indigo-500/5 hover:bg-indigo-500/12 border border-indigo-500/20 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+        aria-expanded={open}
       >
-        <FileText size={14} className="text-purple-400 flex-shrink-0" />
-        <div className="min-w-0 flex-1">
-          <span className="text-white text-[13px] font-medium group-hover:text-purple-300 transition-colors block">
-            The State of Churches in America
-          </span>
-          <span className="text-white/40 text-[10px] block mt-0.5">
-            {latestUpdatedLabel != null
-              ? `Last updated ${latestUpdatedLabel}`
-              : reports.length === 0
-                ? "Loading…"
-                : latest?.title || "Our latest report"}
-          </span>
-        </div>
-        <svg className="h-4 w-4 text-white/30 group-hover:text-purple-300 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-      </Link>
-      {previous.length > 0 && (
-        <div className="mt-1.5">
-          <button
-            onClick={() => setShowPrevious((v) => !v)}
-            className="flex items-center gap-1.5 text-[10px] text-white/30 hover:text-white/50 transition-colors px-1 py-1"
-          >
-            <svg
-              className={`h-3 w-3 transition-transform ${showPrevious ? "rotate-90" : ""}`}
-              fill="none" viewBox="0 0 24 24" stroke="currentColor"
+        <ChevronDown
+          size={14}
+          className={`text-indigo-300/90 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          aria-hidden
+        />
+        {previous.length} previous report{previous.length > 1 ? "s" : ""}
+      </button>
+      {open && (
+        <div className="max-h-36 overflow-y-auto space-y-0.5 rounded-xl border border-indigo-500/15 bg-indigo-500/5 p-1.5">
+          {previous.map((r) => (
+            <Link
+              key={r.slug}
+              to={`/report/${r.slug}`}
+              onClick={onNavigate}
+              className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12px] text-white/70 hover:text-white hover:bg-white/8 transition-colors"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-            {previous.length} previous report{previous.length > 1 ? "s" : ""}
-          </button>
-          {showPrevious && (
-            <div className="mt-1 space-y-1 pl-2">
-              {previous.map((r) => (
-                <Link
-                  key={r.slug}
-                  to={`/report/${r.slug}`}
-                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] text-white/50 hover:text-white hover:bg-white/5 transition-colors"
-                >
-                  <BarChart3 size={11} className="text-purple-400/50 shrink-0" />
-                  <span>{r.title}</span>
-                  <span className="ml-auto text-[10px] text-white/20">
-                    {r.totalChurches.toLocaleString()}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          )}
+              <BarChart3 size={11} className="text-indigo-400/70 shrink-0" />
+              <span className="min-w-0 truncate">{r.title}</span>
+              <span className="ml-auto shrink-0 text-[10px] text-white/35 tabular-nums">
+                {r.totalChurches.toLocaleString()}
+              </span>
+            </Link>
+          ))}
         </div>
       )}
     </div>

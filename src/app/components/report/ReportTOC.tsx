@@ -79,9 +79,9 @@ export function ReportTOC({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="absolute bottom-full mb-2 left-0 w-64 rounded-xl bg-white shadow-xl overflow-hidden"
+            className="absolute bottom-full mb-2 left-0 flex max-h-[240px] w-64 flex-col overflow-hidden rounded-xl bg-white shadow-xl"
           >
-            <div className="px-4 pt-3 pb-2 flex items-center justify-between border-b border-stone-100">
+            <div className="flex shrink-0 items-center justify-between border-b border-stone-100 px-4 pt-3 pb-2">
               <span className="text-xs font-semibold uppercase tracking-wider text-stone-400">
                 Contents
               </span>
@@ -91,7 +91,7 @@ export function ReportTOC({
                 className="hover:bg-stone-100 active:bg-stone-200 [&>svg]:text-stone-400"
               />
             </div>
-            <div className="[&>*]:border-0">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [&>*]:border-0">
               {sections.map((section) => {
                 const isActive = section.id === activeSection;
                 const Icon = ICON_MAP[section.icon];
