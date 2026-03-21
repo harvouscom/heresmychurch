@@ -1310,9 +1310,11 @@ export function SeasonalReportPage() {
   useEffect(() => {
     if (!report) return;
     const section = sectionId ? REPORT_SECTIONS.find((s) => s.id === sectionId) : null;
-    const title = section
+    const baseTitle = section
       ? `${section.label} — ${report.title} — Here's My Church`
       : `${report.title} — Here's My Church`;
+    const title =
+      report.scope !== "state" && report.season === "launch" ? `U.S. ${baseTitle}` : baseTitle;
     const prevTitle = document.title;
     document.title = title;
 

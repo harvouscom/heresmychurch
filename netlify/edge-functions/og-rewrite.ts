@@ -125,9 +125,14 @@ export default async function handler(request: Request, context: Context): Promi
       const res = await fetch(apiPath, { headers: supabaseHeaders });
       if (res.ok) {
         const data = await res.json();
-        const title = sectionLabel
-          ? `${sectionLabel} — ${data.title ?? "Report"} — Here's My Church`
-          : `${data.title ?? "Report"} — Here's My Church`;
+        const reportName = data.title ?? "Report";
+        const isNationalLaunch =
+          !isStateReport &&
+          (data.season === "launch" || String(slug).startsWith("launch-"));
+        let title = sectionLabel
+          ? `${sectionLabel} — ${reportName} — Here's My Church`
+          : `${reportName} — Here's My Church`;
+        if (isNationalLaunch) title = `U.S. ${title}`;
         const desc = sectionLabel
           ? `${sectionLabel} — from ${data.title ?? "Report"}.`
           : data.subtitle
