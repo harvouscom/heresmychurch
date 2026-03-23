@@ -11,7 +11,7 @@ Church data is surprisingly hard to come by; most directories are old and outdat
 
 What started as a Figma Make project called "Church America Map" became **Here's My Church** after the first version got 10k+ views, 100+ likes/bookmarks on X, and 300 visits on day 1. That’s when I created the brand and got a domain.
 
-By [Derek Castelli](https://github.com/harvouscom), who’s also building [Harvous](https://github.com/harvouscom/harvous) — a Bible notes app.
+By [Derek Castelli](https://heyderekj.com), who’s also building [Harvous](https://github.com/harvouscom/harvous) — a Bible notes app.
 
 ## What it does
 
