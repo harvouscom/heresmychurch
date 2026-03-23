@@ -473,6 +473,12 @@ app.use(
 
 const P="/make-server-283d8046";
 
+// ── In-memory cache for churches:meta (read on nearly every endpoint, changes rarely) ──
+let _metaCache:{data:any;ts:number}|null=null;
+const META_TTL=60_000; // 60s
+async function getMeta(){if(_metaCache&&Date.now()-_metaCache.ts<META_TTL)return _metaCache.data;const m=await kv.get("churches:meta");_metaCache={data:m,ts:Date.now()};return m;}
+function invalidateMetaCache(){_metaCache=null;}
+
 app.get(`${P}/health`,(c)=>c.json({status:"ok",v:6}));
 
 app.get(`${P}/og-image`,async(c)=>{
@@ -500,7 +506,7 @@ app.get(`${P}/og-image`,async(c)=>{
 
 app.get(`${P}/churches/states`,async(c)=>{
   try{
-    const meta=await kv.get("churches:meta");const sc:Record<string,number>={...(meta?.stateCounts||{})};
+    const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
     if(sc["DC"]){sc["MD"]=(sc["MD"]||0)+sc["DC"];delete sc["DC"];}
     return c.json({states:US.map(s=>({abbrev:s.a,name:s.n,lat:s.la,lng:s.lo,churchCount:sc[s.a]||0,isPopulated:!!sc[s.a]})),totalChurches:Object.values(sc).reduce((a:number,b:number)=>a+b,0),populatedStates:Object.keys(sc).length});
   }catch(e){return c.json({states:[],totalChurches:0,populatedStates:0,error:`${e}`},500);}
@@ -511,7 +517,7 @@ app.get(`${P}/churches/search`,async(c)=>{
     const rawQ=c.req.query("q")||"",q=rawQ.toLowerCase().trim();
     if(!q||q.length<2)return c.json({results:[],query:rawQ});
     const tokens=q.split(/\s+/).filter(Boolean);
-    const meta=await kv.get("churches:meta");const sc:Record<string,number>={...(meta?.stateCounts||{})};
+    const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
     if(sc["DC"]){sc["MD"]=(sc["MD"]||0)+sc["DC"];delete sc["DC"];}
     const pop=Object.keys(sc);if(!pop.length)return c.json({results:[],query:rawQ});
 
@@ -652,7 +658,7 @@ function stateFromChurchId(id:string):string|null{
 
 // Resolve homeCampus summary when homeCampusId points to another state
 async function resolveHomeCampus(churches:any[],currentState:string):Promise<void>{
-  const meta=await kv.get("churches:meta");const stateCounts=meta?.stateCounts||{};
+  const meta=await getMeta();const stateCounts=meta?.stateCounts||{};
   for(const ch of churches){
     const hid=(ch as any).homeCampusId;if(!hid||typeof hid!=="string")continue;
     const otherSt=stateFromChurchId(hid);if(!otherSt||otherSt===currentState)continue;
@@ -691,7 +697,7 @@ const REVIEW_STATS_CACHE_KEY="churches:review-stats";
 async function invalidateReviewStatsCache():Promise<void>{try{await kv.del(REVIEW_STATS_CACHE_KEY);}catch(_){}}
 
 async function computeReviewStats():Promise<{states:Record<string,{total:number;needsReview:number;missingAddress:number;missingWebsite:number;missingServiceTimes:number;missingDenomination:number}>;totalChurches:number;totalNeedsReview:number;percentage:number;missingAddress:number;missingWebsite:number;missingServiceTimes:number;missingDenomination:number}>{
-  const meta=await kv.get("churches:meta");const sc:Record<string,number>={...(meta?.stateCounts||{})};
+  const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
   if(sc["DC"]){sc["MD"]=(sc["MD"]||0)+sc["DC"];delete sc["DC"];}
   const ps=Object.keys(sc).filter(s=>sc[s]>0);
   if(!ps.length)return {states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingWebsite:0,missingServiceTimes:0,missingDenomination:0};
@@ -723,12 +729,16 @@ async function computeReviewStats():Promise<{states:Record<string,{total:number;
   return {states,totalChurches,totalNeedsReview,percentage,missingAddress,missingWebsite,missingServiceTimes,missingDenomination};
 }
 
+const REVIEW_STATS_TTL=5*60_000; // 5 minutes
 app.get(`${P}/churches/review-stats`,async(c)=>{
   try{
     const cached=await kv.get(REVIEW_STATS_CACHE_KEY);
-    if(cached&&typeof cached==="object"&&cached.states&&cached.totalChurches!=null)return c.json(cached);
+    if(cached&&typeof cached==="object"&&cached.states&&cached.totalChurches!=null){
+      // Serve from cache if within TTL (avoids recomputing = reading ALL state church blobs)
+      if(cached._cachedAt&&Date.now()-cached._cachedAt<REVIEW_STATS_TTL){const{_cachedAt,...clean}=cached;return c.json(clean);}
+    }
     const result=await computeReviewStats();
-    try{await kv.set(REVIEW_STATS_CACHE_KEY,result);}catch(_){}
+    try{await kv.set(REVIEW_STATS_CACHE_KEY,{...result,_cachedAt:Date.now()});}catch(_){}
     return c.json(result);
   }catch(e){return c.json({states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingWebsite:0,missingServiceTimes:0,missingDenomination:0,error:`${e}`},500);}
 });
@@ -802,7 +812,7 @@ app.post(`${P}/churches/populate/:state`,async(c)=>{
     const chWithShort=addShortIdsUnique(ch,st);
     await kv.set(`churches:${st}`,chWithShort);await writeIdx(st,chWithShort);
     void recordChurchAudit({state:st,action:"state_populated",old_value:Array.isArray(ex)?{churchCount:ex.length}:undefined,new_value:{churchCount:ch.length},source:"populate",actor_type:"system"});
-    const meta=(await kv.get("churches:meta"))||{stateCounts:{}};meta.stateCounts[st]=ch.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);
+    const meta=(await getMeta())||{stateCounts:{}};meta.stateCounts[st]=ch.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();
     await invalidateReviewStatsCache();
     return c.json({message:`Populated ${ch.length} churches for ${info.n}`,count:ch.length,communityPreserved:communityCount,state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},ardaEnriched:en});
   }catch(e){console.log(`Populate error:${e}`);return c.json({error:`${e}`},500);}
@@ -810,7 +820,7 @@ app.post(`${P}/churches/populate/:state`,async(c)=>{
 
 app.get(`${P}/churches/denominations/all`,async(c)=>{
   try{
-    const meta=await kv.get("churches:meta");const ps=Object.keys(meta?.stateCounts||{});
+    const meta=await getMeta();const ps=Object.keys(meta?.stateCounts||{});
     if(!ps.length)return c.json({denominations:[]});
     const dc:Record<string,number>={};
     for(const s of ps){const ch=await kv.get(`churches:${s}`);if(Array.isArray(ch))for(const x of ch){dc[x.denomination||"Unknown"]=(dc[x.denomination||"Unknown"]||0)+1;}}
@@ -820,7 +830,7 @@ app.get(`${P}/churches/denominations/all`,async(c)=>{
 
 app.post(`${P}/churches/search/rebuild-index`,async(c)=>{
   try{
-    const meta=await kv.get("churches:meta");const ps=Object.keys(meta?.stateCounts||{});
+    const meta=await getMeta();const ps=Object.keys(meta?.stateCounts||{});
     if(!ps.length)return c.json({message:"No states populated.",rebuilt:0});
     let n=0;for(const s of ps){const ch=await kv.get(`churches:${s}`);if(Array.isArray(ch)&&ch.length){await writeIdx(s,ch);n++;}}
     return c.json({message:`Rebuilt indexes for ${n} states`,rebuilt:n});
@@ -830,7 +840,7 @@ app.post(`${P}/churches/search/rebuild-index`,async(c)=>{
 app.post(`${P}/admin/refresh-attendance`,async(c)=>{
   try{
     const stateParam=(c.req.query("state")||"").toUpperCase().trim();
-    const meta=await kv.get("churches:meta");const populated=Object.keys(meta?.stateCounts||{});
+    const meta=await getMeta();const populated=Object.keys(meta?.stateCounts||{});
     if(!populated.length)return c.json({message:"No states populated. Use POST /churches/populate/:state first.",refreshed:0});
     const states=stateParam&&populated.includes(stateParam)?[stateParam]:populated;
     let refreshed=0;
@@ -843,7 +853,7 @@ app.post(`${P}/admin/refresh-attendance`,async(c)=>{
         const chWithShort=addShortIdsUnique(ch,st);
         await kv.set(`churches:${st}`,chWithShort);await writeIdx(st,chWithShort);
         void recordChurchAudit({state:st,action:"state_refreshed",old_value:Array.isArray(existing)?{churchCount:existing.length}:undefined,new_value:{churchCount:chWithShort.length},source:"refresh",actor_type:"system"});
-        if(meta){meta.stateCounts[st]=ch.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);}
+        if(meta){meta.stateCounts[st]=ch.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
         refreshed++;
       }catch(e){console.log(`Refresh ${st} error:${e}`);}
       if(states.length>1)await new Promise(r=>setTimeout(r,500));
@@ -867,7 +877,7 @@ app.get(`${P}/population`,async(c)=>{
 app.post(`${P}/admin/cleanup-dc`,async(c)=>{
   try{
     let d=0;for(const k of["churches:DC","churches:sidx:DC"]){if(await kv.get(k)){await kv.del(k);d++;}}
-    const meta=await kv.get("churches:meta");if(meta?.stateCounts?.DC){delete meta.stateCounts.DC;await kv.set("churches:meta",meta);d++;}
+    const meta=await getMeta();if(meta?.stateCounts?.DC){delete meta.stateCounts.DC;await kv.set("churches:meta",meta);invalidateMetaCache();d++;}
     if(d>0){void recordChurchAudit({state:"DC",action:"dc_removed",new_value:{deleted:d},source:"admin_dc_remove",actor_type:"system"});}
     await invalidateReviewStatsCache();
     return c.json({message:`DC cleanup done. ${d} removed.`,deleted:d});
@@ -876,7 +886,7 @@ app.post(`${P}/admin/cleanup-dc`,async(c)=>{
 
 app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
   try{
-    const meta=await kv.get("churches:meta");const sc:Record<string,number>={...(meta?.stateCounts||{})};
+    const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
     const states=Object.keys(sc);
     if(!states.length)return c.json({message:"No states populated.",cleaned:0});
     let cleanedStates=0,removedTotal=0;
@@ -895,7 +905,7 @@ app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
         void recordChurchAudit({state:st,action:"cleanup_blocked_denominations",old_value:{churchCount:ch.length},new_value:{churchCount:filtered.length,removed},source:"admin_cleanup",actor_type:"system"});
       }
     }
-    if(meta){meta.stateCounts=sc;meta.lastBlockedCleanup=new Date().toISOString();await kv.set("churches:meta",meta);}
+    if(meta){meta.stateCounts=sc;meta.lastBlockedCleanup=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
     await invalidateReviewStatsCache();
     return c.json({message:`Cleanup complete. Removed ${removedTotal} churches across ${cleanedStates} states.`,removed:removedTotal,states:cleanedStates});
   }catch(e){return c.json({error:`${e}`},500);}
@@ -903,7 +913,7 @@ app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
 
 app.post(`${P}/admin/migrate-denominations`,async(c)=>{
   try{
-    const meta=await kv.get("churches:meta");
+    const meta=await getMeta();
     const allStates=Object.keys(meta?.stateCounts||{});
     if(!allStates.length)return c.json({message:"No states populated.",updatedStates:0,updatedChurches:0});
     const stateParam=(c.req.query("state")||"").toUpperCase().trim();
@@ -936,7 +946,7 @@ app.post(`${P}/admin/migrate-denominations`,async(c)=>{
 
     if(meta){
       meta.lastDenominationMigrationAt=new Date().toISOString();
-      await kv.set("churches:meta",meta);
+      await kv.set("churches:meta",meta);invalidateMetaCache();
     }
     await invalidateReviewStatsCache();
     return c.json({message:`Migration complete. Updated ${updatedChurches} churches across ${updatedStates} states.`,updatedStates,updatedChurches});
@@ -948,7 +958,7 @@ app.post(`${P}/admin/remove-churches-by-name`,async(c)=>{
     const b=await c.req.json().catch(()=>({}));
     const name=typeof b?.name==="string"?b.name.trim():"";
     if(!name)return c.json({error:"Body must include { name: \"Church Name\" }"},400);
-    const meta=await kv.get("churches:meta");const sc:Record<string,number>={...(meta?.stateCounts||{})};
+    const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
     const states=Object.keys(sc);
     let removedMain=0,removedPending=0;
     const norm=(s:string)=>s.trim().toLowerCase();
@@ -975,7 +985,7 @@ app.post(`${P}/admin/remove-churches-by-name`,async(c)=>{
         if(removedP>0){await kv.set(pendingKey,store);removedPending+=removedP;}
       }
     }
-    if(meta){meta.stateCounts=sc;await kv.set("churches:meta",meta);}
+    if(meta){meta.stateCounts=sc;await kv.set("churches:meta",meta);invalidateMetaCache();}
     if(removedMain>0||removedPending>0){void recordChurchAudit({state:"ALL",action:"remove_by_name",new_value:{name,removedMain,removedPending},source:"admin_remove_name",actor_type:"system"});}
     await invalidateReviewStatsCache();
     return c.json({message:`Removed ${removedMain} church(es) from main list and ${removedPending} from pending.`,removedMain,removedPending});
@@ -1704,7 +1714,7 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
         if(filtered.length!==mainChurches.length){
           await kv.set(mainKey,filtered);
           await writeIdx(st,filtered);
-          const meta=await kv.get("churches:meta");if(meta){meta.stateCounts=meta.stateCounts||{};meta.stateCounts[st]=filtered.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);}
+          const meta=await getMeta();if(meta){meta.stateCounts=meta.stateCounts||{};meta.stateCounts[st]=filtered.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
         }
       }
       const pendingKey=`pending-churches:${st}`;const store=await kv.get(pendingKey);
@@ -1734,7 +1744,7 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
         if(filtered.length!==mainChurches.length){
           await kv.set(mainKey,filtered);
           await writeIdx(st,filtered);
-          const meta=await kv.get("churches:meta");if(meta){meta.stateCounts=meta.stateCounts||{};meta.stateCounts[st]=filtered.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);}
+          const meta=await getMeta();if(meta){meta.stateCounts=meta.stateCounts||{};meta.stateCounts[st]=filtered.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
         }
       }
       const pendingKey=`pending-churches:${st}`;const store=await kv.get(pendingKey);
@@ -2209,13 +2219,13 @@ function communityMilestoneTweet(corrections:number):string{
 
 async function generateFunFact():Promise<{text:string;category:string}|null>{
   try{
-    const meta=await kv.get("churches:meta");
+    const meta=await getMeta();
     const sc:Record<string,number>=meta?.stateCounts||{};
     const total=Object.values(sc).reduce((a:number,b:number)=>a+b,0);
     if(total<50)return null;
 
-    const stats=(await kv.get("community:stats"))||{totalCorrections:0,churchesImproved:[],totalConfirmations:0};
-    const pop=await kv.get("state-populations-v1");
+    const [stats_raw,pop]=await kv.mget(["community:stats","state-populations-v1"]);
+    const stats=stats_raw||{totalCorrections:0,churchesImproved:[],totalConfirmations:0};
 
     // Collect all possible facts
     const facts:{text:string;category:string;id:string}[]=[];
@@ -2336,7 +2346,7 @@ async function checkMilestones():Promise<{text:string;id:string}|null>{
 }
 
 async function checkMilestonesInner(reached:{national:number[];states:Record<string,number[]>;accuracy:Record<string,number[]>;community:number[]}):Promise<{text:string;id:string}|null>{
-  const meta=await kv.get("churches:meta");
+  const meta=await getMeta();
   const sc:Record<string,number>=meta?.stateCounts||{};
 
   // National milestones — pre-seed already-passed ones, only tweet the newest crossing
@@ -2553,7 +2563,7 @@ async function runWeekendSaturday():Promise<{posted:boolean;type?:string;text?:s
 async function runWeekendSunday():Promise<{posted:boolean;type?:string;text?:string;error?:string}>{
   try{
     if(!Deno.env.get("TWITTER_API_KEY"))return{posted:false,error:"No Twitter credentials"};
-    const meta=await kv.get("churches:meta");const sc:Record<string,number>=meta?.stateCounts||{};
+    const meta=await getMeta();const sc:Record<string,number>=meta?.stateCounts||{};
     const stateKeys=Object.keys(sc).filter(st=>st!=="DC"&&(sc[st]||0)>20);
     if(!stateKeys.length)return{posted:false,error:"No states with churches"};
     const lastSpotlightId=await kv.get("twitter:last-spotlight-church-id") as string|undefined;
@@ -2918,7 +2928,7 @@ function buildStatePeerComparison(sc:Record<string,number>,stateAbbrev:string):{
 }
 
 async function computeSeasonalReport(slug:string,scope:{type:"national"}|{type:"state";stateAbbrev:string}={type:"national"}):Promise<any>{
-  const meta=await kv.get("churches:meta");
+  const meta=await getMeta();
   const sc:Record<string,number>={...(meta?.stateCounts||{})};
   if(sc["DC"]){sc["MD"]=(sc["MD"]||0)+sc["DC"];delete sc["DC"];}
   const stateScopeAbbrev=scope.type==="state"?scope.stateAbbrev.toUpperCase():null;
@@ -3555,8 +3565,11 @@ app.get(`${P}/reports`,async(c)=>{
   try{
     const slugs=allReportSlugs();
     const list:any[]=[];
-    for(const{slug,season,year}of slugs){
-      const cached=await kv.get(`report:${slug}`);
+    const keys=slugs.map(s=>`report:${s.slug}`);
+    const vals=await kv.mget(keys);
+    for(let i=0;i<slugs.length;i++){
+      const{slug,season,year}=slugs[i];
+      const cached=vals[i];
       if(cached&&typeof cached==="object"&&cached.slug){
         list.push({slug,title:cached.title||seasonTitle(season,year),season,year,generatedAt:cached.generatedAt,totalChurches:cached.bigPicture?.totalChurches||0});
       }
@@ -3571,18 +3584,15 @@ app.get(`${P}/reports/state/:stateAbbrev`,async(c)=>{
     if(!/^[A-Z]{2}$/.test(stateAbbrev))return c.json([],200);
     const slugs=allReportSlugs();
     const list:any[]=[];
-    for(const{slug,season,year}of slugs){
-      let cached=await kv.get(`report:state:v4:${stateAbbrev}:${slug}`);
-      if(!cached||typeof cached!=="object"||!cached.slug){
-        cached=await kv.get(`report:state:v3:${stateAbbrev}:${slug}`);
-      }
-      if(!cached||typeof cached!=="object"||!cached.slug){
-        cached=await kv.get(`report:state:v2:${stateAbbrev}:${slug}`);
-      }
-      if(!cached||typeof cached!=="object"||!cached.slug){
-        cached=await kv.get(`report:state:${stateAbbrev}:${slug}`);
-      }
-      if(cached&&typeof cached==="object"&&cached.slug){
+    // Batch all version keys for all slugs in one mget to avoid sequential reads
+    const allKeys:string[]=[];
+    for(const{slug}of slugs){allKeys.push(`report:state:v4:${stateAbbrev}:${slug}`,`report:state:v3:${stateAbbrev}:${slug}`,`report:state:v2:${stateAbbrev}:${slug}`,`report:state:${stateAbbrev}:${slug}`);}
+    const allVals=await kv.mget(allKeys);
+    for(let i=0;i<slugs.length;i++){
+      const{slug,season,year}=slugs[i];
+      const base=i*4;
+      const cached=allVals.slice(base,base+4).find((v:any)=>v&&typeof v==="object"&&v.slug);
+      if(cached){
         list.push({slug,title:cached.title||`${STATE_NAMES_MAP[stateAbbrev]||stateAbbrev} ${seasonTitle(season,year)}`,season,year,generatedAt:cached.generatedAt,totalChurches:cached.bigPicture?.totalChurches||0});
       }
     }
@@ -3637,11 +3647,10 @@ app.get(`${P}/report/state/:stateAbbrev/:slug`,async(c)=>{
     const report=await computeSeasonalReport(slug,{type:"state",stateAbbrev});
     const prevSlug=previousSlugFor(slug);
     if(prevSlug){
-      let prevReport=await kv.get(`report:state:v4:${stateAbbrev}:${prevSlug}`);
-      if(!prevReport||typeof prevReport!=="object"||!prevReport.slug){
-        prevReport=await kv.get(`report:state:v3:${stateAbbrev}:${prevSlug}`);
-      }
-      if(prevReport&&typeof prevReport==="object"&&prevReport.slug){
+      const prevKeys=[`report:state:v4:${stateAbbrev}:${prevSlug}`,`report:state:v3:${stateAbbrev}:${prevSlug}`];
+      const prevVals=await kv.mget(prevKeys);
+      const prevReport=prevVals.find((v:any)=>v&&typeof v==="object"&&v.slug);
+      if(prevReport){
         report.previousSlug=prevSlug;
         report.changes=computeChanges(report,prevReport);
       }

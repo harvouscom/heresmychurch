@@ -1,6 +1,18 @@
 // Church change audit log — non-throwing; failures must not break mutations
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 
+// Reuse a single client instance to avoid per-request connection overhead
+let _client: ReturnType<typeof createClient> | null = null;
+function getClient() {
+  if (!_client) {
+    const url = Deno.env.get("SUPABASE_URL");
+    const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!url || !key) throw new Error("Missing Supabase env");
+    _client = createClient(url, key);
+  }
+  return _client;
+}
+
 export type AuditEntry = {
   church_id?: string | null;
   church_name?: string | null;
@@ -26,10 +38,8 @@ export async function recordChurchAudit(
   opts?: { hashIp?: string; hashModKey?: string }
 ): Promise<void> {
   try {
-    const url = Deno.env.get("SUPABASE_URL");
-    const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!url || !key) return;
-    const supabase = createClient(url, key);
+    let client: ReturnType<typeof createClient>;
+    try { client = getClient(); } catch { return; }
     let actor_type = entry.actor_type ?? null;
     let actor_id: string | null = entry.actor_id ?? null;
     if (opts?.hashIp) {
@@ -52,18 +62,11 @@ export async function recordChurchAudit(
       actor_type,
       actor_id,
     };
-    const { error } = await supabase.from("church_audit_log").insert(row);
+    const { error } = await client.from("church_audit_log").insert(row);
     if (error) console.error("audit insert error:", error.message);
   } catch (e) {
     console.error("recordChurchAudit error:", e);
   }
-}
-
-function getClient() {
-  const url = Deno.env.get("SUPABASE_URL");
-  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!url || !key) throw new Error("Missing Supabase env");
-  return createClient(url, key);
 }
 
 export type AuditLogRow = {
