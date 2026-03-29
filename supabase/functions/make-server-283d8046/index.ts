@@ -615,9 +615,9 @@ app.get(`${P}/churches/search`,async(c)=>{
 });
 
 async function getApprovedCorrectionsForState(st:string):Promise<Record<string,Record<string,string>>>{
-  const all=await kv.getByPrefix(`suggestions:${st}-`);
+  const [regular,community]=await Promise.all([kv.getByPrefix(`suggestions:${st}-`),kv.getByPrefix(`suggestions:community-${st}-`)]);
+  const all=[...(Array.isArray(regular)?regular:[]),...(Array.isArray(community)?community:[])];
   const approved:Record<string,Record<string,string>>={};
-  if(!Array.isArray(all))return approved;
   for(const entry of all){
     if(!entry||!Array.isArray(entry.submissions))continue;
     const id=entry.churchId||"";if(!id)continue;
@@ -1055,19 +1055,18 @@ async function computeCalibrationForState(st:string,churches:any[]):Promise<{med
   const churchById=new Map<string,any>();for(const c of churches)churchById.set(c.id,c);
   const denomValues:Record<string,number[]>={};
   const approvedChurchIds:string[]=[];
-  const all=await kv.getByPrefix(`suggestions:${st}-`);
-  if(Array.isArray(all)){
-    for(const entry of all){
-      if(!entry||!Array.isArray(entry.submissions))continue;
-      const id=entry.churchId||"";if(!id)continue;
-      const con=consensus(entry.submissions);
-      const attData=con.attendance as {approved?:boolean;value?:string}|undefined;
-      if(attData?.approved&&attData?.value!=null){
-        const v=parseInt(attData.value);if(!isNaN(v)&&v>0){
-          approvedChurchIds.push(id);
-          const ch=churchById.get(id);const denom=(ch?.denomination||"Unknown").trim()||"Unknown";
-          if(!denomValues[denom])denomValues[denom]=[];denomValues[denom].push(v);
-        }
+  const [regular,community]=await Promise.all([kv.getByPrefix(`suggestions:${st}-`),kv.getByPrefix(`suggestions:community-${st}-`)]);
+  const all=[...(Array.isArray(regular)?regular:[]),...(Array.isArray(community)?community:[])];
+  for(const entry of all){
+    if(!entry||!Array.isArray(entry.submissions))continue;
+    const id=entry.churchId||"";if(!id)continue;
+    const con=consensus(entry.submissions);
+    const attData=con.attendance as {approved?:boolean;value?:string}|undefined;
+    if(attData?.approved&&attData?.value!=null){
+      const v=parseInt(attData.value);if(!isNaN(v)&&v>0){
+        approvedChurchIds.push(id);
+        const ch=churchById.get(id);const denom=(ch?.denomination||"Unknown").trim()||"Unknown";
+        if(!denomValues[denom])denomValues[denom]=[];denomValues[denom].push(v);
       }
     }
   }
@@ -1189,7 +1188,10 @@ app.post(`${P}/suggestions`,async(c)=>{
     if(isSensitive){
       return c.json({success:true,field,consensus:con[field],allFields:con,applied:false,needsModeration:true});
     }
-    const applied=await applyApprovedCorrections(churchId,con,{source:"suggestion",actorIp:ip});
+    // Never auto-apply sensitive fields when applying non-sensitive consensus (same pattern as migrate/apply-pending)
+    const safeCon:Record<string,any>={};
+    for(const[f,d]of Object.entries(con)){if(!SENSITIVE_FIELDS.includes(f))safeCon[f]=d;}
+    const applied=await applyApprovedCorrections(churchId,safeCon,{source:"suggestion",actorIp:ip});
     if(applied.updated&&applied.state&&applied.churches&&applied.corrections){void runDeferredIndexAndStats(applied.state,applied.churches,churchId,applied.corrections).catch(()=>{});}
     return c.json({success:true,field,consensus:con[field],allFields:con,applied:applied.updated});
   }catch(e){return c.json({error:`${e}`},500);}
@@ -1198,20 +1200,19 @@ app.post(`${P}/suggestions`,async(c)=>{
 app.get(`${P}/suggestions/approved/:state`,async(c)=>{
   try{
     const st=c.req.param("state").toUpperCase();
-    // getByPrefix returns array of values (not {key,value} pairs)
-    const all=await kv.getByPrefix(`suggestions:${st}-`);
+    // getByPrefix returns array of values (not {key,value} pairs); include community-* church ids
+    const [regular,community]=await Promise.all([kv.getByPrefix(`suggestions:${st}-`),kv.getByPrefix(`suggestions:community-${st}-`)]);
+    const all=[...(Array.isArray(regular)?regular:[]),...(Array.isArray(community)?community:[])];
     const approved:Record<string,Record<string,string>>={};
-    if(Array.isArray(all)){
-      for(const entry of all){
-        // entry IS the value object directly: {churchId, submissions: [...]}
-        if(!entry||!Array.isArray(entry.submissions))continue;
-        const id=entry.churchId||"";
-        if(!id)continue;
-        const con=consensus(entry.submissions);
-        const corr:Record<string,string>={};
-        for(const[f,d]of Object.entries(con)){if((d as any).approved&&(d as any).value!==null)corr[f]=(d as any).value;}
-        if(Object.keys(corr).length)approved[id]=corr;
-      }
+    for(const entry of all){
+      // entry IS the value object directly: {churchId, submissions: [...]}
+      if(!entry||!Array.isArray(entry.submissions))continue;
+      const id=entry.churchId||"";
+      if(!id)continue;
+      const con=consensus(entry.submissions);
+      const corr:Record<string,string>={};
+      for(const[f,d]of Object.entries(con)){if((d as any).approved&&(d as any).value!==null)corr[f]=(d as any).value;}
+      if(Object.keys(corr).length)approved[id]=corr;
     }
     return c.json({state:st,corrections:approved});
   }catch(e){return c.json({state:c.req.param("state")?.toUpperCase()||"",corrections:{},error:`${e}`},500);}
@@ -1220,21 +1221,20 @@ app.get(`${P}/suggestions/approved/:state`,async(c)=>{
 app.get(`${P}/suggestions/pending/:state`,async(c)=>{
   try{
     const st=c.req.param("state").toUpperCase();
-    const all=await kv.getByPrefix(`suggestions:${st}-`);
+    const [regular,community]=await Promise.all([kv.getByPrefix(`suggestions:${st}-`),kv.getByPrefix(`suggestions:community-${st}-`)]);
+    const all=[...(Array.isArray(regular)?regular:[]),...(Array.isArray(community)?community:[])];
     const pending:Array<{churchId:string;fields:Record<string,{votes:number;needed:number;topValue:string;submissions:{value:string;count:number}[]}>}>=[];
-    if(Array.isArray(all)){
-      for(const entry of all){
-        if(!entry||!Array.isArray(entry.submissions)||!entry.churchId)continue;
-        const con=consensus(entry.submissions);
-        const pf:Record<string,any>={};
-        for(const[f,d]of Object.entries(con)){
-          const fd=d as any;
-          if(fd.votes>0&&!fd.approved){
-            pf[f]={votes:fd.votes,needed:fd.needed,topValue:fd.submissions?.[0]?.value||"",submissions:fd.submissions||[]};
-          }
+    for(const entry of all){
+      if(!entry||!Array.isArray(entry.submissions)||!entry.churchId)continue;
+      const con=consensus(entry.submissions);
+      const pf:Record<string,any>={};
+      for(const[f,d]of Object.entries(con)){
+        const fd=d as any;
+        if(fd.votes>0&&!fd.approved){
+          pf[f]={votes:fd.votes,needed:fd.needed,topValue:fd.submissions?.[0]?.value||"",submissions:fd.submissions||[]};
         }
-        if(Object.keys(pf).length)pending.push({churchId:entry.churchId,fields:pf});
       }
+      if(Object.keys(pf).length)pending.push({churchId:entry.churchId,fields:pf});
     }
     return c.json({state:st,pending});
   }catch(e){return c.json({state:c.req.param("state")?.toUpperCase()||"",pending:[],error:`${e}`},500);}
