@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { FileText, MapPin } from "lucide-react";
+import { FileText, MapPin, Sparkles } from "lucide-react";
 import { fetchReportList } from "../api";
 import type { SeasonalReportSummary } from "../church-data";
 import { STATE_NAMES } from "../map-constants";
@@ -96,6 +96,26 @@ export function ReportsHubPage() {
           Seasonal snapshots from the crowd-sourced map: national coverage, denominations, geography, data
           quality, and state-level views.
         </p>
+
+        <section className="mt-8" aria-labelledby="special-reports-heading">
+          <h2 id="special-reports-heading" className="text-sm font-semibold uppercase tracking-wider text-stone-400">
+            Special reports
+          </h2>
+          <div className="mt-3">
+            <Link
+              to="/special-report/easter-2026"
+              className="flex items-start gap-3 rounded-2xl border border-purple-200/70 bg-gradient-to-br from-purple-50/70 to-pink-50/50 px-5 py-4 transition-colors hover:border-purple-300"
+            >
+              <Sparkles className="h-5 w-5 shrink-0 text-purple-600 mt-0.5" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-stone-900">Easter 2026 Special Report</div>
+                <div className="text-sm text-stone-600 mt-1 text-pretty">
+                  Churches across all states with service times listed — filter by state, denomination, ministries, and size.
+                </div>
+              </div>
+            </Link>
+          </div>
+        </section>
 
         {loading && (
           <p className="mt-10 text-sm text-stone-400" role="status">

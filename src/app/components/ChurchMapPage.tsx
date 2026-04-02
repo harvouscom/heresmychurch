@@ -39,12 +39,13 @@ export function ChurchMapPage() {
           : null;
     const searchParams = new URLSearchParams(location.search);
     const openReviewModalFromQuery = searchParams.get("review") === "true";
+    const showVerifiedDots = searchParams.get("verified") === "true" || searchParams.get("verified") === "1";
     const moderatorKey = searchParams.get("key") || null;
     // County from path (legacy) or from query param (canonical)
     const queryCounty = searchParams.get("county");
     const routeCountyFipsResolved =
       routeCountyFips ?? (queryCounty && /^\d{5}$/.test(queryCounty) ? queryCounty : null);
-    return { stateAbbrev, routeCountyFips: routeCountyFipsResolved, churchShortId, legacyChurchId, openReviewModalFromQuery, moderatorKey };
+    return { stateAbbrev, routeCountyFips: routeCountyFipsResolved, churchShortId, legacyChurchId, openReviewModalFromQuery, showVerifiedDots, moderatorKey };
   }, [location.pathname, location.search]);
 
   // location.search already includes the leading "?" (or is ""), so append as-is to avoid "??"
@@ -112,6 +113,7 @@ export function ChurchMapPage() {
       routeChurchShortId={routeParams.churchShortId}
       routeLegacyChurchId={routeParams.legacyChurchId}
       openReviewModalFromQuery={routeParams.openReviewModalFromQuery}
+      showVerifiedDotsFromQuery={routeParams.showVerifiedDots}
       clearReviewQueryParam={clearReviewQueryParam}
       moderatorKey={routeParams.moderatorKey}
       onExitReviewView={exitReviewView}

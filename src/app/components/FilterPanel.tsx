@@ -1,7 +1,9 @@
+import { useState } from "react";
 import {
   ChevronUp,
   ChevronDown,
   Languages,
+  CheckCheck,
 } from "lucide-react";
 import {
   sizeCategories,
@@ -10,6 +12,11 @@ import {
 import { CloseButton } from "./ui/close-button";
 
 interface FilterPanelProps {
+  // Verified
+  showVerified: boolean;
+  onToggleVerified: () => void;
+  verifiedCount?: number | null;
+  verifiedTotalCount?: number | null;
   // Size
   activeSize: Set<string>;
   toggleSize: (label: string) => void;
@@ -36,6 +43,10 @@ interface FilterPanelProps {
 }
 
 export function FilterPanel({
+  showVerified,
+  onToggleVerified,
+  verifiedCount,
+  verifiedTotalCount,
   activeSize,
   toggleSize,
   showSizeFilters,
@@ -53,6 +64,8 @@ export function FilterPanel({
   churchCount,
   onClose,
 }: FilterPanelProps) {
+  const [showVerifiedDetails, setShowVerifiedDetails] = useState(false);
+
   return (
     <div
       className="absolute left-[58px] bottom-6 z-[35] rounded-xl shadow-2xl p-4 w-[260px] max-h-[70vh] overflow-y-auto"
@@ -62,6 +75,72 @@ export function FilterPanel({
         <span className="text-sm font-semibold text-white">Filters</span>
         <CloseButton onClick={onClose} size="md" />
       </div>
+
+      {/* Verified filter */}
+      <button
+        type="button"
+        onClick={() => setShowVerifiedDetails((v) => !v)}
+        className="w-full flex items-center justify-between py-2 text-xs font-semibold text-purple-300 uppercase tracking-wider"
+      >
+        <span className="flex items-center gap-2">
+          <CheckCheck size={13} className={showVerified ? "text-purple-400" : "text-white/40"} />
+          Verified
+          {showVerified && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-medium normal-case tracking-normal">
+              active
+            </span>
+          )}
+        </span>
+        <span className="flex items-center gap-2">
+          {verifiedCount != null && (
+            <span className="text-xs text-white/30 tabular-nums">
+              {verifiedCount.toLocaleString()}
+            </span>
+          )}
+          {showVerifiedDetails ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </span>
+      </button>
+
+      {showVerifiedDetails && (
+        <div className="mb-3 px-2">
+          <label className="flex items-center justify-between py-1.5 cursor-pointer hover:bg-white/5 px-2 rounded-md">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showVerified}
+                onChange={onToggleVerified}
+                className="accent-purple-500 w-3.5 h-3.5"
+              />
+              <span className="text-xs text-white/70">Show verified churches only</span>
+            </div>
+          </label>
+
+          {verifiedCount != null && verifiedTotalCount != null && (
+            <div className="mt-1 text-[11px] text-white/40 px-2">
+              <span className="tabular-nums">{verifiedCount.toLocaleString()}</span> of{" "}
+              <span className="tabular-nums">{verifiedTotalCount.toLocaleString()}</span> churches verified
+            </div>
+          )}
+
+          <div className="mt-2 px-2">
+            <p className="text-[9px] text-white/25 uppercase tracking-wider font-semibold mb-1">
+              Verified means
+            </p>
+            <div className="space-y-1">
+              {[
+                "Confirmed address",
+                "Service times listed",
+                "Denomination on file",
+              ].map((item) => (
+                <div key={item} className="flex items-center gap-2">
+                  <CheckCheck size={12} className="text-purple-400 flex-shrink-0" />
+                  <span className="text-xs text-white/60">{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Size filters */}
       <button

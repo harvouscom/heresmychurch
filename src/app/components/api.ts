@@ -104,6 +104,34 @@ export interface DenominationsResponse {
   denominations: { name: string; count: number }[];
 }
 
+// ── Special Reports ──
+
+export interface SpecialReportEaster2026Church {
+  id: string;
+  shortId: string;
+  name: string;
+  city: string;
+  state: string;
+  attendance: number;
+  denomination: string;
+  serviceTimes: string;
+  ministries?: string[];
+  address?: string;
+  website?: string;
+  lat?: number;
+  lng?: number;
+  lastVerified?: number;
+}
+
+export interface SpecialReportEaster2026Response {
+  slug: "easter-2026";
+  title: string;
+  generatedAt: string;
+  totalChurches: number;
+  churchesWithServiceTimes: number;
+  churches: SpecialReportEaster2026Church[];
+}
+
 export interface SuggestionConsensus {
   approved: boolean;
   value: string | null;
@@ -262,6 +290,27 @@ export async function fetchDenominations(): Promise<DenominationsResponse> {
     throw new Error(`Failed to fetch denominations: ${res.status}`);
   }
   return res.json();
+}
+
+export async function fetchSpecialReportEaster2026(): Promise<SpecialReportEaster2026Response> {
+  const res = await fetchWithRetry(`${BASE_URL}/special-report/easter-2026`, {
+    headers,
+    timeoutMs: 120000,
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to fetch special report: ${res.status} — ${text}`);
+  }
+  const data = await res.json();
+  return {
+    slug: "easter-2026",
+    title: data?.title ?? "Easter 2026: Churches with service times",
+    generatedAt: data?.generatedAt ?? new Date().toISOString(),
+    totalChurches: data?.totalChurches ?? 0,
+    churchesWithServiceTimes: data?.churchesWithServiceTimes ?? 0,
+    churches: Array.isArray(data?.churches) ? data.churches : [],
+  };
 }
 
 // Helper to normalize consensus fields — ensures submissions is always an array

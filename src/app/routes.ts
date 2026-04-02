@@ -3,6 +3,7 @@ import { ChurchMapPage } from "./components/ChurchMapPage";
 import { SeasonalReportPage } from "./components/report/SeasonalReportPage";
 import { ReportsHubPage } from "./components/report/ReportsHubPage";
 import { RouteError } from "./components/RouteError";
+import { Easter2026EntryRedirect } from "./components/special-report/Easter2026EntryRedirect";
 
 // All routes render ChurchMapPage — URL params drive the map state
 // /                            → National overview
@@ -16,6 +17,7 @@ import { RouteError } from "./components/RouteError";
 // Review mode: add ?key=SECRET to any route
 export const router = createBrowserRouter([
   { path: "/", Component: ChurchMapPage, ErrorBoundary: RouteError },
+  { path: "/special-report/easter-2026", Component: Easter2026EntryRedirect, ErrorBoundary: RouteError },
   { path: "/reports", Component: ReportsHubPage, ErrorBoundary: RouteError },
   { path: "/report/:slug", Component: SeasonalReportPage, ErrorBoundary: RouteError },
   { path: "/report/:slug/:sectionId", Component: SeasonalReportPage, ErrorBoundary: RouteError },

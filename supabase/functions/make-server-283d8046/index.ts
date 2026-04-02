@@ -743,6 +743,105 @@ app.get(`${P}/churches/review-stats`,async(c)=>{
   }catch(e){return c.json({states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingWebsite:0,missingServiceTimes:0,missingDenomination:0,error:`${e}`},500);}
 });
 
+// ── Special reports ──
+type SpecialReportEaster2026Church={
+  id:string;
+  shortId:string;
+  name:string;
+  city:string;
+  state:string;
+  attendance:number;
+  denomination:string;
+  serviceTimes:string;
+  ministries?:string[];
+  address?:string;
+  website?:string;
+  lat?:number;
+  lng?:number;
+  lastVerified?:number;
+};
+
+type SpecialReportEaster2026Response={
+  slug:"easter-2026";
+  title:string;
+  generatedAt:string;
+  totalChurches:number;
+  churchesWithServiceTimes:number;
+  churches:SpecialReportEaster2026Church[];
+};
+
+const SPECIAL_EASTER_2026_CACHE_KEY="special-report:easter-2026:v1";
+const SPECIAL_EASTER_2026_TTL=10*60_000; // 10 minutes
+app.get(`${P}/special-report/easter-2026`,async(c)=>{
+  try{
+    const cached=await kv.get(SPECIAL_EASTER_2026_CACHE_KEY);
+    if(cached&&typeof cached==="object"&&Array.isArray(cached.churches)&&cached._cachedAt){
+      if(Date.now()-cached._cachedAt<SPECIAL_EASTER_2026_TTL){
+        const{_cachedAt,...clean}=cached;
+        return c.json(clean);
+      }
+    }
+
+    const meta=await getMeta();
+    const sc:Record<string,number>={...(meta?.stateCounts||{})};
+    const states=Object.keys(sc).filter((st)=>/^[A-Z]{2}$/.test(st)&&sc[st]>0);
+    const generatedAt=new Date().toISOString();
+    const title="Easter 2026: Churches with service times";
+
+    const churches:SpecialReportEaster2026Church[]=[];
+    let totalChurches=0;
+    let churchesWithServiceTimes=0;
+
+    const BATCH=10;
+    for(let i=0;i<states.length;i+=BATCH){
+      const batch=states.slice(i,i+BATCH);
+      const keys=batch.map((st)=>`churches:${st}`);
+      const values=await kv.mget(keys);
+      for(let j=0;j<batch.length;j++){
+        const st=batch[j];
+        const ch:any[]=values[j];
+        if(!Array.isArray(ch)||!ch.length)continue;
+        totalChurches+=ch.length;
+        for(const c of ch){
+          const svc=typeof c?.serviceTimes==="string"?c.serviceTimes:"";
+          if(isServiceTimesMissing(svc))continue;
+          churchesWithServiceTimes++;
+          const sid=toShortId(String(c.id||""),String(c.state||st),c.shortId);
+          churches.push({
+            id:String(c.id||""),
+            shortId:sid,
+            name:String(c.name||"Unknown"),
+            city:String(c.city||""),
+            state:String((c.state||st)||"").toUpperCase().slice(0,2),
+            attendance:Number(c.attendance)||0,
+            denomination:String(c.denomination||"Unknown"),
+            serviceTimes:String(svc),
+            ministries:Array.isArray(c.ministries)?c.ministries.map((m:any)=>String(m)).filter(Boolean):undefined,
+            address:typeof c.address==="string"&&c.address.trim()?c.address.trim():undefined,
+            website:typeof c.website==="string"&&c.website.trim()?c.website.trim():undefined,
+            lat:typeof c.lat==="number"?c.lat:undefined,
+            lng:typeof c.lng==="number"?c.lng:undefined,
+            lastVerified:typeof c.lastVerified==="number"?c.lastVerified:undefined,
+          });
+        }
+      }
+    }
+
+    const result:SpecialReportEaster2026Response={
+      slug:"easter-2026",
+      title,
+      generatedAt,
+      totalChurches,
+      churchesWithServiceTimes,
+      churches,
+    };
+    try{await kv.set(SPECIAL_EASTER_2026_CACHE_KEY,{...result,_cachedAt:Date.now()});}catch(_){}
+    return c.json(result);
+  }catch(e){
+    return c.json({error:`${e}`},500);
+  }
+});
+
 // Lookup single church by state + shortId (must be before /churches/:state so :state/church/:shortId matches first)
 app.get(`${P}/churches/:state/church/:shortId`,async(c)=>{
   try{

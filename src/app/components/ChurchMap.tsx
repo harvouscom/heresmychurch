@@ -7,7 +7,7 @@ import {
   CheckCheck,
 } from "lucide-react";
 import type { Church } from "./church-data";
-import { churchNeedsReview } from "./church-data";
+import { churchNeedsReview, getTier1Completeness } from "./church-data";
 import { ChurchListModal } from "./ChurchListModal";
 import { MapSearchBar } from "./MapSearchBar";
 import { ChurchDetailPanel } from "./ChurchDetailPanel";
@@ -36,7 +36,8 @@ import { useChurchMapData } from "./useChurchMapData";
 import { getChurchUrlSegment } from "./url-utils";
 import { getStateZoom, REVIEW_SAYINGS } from "./map-constants";
 import type { ChurchClickTarget } from "./ChurchDetailPanel";
-import { fetchNationalReviewStats, fetchModeratorPending } from "./api";
+import { fetchNationalReviewStats, fetchModeratorPending, fetchSpecialReportEaster2026 } from "./api";
+import type { SpecialReportEaster2026Church } from "./api";
 import type { NationalReviewStatsResponse, ModeratorPendingResponse } from "./api";
 import { useIsMobile } from "./ui/use-mobile";
 import { PendingAlertsPill } from "./PendingAlertsPill";
@@ -51,7 +52,7 @@ type ModerationPendingData = Pick<
 import { reportIssueEnabled } from "../config/pendingAlerts";
 import { useReducer, useEffect, useMemo, useState, useCallback } from "react";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
-
+import { Easter2026SpecialReportBlurbModal } from "./special-report/Easter2026SpecialReportBlurbModal";
 /** Set to true to temporarily hide All States button, Map Key, and action controls (zoom/filter). */
 const HIDE_MAP_UI = false;
 
@@ -68,6 +69,7 @@ interface ChurchMapProps {
   routeChurchShortId: string | null;
   routeLegacyChurchId: string | null;
   openReviewModalFromQuery?: boolean;
+  showVerifiedDotsFromQuery?: boolean;
   clearReviewQueryParam?: () => void;
   moderatorKey?: string | null;
   onExitReviewView?: () => void;
@@ -85,6 +87,7 @@ export function ChurchMap({
   routeChurchShortId,
   routeLegacyChurchId,
   openReviewModalFromQuery = false,
+  showVerifiedDotsFromQuery = false,
   clearReviewQueryParam,
   moderatorKey,
   onExitReviewView,
@@ -129,6 +132,105 @@ export function ChurchMap({
   // Only count search as "overlay open" on national + mobile (so map tap can collapse the pill). Desktop national and state/church always show full search — no overlay for search.
   const isNationalView = !d.focusedState && !d.selectedChurch;
 
+  // Verified-dots mode (national view): use a compact, pre-aggregated payload.
+  const [verifiedDotsEnabled, setVerifiedDotsEnabled] = useState(false);
+  const [verifiedChurches, setVerifiedChurches] = useState<Church[] | null>(null);
+
+  useEffect(() => {
+    if (!showVerifiedDotsFromQuery) return;
+    if (routeStateAbbrev) return;
+    if (moderatorKey) return;
+    setVerifiedDotsEnabled(true);
+  }, [showVerifiedDotsFromQuery, routeStateAbbrev, moderatorKey]);
+
+  const exitVerifiedMode = useCallback(() => {
+    setVerifiedDotsEnabled(false);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("verified");
+      const next = url.pathname + (url.searchParams.toString() ? `?${url.searchParams.toString()}` : "");
+      window.history.replaceState(null, "", next);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const enableVerifiedMode = useCallback(() => {
+    if (moderatorKey) return;
+    setVerifiedDotsEnabled(true);
+    // Only persist verified state in URL on national view (state/county should be a local filter only).
+    if (routeStateAbbrev) return;
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("verified", "1");
+      window.history.replaceState(null, "", url.pathname + `?${url.searchParams.toString()}`);
+    } catch {
+      // ignore
+    }
+  }, [moderatorKey, routeStateAbbrev]);
+
+  useEffect(() => {
+    if (!verifiedDotsEnabled) return;
+    if (verifiedChurches) return;
+    let cancelled = false;
+    fetchSpecialReportEaster2026()
+      .then((r) => {
+        if (cancelled) return;
+        const asChurch = (c: SpecialReportEaster2026Church): Church | null => {
+          const lat = typeof c.lat === "number" ? c.lat : null;
+          const lng = typeof c.lng === "number" ? c.lng : null;
+          if (lat == null || lng == null) return null;
+          return {
+            id: c.id,
+            shortId: c.shortId,
+            name: c.name,
+            city: c.city,
+            state: c.state,
+            lat,
+            lng,
+            attendance: c.attendance || 0,
+            denomination: c.denomination || "Unknown",
+            address: c.address,
+            website: c.website,
+            serviceTimes: c.serviceTimes,
+            ministries: c.ministries,
+            lastVerified: c.lastVerified,
+          };
+        };
+        const verified = (r.churches || [])
+          .map(asChurch)
+          .filter(Boolean)
+          .map((x) => x as Church)
+          .filter((c) => {
+            const t = getTier1Completeness(c);
+            return !t.missingAddress && !t.missingServiceTimes && !t.missingDenomination;
+          });
+        setVerifiedChurches(verified);
+      })
+      .catch(() => {
+        if (!cancelled) setVerifiedChurches([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [verifiedDotsEnabled, verifiedChurches]);
+
+  // If we have a session location, nudge map center/zoom on national view when verified mode is enabled.
+  useEffect(() => {
+    if (!verifiedDotsEnabled) return;
+    if (!isNationalView) return;
+    try {
+      const raw = sessionStorage.getItem("hmc_easter_loc");
+      if (!raw) return;
+      const { lat, lng } = JSON.parse(raw) as { lat?: number; lng?: number };
+      if (typeof lat !== "number" || typeof lng !== "number") return;
+      d.setCenter([lng, lat]);
+      d.setZoom(3.5);
+    } catch {
+      // ignore
+    }
+  }, [verifiedDotsEnabled, isNationalView]);
+
   const handleMoveEnd = (coords: [number, number], z: number) => {
     if (Date.now() < d.moveEndSuppressedUntilRef.current.moveEndSuppressedUntil) return;
     // Let pinch/trackpad zoom out all the way to national (zoom 1); then switch to national view
@@ -147,6 +249,8 @@ export function ChurchMap({
 
   // Consolidated local state (was 6 useState — saves 5 hooks)
   const hasSeenAbout = typeof document !== "undefined" && document.cookie.includes("hmc_seen_about=1");
+  const hasSeenSpecialEaster =
+    typeof document !== "undefined" && document.cookie.includes("hmc_seen_special_easter_2026=1");
   const [local, localDispatch] = useReducer(localReducer, {
     showVerificationModal: false,
     showNationalReviewModal: false,
@@ -155,6 +259,7 @@ export function ChurchMap({
     nationalReviewStatsLoading: false,
     forceEditForm: false,
     showAbout: !hasSeenAbout && !routeStateAbbrev,
+    showSpecialReport: false,
     showHelp: false,
     showAudit: false,
     showAlertsPanel: false,
@@ -174,9 +279,21 @@ export function ChurchMap({
   }, [d.focusedState]);
 
   const churchesToShowOnMap = useMemo(() => {
-    if (!d.focusedState || stateViewSearchResultIds === null) return d.filteredChurches;
-    return d.filteredChurches.filter((c) => stateViewSearchResultIds.has(c.id));
-  }, [d.focusedState, d.filteredChurches, stateViewSearchResultIds]);
+    // National view: verified filter swaps in the pre-fetched verified dataset
+    if (verifiedDotsEnabled && !d.focusedState) return verifiedChurches ?? [];
+
+    // State/county view: apply verified filter on top of existing filtered churches
+    let base = d.filteredChurches;
+    if (verifiedDotsEnabled && d.focusedState) {
+      base = base.filter((c) => {
+        const t = getTier1Completeness(c);
+        return !t.missingAddress && !t.missingServiceTimes && !t.missingDenomination;
+      });
+    }
+
+    if (!d.focusedState || stateViewSearchResultIds === null) return base;
+    return base.filter((c) => stateViewSearchResultIds.has(c.id));
+  }, [verifiedDotsEnabled, verifiedChurches, d.focusedState, d.filteredChurches, stateViewSearchResultIds]);
 
   const anyOverlayOpen = d.showSummary || d.showFilterPanel || d.showLegend || local.showAlertsPanel || local.showAnnouncementsPanel || local.showModerationPanel || (isNationalView && isMobile && !effectiveSearchCollapsed);
   const dismissAllOverlays = () => {
@@ -193,6 +310,10 @@ export function ChurchMap({
   const dismissAbout = () => {
     localDispatch({ type: "SET", key: "showAbout", value: false });
     document.cookie = "hmc_seen_about=1; path=/; max-age=31536000; SameSite=Lax";
+  };
+
+  const dismissSpecialReport = () => {
+    localDispatch({ type: "SET", key: "showSpecialReport", value: false });
   };
 
   // Pending suggestion field names for the selected church (so all visitors see "updates pending review")
@@ -361,6 +482,7 @@ export function ChurchMap({
         showErrorBanner={!!showErrorBanner}
         anyOverlayOpen={anyOverlayOpen}
         dismissAllOverlays={dismissAllOverlays}
+        verifiedDotsEnabled={verifiedDotsEnabled}
         handleMoveEnd={handleMoveEnd}
         navigateToState={navigateToState}
         navigateToChurch={navigateToChurchWithContext}
@@ -373,6 +495,8 @@ export function ChurchMap({
         showAbout={local.showAbout}
         onDismissAbout={dismissAbout}
         onShowAbout={onShowAbout}
+        showSpecialReport={local.showSpecialReport}
+        onDismissSpecialReport={dismissSpecialReport}
         showHelp={local.showHelp}
         onDismissHelp={onDismissHelp}
         onShowHelp={onShowHelp}
@@ -414,6 +538,8 @@ export function ChurchMap({
         isMobile={isMobile}
         churchesToShowOnMap={churchesToShowOnMap}
         onStateViewSearchResultsChange={setStateViewSearchResultIds}
+        verifiedChurches={verifiedChurches}
+        onToggleVerified={() => verifiedDotsEnabled ? exitVerifiedMode() : enableVerifiedMode()}
       />
 
       {/* Modals (rendered outside map area to reduce nesting depth) */}
@@ -567,6 +693,7 @@ type LocalState = {
   nationalReviewStatsLoading: boolean;
   forceEditForm: boolean;
   showAbout: boolean;
+  showSpecialReport: boolean;
   showHelp: boolean;
   showAudit: boolean;
   showAlertsPanel: boolean;
@@ -592,6 +719,7 @@ function MapArea({
   showErrorBanner,
   anyOverlayOpen,
   dismissAllOverlays,
+  verifiedDotsEnabled,
   handleMoveEnd,
   navigateToState,
   navigateToChurch,
@@ -604,6 +732,8 @@ function MapArea({
   showAbout,
   onDismissAbout,
   onShowAbout,
+  showSpecialReport,
+  onDismissSpecialReport,
   showHelp,
   onDismissHelp,
   onShowHelp,
@@ -634,6 +764,8 @@ function MapArea({
   isMobile,
   churchesToShowOnMap,
   onStateViewSearchResultsChange,
+  verifiedChurches,
+  onToggleVerified,
 }: {
   d: ReturnType<typeof useChurchMapData>;
   isLoadingVisible: boolean;
@@ -641,6 +773,7 @@ function MapArea({
   showErrorBanner: boolean;
   anyOverlayOpen: boolean;
   dismissAllOverlays: () => void;
+  verifiedDotsEnabled: boolean;
   handleMoveEnd: (coords: [number, number], z: number) => void;
   navigateToState: (abbrev: string) => void;
   navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean; countyFips?: string }) => void;
@@ -653,6 +786,8 @@ function MapArea({
   showAbout: boolean;
   onDismissAbout: () => void;
   onShowAbout: () => void;
+  showSpecialReport: boolean;
+  onDismissSpecialReport: () => void;
   showHelp: boolean;
   onDismissHelp: () => void;
   onShowHelp: () => void;
@@ -683,7 +818,18 @@ function MapArea({
   isMobile: boolean;
   churchesToShowOnMap: Church[];
   onStateViewSearchResultsChange: (churchIds: Set<string> | null) => void;
+  verifiedChurches: Church[] | null;
+  onToggleVerified: () => void;
 }) {
+  const isNationalView = !d.focusedState;
+  const verifiedCountForView = isNationalView
+    ? (verifiedChurches?.length ?? null)
+    : d.filteredChurches.reduce((acc, c) => {
+        const t = getTier1Completeness(c);
+        return (!t.missingAddress && !t.missingServiceTimes && !t.missingDenomination) ? acc + 1 : acc;
+      }, 0);
+  const verifiedTotalCountForView = isNationalView ? null : d.filteredChurches.length;
+
   return (
     <div className="flex flex-1 flex-col relative" style={{ backgroundColor: "#F5F0E8" }}>
       {/* Review banner — only when key is in URL (so it disappears on navigate without key) */}
@@ -1026,6 +1172,10 @@ function MapArea({
 
       {d.showFilterPanel && (
         <FilterPanel
+          showVerified={verifiedDotsEnabled}
+          onToggleVerified={onToggleVerified}
+          verifiedCount={verifiedCountForView}
+          verifiedTotalCount={verifiedTotalCountForView}
           activeSize={d.activeSize}
           toggleSize={d.toggleSize}
           showSizeFilters={d.showSizeFilters}
