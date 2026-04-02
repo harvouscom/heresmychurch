@@ -202,7 +202,7 @@ export function SummaryPanel({
           <Link
             to="/reports"
             onClick={onClose}
-            className="w-full py-2 rounded-xl text-[11px] font-semibold text-white/70 hover:text-purple-200 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer flex items-center justify-center"
+            className="w-full py-2.5 rounded-xl text-xs font-semibold text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 transition-colors cursor-pointer flex items-center justify-center"
             role="button"
           >
             All reports

@@ -10,14 +10,16 @@ export function AnnouncementsPill({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  if (announcements.length === 0 && !open) {
+  const activeAnnouncements = announcements.filter((a) => !a.outOfDate);
+
+  if (activeAnnouncements.length === 0 && !open) {
     return null;
   }
 
   const collapsedLabel =
-    announcements.length === 1
-      ? "1 new thing to know"
-      : `${announcements.length} new things to know`;
+    activeAnnouncements.length === 1
+      ? "1 announcement"
+      : `${activeAnnouncements.length} announcements`;
 
   return (
     <div className="flex flex-col items-center min-w-0 max-w-full">
@@ -62,7 +64,7 @@ export function AnnouncementsPill({
           >
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-purple-500/20 flex-shrink-0">
               <span className="flex items-center gap-1.5 text-xs font-medium text-white uppercase tracking-widest">
-                What&apos;s New
+                Announcements
               </span>
               <CloseButton
                 onClick={() => onOpenChange(false)}
@@ -70,15 +72,13 @@ export function AnnouncementsPill({
               />
             </div>
             <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1 min-h-0">
-              {announcements.length === 0 ? (
+              {activeAnnouncements.length === 0 ? (
                 <p className="text-white/60 text-[11px]">No announcements right now.</p>
               ) : (
                 <div className="space-y-3">
-                  {announcements.map((ann) => (
+                  {activeAnnouncements.map((ann) => (
                     <div key={ann.id} className="space-y-1">
-                      <p className="text-white text-sm font-medium">
-                        {ann.title}
-                      </p>
+                      <p className="text-white text-sm font-medium">{ann.title}</p>
                       <p className="text-white/80 text-[13px] leading-relaxed">
                         {typeof ann.body === "string" && ann.body.includes("hey@heresmychurch.com")
                           ? ann.body.split("hey@heresmychurch.com").map((part, i, arr) => (

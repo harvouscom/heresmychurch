@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Add new changes here as you work. Move to a version section when releasing. -->
 
+## [1.171.0] - 2026-04-01
+
+### Changed
+
+- Bump version to **1.171.0** (171 commits since inception).
+
 ## [1.110.0] - 2026-03-14
 
 ### Added
@@ -68,7 +74,8 @@ When cutting a new release:
 2. Bump `version` in `package.json` (and `package-lock.json`) to `X.Y.Z`.
 3. Commit with a message like: `chore: release vX.Y.Z`
 
-[Unreleased]: https://github.com/harvouscom/heresmychurch/compare/v1.110.0...HEAD
+[Unreleased]: https://github.com/harvouscom/heresmychurch/compare/v1.171.0...HEAD
+[1.171.0]: https://github.com/harvouscom/heresmychurch/compare/v1.110.0...v1.171.0
 [1.110.0]: https://github.com/harvouscom/heresmychurch/compare/v1.2.0...v1.110.0
 [1.2.0]: https://github.com/harvouscom/heresmychurch/compare/v1.0.0...v1.2.0
 [1.0.0]: https://github.com/harvouscom/heresmychurch/releases/tag/v1.0.0

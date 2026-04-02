@@ -38,7 +38,7 @@ For how the app is wired (routing, data flow, API, deployment): **[docs/ARCHITEC
 
 ## Changelog
 
-See **[CHANGELOG.md](CHANGELOG.md)** for version history and release notes. Project start (1.0): **2026-03-09**. Current version: **1.110.0**.
+See **[CHANGELOG.md](CHANGELOG.md)** for version history and release notes. Project start (1.0): **2026-03-09**. Current version: **1.171.0**.
 
 ## License
 
