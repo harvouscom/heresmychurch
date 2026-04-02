@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { FileText, MapPin, Sparkles } from "lucide-react";
+import { FileText, MapPin } from "lucide-react";
 import { fetchReportList } from "../api";
 import type { SeasonalReportSummary } from "../church-data";
 import { STATE_NAMES } from "../map-constants";
@@ -12,6 +12,41 @@ export function ReportsHubPage() {
   const [reports, setReports] = useState<SeasonalReportSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // The map page sets body { overflow: hidden; height: 100% } globally.
+  // Override that so the reports hub page can scroll normally.
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const root = document.getElementById("root");
+
+    const origBodyOverflow = body.style.overflow;
+    const origBodyHeight = body.style.height;
+    const origHtmlOverflow = html.style.overflow;
+    const origHtmlHeight = html.style.height;
+    const origRootHeight = root?.style.height ?? "";
+    const origRootMinHeight = root?.style.minHeight ?? "";
+
+    html.style.overflow = "visible";
+    html.style.height = "auto";
+    body.style.overflow = "visible";
+    body.style.height = "auto";
+    if (root) {
+      root.style.height = "auto";
+      root.style.minHeight = "100dvh";
+    }
+
+    return () => {
+      html.style.overflow = origHtmlOverflow;
+      html.style.height = origHtmlHeight;
+      body.style.overflow = origBodyOverflow;
+      body.style.height = origBodyHeight;
+      if (root) {
+        root.style.height = origRootHeight;
+        root.style.minHeight = origRootMinHeight;
+      }
+    };
+  }, []);
 
   const latestSlug = useMemo(() => {
     if (!reports.length) return null;
@@ -96,26 +131,6 @@ export function ReportsHubPage() {
           Seasonal snapshots from the crowd-sourced map: national coverage, denominations, geography, data
           quality, and state-level views.
         </p>
-
-        <section className="mt-8" aria-labelledby="special-reports-heading">
-          <h2 id="special-reports-heading" className="text-sm font-semibold uppercase tracking-wider text-stone-400">
-            Special reports
-          </h2>
-          <div className="mt-3">
-            <Link
-              to="/special-report/easter-2026"
-              className="flex items-start gap-3 rounded-2xl border border-purple-200/70 bg-gradient-to-br from-purple-50/70 to-pink-50/50 px-5 py-4 transition-colors hover:border-purple-300"
-            >
-              <Sparkles className="h-5 w-5 shrink-0 text-purple-600 mt-0.5" aria-hidden />
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold text-stone-900">Easter 2026 Special Report</div>
-                <div className="text-sm text-stone-600 mt-1 text-pretty">
-                  Churches across all states with service times listed — filter by state, denomination, ministries, and size.
-                </div>
-              </div>
-            </Link>
-          </div>
-        </section>
 
         {loading && (
           <p className="mt-10 text-sm text-stone-400" role="status">
