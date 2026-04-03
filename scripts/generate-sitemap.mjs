@@ -87,6 +87,7 @@ async function main() {
     { loc: `${BASE}/`, changefreq: "weekly", priority: "1.0" },
     { loc: `${BASE}/llms.txt`, changefreq: "monthly", priority: "0.3" },
     { loc: `${BASE}/reports`, changefreq: "weekly", priority: "0.85" },
+    { loc: `${BASE}/privacy`, changefreq: "yearly", priority: "0.4" },
     ...STATE_ABBREVS.map((abbrev) => ({
       loc: `${BASE}/state/${abbrev}`,
       changefreq: "weekly",

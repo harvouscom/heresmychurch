@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Mail, Copy, Check, AlertCircle } from "lucide-react";
+import { Mail, Copy, Check, AlertCircle, ExternalLink, Shield } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -131,6 +131,16 @@ export function HelpModal({
             >
               <XLogoIcon size={14} />
               @heresmychurch
+            </a>
+            <a
+              href="/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium text-white/70 bg-white/8 hover:bg-white/12 transition-colors"
+            >
+              <Shield size={14} className="flex-shrink-0" />
+              Privacy policy
+              <ExternalLink size={12} className="text-white/40 flex-shrink-0" aria-hidden />
             </a>
           </div>
 
