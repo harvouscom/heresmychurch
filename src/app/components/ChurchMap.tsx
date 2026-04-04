@@ -852,7 +852,7 @@ function MapArea({
       {/* Top row: header pill only (secondary controls moved to bottom-left cluster); z-40 so summary stacks above All states + MapControls (z-30). pointer-events-none so click-outside hits the catcher. */}
       {!isLoadingVisible && d.states.length > 0 && (
       <div className="absolute top-4 left-4 right-4 z-40 flex flex-row items-center justify-center animate-in fade-in duration-300 pointer-events-none">
-        <div className="flex flex-col items-center justify-center min-w-0 overflow-hidden max-w-full pointer-events-auto" ref={d.summaryRef}>
+        <div className="flex flex-col items-center justify-center min-w-0 max-w-full pointer-events-auto overflow-visible" ref={d.summaryRef}>
           {moderatorKey && moderationMode ? (
             <>
               <ReviewPill
@@ -1276,10 +1276,11 @@ function HeaderPill({
   const nationalReviewPercentage = nationalReviewStats?.percentage ?? 0;
   const showNationalReviewRow = !focusedState;
   return (
-    <div
-      className="flex flex-col items-center rounded-full shadow-lg transition-all hover:shadow-xl cursor-pointer w-auto overflow-hidden"
-      style={{ backgroundColor: "rgba(30, 16, 64, 0.92)" }}
-    >
+    <div className="rounded-full shadow-lg transition-shadow hover:shadow-xl cursor-pointer w-auto max-w-full">
+      <div
+        className="flex flex-col items-center rounded-full w-full min-w-0 overflow-hidden"
+        style={{ backgroundColor: "rgba(30, 16, 64, 0.92)" }}
+      >
       {/* Main row — toggles summary */}
       <div
         onClick={onToggle}
@@ -1345,6 +1346,7 @@ function HeaderPill({
           </span>
         </div>
       )}
+      </div>
     </div>
   );
 }
