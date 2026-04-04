@@ -594,11 +594,18 @@ export async function searchChurches(
 
 // ── Community stats & confirmation ──
 
+export interface CommunityStatsTopStateTrending {
+  abbrev: string;
+  uniqueChurches: number;
+}
+
 export interface CommunityStats {
   totalCorrections: number;
   churchesImproved: number;
   totalConfirmations: number;
   lastUpdated: number | null;
+  /** National stats only: top states by distinct churches with a correction in the last 30 days. */
+  topStatesTrending30d?: CommunityStatsTopStateTrending[];
 }
 
 export interface CorrectionHistoryEntry {

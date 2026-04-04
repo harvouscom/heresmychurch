@@ -30,7 +30,9 @@ function CommunityImpactCard({
   useEffect(() => {
     fetchCommunityStats(stateAbbrev).then(setStats).catch(() => {});
   }, [stateAbbrev]);
-  if (!stats || (stats.totalCorrections === 0 && stats.churchesImproved === 0)) return null;
+  if (!stats) return null;
+  const trending = !stateAbbrev ? stats.topStatesTrending30d?.filter((t) => t.uniqueChurches > 0) ?? [] : [];
+  if (stats.totalCorrections === 0 && stats.churchesImproved === 0 && trending.length === 0) return null;
   return (
     <div className={`rounded-xl bg-green-500/5 border border-green-500/10 px-4 py-3.5 ${className}`.trim()}>
       <div className="flex items-center gap-2 mb-2">
@@ -51,6 +53,28 @@ function CommunityImpactCard({
           </span>
         )}
       </div>
+      {trending.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-green-500/10">
+          <span className="text-[10px] uppercase tracking-widest text-green-400/60 font-medium block mb-2">
+            Trending (30 days)
+          </span>
+          <ul className="space-y-1.5">
+            {trending.map((t) => {
+              const name = STATE_NAMES[t.abbrev] || t.abbrev;
+              const n = t.uniqueChurches;
+              return (
+                <li key={t.abbrev} className="flex items-center gap-2 text-[13px] text-white/70">
+                  <StateFlag abbrev={t.abbrev} size="sm" />
+                  <span className="font-medium text-white truncate min-w-0 flex-1">{name}</span>
+                  <span className="text-white/45 whitespace-nowrap flex-shrink-0">
+                    {n} listing{n !== 1 ? "s" : ""} updated
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

@@ -1527,6 +1527,27 @@ app.post(`${P}/churches/confirm/:churchId`,async(c)=>{
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
+/** Top states by distinct churches with ≥1 applied correction in the last `days` (from corrections tail; list capped at 500). */
+function topStatesTrendingFromCorrections(corrections:unknown[],days:number):{abbrev:string;uniqueChurches:number}[]{
+  const cutoff=Date.now()-days*86400000;
+  const byState=new Map<string,Set<string>>();
+  for(const h of corrections){
+    const entry=h as {churchId?:string;appliedAt?:number};
+    if(!entry||typeof entry.appliedAt!=="number"||entry.appliedAt<cutoff)continue;
+    const cid=String(entry.churchId||"");
+    const st=stateFromChurchId(cid);
+    if(!st)continue;
+    const key=cid.toUpperCase();
+    let set=byState.get(st);
+    if(!set){set=new Set();byState.set(st,set);}
+    set.add(key);
+  }
+  return [...byState.entries()]
+    .map(([abbrev,set])=>({abbrev,uniqueChurches:set.size}))
+    .sort((a,b)=>b.uniqueChurches-a.uniqueChurches)
+    .slice(0,3);
+}
+
 app.get(`${P}/community/stats`,async(c)=>{
   try{
     const state=(c.req.query("state")||"").toString().toUpperCase();
@@ -1540,8 +1561,8 @@ app.get(`${P}/community/stats`,async(c)=>{
       const stateImproved=improved.filter((id: string)=>match(String(id)));
       return c.json({totalCorrections:stateCorrections.length,churchesImproved:stateImproved.length,totalConfirmations:0,lastUpdated:stats.lastUpdated});
     }
-    return c.json({totalCorrections:stats.totalCorrections||0,churchesImproved:improved.length,totalConfirmations:stats.totalConfirmations||0,lastUpdated:stats.lastUpdated});
-  }catch(e){return c.json({totalCorrections:0,churchesImproved:0,totalConfirmations:0,error:`${e}`},500);}
+    return c.json({totalCorrections:stats.totalCorrections||0,churchesImproved:improved.length,totalConfirmations:stats.totalConfirmations||0,lastUpdated:stats.lastUpdated,topStatesTrending30d:topStatesTrendingFromCorrections(corrections,30)});
+  }catch(e){return c.json({totalCorrections:0,churchesImproved:0,totalConfirmations:0,topStatesTrending30d:[],error:`${e}`},500);}
 });
 
 app.get(`${P}/community/history/:churchId`,async(c)=>{
