@@ -7,7 +7,7 @@ import {
   CheckCheck,
 } from "lucide-react";
 import type { Church } from "./church-data";
-import { churchNeedsReview, getTier1Completeness } from "./church-data";
+import { churchMeetsVerifiedListingCriteria, churchNeedsReview } from "./church-data";
 import { ChurchListModal } from "./ChurchListModal";
 import { MapSearchBar } from "./MapSearchBar";
 import { ChurchDetailPanel } from "./ChurchDetailPanel";
@@ -202,10 +202,7 @@ export function ChurchMap({
           .map(asChurch)
           .filter(Boolean)
           .map((x) => x as Church)
-          .filter((c) => {
-            const t = getTier1Completeness(c);
-            return !t.missingAddress && !t.missingServiceTimes && !t.missingDenomination;
-          });
+          .filter((c) => churchMeetsVerifiedListingCriteria(c));
         setVerifiedChurches(verified);
       })
       .catch(() => {
@@ -286,10 +283,7 @@ export function ChurchMap({
     // State/county view: apply verified filter on top of existing filtered churches
     let base = d.filteredChurches;
     if (verifiedDotsEnabled && d.focusedState) {
-      base = base.filter((c) => {
-        const t = getTier1Completeness(c);
-        return !t.missingAddress && !t.missingServiceTimes && !t.missingDenomination;
-      });
+      base = base.filter((c) => churchMeetsVerifiedListingCriteria(c));
     }
 
     if (!d.focusedState || stateViewSearchResultIds === null) return base;
@@ -842,10 +836,10 @@ function MapArea({
   const isNationalView = !d.focusedState;
   const verifiedCountForView = isNationalView
     ? (verifiedChurches?.length ?? null)
-    : d.filteredChurches.reduce((acc, c) => {
-        const t = getTier1Completeness(c);
-        return (!t.missingAddress && !t.missingServiceTimes && !t.missingDenomination) ? acc + 1 : acc;
-      }, 0);
+    : d.filteredChurches.reduce(
+        (acc, c) => (churchMeetsVerifiedListingCriteria(c) ? acc + 1 : acc),
+        0,
+      );
   const verifiedTotalCountForView = isNationalView ? null : d.filteredChurches.length;
 
   return (

@@ -199,6 +199,27 @@ export function churchNeedsReview(church: Church): boolean {
   return getTier1Completeness(church).needsReview;
 }
 
+/**
+ * Non-empty website string that looks linkable (http(s), www., or domain with a dot).
+ * Keep in sync with `hasWebsiteField` in `supabase/functions/make-server-283d8046/index.ts`.
+ */
+export function hasUsableWebsite(website: string | undefined): boolean {
+  const w = (website || "").trim();
+  if (!w) return false;
+  return (
+    /^https?:\/\//i.test(w) || /^www\./i.test(w) || (/\./.test(w) && w.length > 4)
+  );
+}
+
+/** Verified-map mode: meaningful address, non-placeholder service times, usable website (denomination not required). */
+export function churchMeetsVerifiedListingCriteria(church: Church): boolean {
+  return (
+    isAddressMeaningful(church.address, church.city, church.state) &&
+    !isServiceTimesMissing(church.serviceTimes) &&
+    hasUsableWebsite(church.website)
+  );
+}
+
 export type SizeCategory =
   | "< 50"
   | "50–250"

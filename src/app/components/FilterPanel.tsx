@@ -129,8 +129,8 @@ export function FilterPanel({
             <div className="space-y-1">
               {[
                 "Confirmed address",
+                "Website listed",
                 "Service times listed",
-                "Denomination on file",
               ].map((item) => (
                 <div key={item} className="flex items-center gap-2">
                   <CheckCheck size={12} className="text-purple-400 flex-shrink-0" />

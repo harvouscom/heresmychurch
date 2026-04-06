@@ -51,8 +51,8 @@ export function VerifiedModePanel({
       <div className="px-4 py-3 space-y-1.5">
         {[
           "Confirmed address",
+          "Website listed",
           "Service times listed",
-          "Denomination on file",
         ].map((item) => (
           <div key={item} className="flex items-center gap-2">
             <CheckCircle2 size={12} className="text-purple-400 flex-shrink-0" />

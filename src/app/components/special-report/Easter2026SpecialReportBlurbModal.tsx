@@ -46,7 +46,8 @@ export function Easter2026SpecialReportBlurbModal({ onClose }: Easter2026Special
             </h2>
             <p className="mt-2 text-sm text-stone-600 text-pretty">
               Lots of people are looking for a church for Easter. We pulled together churches across all states that
-              currently have service times listed — and you can quickly see the closest verified churches near you.
+              currently have service times listed — and you can quickly see the closest verified listings near you
+              (address, website, and service times on file).
             </p>
           </div>
           <CloseButton onClick={onClose} size="md" className="text-stone-700" />
