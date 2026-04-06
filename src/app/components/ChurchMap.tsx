@@ -550,6 +550,7 @@ export function ChurchMap({
         onStateViewSearchResultsChange={setStateViewSearchResultIds}
         verifiedChurches={verifiedChurches}
         onToggleVerified={() => verifiedDotsEnabled ? exitVerifiedMode() : enableVerifiedMode()}
+        churchTooltipCountyName={churchTooltipCountyName}
       />
 
       {/* Modals (rendered outside map area to reduce nesting depth) */}
@@ -778,6 +779,7 @@ function MapArea({
   onStateViewSearchResultsChange,
   verifiedChurches,
   onToggleVerified,
+  churchTooltipCountyName,
 }: {
   d: ReturnType<typeof useChurchMapData>;
   isLoadingVisible: boolean;
@@ -832,6 +834,7 @@ function MapArea({
   onStateViewSearchResultsChange: (churchIds: Set<string> | null) => void;
   verifiedChurches: Church[] | null;
   onToggleVerified: () => void;
+  churchTooltipCountyName: string | null;
 }) {
   const isNationalView = !d.focusedState;
   const verifiedCountForView = isNationalView
