@@ -30,6 +30,7 @@ import { AddChurchForm } from "./AddChurchForm";
 import { StateFlag } from "./StateFlag";
 import { FixedSizeList as List } from "react-window";
 import { matchQueryToChurch } from "./church-search-match";
+import { findCountyNameForPoint } from "./county-resolve";
 
 type SortField = "name" | "city" | "address" | "denomination" | "attendance";
 type SortDir = "asc" | "desc";
@@ -49,6 +50,8 @@ interface ChurchListModalProps {
   stateAbbrev: string;
   /** When set (e.g. from county view), list is county-filtered and title shows county name. */
   countyName?: string | null;
+  /** County TopoJSON features for fallback address line when city is missing. */
+  countyFeatures?: Map<string, unknown> | null;
   statePopulation?: number | null;
   onClose: () => void;
   onChurchClick?: (church: Church) => void;
@@ -63,6 +66,7 @@ export function ChurchListModal({
   stateName,
   stateAbbrev,
   countyName = null,
+  countyFeatures = null,
   statePopulation,
   onClose,
   onChurchClick,
@@ -264,6 +268,16 @@ export function ChurchListModal({
     selectedReactionFilter,
     reactionCountsByChurchId,
   ]);
+
+  const churchCountyById = useMemo(() => {
+    if (!countyFeatures?.size) return new Map<string, string>();
+    const m = new Map<string, string>();
+    for (const ch of churches) {
+      const n = findCountyNameForPoint(stateAbbrev, ch.lng, ch.lat, countyFeatures);
+      if (n) m.set(ch.id, n);
+    }
+    return m;
+  }, [churches, stateAbbrev, countyFeatures]);
 
   const handleSort = useCallback(
     (field: SortField) => {
@@ -841,7 +855,7 @@ export function ChurchListModal({
 
                       {/* Address */}
                       <div className="text-xs text-white/50 self-center truncate">
-                        {formatAddressWithCity(church.address, church.city) || getFallbackLocation(church) || ""}
+                        {formatAddressWithCity(church.address, church.city) || getFallbackLocation(church, churchCountyById.get(church.id)) || ""}
                       </div>
 
                       {/* Denomination */}

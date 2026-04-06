@@ -1,5 +1,11 @@
 import type { Church, HomeCampusSummary } from "./church-data";
-import { getSizeCategory, getDenominationGroup, estimateBilingualProbability, getFallbackLocation } from "./church-data";
+import {
+  getSizeCategory,
+  getDenominationGroup,
+  estimateBilingualProbability,
+  getFallbackLocation,
+  getLocationContextForWebSearch,
+} from "./church-data";
 import {
   Church as ChurchIcon,
   Users,
@@ -60,6 +66,8 @@ const PENDING_FIELD_LABELS: Record<string, string> = {
 
 interface ChurchDetailPanelProps {
   church: Church;
+  /** Resolved from map county polygons when city/address are missing (optional). */
+  resolvedCountyName?: string | null;
   allChurches: Church[];
   onClose: () => void;
   onChurchClick: (target: ChurchClickTarget) => void;
@@ -271,6 +279,7 @@ function LanguageEstimateCard({ bilingualInfo }: { bilingualInfo: { probability:
 
 export function ChurchDetailPanel({
   church,
+  resolvedCountyName = null,
   allChurches,
   onClose,
   onChurchClick,
@@ -364,7 +373,7 @@ export function ChurchDetailPanel({
   const hasAddressOrCity = church.address?.trim() || church.city?.trim();
   const fullAddress = hasAddressOrCity
     ? formatFullAddress(church.address, church.city, church.state)
-    : (getFallbackLocation(church) || "");
+    : (getFallbackLocation(church, resolvedCountyName) || "");
 
   const handleCopyAddress = () => {
     if (fullAddress) {
@@ -561,7 +570,9 @@ export function ChurchDetailPanel({
             </a>
           ) : (
             <a
-              href={`https://www.google.com/search?q=${encodeURIComponent(church.name + " " + (church.city || "") + " " + church.state + " church website")}`}
+              href={`https://www.google.com/search?q=${encodeURIComponent(
+                `${church.name} ${getLocationContextForWebSearch(church, resolvedCountyName)} church website`.replace(/\s+/g, " ").trim()
+              )}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium text-white/70 bg-white/8 hover:bg-white/12 transition-colors"

@@ -33,6 +33,7 @@ import {
   CountyTooltip,
 } from "./MapOverlays";
 import { useChurchMapData } from "./useChurchMapData";
+import { findCountyNameForPoint } from "./county-resolve";
 import { getChurchUrlSegment } from "./url-utils";
 import { getStateZoom, REVIEW_SAYINGS } from "./map-constants";
 import type { ChurchClickTarget } from "./ChurchDetailPanel";
@@ -467,6 +468,21 @@ export function ChurchMap({
     };
   }, [isStateOrChurchView]);
 
+  const resolvedCountyForSelectedChurch = useMemo(() => {
+    if (!d.selectedChurch || !d.countyFeatures?.size) return null;
+    const st = (d.selectedChurch.state || "").toUpperCase().slice(0, 2);
+    if (!st) return null;
+    return findCountyNameForPoint(st, d.selectedChurch.lng, d.selectedChurch.lat, d.countyFeatures);
+  }, [d.selectedChurch, d.countyFeatures]);
+
+  const churchTooltipChurch = d.previewChurch ?? d.hoveredChurch;
+  const churchTooltipCountyName = useMemo(() => {
+    if (!churchTooltipChurch || !d.countyFeatures?.size) return null;
+    const st = (churchTooltipChurch.state || "").toUpperCase().slice(0, 2);
+    if (!st) return null;
+    return findCountyNameForPoint(st, churchTooltipChurch.lng, churchTooltipChurch.lat, d.countyFeatures);
+  }, [churchTooltipChurch, d.countyFeatures]);
+
   return (
     <div
       className={`relative size-full overflow-hidden flex ${d.selectedChurch ? 'flex-col md:flex-row' : ''}`}
@@ -549,6 +565,7 @@ export function ChurchMap({
           stateName={d.focusedStateName}
           stateAbbrev={d.focusedState}
           countyName={d.focusedCounty ? (d.countyStats?.byFips[d.focusedCounty]?.name ?? null) : null}
+          countyFeatures={d.countyFeatures}
           statePopulation={d.statePopulations[d.focusedState] || null}
           onClose={() => d.setShowListModal(false)}
           onChurchClick={(church: Church) => {
@@ -654,6 +671,7 @@ export function ChurchMap({
             <div className="pr-4 pb-4 pt-0 pl-4 md:pl-0 md:pt-4 md:pr-4 md:pb-4" style={{ width: isMobile ? "100%" : 396, height: isMobile ? "55vh" : "100%" }}>
               <ChurchDetailPanel
                 church={d.selectedChurch}
+                resolvedCountyName={resolvedCountyForSelectedChurch}
                 allChurches={d.filteredChurches}
                 onClose={() => {
                   if (d.focusedState) {
@@ -1032,6 +1050,7 @@ function MapArea({
       {(d.previewChurch ?? d.hoveredChurch) && (d.previewChurch ?? d.hoveredChurch)!.id !== d.selectedChurch?.id && (
         <ChurchTooltip
           church={(d.previewChurch ?? d.hoveredChurch)!}
+          resolvedCountyName={churchTooltipCountyName}
           tooltipPos={d.tooltipPos}
           showReviewStatus={!!(moderatorKey && moderationMode)}
           pinned={d.previewPinned}
@@ -1230,6 +1249,7 @@ function MapArea({
               zoom={d.zoom}
               center={d.center}
               onStateViewSearchResultsChange={onStateViewSearchResultsChange}
+              countyFeatures={d.countyFeatures}
             />
             </div>
           )}

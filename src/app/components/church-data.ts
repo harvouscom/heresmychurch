@@ -1,6 +1,6 @@
 // Types and constants for church map
 
-import { STATE_BOUNDS, STATE_NAMES } from "./map-constants";
+import { STATE_NAMES } from "./map-constants";
 
 export interface Church {
   id: string;
@@ -95,68 +95,64 @@ function isAddressMeaningful(
   return true;
 }
 
-/** Diagonal (degrees) below which we skip quadrant and show only state name. */
-const QUADRANT_MIN_DIAGONAL = 2;
-
-/** Fraction of half-diagonal from state center; points within this are labeled "Central". */
-const CENTRAL_RADIUS_FRACTION = 0.2;
-
-function getQuadrantLabel(
-  lat: number,
-  lng: number,
-  bounds: [number, number, number, number]
-): string {
-  const [south, west, north, east] = bounds;
-  const midLat = (south + north) / 2;
-  const midLng = (west + east) / 2;
-  const ns = lat >= midLat ? "N" : "S";
-  const ew = lng >= midLng ? "E" : "W";
-  return `${ns}${ew}`;
-}
-
-/** True if (lat, lng) is within the "central" zone of the state (near geographic center). */
-function isInCentralZone(
-  lat: number,
-  lng: number,
-  bounds: [number, number, number, number],
-  diagonal: number
-): boolean {
-  const [south, west, north, east] = bounds;
-  const midLat = (south + north) / 2;
-  const midLng = (west + east) / 2;
-  const halfDiagonal = diagonal / 2;
-  const radius = halfDiagonal * CENTRAL_RADIUS_FRACTION;
-  const dist = Math.sqrt((lat - midLat) ** 2 + (lng - midLng) ** 2);
-  return dist <= radius;
-}
-
 /**
  * Returns a fallback location string when a church has no complete address/city,
- * e.g. "Somewhere in Central Iowa" or "Somewhere in NW Iowa". Use when address and city are both missing or not meaningful.
+ * e.g. "Somewhere in Polk County, Iowa" when `countyName` is resolved from coordinates.
+ * Without a county name, uses the state only: "Somewhere in Iowa".
  * Returns null if city is present (caller should use city as fallback) or state is unknown.
  */
-export function getFallbackLocation(church: {
-  lat: number;
-  lng: number;
-  state: string;
-  city?: string;
-}): string | null {
+export function getFallbackLocation(
+  church: {
+    lat: number;
+    lng: number;
+    state: string;
+    city?: string;
+  },
+  countyName?: string | null
+): string | null {
   if (church.city?.trim()) return null;
   const stateAbbrev = (church.state || "").trim().toUpperCase().slice(0, 2);
   if (!stateAbbrev) return null;
-  const bounds = STATE_BOUNDS[stateAbbrev];
   const stateName = STATE_NAMES[stateAbbrev] || stateAbbrev;
-  if (!bounds) return `Somewhere in ${stateName}`;
-  const [south, west, north, east] = bounds;
-  const latSpan = north - south;
-  const lngSpan = east - west;
-  const diagonal = Math.sqrt(latSpan * latSpan + lngSpan * lngSpan);
-  if (diagonal < QUADRANT_MIN_DIAGONAL) return `Somewhere in ${stateName}`;
-  if (isInCentralZone(church.lat, church.lng, bounds, diagonal)) {
-    return `Somewhere in Central ${stateName}`;
+  const cn = (countyName ?? "").trim();
+  if (cn) {
+    const countyPart = /\bcounty\b/i.test(cn) ? cn : `${cn} County`;
+    return `Somewhere in ${countyPart}, ${stateName}`;
   }
-  const quadrant = getQuadrantLabel(church.lat, church.lng, bounds);
-  return `Somewhere in ${quadrant} ${stateName}`;
+  return `Somewhere in ${stateName}`;
+}
+
+const SOMEWHERE_IN_PREFIX = /^Somewhere in /i;
+
+/**
+ * Compact location string for external search (e.g. Google) when pairing with church name.
+ * Prefers city + state abbrev; if no city, uses a meaningful street address + state when present;
+ * otherwise {@link getFallbackLocation} without the "Somewhere in " prefix (county + state or state only).
+ */
+export function getLocationContextForWebSearch(
+  church: {
+    lat: number;
+    lng: number;
+    state: string;
+    city?: string;
+    address?: string;
+  },
+  countyName?: string | null
+): string {
+  const city = (church.city || "").trim();
+  const stateAbbrev = (church.state || "").trim().toUpperCase().slice(0, 2);
+  if (city) {
+    return stateAbbrev ? `${city} ${stateAbbrev}` : city;
+  }
+  if (isAddressMeaningful(church.address, city, church.state)) {
+    const a = (church.address || "").trim();
+    return stateAbbrev ? `${a} ${stateAbbrev}` : a;
+  }
+  const fallback = getFallbackLocation(church, countyName);
+  if (fallback) {
+    return fallback.replace(SOMEWHERE_IN_PREFIX, "").trim();
+  }
+  return stateAbbrev;
 }
 
 /**

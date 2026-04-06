@@ -274,6 +274,7 @@ export function CountyTooltip({
 // --- Church Tooltip / Preview (hover or click on dot) ---
 export function ChurchTooltip({
   church,
+  resolvedCountyName = null,
   tooltipPos,
   showReviewStatus = false,
   pinned = false,
@@ -281,6 +282,8 @@ export function ChurchTooltip({
   onClose,
 }: {
   church: Church;
+  /** From county polygons when city/address are missing. */
+  resolvedCountyName?: string | null;
   tooltipPos: { x: number; y: number };
   showReviewStatus?: boolean;
   pinned?: boolean;
@@ -290,7 +293,7 @@ export function ChurchTooltip({
   const hasAddressOrCity = church.address?.trim() || church.city?.trim();
   const displayLocation = hasAddressOrCity
     ? formatFullAddress(church.address, church.city, church.state)
-    : getFallbackLocation(church);
+    : getFallbackLocation(church, resolvedCountyName);
   const interactive = pinned && (onViewChurch || onClose);
   return (
     <div

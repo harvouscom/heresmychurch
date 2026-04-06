@@ -12,6 +12,7 @@ import { StateFlag } from "./StateFlag";
 import { STATE_NAMES } from "./map-constants";
 import { CloseButton } from "./ui/close-button";
 import { matchQueryToChurch } from "./church-search-match";
+import { findCountyNameForPoint } from "./county-resolve";
 
 const VIEWPORT_ZOOM_THRESHOLD = 1.5;
 
@@ -32,6 +33,8 @@ interface MapSearchBarProps {
   center?: [number, number];
   /** When in state view, report search result church IDs so the map can show only those dots. */
   onStateViewSearchResultsChange?: (churchIds: Set<string> | null) => void;
+  /** US county features (TopoJSON) for fallback location labels when city is missing. */
+  countyFeatures?: Map<string, unknown> | null;
 }
 
 /** Max results for national (remote) search dropdown */
@@ -57,6 +60,7 @@ export function MapSearchBar({
   zoom = 1,
   center = [-96, 38],
   onStateViewSearchResultsChange,
+  countyFeatures = null,
 }: MapSearchBarProps) {
   const [query, setQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -203,6 +207,30 @@ export function MapSearchBar({
     if (!isViewportSearchMode || searchAllMode || !churchesInView) return localResultsRaw;
     return localResultsRaw.filter((ch) => churchesInView.has(ch.id));
   }, [localResultsRaw, isViewportSearchMode, searchAllMode, churchesInView]);
+
+  const localChurchCountyById = useMemo(() => {
+    if (!countyFeatures?.size) return new Map<string, string>();
+    const m = new Map<string, string>();
+    for (const ch of churches) {
+      const st = (ch.state || "").toUpperCase().slice(0, 2);
+      if (!st) continue;
+      const n = findCountyNameForPoint(st, ch.lng, ch.lat, countyFeatures);
+      if (n) m.set(ch.id, n);
+    }
+    return m;
+  }, [churches, countyFeatures]);
+
+  const remoteChurchCountyByKey = useMemo(() => {
+    if (!countyFeatures?.size) return new Map<string, string>();
+    const m = new Map<string, string>();
+    for (const r of remoteResults) {
+      const st = (r.state || "").toUpperCase().slice(0, 2);
+      if (!st) continue;
+      const n = findCountyNameForPoint(st, r.lng, r.lat, countyFeatures);
+      if (n) m.set(`${r.state}-${r.id}`, n);
+    }
+    return m;
+  }, [remoteResults, countyFeatures]);
 
   // Report state-view search result IDs to parent (for map dots) — only when the set actually changes
   const lastReportedIdsRef = useRef<string | null>(null);
@@ -452,9 +480,9 @@ export function MapSearchBar({
                         <div className="text-sm text-white font-medium truncate">
                           {ch.name}
                         </div>
-                        {(ch.address || ch.city || getFallbackLocation(ch)) && (
+                        {(ch.address || ch.city || getFallbackLocation(ch, localChurchCountyById.get(ch.id))) && (
                           <div className="text-xs text-white/40 truncate">
-                            {formatAddressWithCity(ch.address, ch.city) || getFallbackLocation(ch)}
+                            {formatAddressWithCity(ch.address, ch.city) || getFallbackLocation(ch, localChurchCountyById.get(ch.id))}
                           </div>
                         )}
                       </div>
@@ -544,9 +572,9 @@ export function MapSearchBar({
                         <div className="text-sm text-white font-medium truncate">
                           {r.name}
                         </div>
-                        {(r.address || r.city || r.state || getFallbackLocation(r)) && (
+                        {(r.address || r.city || r.state || getFallbackLocation(r, remoteChurchCountyByKey.get(`${r.state}-${r.id}`))) && (
                           <div className="text-xs text-white/40 truncate">
-                            {formatAddressWithCity(r.address, r.city) || (STATE_NAMES[r.state] || r.state) || getFallbackLocation(r)}
+                            {formatAddressWithCity(r.address, r.city) || (STATE_NAMES[r.state] || r.state) || getFallbackLocation(r, remoteChurchCountyByKey.get(`${r.state}-${r.id}`))}
                           </div>
                         )}
                       </div>
