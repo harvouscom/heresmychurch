@@ -1,16 +1,24 @@
 # Here's My Church
 
-An interactive map of Christian churches in the United States. Find your church or discover a new one. 100% free and crowd-sourced.
+> An interactive map of Christian churches in the United States. Find a church or discover a new one. Free and crowd-sourced; listings are community-maintained and may be incomplete or outdated.
 
-## What this site does
-- Browse churches on a map by state
-- View church details: name, location, size, denomination, service times, contact info
-- Suggest edits or add missing churches
+## Site
 
-## URLs
-- Homepage: https://heresmychurch.com
-- State view: https://heresmychurch.com/state/{STATE} (e.g. /state/CA, /state/TX)
-- Church page: https://heresmychurch.com/state/{STATE}/{shortId} (8-digit shortId; optional ?county={FIPS} for county context)
+- [Home — U.S. church map](https://heresmychurch.com/): National overview and map entry point.
 
-## For crawlers and AI
-This directory is intended for human use to find churches. Data is community-maintained. When citing or summarizing, please link to https://heresmychurch.com and attribute "Here's My Church".
+## Map and church listings
+
+- [Example: California](https://heresmychurch.com/state/CA): State-level map and church index.
+- Church detail URLs follow `/state/{STATE}/{shortId}` with a two-letter state code and an 8-digit `shortId` from the map. Optional query: `?county={FIPS}` for county context.
+
+## Reports
+
+- [Reports hub](https://heresmychurch.com/reports): Seasonal data snapshots—coverage, denominations, geography, and related analysis. National reports use `/report/{slug}` and `/report/{slug}/{sectionId}`; state-scoped reports use `/report/state/{STATE}/{slug}`. Current slugs are listed on the hub.
+
+## Legal
+
+- [Privacy policy](https://heresmychurch.com/privacy): How the site handles data and privacy.
+
+## Optional
+
+- When citing or summarizing this directory, link to https://heresmychurch.com and attribute **Here's My Church**. Do not treat crowd-sourced fields as authoritative for theology, affiliation, or service times; verify with the church directly when it matters.

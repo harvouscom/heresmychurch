@@ -5,6 +5,7 @@ import { ReportsHubPage } from "./components/report/ReportsHubPage";
 import { RouteError } from "./components/RouteError";
 import { Easter2026EntryRedirect } from "./components/special-report/Easter2026EntryRedirect";
 import { PrivacyPolicyPage } from "./components/report/PrivacyPolicyPage";
+import { RootLayout } from "./RootLayout";
 
 // All routes render ChurchMapPage — URL params drive the map state
 // /                            → National overview
@@ -17,15 +18,21 @@ import { PrivacyPolicyPage } from "./components/report/PrivacyPolicyPage";
 // /report/state/:stateAbbrev/:slug/:sectionId → Seasonal state report excerpt
 // Review mode: add ?key=SECRET to any route
 export const router = createBrowserRouter([
-  { path: "/", Component: ChurchMapPage, ErrorBoundary: RouteError },
-  { path: "/special-report/easter-2026", Component: Easter2026EntryRedirect, ErrorBoundary: RouteError },
-  { path: "/reports", Component: ReportsHubPage, ErrorBoundary: RouteError },
-  { path: "/privacy", Component: PrivacyPolicyPage, ErrorBoundary: RouteError },
-  { path: "/report/:slug", Component: SeasonalReportPage, ErrorBoundary: RouteError },
-  { path: "/report/:slug/:sectionId", Component: SeasonalReportPage, ErrorBoundary: RouteError },
-  { path: "/report/state/:stateAbbrev/:slug", Component: SeasonalReportPage, ErrorBoundary: RouteError },
-  { path: "/report/state/:stateAbbrev/:slug/:sectionId", Component: SeasonalReportPage, ErrorBoundary: RouteError },
-  { path: "/state/:stateAbbrev", Component: ChurchMapPage, ErrorBoundary: RouteError },
-  { path: "/state/:stateAbbrev/:segment1/:segment2?", Component: ChurchMapPage, ErrorBoundary: RouteError },
-  { path: "*", Component: ChurchMapPage, ErrorBoundary: RouteError },
+  {
+    Component: RootLayout,
+    ErrorBoundary: RouteError,
+    children: [
+      { path: "/", Component: ChurchMapPage, ErrorBoundary: RouteError },
+      { path: "/special-report/easter-2026", Component: Easter2026EntryRedirect, ErrorBoundary: RouteError },
+      { path: "/reports", Component: ReportsHubPage, ErrorBoundary: RouteError },
+      { path: "/privacy", Component: PrivacyPolicyPage, ErrorBoundary: RouteError },
+      { path: "/report/:slug", Component: SeasonalReportPage, ErrorBoundary: RouteError },
+      { path: "/report/:slug/:sectionId", Component: SeasonalReportPage, ErrorBoundary: RouteError },
+      { path: "/report/state/:stateAbbrev/:slug", Component: SeasonalReportPage, ErrorBoundary: RouteError },
+      { path: "/report/state/:stateAbbrev/:slug/:sectionId", Component: SeasonalReportPage, ErrorBoundary: RouteError },
+      { path: "/state/:stateAbbrev", Component: ChurchMapPage, ErrorBoundary: RouteError },
+      { path: "/state/:stateAbbrev/:segment1/:segment2?", Component: ChurchMapPage, ErrorBoundary: RouteError },
+      { path: "*", Component: ChurchMapPage, ErrorBoundary: RouteError },
+    ],
+  },
 ]);

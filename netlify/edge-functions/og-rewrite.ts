@@ -17,6 +17,7 @@ const DEFAULT_SUPABASE_FUNCTIONS_BASE_URL =
 const DEFAULT_SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwdWZjaHd4b2ZzeXVpY3RmdWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5NzcxMTUsImV4cCI6MjA4ODU1MzExNX0.v11kHHpM1IsK6q81909CYkWgX5TdV8kJhCkNqSEs5QM";
 
+/** Search, social, preview, and AI/answer-engine crawlers — match og:image + crawlable HTML for bots only. */
 const BOT_UA_PATTERNS = [
   "Twitterbot",
   "facebookexternalhit",
@@ -35,6 +36,21 @@ const BOT_UA_PATTERNS = [
   "YandexBot",
   "facebot",
   "ia_archiver",
+  // LLM / AI crawlers & answer engines (AEO)
+  "GPTBot",
+  "ChatGPT-User",
+  "OAI-SearchBot",
+  "Claude-Web",
+  "ClaudeBot",
+  "anthropic-ai",
+  "PerplexityBot",
+  "Google-Extended",
+  "Amazonbot",
+  "Bytespider",
+  "CCBot",
+  "cohere-ai",
+  "Meta-ExternalAgent",
+  "FacebookBot",
 ];
 
 const STATE_NAMES: Record<string, string> = {
@@ -316,6 +332,10 @@ export default async function handler(request: Request, context: Context): Promi
   out = out.replace(/<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i, `<meta name="twitter:image" content="${escapeAttr(meta.image)}" />`);
   out = out.replace(/<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i, `<meta name="twitter:description" content="${escapeAttr(meta.description)}" />`);
   out = out.replace(/<title>[^<]*<\/title>/i, `<title>${escapeAttr(meta.title)}</title>`);
+  out = out.replace(
+    /<link\s+rel="canonical"[^>]*>/i,
+    `<link rel="canonical" id="hmc-canonical-link" href="${escapeAttr(meta.url)}" />`,
+  );
 
   if (seoRootArticle) {
     out = out.replace(/<div id="root"><\/div>/i, `<div id="root">${seoRootArticle}</div>`);
