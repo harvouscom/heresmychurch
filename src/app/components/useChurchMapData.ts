@@ -23,6 +23,7 @@ import {
 } from "./map-constants";
 import { COUNTY_POPULATIONS } from "./data/county-populations";
 import { getChurchUrlSegment } from "./url-utils";
+import { getRegion } from "../config/countries";
 
 /** Match church by route segment (legacy id or numeric shortId). Coerce shortId to string so API number still matches. */
 function churchMatchesRouteSegment(
@@ -865,10 +866,8 @@ export function useChurchMapData({
     if (regionMeta) {
       let abbrev = regionMeta.getAttribute("content")?.toUpperCase() ?? "";
       if (abbrev === "DC") abbrev = "MD";
-      const valid = new Set([
-        "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
-      ]);
-      if (valid.has(abbrev)) {
+      // Validate against the US region registry (single source of truth).
+      if (getRegion("US", abbrev)) {
         console.log(`[ChurchMap] Detected user state via geo: ${abbrev}`);
         setDetectedState(abbrev);
       }

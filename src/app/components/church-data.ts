@@ -9,6 +9,16 @@ export interface Church {
   name: string;
   city: string;
   state: string;
+  /**
+   * ISO 3166-1 alpha-2 country code, e.g. "US", "CA". Defaults to "US" for
+   * legacy records that predate worldwide support (see src/app/config/countries.ts).
+   */
+  country?: string;
+  /**
+   * ISO 3166-2 subdivision code, e.g. "US-CA", "CA-ON". The country-namespaced
+   * successor to `state`; `state` is retained for US back-compat during transition.
+   */
+  region?: string;
   lat: number;
   lng: number;
   attendance: number;
