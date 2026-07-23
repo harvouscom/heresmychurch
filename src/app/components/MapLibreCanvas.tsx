@@ -12,12 +12,29 @@
  * parity and is wired into ChurchMap.
  */
 import { memo, useEffect, useRef } from "react";
-import { Map as MaplibreMap, NavigationControl } from "maplibre-gl";
+import { Map as MaplibreMap, NavigationControl, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
-// Free vector basemap, no API key or token required (CARTO Positron — light,
-// suits the app's light palette). Swappable for any MapLibre-compatible style.
-const BASEMAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+// Free RASTER basemap, no API key or token required (CARTO Positron "light_all",
+// light palette that suits the app). Raster tiles render as plain images without
+// MapLibre's vector-tile web worker, which makes them far more robust across
+// environments than the vector style. Swappable for any raster/vector source.
+const BASEMAP_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {
+    basemap: {
+      type: "raster",
+      tiles: [
+        "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+        "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+        "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+      ],
+      tileSize: 256,
+      attribution: '© <a href="https://carto.com/">CARTO</a> © OpenStreetMap contributors',
+    },
+  },
+  layers: [{ id: "basemap", type: "raster", source: "basemap" }],
+};
 
 // Continental-US default view (Web Mercator zoom 0–22, not the old 1–500 scale).
 export const US_DEFAULT_CENTER: [number, number] = [-98.5, 39.5];
