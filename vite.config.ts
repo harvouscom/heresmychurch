@@ -31,6 +31,13 @@ export default defineConfig({
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
 
+  optimizeDeps: {
+    // maplibre-gl manages its own web worker; letting Vite/esbuild pre-bundle it
+    // breaks main-thread↔worker communication (GeoJSON/vector sources hang with
+    // no error). Exclude it so it is served as native ESM with the worker intact.
+    exclude: ['maplibre-gl'],
+  },
+
   server: {
     proxy: {
       '/functions/v1/make-server-283d8046': {

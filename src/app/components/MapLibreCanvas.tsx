@@ -14,26 +14,22 @@
 import { memo, useEffect, useRef } from "react";
 import { Map as MaplibreMap, NavigationControl, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { feature } from "topojson-client";
+import { GEO_URL } from "./map-constants";
 
-// Free RASTER basemap, no API key or token required (CARTO Positron "light_all",
-// light palette that suits the app). Raster tiles render as plain images without
-// MapLibre's vector-tile web worker, which makes them far more robust across
-// environments than the vector style. Swappable for any raster/vector source.
+// Here's My Church is a data visualization, not a street map: a cream canvas
+// with purple choropleth regions — no roads or labels. So the base "style" is
+// just the app's cream background. Region polygons are added as GeoJSON layers
+// on top (see addStatesLayer). A subtle street basemap can be faded in only at
+// high (church-level) zoom later, per docs/future/mapbox-migration.md.
+const CREAM = "#F5F0E8"; // --background (national view)
+const STATE_FILL = "#C9A0DC"; // brand purple
+const STATE_STROKE = "#6B21A8"; // deep purple borders
+
 const BASEMAP_STYLE: StyleSpecification = {
   version: 8,
-  sources: {
-    basemap: {
-      type: "raster",
-      tiles: [
-        "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-        "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-        "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-      ],
-      tileSize: 256,
-      attribution: '© <a href="https://carto.com/">CARTO</a> © OpenStreetMap contributors',
-    },
-  },
-  layers: [{ id: "basemap", type: "raster", source: "basemap" }],
+  sources: {},
+  layers: [{ id: "bg", type: "background", paint: { "background-color": CREAM } }],
 };
 
 // Continental-US default view (Web Mercator zoom 0–22, not the old 1–500 scale).
@@ -47,6 +43,35 @@ interface MapLibreCanvasProps {
   zoom?: number;
   /** Called after the user finishes moving the map. */
   onMoveEnd?: (center: [number, number], zoom: number) => void;
+}
+
+/**
+ * Add US state polygons as a branded GeoJSON layer (purple choropleth on cream),
+ * matching the current SVG map's look. us-atlas ships TopoJSON, which we convert
+ * to GeoJSON with topojson-client. This is step 1 of porting the app's layers;
+ * region coloring by church-count tier and non-US sources come next.
+ */
+async function addStatesLayer(map: MaplibreMap) {
+  try {
+    const topo = await (await fetch(GEO_URL)).json();
+    const geo = feature(topo, topo.objects.states) as GeoJSON.FeatureCollection;
+    if (map.getSource("states")) return;
+    map.addSource("states", { type: "geojson", data: geo });
+    map.addLayer({
+      id: "states-fill",
+      type: "fill",
+      source: "states",
+      paint: { "fill-color": STATE_FILL, "fill-opacity": 0.85 },
+    });
+    map.addLayer({
+      id: "states-line",
+      type: "line",
+      source: "states",
+      paint: { "line-color": STATE_STROKE, "line-width": 0.6 },
+    });
+  } catch (err) {
+    console.error("[maplibre] failed to load states layer", err);
+  }
 }
 
 export const MapLibreCanvas = memo(function MapLibreCanvas({
@@ -76,6 +101,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     };
     map.on("moveend", handleMoveEnd);
     map.on("error", (e) => console.error("[maplibre]", (e as { error?: { message?: string } })?.error?.message ?? e));
+    map.on("load", () => { void addStatesLayer(map); });
 
     // The map can be constructed before its container has a measured size
     // (MapLibre then falls back to a 400×300 canvas that never grows). A
