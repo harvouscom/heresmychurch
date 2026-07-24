@@ -16,7 +16,14 @@
  * live map until this reaches parity and is wired into ChurchMap.
  */
 import { memo, useEffect, useRef } from "react";
-import { Map as MaplibreMap, NavigationControl, type GeoJSONSource, type StyleSpecification } from "maplibre-gl";
+import {
+  Map as MaplibreMap,
+  NavigationControl,
+  type GeoJSONSource,
+  type MapMouseEvent,
+  type Point,
+  type StyleSpecification,
+} from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { feature } from "topojson-client";
 import {
@@ -34,9 +41,11 @@ const STATE_FILL = STATE_COUNT_TIERS[0].color; // "not yet explored" tier, for s
 const STATE_STROKE = "#C9A0DC"; // brand purple borders (matches national view)
 const STATE_FOCUSED_FILL = "#C9A0DC"; // focused state
 const STATE_DIMMED_FILL = "#EDE4F3"; // non-focused states in state view
+const STATE_HOVER_FILL = "#D4B8E8"; // hovered state (national view only)
 // County choropleth defaults (match CountyGeographies in MapCanvas)
 const COUNTY_FILL = "rgba(255, 255, 255, 0.8)";
 const COUNTY_STROKE = "rgba(107, 33, 168, 0.25)";
+const COUNTY_HOVER_FILL = "#D4B8E8";
 
 const BASEMAP_STYLE: StyleSpecification = {
   version: 8,
@@ -61,7 +70,18 @@ interface MapLibreCanvasProps {
   churches?: Church[];
   /** Called after the user finishes moving the map. */
   onMoveEnd?: (center: [number, number], zoom: number) => void;
+  onStateClick?: (abbrev: string) => void;
+  onStateHover?: (abbrev: string | null) => void;
+  onCountyClick?: (fips: string) => void;
+  onCountyHover?: (fips: string | null) => void;
+  onChurchClick?: (church: Church) => void;
+  onChurchHover?: (church: Church | null) => void;
+  /** Clicking empty canvas / outside the focused state. */
+  onResetView?: () => void;
 }
+
+/** Topmost-first hit-test order: a church dot beats the county beneath it. */
+const HIT_LAYERS = ["churches", "counties-fill", "states-fill"];
 
 /**
  * Run a layer mutation once the style is actually ready.
@@ -180,17 +200,38 @@ async function setStatesLayer(map: MaplibreMap, states: StateInfo[]) {
   });
 }
 
-/** Dim non-focused states (state view) or restore the tier choropleth. */
-function setStateFocusPaint(map: MaplibreMap, focusedState: string | null) {
+/**
+ * State fill: focus wins over hover (matching MapCanvas, where hover only
+ * highlights in the national view), otherwise fall back to the tier color.
+ */
+function statesFillExpression(focusedState: string | null, hoveredState: string | null) {
+  if (focusedState) {
+    return ["case", ["==", ["get", "abbrev"], focusedState], STATE_FOCUSED_FILL, STATE_DIMMED_FILL];
+  }
+  if (hoveredState) {
+    return ["case", ["==", ["get", "abbrev"], hoveredState], STATE_HOVER_FILL, ["get", "fill"]];
+  }
+  return ["get", "fill"];
+}
+
+function countiesFillExpression(hoveredCounty: string | null) {
+  if (hoveredCounty) {
+    return ["case", ["==", ["get", "fips"], hoveredCounty], COUNTY_HOVER_FILL, COUNTY_FILL];
+  }
+  return COUNTY_FILL;
+}
+
+function applyStatePaint(map: MaplibreMap, focusedState: string | null, hoveredState: string | null) {
   whenStyleReady(map, () => {
     if (!map.getLayer("states-fill")) return;
-    map.setPaintProperty(
-      "states-fill",
-      "fill-color",
-      focusedState
-        ? ["case", ["==", ["get", "abbrev"], focusedState], STATE_FOCUSED_FILL, STATE_DIMMED_FILL]
-        : ["get", "fill"],
-    );
+    map.setPaintProperty("states-fill", "fill-color", statesFillExpression(focusedState, hoveredState) as never);
+  });
+}
+
+function applyCountyPaint(map: MaplibreMap, hoveredCounty: string | null) {
+  whenStyleReady(map, () => {
+    if (!map.getLayer("counties-fill")) return;
+    map.setPaintProperty("counties-fill", "fill-color", countiesFillExpression(hoveredCounty) as never);
   });
 }
 
@@ -218,7 +259,10 @@ async function setCountyLayer(map: MaplibreMap, focusedState: string | null) {
     const all = feature(topo, topo.objects.counties) as GeoJSON.FeatureCollection;
     geo = {
       type: "FeatureCollection",
-      features: all.features.filter((f) => String(f.id).padStart(5, "0").slice(0, 2) === stateFips),
+      features: all.features
+        .filter((f) => String(f.id).padStart(5, "0").slice(0, 2) === stateFips)
+        // Surface the 5-digit FIPS as a property so hover/click can identify it.
+        .map((f) => ({ ...f, properties: { ...f.properties, fips: String(f.id).padStart(5, "0") } })),
     };
   } catch (err) {
     console.error("[maplibre] failed to load county boundaries", err);
@@ -305,9 +349,33 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   focusedState = null,
   churches,
   onMoveEnd,
+  onStateClick,
+  onStateHover,
+  onCountyClick,
+  onCountyHover,
+  onChurchClick,
+  onChurchHover,
+  onResetView,
 }: MapLibreCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
+
+  // Interaction state lives in refs so the map's event handlers (registered
+  // once) always read current values without being re-bound on every render.
+  const focusedStateRef = useRef<string | null>(focusedState);
+  focusedStateRef.current = focusedState;
+  const hoveredStateRef = useRef<string | null>(null);
+  const hoveredCountyRef = useRef<string | null>(null);
+  const churchByIdRef = useRef<Map<string, Church>>(new Map());
+  churchByIdRef.current = new Map((churches ?? []).map((c) => [c.id, c]));
+  const handlersRef = useRef({
+    onStateClick, onStateHover, onCountyClick, onCountyHover,
+    onChurchClick, onChurchHover, onResetView,
+  });
+  handlersRef.current = {
+    onStateClick, onStateHover, onCountyClick, onCountyHover,
+    onChurchClick, onChurchHover, onResetView,
+  };
 
   // Initialize the map once.
   useEffect(() => {
@@ -328,6 +396,97 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     };
     map.on("moveend", handleMoveEnd);
     map.on("error", (e) => console.error("[maplibre]", (e as { error?: { message?: string } })?.error?.message ?? e));
+
+    // Single delegated hit-test rather than per-layer listeners: a click on a
+    // church dot would otherwise ALSO fire the state handler underneath it.
+    const hitTest = (point: Point) => {
+      const layers = HIT_LAYERS.filter((id) => map.getLayer(id));
+      if (!layers.length) return [];
+      try {
+        return map.queryRenderedFeatures(point, { layers });
+      } catch {
+        return [];
+      }
+    };
+    const topmost = (feats: ReturnType<typeof hitTest>, layerId: string) =>
+      feats.find((f) => f.layer.id === layerId);
+
+    const handleClick = (e: MapMouseEvent) => {
+      const h = handlersRef.current;
+      const feats = hitTest(e.point);
+
+      const church = topmost(feats, "churches");
+      if (church) {
+        const found = churchByIdRef.current.get(String(church.properties?.id));
+        if (found) return h.onChurchClick?.(found);
+      }
+      const county = topmost(feats, "counties-fill");
+      if (county) return h.onCountyClick?.(String(county.properties?.fips));
+
+      const state = topmost(feats, "states-fill");
+      const abbrev = state ? String(state.properties?.abbrev) : null;
+      if (!abbrev) return h.onResetView?.(); // clicked empty canvas
+      // In state view, clicking a different state resets; clicking the focused
+      // one does nothing (matches StateGeographies' click rules).
+      if (focusedStateRef.current) {
+        if (abbrev !== focusedStateRef.current) h.onResetView?.();
+        return;
+      }
+      h.onStateClick?.(abbrev);
+    };
+
+    const handleMouseMove = (e: MapMouseEvent) => {
+      const h = handlersRef.current;
+      const feats = hitTest(e.point);
+
+      const church = topmost(feats, "churches");
+      const county = topmost(feats, "counties-fill");
+      const state = topmost(feats, "states-fill");
+
+      map.getCanvas().style.cursor = church || county || state ? "pointer" : "";
+
+      // Church hover
+      const churchObj = church
+        ? churchByIdRef.current.get(String(church.properties?.id)) ?? null
+        : null;
+      h.onChurchHover?.(churchObj);
+
+      // County hover
+      const fips = county && !church ? String(county.properties?.fips) : null;
+      if (fips !== hoveredCountyRef.current) {
+        hoveredCountyRef.current = fips;
+        applyCountyPaint(map, fips);
+        h.onCountyHover?.(fips);
+      }
+
+      // State hover (only meaningful in the national view)
+      const abbrev = state && !church && !county ? String(state.properties?.abbrev) : null;
+      if (abbrev !== hoveredStateRef.current) {
+        hoveredStateRef.current = abbrev;
+        applyStatePaint(map, focusedStateRef.current, abbrev);
+        h.onStateHover?.(abbrev);
+      }
+    };
+
+    const handleMouseOut = () => {
+      const h = handlersRef.current;
+      map.getCanvas().style.cursor = "";
+      if (hoveredCountyRef.current !== null) {
+        hoveredCountyRef.current = null;
+        applyCountyPaint(map, null);
+        h.onCountyHover?.(null);
+      }
+      if (hoveredStateRef.current !== null) {
+        hoveredStateRef.current = null;
+        applyStatePaint(map, focusedStateRef.current, null);
+        h.onStateHover?.(null);
+      }
+      h.onChurchHover?.(null);
+    };
+
+    map.on("click", handleClick);
+    map.on("mousemove", handleMouseMove);
+    map.on("mouseout", handleMouseOut);
 
     // The map can be constructed before its container has a measured size
     // (MapLibre then falls back to a 400×300 canvas that never grows). A
@@ -364,7 +523,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    setStateFocusPaint(map, focusedState);
+    applyStatePaint(map, focusedState, hoveredStateRef.current);
     void setCountyLayer(map, focusedState);
   }, [focusedState]);
 

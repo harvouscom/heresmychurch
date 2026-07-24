@@ -77,7 +77,17 @@ export function MapLibreDevPage() {
         states={states}
         focusedState={focusedState}
         churches={churches}
-        onMoveEnd={(c, z) => console.log("[maplibre-dev] moveend", c, z)}
+        onStateClick={(abbrev) => {
+          console.log("[maplibre-dev] state click", abbrev);
+          setFocusedState(abbrev);
+        }}
+        onCountyClick={(fips) => console.log("[maplibre-dev] county click", fips)}
+        onChurchClick={(ch) => console.log("[maplibre-dev] church click", ch.name, ch.id)}
+        onChurchHover={(ch) => ch && console.log("[maplibre-dev] church hover", ch.name)}
+        onResetView={() => {
+          console.log("[maplibre-dev] reset view");
+          setFocusedState(null);
+        }}
       />
     </div>
   );
