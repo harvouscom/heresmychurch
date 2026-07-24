@@ -31,6 +31,7 @@ import {
   COUNTIES_GEO_URL,
   FIPS_TO_STATE,
   STATE_TO_FIPS,
+  STATE_BOUNDS,
   getStateTier,
   STATE_COUNT_TIERS,
 } from "./map-constants";
@@ -68,6 +69,11 @@ interface MapLibreCanvasProps {
   focusedState?: string | null;
   /** Churches to plot as dots. */
   churches?: Church[];
+  /**
+   * Zoom the camera to the focused state's bounds (and back out when cleared).
+   * Set false if the parent drives the camera itself via center/zoom.
+   */
+  fitToFocusedState?: boolean;
   /** Called after the user finishes moving the map. */
   onMoveEnd?: (center: [number, number], zoom: number) => void;
   onStateClick?: (abbrev: string) => void;
@@ -82,6 +88,28 @@ interface MapLibreCanvasProps {
 
 /** Topmost-first hit-test order: a church dot beats the county beneath it. */
 const HIT_LAYERS = ["churches", "counties-fill", "states-fill"];
+
+/**
+ * Zoom model: the SVG map used a bespoke 1–500 Albers scale with a hand-tuned
+ * getStateZoom() per state. MapLibre uses Web Mercator zoom 0–22 and can derive
+ * the right zoom from the region's bounding box, so fitBounds replaces that
+ * lookup table entirely — and works for any country's regions, not just US
+ * states. STATE_BOUNDS is [south, west, north, east]; MapLibre wants
+ * [[west, south], [east, north]].
+ */
+function boundsForState(abbrev: string): [[number, number], [number, number]] | null {
+  const b = STATE_BOUNDS[abbrev];
+  if (!b) return null;
+  const [south, west, north, east] = b;
+  return [
+    [west, south],
+    [east, north],
+  ];
+}
+
+/** Leaves room for the UI chrome around the fitted region. */
+const FIT_PADDING = 40;
+const VIEW_TRANSITION_MS = 800;
 
 /**
  * Run a layer mutation once the style is actually ready.
@@ -348,6 +376,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   states,
   focusedState = null,
   churches,
+  fitToFocusedState = true,
   onMoveEnd,
   onStateClick,
   onStateHover,
@@ -508,7 +537,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.flyTo({ center, zoom, duration: 800, essential: true });
+    map.flyTo({ center, zoom, duration: VIEW_TRANSITION_MS, essential: true });
   }, [center, zoom]);
 
   // Build/recolor the state choropleth when church counts arrive or change.
@@ -518,13 +547,28 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     void setStatesLayer(map, states ?? []);
   }, [states]);
 
-  // Focus: show the focused state's counties and dim the other states,
-  // matching the SVG map's state view.
+  // Focus: show the focused state's counties, dim the other states, and move
+  // the camera — matching the SVG map's state view.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     applyStatePaint(map, focusedState, hoveredStateRef.current);
     void setCountyLayer(map, focusedState);
+
+    if (!fitToFocusedState) return;
+    const bounds = focusedState ? boundsForState(focusedState) : null;
+    if (bounds) {
+      map.fitBounds(bounds, { padding: FIT_PADDING, duration: VIEW_TRANSITION_MS });
+    } else if (!focusedState) {
+      map.flyTo({
+        center: US_DEFAULT_CENTER,
+        zoom: US_DEFAULT_ZOOM,
+        duration: VIEW_TRANSITION_MS,
+        essential: true,
+      });
+    }
+    // fitToFocusedState is config, not a trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedState]);
 
   // Plot churches whenever the list changes.

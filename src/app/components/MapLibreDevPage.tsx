@@ -49,22 +49,11 @@ export function MapLibreDevPage() {
           fontSize: 13,
         }}
       >
-        <button
-          onClick={() => {
-            setFocusedState(null);
-            setView({ center: US_DEFAULT_CENTER, zoom: US_DEFAULT_ZOOM });
-          }}
-        >
-          USA
-        </button>
-        <button
-          onClick={() => {
-            setFocusedState("TX");
-            setView({ center: [-99.4, 31.3], zoom: 5.2 });
-          }}
-        >
-          Texas (counties)
-        </button>
+        {/* Focus drives the camera via fitBounds — no manual center/zoom. */}
+        <button onClick={() => setFocusedState(null)}>USA</button>
+        <button onClick={() => setFocusedState("TX")}>Texas</button>
+        <button onClick={() => setFocusedState("RI")}>Rhode Island</button>
+        <button onClick={() => setFocusedState("AK")}>Alaska</button>
         <button onClick={() => setView({ center: [-79.4, 43.7], zoom: 8 })}>Toronto, CA</button>
         <button onClick={() => setView({ center: [-0.12, 51.5], zoom: 8 })}>London, UK</button>
         <span style={{ alignSelf: "center", color: "#555" }}>
