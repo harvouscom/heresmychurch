@@ -2,14 +2,23 @@
  * TEMPORARY dev harness for the Phase 0 MapLibre migration.
  * Route: /dev/maplibre. Remove before merging feature/maplibre-migration.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MapLibreCanvas, US_DEFAULT_CENTER, US_DEFAULT_ZOOM } from "./MapLibreCanvas";
+import { fetchStates } from "./api";
+import type { StateInfo } from "./church-data";
 
 export function MapLibreDevPage() {
   const [view, setView] = useState<{ center: [number, number]; zoom: number }>({
     center: US_DEFAULT_CENTER,
     zoom: US_DEFAULT_ZOOM,
   });
+  const [states, setStates] = useState<StateInfo[]>([]);
+
+  useEffect(() => {
+    fetchStates()
+      .then((r) => setStates(r.states))
+      .catch((e) => console.error("[maplibre-dev] fetchStates failed", e));
+  }, []);
 
   return (
     <div style={{ position: "fixed", inset: 0 }}>
@@ -39,6 +48,7 @@ export function MapLibreDevPage() {
       <MapLibreCanvas
         center={view.center}
         zoom={view.zoom}
+        states={states}
         onMoveEnd={(c, z) => console.log("[maplibre-dev] moveend", c, z)}
       />
     </div>
