@@ -74,8 +74,22 @@ interface MapLibreCanvasProps {
    * Set false if the parent drives the camera itself via center/zoom.
    */
   fitToFocusedState?: boolean;
-  /** Called after the user finishes moving the map. */
-  onMoveEnd?: (center: [number, number], zoom: number) => void;
+  /**
+   * Extra bottom padding in px kept clear of the camera — used on mobile so the
+   * selected church's pin sits above the detail panel. Replaces the
+   * Albers/viewBox-specific getMobileLatOffset() math.
+   */
+  bottomPadding?: number;
+  /**
+   * Called after the user finishes moving the map. `bounds` is the visible
+   * extent as [[west, south], [east, north]] — this is what replaces
+   * MapSearchBar's geoAlbersUsa projection math for "churches in view".
+   */
+  onMoveEnd?: (
+    center: [number, number],
+    zoom: number,
+    bounds: [[number, number], [number, number]],
+  ) => void;
   onStateClick?: (abbrev: string) => void;
   onStateHover?: (abbrev: string | null) => void;
   onCountyClick?: (fips: string) => void;
@@ -377,6 +391,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   focusedState = null,
   churches,
   fitToFocusedState = true,
+  bottomPadding = 0,
   onMoveEnd,
   onStateClick,
   onStateHover,
@@ -399,11 +414,11 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   churchByIdRef.current = new Map((churches ?? []).map((c) => [c.id, c]));
   const handlersRef = useRef({
     onStateClick, onStateHover, onCountyClick, onCountyHover,
-    onChurchClick, onChurchHover, onResetView,
+    onChurchClick, onChurchHover, onResetView, onMoveEnd,
   });
   handlersRef.current = {
     onStateClick, onStateHover, onCountyClick, onCountyHover,
-    onChurchClick, onChurchHover, onResetView,
+    onChurchClick, onChurchHover, onResetView, onMoveEnd,
   };
 
   // Initialize the map once.
@@ -421,7 +436,17 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
 
     const handleMoveEnd = () => {
       const c = map.getCenter();
-      onMoveEnd?.([c.lng, c.lat], map.getZoom());
+      const b = map.getBounds();
+      // Via the ref: this handler is registered once, so calling the prop
+      // directly would invoke a stale closure from the first render.
+      handlersRef.current.onMoveEnd?.(
+        [c.lng, c.lat],
+        map.getZoom(),
+        [
+          [b.getWest(), b.getSouth()],
+          [b.getEast(), b.getNorth()],
+        ],
+      );
     };
     map.on("moveend", handleMoveEnd);
     map.on("error", (e) => console.error("[maplibre]", (e as { error?: { message?: string } })?.error?.message ?? e));
@@ -533,11 +558,29 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Camera padding: keeps the target clear of UI chrome (e.g. the mobile
+  // detail panel), so MapLibre offsets the view instead of us fudging the
+  // latitude by hand.
+  const cameraPadding = {
+    top: FIT_PADDING,
+    bottom: FIT_PADDING + bottomPadding,
+    left: FIT_PADDING,
+    right: FIT_PADDING,
+  };
+  const paddingRef = useRef(cameraPadding);
+  paddingRef.current = cameraPadding;
+
   // Fly to new center/zoom when props change (view transitions).
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.flyTo({ center, zoom, duration: VIEW_TRANSITION_MS, essential: true });
+    map.flyTo({
+      center,
+      zoom,
+      padding: paddingRef.current,
+      duration: VIEW_TRANSITION_MS,
+      essential: true,
+    });
   }, [center, zoom]);
 
   // Build/recolor the state choropleth when church counts arrive or change.
@@ -558,11 +601,12 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     if (!fitToFocusedState) return;
     const bounds = focusedState ? boundsForState(focusedState) : null;
     if (bounds) {
-      map.fitBounds(bounds, { padding: FIT_PADDING, duration: VIEW_TRANSITION_MS });
+      map.fitBounds(bounds, { padding: paddingRef.current, duration: VIEW_TRANSITION_MS });
     } else if (!focusedState) {
       map.flyTo({
         center: US_DEFAULT_CENTER,
         zoom: US_DEFAULT_ZOOM,
+        padding: paddingRef.current,
         duration: VIEW_TRANSITION_MS,
         essential: true,
       });

@@ -2,7 +2,7 @@
  * TEMPORARY dev harness for the Phase 0 MapLibre migration.
  * Route: /dev/maplibre. Remove before merging feature/maplibre-migration.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MapLibreCanvas, US_DEFAULT_CENTER, US_DEFAULT_ZOOM } from "./MapLibreCanvas";
 import { fetchStates, fetchChurches } from "./api";
 import type { Church, StateInfo } from "./church-data";
@@ -15,6 +15,15 @@ export function MapLibreDevPage() {
   const [states, setStates] = useState<StateInfo[]>([]);
   const [focusedState, setFocusedState] = useState<string | null>(null);
   const [churches, setChurches] = useState<Church[]>([]);
+  const [bounds, setBounds] = useState<[[number, number], [number, number]] | null>(null);
+
+  // Derived, not captured at moveend: churches often arrive *after* the camera
+  // has settled, so the count must recompute when either bounds or data change.
+  const inView = useMemo(() => {
+    if (!bounds || churches.length === 0) return null;
+    const [[w, s], [e, n]] = bounds;
+    return churches.filter((ch) => ch.lng >= w && ch.lng <= e && ch.lat >= s && ch.lat <= n).length;
+  }, [bounds, churches]);
 
   // Load churches for the focused state (mirrors useChurchMapData's behavior).
   useEffect(() => {
@@ -57,7 +66,9 @@ export function MapLibreDevPage() {
         <button onClick={() => setView({ center: [-79.4, 43.7], zoom: 8 })}>Toronto, CA</button>
         <button onClick={() => setView({ center: [-0.12, 51.5], zoom: 8 })}>London, UK</button>
         <span style={{ alignSelf: "center", color: "#555" }}>
-          MapLibre scaffold — flies anywhere on Earth (Web Mercator)
+          {inView === null
+            ? "MapLibre scaffold — flies anywhere on Earth (Web Mercator)"
+            : `${inView.toLocaleString()} of ${churches.length.toLocaleString()} churches in view`}
         </span>
       </div>
       <MapLibreCanvas
@@ -66,6 +77,9 @@ export function MapLibreDevPage() {
         states={states}
         focusedState={focusedState}
         churches={churches}
+        // The map's real visible extent replaces MapSearchBar's geoAlbersUsa
+        // projection math for "churches in view".
+        onMoveEnd={(_c, _z, b) => setBounds(b)}
         onStateClick={(abbrev) => {
           console.log("[maplibre-dev] state click", abbrev);
           setFocusedState(abbrev);
