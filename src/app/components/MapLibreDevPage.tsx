@@ -13,6 +13,7 @@ export function MapLibreDevPage() {
     zoom: US_DEFAULT_ZOOM,
   });
   const [states, setStates] = useState<StateInfo[]>([]);
+  const [focusedState, setFocusedState] = useState<string | null>(null);
 
   useEffect(() => {
     fetchStates()
@@ -36,8 +37,21 @@ export function MapLibreDevPage() {
           fontSize: 13,
         }}
       >
-        <button onClick={() => setView({ center: US_DEFAULT_CENTER, zoom: US_DEFAULT_ZOOM })}>
+        <button
+          onClick={() => {
+            setFocusedState(null);
+            setView({ center: US_DEFAULT_CENTER, zoom: US_DEFAULT_ZOOM });
+          }}
+        >
           USA
+        </button>
+        <button
+          onClick={() => {
+            setFocusedState("TX");
+            setView({ center: [-99.4, 31.3], zoom: 5.2 });
+          }}
+        >
+          Texas (counties)
         </button>
         <button onClick={() => setView({ center: [-79.4, 43.7], zoom: 8 })}>Toronto, CA</button>
         <button onClick={() => setView({ center: [-0.12, 51.5], zoom: 8 })}>London, UK</button>
@@ -49,6 +63,7 @@ export function MapLibreDevPage() {
         center={view.center}
         zoom={view.zoom}
         states={states}
+        focusedState={focusedState}
         onMoveEnd={(c, z) => console.log("[maplibre-dev] moveend", c, z)}
       />
     </div>

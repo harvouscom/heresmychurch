@@ -15,7 +15,14 @@ import { memo, useEffect, useRef } from "react";
 import { Map as MaplibreMap, NavigationControl, type GeoJSONSource, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { feature } from "topojson-client";
-import { GEO_URL, FIPS_TO_STATE, getStateTier, STATE_COUNT_TIERS } from "./map-constants";
+import {
+  GEO_URL,
+  COUNTIES_GEO_URL,
+  FIPS_TO_STATE,
+  STATE_TO_FIPS,
+  getStateTier,
+  STATE_COUNT_TIERS,
+} from "./map-constants";
 import type { StateInfo } from "./church-data";
 
 // Here's My Church is a data visualization, not a street map: a cream canvas
@@ -26,6 +33,11 @@ import type { StateInfo } from "./church-data";
 const CREAM = "#F5F0E8"; // --background (national view)
 const STATE_FILL = STATE_COUNT_TIERS[0].color; // "not yet explored" tier, for states with no data
 const STATE_STROKE = "#C9A0DC"; // brand purple borders (matches national view)
+const STATE_FOCUSED_FILL = "#C9A0DC"; // focused state
+const STATE_DIMMED_FILL = "#EDE4F3"; // non-focused states in state view
+// County choropleth defaults (match CountyGeographies in MapCanvas)
+const COUNTY_FILL = "rgba(255, 255, 255, 0.8)";
+const COUNTY_STROKE = "rgba(107, 33, 168, 0.25)";
 
 const BASEMAP_STYLE: StyleSpecification = {
   version: 8,
@@ -44,6 +56,8 @@ interface MapLibreCanvasProps {
   zoom?: number;
   /** State list with church counts; drives the choropleth tier coloring. */
   states?: StateInfo[];
+  /** Abbrev of the focused state; shows counties and dims other states. */
+  focusedState?: string | null;
   /** Called after the user finishes moving the map. */
   onMoveEnd?: (center: [number, number], zoom: number) => void;
 }
@@ -90,10 +104,56 @@ async function addStatesLayer(map: MaplibreMap, states: StateInfo[]) {
   }
 }
 
+/**
+ * Show county polygons for the focused state (the app only renders counties in
+ * state view). Counties come from the us-atlas counties TopoJSON, filtered by
+ * the state's 2-digit FIPS prefix — the same rule CountyGeographies uses.
+ * Per-capita choropleth shading follows once church-per-county stats are wired.
+ */
+async function setCountyLayer(map: MaplibreMap, focusedState: string | null) {
+  const clear = () => {
+    if (map.getLayer("counties-line")) map.removeLayer("counties-line");
+    if (map.getLayer("counties-fill")) map.removeLayer("counties-fill");
+    if (map.getSource("counties")) map.removeSource("counties");
+  };
+  try {
+    if (!focusedState) return clear();
+    const stateFips = STATE_TO_FIPS[focusedState];
+    if (!stateFips) return clear();
+
+    const topo = await (await fetch(COUNTIES_GEO_URL)).json();
+    const all = feature(topo, topo.objects.counties) as GeoJSON.FeatureCollection;
+    const geo: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
+      features: all.features.filter(
+        (f) => String(f.id).padStart(5, "0").slice(0, 2) === stateFips,
+      ),
+    };
+
+    clear();
+    map.addSource("counties", { type: "geojson", data: geo });
+    map.addLayer({
+      id: "counties-fill",
+      type: "fill",
+      source: "counties",
+      paint: { "fill-color": COUNTY_FILL },
+    });
+    map.addLayer({
+      id: "counties-line",
+      type: "line",
+      source: "counties",
+      paint: { "line-color": COUNTY_STROKE, "line-width": 0.4 },
+    });
+  } catch (err) {
+    console.error("[maplibre] failed to load county layer", err);
+  }
+}
+
 export const MapLibreCanvas = memo(function MapLibreCanvas({
   center = US_DEFAULT_CENTER,
   zoom = US_DEFAULT_ZOOM,
   states,
+  focusedState = null,
   onMoveEnd,
 }: MapLibreCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -152,6 +212,21 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     if (!map || !loadedRef.current) return;
     void addStatesLayer(map, states ?? []);
   }, [states]);
+
+  // Focus: show the focused state's counties and dim the other states,
+  // matching the SVG map's state view.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current || !map.getLayer("states-fill")) return;
+    map.setPaintProperty(
+      "states-fill",
+      "fill-color",
+      focusedState
+        ? ["case", ["==", ["get", "abbrev"], focusedState], STATE_FOCUSED_FILL, STATE_DIMMED_FILL]
+        : ["get", "fill"],
+    );
+    void setCountyLayer(map, focusedState);
+  }, [focusedState]);
 
   return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
 });
