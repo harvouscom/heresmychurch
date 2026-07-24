@@ -9,6 +9,14 @@ import {
   findCountyFips,
   loadCountyEntriesForState,
 } from "./county-aggregate.ts";
+import {
+  type GoogleEnrichment,
+  churchMissingEnrichableFields,
+  emptyCounters,
+  enrichOneChurch,
+  googleEnrichmentKey,
+  mergeGoogleEnrichmentsIntoChurches,
+} from "./google-places-enrichment.ts";
 
 // ── State data ──
 interface SI{a:string;n:string;la:number;lo:number;}
@@ -452,6 +460,123 @@ function scoreMatch(qRaw:string,n:string,ci:string,ad:string):number{
   return s;
 }
 
+/** Lean church reference for partner APIs (Harvous-first). */
+type LeanChurchRef={
+  id:string;
+  shortId:string;
+  name:string;
+  city:string;
+  state:string;
+  address?:string;
+  denomination?:string;
+  lat:number;
+  lng:number;
+};
+
+function toLeanChurchRef(e:any,st:string,isIdx:boolean):LeanChurchRef{
+  const realSt=((e.state||st)||"").toUpperCase()==="DC"?"MD":((e.state||st)||"").toUpperCase();
+  const n=isIdx?(e.n||""):(e.name||"");
+  const ci=isIdx?(e.c||""):(e.city||"");
+  const d=isIdx?(e.d||""):(e.denomination||"");
+  const ad=isIdx?(e.ad||""):(e.address||"");
+  const sid=(e.shortId&&/^\d{8}$/.test(String(e.shortId)))?String(e.shortId):toShortId(e.id,realSt,e.shortId);
+  const ref:LeanChurchRef={
+    id:e.id,
+    shortId:sid,
+    name:n||"Unknown Church",
+    city:ci||"",
+    state:realSt,
+    lat:isIdx?(e.la||0):(e.lat||0),
+    lng:isIdx?(e.lo||0):(e.lng||0),
+  };
+  if(ad)ref.address=ad;
+  if(d)ref.denomination=d;
+  return ref;
+}
+
+function normalizePartnerState(raw:string):string{
+  let st=(raw||"").toUpperCase().trim();
+  if(st==="DC")st="MD";
+  return st;
+}
+
+async function loadStateSearchItems(st:string):Promise<{items:any[];isIdx:boolean}|null>{
+  const realSt=normalizePartnerState(st);
+  try{
+    const idxKey=await kv.get(`churches:sidx:${realSt}`);
+    if(Array.isArray(idxKey)&&idxKey.length)return{items:idxKey,isIdx:true};
+    // DC folded into MD for API; also try DC key if MD empty
+    if(realSt==="MD"){
+      const dcIdx=await kv.get("churches:sidx:DC");
+      if(Array.isArray(dcIdx)&&dcIdx.length){
+        const mdRaw=await kv.get("churches:MD");
+        const md=Array.isArray(mdRaw)?mdRaw:[];
+        if(md.length){
+          const withShort=addShortIdsUnique(md,"MD");
+          return{items:withShort,isIdx:false};
+        }
+      }
+    }
+    const raw=await kv.get(`churches:${realSt}`);
+    if(Array.isArray(raw)&&raw.length)return{items:raw,isIdx:false};
+    if(realSt==="MD"){
+      const dc=await kv.get("churches:DC");
+      if(Array.isArray(dc)&&dc.length)return{items:dc.map((x:any)=>({...x,state:"MD"})),isIdx:false};
+    }
+  }catch(_){}
+  return null;
+}
+
+/** State-scoped fuzzy search over sidx (or full array fallback). Shared by partner /v1. */
+async function searchChurchesInState(qRaw:string,st:string,limit:number):Promise<LeanChurchRef[]>{
+  const q=qRaw.toLowerCase().trim();
+  if(!q||q.length<2)return[];
+  const realSt=normalizePartnerState(st);
+  if(!gS(realSt))return[];
+  const loaded=await loadStateSearchItems(realSt);
+  if(!loaded)return[];
+  let{items,isIdx}=loaded;
+  if(realSt==="MD"&&isIdx){
+    // Merge DC index entries into MD search when using sidx
+    try{
+      const dcIdx=await kv.get("churches:sidx:DC");
+      if(Array.isArray(dcIdx)&&dcIdx.length)items=items.concat(dcIdx);
+    }catch(_){}
+  }else if(realSt==="MD"&&!isIdx){
+    try{
+      const dc=await kv.get("churches:DC");
+      if(Array.isArray(dc)&&dc.length){
+        const ids=new Set(items.map((c:any)=>c.id));
+        for(const x of dc)if(!ids.has(x.id))items.push({...x,state:"MD"});
+      }
+    }catch(_){}
+  }
+  const searchTokens=tokenizeSearchText(q);
+  const candidates:Array<LeanChurchRef&{score:number}>=[];
+  const seen=new Set<string>();
+  for(const e of items){
+    const n=isIdx?(e.n||""):(e.name||"");
+    const ci=isIdx?(e.c||""):(e.city||"");
+    const d=isIdx?(e.d||""):(e.denomination||"");
+    const ad=isIdx?(e.ad||""):(e.address||"");
+    if(searchTokens.length){
+      const blobTokens=tokenizeSearchText(`${n} ${ci} ${d} ${ad}`);
+      if(!blobTokens.length)continue;
+      const blobSet=new Set<string>(blobTokens);
+      let matchCount=0;
+      for(const t of searchTokens){if(blobSet.has(t))matchCount++;}
+      const minRequired=searchTokens.length<=2?searchTokens.length:Math.max(1,Math.ceil(searchTokens.length*0.6));
+      if(matchCount<minRequired)continue;
+    }
+    const k=`${n.toLowerCase().replace(/[^a-z0-9]/g,"")}|${ci.toLowerCase().replace(/[^a-z0-9]/g,"")}|${ad.toLowerCase().replace(/[^a-z0-9]/g,"")}|${realSt}`;
+    if(seen.has(k))continue;seen.add(k);
+    const ref=toLeanChurchRef(e,realSt,isIdx);
+    candidates.push({score:scoreMatch(q,n,ci,ad),...ref});
+  }
+  candidates.sort((a,b)=>b.score-a.score||(a.name||"").localeCompare(b.name||""));
+  return candidates.slice(0,limit).map(({score,...r})=>r);
+}
+
 // ── App ──
 const app=new Hono();
 app.use(
@@ -465,6 +590,8 @@ app.use(
       "x-client-info",
       "X-Client-Info",
       "Prefer",
+      "x-partner-key",
+      "X-Partner-Key",
     ],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     maxAge: 86400,
@@ -614,6 +741,129 @@ app.get(`${P}/churches/search`,async(c)=>{
   }catch(e){return c.json({results:[],query:rawQ,error:`${e}`},500);}
 });
 
+// ── Partner API (/v1) — Harvous-first lean church reference search ──
+const PARTNER_API_KEY=Deno.env.get("PARTNER_API_KEY")||Deno.env.get("HARVOUS_API_KEY")||"";
+const PARTNER_RATE_LIMIT=120;
+const PARTNER_RATE_WINDOW_MS=60_000;
+
+async function checkPartnerRateLimit(keyFingerprint:string):Promise<boolean>{
+  const rlKey=`ratelimit:partner:${keyFingerprint}`;
+  const raw=await kv.get(rlKey);
+  const now=Date.now();
+  const data=(!raw||(now-(raw.windowStart||0))>PARTNER_RATE_WINDOW_MS)
+    ?{count:1,windowStart:now}
+    :{count:(raw.count||0)+1,windowStart:raw.windowStart||now};
+  if(data.count>PARTNER_RATE_LIMIT)return false;
+  await kv.set(rlKey,data);
+  return true;
+}
+
+function partnerKeyFingerprint(key:string):string{
+  let h=0;for(let i=0;i<key.length;i++)h=((h<<5)-h+key.charCodeAt(i))|0;
+  return Math.abs(h).toString(36);
+}
+
+app.use(`${P}/v1/*`,async(c,next)=>{
+  if(c.req.method==="OPTIONS")return next();
+  if(!PARTNER_API_KEY)return c.json({error:"Partner API not configured"},503);
+  const provided=c.req.header("x-partner-key")||"";
+  if(!provided||provided!==PARTNER_API_KEY)return c.json({error:"Unauthorized"},401);
+  const ok=await checkPartnerRateLimit(partnerKeyFingerprint(provided));
+  if(!ok)return c.json({error:"Rate limit exceeded. Try again shortly."},429);
+  return next();
+});
+
+app.get(`${P}/v1/churches/search`,async(c)=>{
+  try{
+    const rawQ=c.req.query("q")||"";
+    const st=normalizePartnerState(c.req.query("state")||"");
+    if(!st||!gS(st)){
+      return c.json({error:"state is required (2-letter US state abbrev)",results:[],query:rawQ},400);
+    }
+    if(!rawQ.trim()||rawQ.trim().length<2){
+      c.header("Cache-Control","private, max-age=30");
+      return c.json({results:[],query:rawQ});
+    }
+    const limit=Math.min(parseInt(c.req.query("limit")||"20")||20,50);
+    const results=await searchChurchesInState(rawQ,st,limit);
+    c.header("Cache-Control","private, max-age=30");
+    return c.json({results,query:rawQ});
+  }catch(e){return c.json({results:[],query:c.req.query("q")||"",error:`${e}`},500);}
+});
+
+app.get(`${P}/v1/churches/by-id/:id`,async(c)=>{
+  try{
+    const id=c.req.param("id")||"";
+    if(!id)return c.json({church:null,error:"Missing id"},400);
+    const church=await findChurchLeanById(id);
+    if(!church)return c.json({church:null,error:"Church not found"},404);
+    c.header("Cache-Control","private, max-age=60");
+    return c.json({church});
+  }catch(e){return c.json({church:null,error:`${e}`},500);}
+});
+
+const PARTNER_ACTOR_KEY="partner:harvous";
+
+// Suggest/confirm before /:state/:shortId so literal "suggestions"/"confirm" are not parsed as shortId.
+app.get(`${P}/v1/churches/:id/suggestions`,async(c)=>{
+  try{
+    const id=decodeURIComponent(c.req.param("id")||"");
+    if(!id)return c.json({error:"Missing id",fields:{}},400);
+    const data=(await kv.get(`suggestions:${id}`))||{submissions:[]};
+    const subs=Array.isArray(data.submissions)?data.submissions:[];
+    const{fields}=getSuggestionsStatusForChurch(subs);
+    return c.json({churchId:id,fields});
+  }catch(e){return c.json({error:`${e}`,fields:{}},500);}
+});
+
+app.post(`${P}/v1/churches/:id/suggestions`,async(c)=>{
+  try{
+    const id=decodeURIComponent(c.req.param("id")||"");
+    const body=await c.req.json().catch(()=>({}));
+    const field=typeof body?.field==="string"?body.field:"";
+    const value=body?.value;
+    const result=await submitSuggestionCore({
+      churchId:id,
+      field,
+      value,
+      actorKey:PARTNER_ACTOR_KEY,
+      auditSource:"partner_suggestion",
+    });
+    if(!result.ok)return c.json({error:result.error},result.status);
+    const payload:{success:true;field:string;applied:boolean;needsModeration?:boolean;consensus?:ReturnType<typeof leanConsensusField>}={
+      success:true,
+      field:result.field,
+      applied:result.applied,
+      consensus:leanConsensusField(result.consensus),
+    };
+    if(result.needsModeration)payload.needsModeration=true;
+    return c.json(payload);
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
+app.post(`${P}/v1/churches/:id/confirm`,async(c)=>{
+  try{
+    const id=decodeURIComponent(c.req.param("id")||"");
+    if(!id)return c.json({error:"Missing id"},400);
+    const result=await confirmChurchCore({churchId:id,actorKey:PARTNER_ACTOR_KEY,auditSource:"partner_confirm"});
+    if(!result.ok)return c.json({error:result.error},result.status);
+    if(result.alreadyConfirmed)return c.json({success:true,alreadyConfirmed:true,totalConfirmations:result.totalConfirmations});
+    return c.json({success:true,totalConfirmations:result.totalConfirmations});
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
+app.get(`${P}/v1/churches/:state/:shortId`,async(c)=>{
+  try{
+    const st=normalizePartnerState(c.req.param("state")||"");
+    const shortId=(c.req.param("shortId")||"").trim();
+    if(!st||!gS(st)||!shortId)return c.json({church:null,error:"Invalid state or shortId"},400);
+    const church=await findChurchLeanByStateShortId(st,shortId);
+    if(!church)return c.json({church:null,error:"Church not found"},404);
+    c.header("Cache-Control","private, max-age=60");
+    return c.json({church});
+  }catch(e){return c.json({church:null,error:`${e}`},500);}
+});
+
 async function getApprovedCorrectionsForState(st:string):Promise<Record<string,Record<string,string>>>{
   const [regular,community]=await Promise.all([kv.getByPrefix(`suggestions:${st}-`),kv.getByPrefix(`suggestions:community-${st}-`)]);
   const all=[...(Array.isArray(regular)?regular:[]),...(Array.isArray(community)?community:[])];
@@ -647,12 +897,95 @@ function mergeCorrectionsIntoChurches(churches:any[],corrections:Record<string,R
   }
 }
 
+async function getGoogleEnrichmentsForChurches(churches:any[]):Promise<Record<string,GoogleEnrichment>>{
+  const ids=churches.map((c:any)=>c?.id).filter((id:unknown):id is string=>typeof id==="string"&&!!id);
+  const out:Record<string,GoogleEnrichment>={};
+  const BATCH=100;
+  for(let i=0;i<ids.length;i+=BATCH){
+    const batch=ids.slice(i,i+BATCH);
+    const vals=await kv.mget(batch.map(googleEnrichmentKey));
+    for(let j=0;j<batch.length;j++){
+      const v=vals[j];
+      if(v&&typeof v==="object"&&(v as GoogleEnrichment).placeId&&(v as GoogleEnrichment).confidence==="high"){
+        out[batch[j]]=v as GoogleEnrichment;
+      }
+    }
+  }
+  return out;
+}
+
+/** Corrections first, then Google fill-empty overlay (never overwrites community or existing fields). */
+async function applyCorrectionsAndGoogleEnrichment(churches:any[],st:string):Promise<Record<string,Record<string,string>>>{
+  const corrections=await getApprovedCorrectionsForState(st);
+  mergeCorrectionsIntoChurches(churches,corrections);
+  try{
+    const enrichments=await getGoogleEnrichmentsForChurches(churches);
+    mergeGoogleEnrichmentsIntoChurches(churches,enrichments,corrections);
+  }catch(e){console.log(`Google enrichment merge skipped for ${st}: ${e}`);}
+  return corrections;
+}
+
 // Parse state from church id (e.g. "TX-123" -> "TX", "community-CA-xxx" -> "CA")
 function stateFromChurchId(id:string):string|null{
   if(!id||typeof id!=="string")return null;
   const t=id.trim();
   if(t.startsWith("community-")){const p=t.split("-");if(p.length>=2)return (p[1]||"").toUpperCase().slice(0,2)||null;return null;}
   const dash=t.indexOf("-");if(dash>0){const st=t.slice(0,dash).toUpperCase();if(st.length===2)return st;}
+  return null;
+}
+
+async function findChurchLeanByStateShortId(st:string,segment:string):Promise<LeanChurchRef|null>{
+  const realSt=normalizePartnerState(st);
+  if(!segment||!gS(realSt))return null;
+  let ch=await kv.get(`churches:${realSt}`);
+  if(!ch||!Array.isArray(ch)||!ch.length){
+    if(realSt==="MD"){const dc=await kv.get("churches:DC");if(Array.isArray(dc)&&dc.length)ch=dc.map((x:any)=>({...x,state:"MD"}));}
+  }else if(realSt==="MD"){
+    try{const dc=await kv.get("churches:DC");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));for(const x of dc)if(!ids.has(x.id))ch.push({...x,state:"MD"});}}catch(_){}
+  }
+  if(!ch||!Array.isArray(ch)||!ch.length)return null;
+  // Partner resolve reads KV only (no suggestion overlay). Sensitive consensus must not appear until moderator apply.
+  const withShort=addShortIdsUnique(ch,realSt);
+  const statePrefix=`${realSt}-`;
+  const church=withShort.find((c:any)=>{
+    if(c.id===segment)return true;
+    if(c.shortId!=null&&String(c.shortId)===segment)return true;
+    if(statePrefix&&c.id.startsWith(statePrefix)){const num=c.id.slice(statePrefix.length);if(/^\d+$/.test(num)&&(num===segment||(num.length>=8?num.slice(0,8):num.padStart(8,"0"))===segment))return true;}
+    return false;
+  });
+  if(!church)return null;
+  return toLeanChurchRef(church,realSt,false);
+}
+
+async function findChurchLeanById(id:string):Promise<LeanChurchRef|null>{
+  const decoded=decodeURIComponent(id);
+  const parsed=stateFromChurchId(decoded);
+  const st=parsed?normalizePartnerState(parsed):null;
+  if(st&&gS(st)){
+    let ch=await kv.get(`churches:${st}`);
+    if(st==="MD"){
+      if(!Array.isArray(ch))ch=[];
+      try{const dc=await kv.get("churches:DC");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));for(const x of dc)if(!ids.has(x.id))ch.push({...x,state:"MD"});}}catch(_){}
+    }
+    if(Array.isArray(ch)&&ch.length){
+      const withShort=addShortIdsUnique(ch,st);
+      const church=withShort.find((c:any)=>c.id===decoded);
+      if(church)return toLeanChurchRef(church,st,false);
+    }
+  }
+  // Fallback: scan populated states (rare / legacy ids)
+  const meta=await getMeta();
+  const sc:Record<string,number>={...(meta?.stateCounts||{})};
+  for(const s of Object.keys(sc)){
+    const realSt=normalizePartnerState(s);
+    if(st&&realSt!==st)continue;
+    const ch=await kv.get(`churches:${realSt}`);
+    if(!Array.isArray(ch)||!ch.length)continue;
+    if(!ch.some((c:any)=>c.id===decoded))continue;
+    const withShort=addShortIdsUnique(ch,realSt);
+    const found=withShort.find((c:any)=>c.id===decoded);
+    if(found)return toLeanChurchRef(found,realSt,false);
+  }
   return null;
 }
 
@@ -877,8 +1210,7 @@ app.get(`${P}/churches/:state/church/:shortId`,async(c)=>{
     if(!segment||!gS(st))return c.json({error:"Invalid state or shortId"},400);
     let ch=await kv.get(`churches:${st}`);
     if(!ch||!Array.isArray(ch)||!ch.length)return c.json({church:null,error:"No data for state"},404);
-    const corrections=await getApprovedCorrectionsForState(st);
-    mergeCorrectionsIntoChurches(ch,corrections);
+    await applyCorrectionsAndGoogleEnrichment(ch,st);
     const withShort=addShortIdsUnique(ch,st);
     const statePrefix=`${st}-`;
     const church=withShort.find((c:any)=>{
@@ -899,8 +1231,7 @@ app.get(`${P}/churches/:state`,async(c)=>{
     let ch=await kv.get(`churches:${st}`);
     if(!ch||!Array.isArray(ch)||!ch.length)return c.json({churches:[],state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},fromCache:false,message:`No data for ${info.n}. POST /churches/populate/${st} to fetch.`});
     if(st==="MD"){try{const dc=await kv.get("churches:DC");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));for(const x of dc)if(!ids.has(x.id))ch.push({...x,state:"MD"});}}catch(_){}}
-    const corrections=await getApprovedCorrectionsForState(st);
-    mergeCorrectionsIntoChurches(ch,corrections);
+    await applyCorrectionsAndGoogleEnrichment(ch,st);
     const withShort=addShortIdsUnique(ch,st);
     let cal=await kv.get(`calibration:${st}`);
     if(!cal||!cal.medians){cal=await computeCalibrationForState(st,ch);try{await kv.set(`calibration:${st}`,cal);}catch(_){}}
@@ -992,6 +1323,119 @@ app.post(`${P}/admin/refresh-attendance`,async(c)=>{
 });
 
 // (Regrid enrichment endpoints removed; attendance is derived from OSM geometry and heuristics only.)
+
+/**
+ * Google Places bulk enrichment (pilot / throttled).
+ * Query: dryRun=true|false, missingOnly=true|false (default true), limit=N (default 25, max 100),
+ *        fetchDetails=true|false (default true — Place Details for phone/website; Enterprise SKU).
+ * Secret: GOOGLE_MAPS_API_KEY. Never writes serviceTimes from Google hours.
+ */
+app.post(`${P}/admin/enrich-google/:state`,async(c)=>{
+  try{
+    const st=c.req.param("state").toUpperCase(),info=gS(st);
+    if(!info)return c.json({error:`Unknown state: ${st}`},400);
+    const apiKey=(Deno.env.get("GOOGLE_MAPS_API_KEY")||"").trim();
+    const dryRun=c.req.query("dryRun")==="true";
+    if(!apiKey&&!dryRun)return c.json({error:"GOOGLE_MAPS_API_KEY secret is not set"},503);
+    const missingOnly=c.req.query("missingOnly")!=="false";
+    const fetchDetails=c.req.query("fetchDetails")!=="false";
+    const limitRaw=parseInt(c.req.query("limit")||"25",10);
+    const limit=Math.min(100,Math.max(1,Number.isFinite(limitRaw)?limitRaw:25));
+
+    let ch=await kv.get(`churches:${st}`);
+    if(!ch||!Array.isArray(ch)||!ch.length)return c.json({error:`No churches for ${info.n}. Populate first.`,enriched:0},404);
+
+    const corrections=await getApprovedCorrectionsForState(st);
+    // Work on a shallow copy so community corrections inform missing-field selection without mutating KV.
+    const working=ch.map((x:any)=>({...x}));
+    mergeCorrectionsIntoChurches(working,corrections);
+    const queue=working.filter((x:any)=>!missingOnly||churchMissingEnrichableFields(x)).slice(0,limit);
+
+    const counters=emptyCounters();
+    const usedPlaceIds=new Set<string>();
+    try{
+      const [reg,comm]=await Promise.all([
+        kv.getByPrefix(`enrichment:google:${st}-`),
+        kv.getByPrefix(`enrichment:google:community-${st}-`),
+      ]);
+      for(const v of [...(Array.isArray(reg)?reg:[]),...(Array.isArray(comm)?comm:[])]){
+        if(v&&typeof v==="object"&&(v as GoogleEnrichment).placeId&&(v as GoogleEnrichment).confidence==="high"){
+          usedPlaceIds.add((v as GoogleEnrichment).placeId);
+        }
+      }
+    }catch(_){}
+    const existingKeys=queue.map((x:any)=>googleEnrichmentKey(x.id));
+    const existingVals=existingKeys.length?await kv.mget(existingKeys):[];
+
+    let enriched=0,wouldEnrich=0,noMatch=0,skippedFresh=0,skippedComplete=0,duplicatePlace=0;
+    const noMatchIds:string[]=[];
+    const sample:GoogleEnrichment[]=[];
+
+    for(let i=0;i<queue.length;i++){
+      const church=queue[i];
+      const existing=(existingVals[i]&&typeof existingVals[i]==="object")?(existingVals[i] as GoogleEnrichment):null;
+      // dryRun without API key: count candidates only (no Places calls)
+      if(dryRun&&!apiKey){
+        wouldEnrich++;
+        continue;
+      }
+      const result=await enrichOneChurch({
+        apiKey,
+        church,
+        existing,
+        usedPlaceIds,
+        dryRun,
+        missingOnly,
+        fetchDetailsForContact:fetchDetails,
+        counters,
+      });
+      if(result.status==="enriched"){
+        await kv.set(googleEnrichmentKey(result.enrichment.churchId),result.enrichment);
+        enriched++;
+        if(sample.length<5)sample.push(result.enrichment);
+      }else if(result.status==="would_enrich"){
+        wouldEnrich++;
+        if(sample.length<5)sample.push(result.enrichment);
+      }else if(result.status==="no_match"){noMatch++;noMatchIds.push(church.id);}
+      else if(result.status==="skipped_fresh")skippedFresh++;
+      else if(result.status==="skipped_complete")skippedComplete++;
+      else if(result.status==="duplicate_place")duplicatePlace++;
+    }
+
+    if(!dryRun&&noMatchIds.length){
+      try{
+        const prev=await kv.get(`enrichment:no_match:${st}`);
+        const prevList=Array.isArray(prev)?prev as string:[];
+        const merged=Array.from(new Set([...prevList,...noMatchIds]));
+        await kv.set(`enrichment:no_match:${st}`,merged.slice(-5000));
+      }catch(_){}
+    }
+    if(!dryRun&&enriched>0){
+      await invalidateReviewStatsCache();
+      void recordChurchAudit({state:st,action:"google_places_enrich",new_value:{enriched,noMatch,duplicatePlace,limit},source:"admin_enrich_google",actor_type:"system"});
+    }
+
+    return c.json({
+      message:dryRun
+        ?`Dry-run Google Places enrich for ${info.n}: ${wouldEnrich||enriched} would enrich of ${queue.length} considered.`
+        :`Google Places enrich for ${info.n}: wrote ${enriched} enrichment(s).`,
+      state:st,
+      dryRun,
+      missingOnly,
+      fetchDetails,
+      limit,
+      considered:queue.length,
+      enriched,
+      wouldEnrich,
+      noMatch,
+      skippedFresh,
+      skippedComplete,
+      duplicatePlace,
+      apiCalls:counters,
+      sample,
+    });
+  }catch(e){console.log(`enrich-google error:${e}`);return c.json({error:`${e}`},500);}
+});
 
 app.get(`${P}/population`,async(c)=>{
   try{
@@ -1292,37 +1736,109 @@ async function runDeferredIndexAndStats(st:string,churches:any[],churchId:string
   await kv.set(statsKey,stats);
 }
 
+type SuggestionSubmitOk={ok:true;field:string;applied:boolean;needsModeration?:boolean;consensus:any;allFields:Record<string,any>};
+type SuggestionSubmitErr={ok:false;status:number;error:string};
+type SuggestionSubmitResult=SuggestionSubmitOk|SuggestionSubmitErr;
+
+/** Shared suggest path for site + partner /v1. Same VF, consensus, sensitive-field moderation rules. */
+async function submitSuggestionCore(opts:{churchId:string;field:string;value:unknown;actorKey:string;auditSource:string}):Promise<SuggestionSubmitResult>{
+  const{churchId,field,value,actorKey,auditSource}=opts;
+  if(!churchId||!field)return{ok:false,status:400,error:"Missing fields"};
+  if(value===undefined||value===null)return{ok:false,status:400,error:"Value is required"};
+  if(!VF.includes(field))return{ok:false,status:400,error:"Invalid field"};
+  if(field==="denomination"&&isBlockedDenomination(String(value)))return{ok:false,status:400,error:"Denomination not supported"};
+  if(field==="attendance"){const n=parseInt(String(value));if(isNaN(n)||n<1||n>50000)return{ok:false,status:400,error:"Attendance 1-50000"};}
+  if(field==="homeCampusId"){const v=String(value).trim();if(v&&!stateFromChurchId(v))return{ok:false,status:400,error:"Invalid church ID format"};}
+  let storeValue=String(value).trim();
+  if(!storeValue&&field!=="homeCampusId")return{ok:false,status:400,error:"Value is required"};
+  if(field==="reportClosed"){storeValue="closed";}
+  if(field==="reportDuplicate"){if(!stateFromChurchId(storeValue))return{ok:false,status:400,error:"Invalid church ID format"};if(storeValue===churchId)return{ok:false,status:400,error:"Cannot report self as duplicate"};}
+  if(field==="name"&&storeValue.length<2)return{ok:false,status:400,error:"Church name must be at least 2 characters"};
+  if(field==="phone"){storeValue=normalizePhone(storeValue);if(!storeValue)return{ok:false,status:400,error:"Invalid phone number"};}
+  const k=`suggestions:${churchId}`;const ex=(await kv.get(k))||{churchId,submissions:[]};
+  if(!ex.churchId)ex.churchId=churchId;
+  if(!Array.isArray(ex.submissions))ex.submissions=[];
+  const day=Date.now()-86400000;
+  const r=ex.submissions.find((s:any)=>s.ip===actorKey&&s.field===field&&s.timestamp>day);
+  if(r){r.value=storeValue;r.timestamp=Date.now();r.source=auditSource;}
+  else ex.submissions.push({ip:actorKey,field,value:storeValue,timestamp:Date.now(),source:auditSource});
+  await kv.set(k,ex);const con=consensus(ex.submissions);
+  const isSensitive=SENSITIVE_FIELDS.includes(field);
+  if(isSensitive){
+    return{ok:true,field,consensus:con[field],allFields:con,applied:false,needsModeration:true};
+  }
+  const safeCon:Record<string,any>={};
+  for(const[f,d]of Object.entries(con)){if(!SENSITIVE_FIELDS.includes(f))safeCon[f]=d;}
+  const applied=await applyApprovedCorrections(churchId,safeCon,{source:auditSource,actorIp:actorKey});
+  if(applied.updated&&applied.state&&applied.churches&&applied.corrections){void runDeferredIndexAndStats(applied.state,applied.churches,churchId,applied.corrections).catch(()=>{});}
+  return{ok:true,field,consensus:con[field],allFields:con,applied:applied.updated};
+}
+
+function leanConsensusField(d:any):{votes:number;needed:number;approved:boolean;value:string|null}|undefined{
+  if(!d)return undefined;
+  return{votes:d.votes??0,needed:d.needed??THR,approved:!!d.approved,value:d.value??null};
+}
+
+function getSuggestionsStatusForChurch(subs:any[]):{
+  fields:Record<string,{votes:number;needed:number;approved:boolean;value:string|null;needsModeration:boolean}>;
+}{
+  const con=consensus(subs);
+  const fields:Record<string,{votes:number;needed:number;approved:boolean;value:string|null;needsModeration:boolean}>={};
+  for(const f of VF){
+    const d=con[f] as any;
+    if(!d||!(d.votes>0))continue;
+    const sensitive=SENSITIVE_FIELDS.includes(f);
+    // Sensitive: votes mean pending mod (consensus.approved ≠ applied to KV). Non-sensitive: applied when approved.
+    fields[f]={
+      votes:d.votes??0,
+      needed:d.needed??THR,
+      approved:!!d.approved,
+      value:d.value??null,
+      needsModeration:sensitive,
+    };
+  }
+  return{fields};
+}
+
+type ConfirmResult=
+  |{ok:false;status:number;error:string}
+  |{ok:true;alreadyConfirmed?:boolean;totalConfirmations:number;success:true};
+
+async function confirmChurchCore(opts:{churchId:string;actorKey:string;auditSource:string}):Promise<ConfirmResult>{
+  const{churchId,actorKey,auditSource}=opts;
+  const parts=churchId.split("-");const st=parts[0]==="community"?parts[1]:parts[0];
+  if(!st||st.length!==2)return{ok:false,status:400,error:"Invalid church ID"};
+  const confirmKey=`confirms:${churchId}`;const existing=(await kv.get(confirmKey))||{confirmations:[]};
+  if(!Array.isArray(existing.confirmations))existing.confirmations=[];
+  const day=Date.now()-86400000;
+  if(existing.confirmations.find((conf:any)=>conf.ip===actorKey&&conf.timestamp>day)){
+    return{ok:true,success:true,alreadyConfirmed:true,totalConfirmations:existing.confirmations.length};
+  }
+  existing.confirmations.push({ip:actorKey,timestamp:Date.now(),source:auditSource});
+  await kv.set(confirmKey,existing);
+  const key=`churches:${st}`;const churches=await kv.get(key);
+  if(Array.isArray(churches)){
+    const ch=churches.find((x:any)=>x.id===churchId);
+    if(ch){
+      ch.lastVerified=Date.now();
+      await kv.set(key,churches);
+      void recordChurchAudit({church_id:churchId,church_name:ch.name,church_city_state:[ch.city,ch.state].filter(Boolean).join(", "),state:st,action:"church_confirmed",source:auditSource},{hashIp:actorKey});
+    }
+  }
+  const stats=(await kv.get("community:stats"))||{totalCorrections:0,churchesImproved:[],totalConfirmations:0,corrections:[]};
+  stats.totalConfirmations=(stats.totalConfirmations||0)+1;stats.lastUpdated=Date.now();await kv.set("community:stats",stats);
+  return{ok:true,success:true,totalConfirmations:existing.confirmations.length};
+}
+
 app.post(`${P}/suggestions`,async(c)=>{
   try{
     const ip=cip(c);const{churchId,field,value}=await c.req.json();
-    if(!churchId||!field)return c.json({error:"Missing fields"},400);
-    if(value===undefined||value===null)return c.json({error:"Value is required"},400);
-    if(!VF.includes(field))return c.json({error:"Invalid field"},400);
-    if(field==="denomination"&&isBlockedDenomination(String(value)))return c.json({error:"Denomination not supported"},400);
-    if(field==="attendance"){const n=parseInt(value);if(isNaN(n)||n<1||n>50000)return c.json({error:"Attendance 1-50000"},400);}
-    if(field==="homeCampusId"){const v=String(value).trim();if(v&&!stateFromChurchId(v))return c.json({error:"Invalid church ID format"},400);}
-    let storeValue=String(value).trim();
-    if(!storeValue&&field!=="homeCampusId")return c.json({error:"Value is required"},400);
-    if(field==="reportClosed"){storeValue="closed";}
-    if(field==="reportDuplicate"){if(!stateFromChurchId(storeValue))return c.json({error:"Invalid church ID format"},400);if(storeValue===churchId)return c.json({error:"Cannot report self as duplicate"},400);}
-    if(field==="name"&&storeValue.length<2)return c.json({error:"Church name must be at least 2 characters"},400);
-    if(field==="phone"){storeValue=normalizePhone(storeValue);if(!storeValue)return c.json({error:"Invalid phone number"},400);}
-    const k=`suggestions:${churchId}`;const ex=(await kv.get(k))||{churchId,submissions:[]};
-    // Ensure churchId is stored in the value for getByPrefix lookups
-    if(!ex.churchId)ex.churchId=churchId;
-    const day=Date.now()-86400000;const r=ex.submissions.find((s:any)=>s.ip===ip&&s.field===field&&s.timestamp>day);
-    if(r){r.value=storeValue;r.timestamp=Date.now();}else ex.submissions.push({ip,field,value:storeValue,timestamp:Date.now()});
-    await kv.set(k,ex);const con=consensus(ex.submissions);
-    const isSensitive=SENSITIVE_FIELDS.includes(field);
-    if(isSensitive){
-      return c.json({success:true,field,consensus:con[field],allFields:con,applied:false,needsModeration:true});
+    const result=await submitSuggestionCore({churchId,field,value,actorKey:ip,auditSource:"suggestion"});
+    if(!result.ok)return c.json({error:result.error},result.status);
+    if(result.needsModeration){
+      return c.json({success:true,field:result.field,consensus:result.consensus,allFields:result.allFields,applied:false,needsModeration:true});
     }
-    // Never auto-apply sensitive fields when applying non-sensitive consensus (same pattern as migrate/apply-pending)
-    const safeCon:Record<string,any>={};
-    for(const[f,d]of Object.entries(con)){if(!SENSITIVE_FIELDS.includes(f))safeCon[f]=d;}
-    const applied=await applyApprovedCorrections(churchId,safeCon,{source:"suggestion",actorIp:ip});
-    if(applied.updated&&applied.state&&applied.churches&&applied.corrections){void runDeferredIndexAndStats(applied.state,applied.churches,churchId,applied.corrections).catch(()=>{});}
-    return c.json({success:true,field,consensus:con[field],allFields:con,applied:applied.updated});
+    return c.json({success:true,field:result.field,consensus:result.consensus,allFields:result.allFields,applied:result.applied});
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
@@ -1543,17 +2059,10 @@ app.post(`${P}/churches/verify/:pendingId`,async(c)=>{
 app.post(`${P}/churches/confirm/:churchId`,async(c)=>{
   try{
     const ip=cip(c);const churchId=c.req.param("churchId");
-    const parts=churchId.split("-");const st=parts[0]==="community"?parts[1]:parts[0];
-    if(!st||st.length!==2)return c.json({error:"Invalid church ID"},400);
-    const confirmKey=`confirms:${churchId}`;const existing=(await kv.get(confirmKey))||{confirmations:[]};
-    const day=Date.now()-86400000;
-    if(existing.confirmations.find((conf:any)=>conf.ip===ip&&conf.timestamp>day))return c.json({success:true,alreadyConfirmed:true});
-    existing.confirmations.push({ip,timestamp:Date.now()});await kv.set(confirmKey,existing);
-    const key=`churches:${st}`;const churches=await kv.get(key);
-    if(Array.isArray(churches)){const ch=churches.find((x:any)=>x.id===churchId);if(ch){ch.lastVerified=Date.now();await kv.set(key,churches);void recordChurchAudit({church_id:churchId,church_name:ch.name,church_city_state:[ch.city,ch.state].filter(Boolean).join(", "),state:st,action:"church_confirmed",source:"confirm"},{hashIp:ip});}}
-    const stats=(await kv.get("community:stats"))||{totalCorrections:0,churchesImproved:[],totalConfirmations:0,corrections:[]};
-    stats.totalConfirmations=(stats.totalConfirmations||0)+1;stats.lastUpdated=Date.now();await kv.set("community:stats",stats);
-    return c.json({success:true,totalConfirmations:existing.confirmations.length});
+    const result=await confirmChurchCore({churchId,actorKey:ip,auditSource:"confirm"});
+    if(!result.ok)return c.json({error:result.error},result.status);
+    if(result.alreadyConfirmed)return c.json({success:true,alreadyConfirmed:true});
+    return c.json({success:true,totalConfirmations:result.totalConfirmations});
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
@@ -3552,6 +4061,56 @@ function seasonTitle(season:string,year:number):string{
   return season==="launch"?"Launch Report":`${cap} ${year} Report`;
 }
 
+/** Slug for the season that just ended; null when not a publish day (Mar/Jun/Sep/Dec 1). */
+function seasonSlugToPublish(now=new Date()):string|null{
+  const m=now.getUTCMonth()+1,y=now.getUTCFullYear();
+  if(m===6)return`spring-${y}`;
+  if(m===9)return`summer-${y}`;
+  if(m===12)return`fall-${y}`;
+  if(m===3)return`winter-${y-1}`;
+  return null;
+}
+
+async function generateAndCacheReport(
+  slug:string,
+  scope:{type:"national"}|{type:"state";stateAbbrev:string},
+  forceRefresh=false,
+):Promise<{ok:true;report:any;cached:boolean}|{ok:false;error:string;status:number}>{
+  const stateAbbrev=scope.type==="state"?scope.stateAbbrev.toUpperCase():null;
+  const cacheKey=scope.type==="national"?`report:${slug}`:`report:state:v4:${stateAbbrev}:${slug}`;
+  if(!forceRefresh){
+    const cached=await kv.get(cacheKey);
+    if(cached&&typeof cached==="object"&&cached.slug){
+      return{ok:true,report:cached,cached:true};
+    }
+  }
+  const known=allReportSlugs();
+  if(!known.find(r=>r.slug===slug))return{ok:false,error:"Report not found",status:404};
+  const report=scope.type==="national"
+    ?await computeSeasonalReport(slug)
+    :await computeSeasonalReport(slug,{type:"state",stateAbbrev:stateAbbrev||""});
+  const prevSlug=previousSlugFor(slug);
+  if(prevSlug){
+    if(scope.type==="national"){
+      const prevReport=await kv.get(`report:${prevSlug}`);
+      if(prevReport&&typeof prevReport==="object"&&prevReport.slug){
+        report.previousSlug=prevSlug;
+        report.changes=computeChanges(report,prevReport);
+      }
+    }else{
+      const prevKeys=[`report:state:v4:${stateAbbrev}:${prevSlug}`,`report:state:v3:${stateAbbrev}:${prevSlug}`];
+      const prevVals=await kv.mget(prevKeys);
+      const prevReport=prevVals.find((v:any)=>v&&typeof v==="object"&&v.slug);
+      if(prevReport){
+        report.previousSlug=prevSlug;
+        report.changes=computeChanges(report,prevReport);
+      }
+    }
+  }
+  try{await kv.set(cacheKey,report);}catch(_){}
+  return{ok:true,report,cached:false};
+}
+
 // Sum of per-state correction counts (may differ slightly from national `community.totalCorrections` if IDs don’t match a state prefix)
 function sumStateCorrections(r:any):number{
   return (r.stateRankings||[]).reduce((s:number,x:any)=>s+(typeof x?.corrections==="number"?x.corrections:0),0);
@@ -3755,28 +4314,9 @@ app.get(`${P}/report/:slug`,async(c)=>{
     const slug=c.req.param("slug");
     if(!slug||!/^[a-z]+-\d{4}$/.test(slug))return c.json({error:"Invalid report slug"},400);
     const forceRefresh=(c.req.query("refresh")==="true"||c.req.query("fresh")==="true");
-    // Check cache
-    const cacheKey=`report:${slug}`;
-    if(!forceRefresh){
-      const cached=await kv.get(cacheKey);
-      if(cached&&typeof cached==="object"&&cached.slug)return c.json(cached);
-    }
-    // Validate slug is a known report
-    const known=allReportSlugs();
-    if(!known.find(r=>r.slug===slug))return c.json({error:"Report not found"},404);
-    // Compute fresh report
-    const report=await computeSeasonalReport(slug);
-    // Add comparison to previous report if available
-    const prevSlug=previousSlugFor(slug);
-    if(prevSlug){
-      const prevReport=await kv.get(`report:${prevSlug}`);
-      if(prevReport&&typeof prevReport==="object"&&prevReport.slug){
-        report.previousSlug=prevSlug;
-        report.changes=computeChanges(report,prevReport);
-      }
-    }
-    try{await kv.set(cacheKey,report);}catch(_){}
-    return c.json(report);
+    const result=await generateAndCacheReport(slug,{type:"national"},forceRefresh);
+    if(!result.ok)return c.json({error:result.error},result.status);
+    return c.json(result.report);
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
@@ -3787,27 +4327,41 @@ app.get(`${P}/report/state/:stateAbbrev/:slug`,async(c)=>{
     if(!/^[A-Z]{2}$/.test(stateAbbrev))return c.json({error:"Invalid state"},400);
     if(!slug||!/^[a-z]+-\d{4}$/.test(slug))return c.json({error:"Invalid report slug"},400);
     const forceRefresh=(c.req.query("refresh")==="true"||c.req.query("fresh")==="true");
-    const cacheKey=`report:state:v4:${stateAbbrev}:${slug}`;
-    if(!forceRefresh){
-      const cached=await kv.get(cacheKey);
-      if(cached&&typeof cached==="object"&&cached.slug)return c.json(cached);
-    }
-    const known=allReportSlugs();
-    if(!known.find(r=>r.slug===slug))return c.json({error:"Report not found"},404);
-    const report=await computeSeasonalReport(slug,{type:"state",stateAbbrev});
-    const prevSlug=previousSlugFor(slug);
-    if(prevSlug){
-      const prevKeys=[`report:state:v4:${stateAbbrev}:${prevSlug}`,`report:state:v3:${stateAbbrev}:${prevSlug}`];
-      const prevVals=await kv.mget(prevKeys);
-      const prevReport=prevVals.find((v:any)=>v&&typeof v==="object"&&v.slug);
-      if(prevReport){
-        report.previousSlug=prevSlug;
-        report.changes=computeChanges(report,prevReport);
-      }
-    }
-    try{await kv.set(cacheKey,report);}catch(_){}
-    return c.json(report);
+    const result=await generateAndCacheReport(slug,{type:"state",stateAbbrev},forceRefresh);
+    if(!result.ok)return c.json({error:result.error},result.status);
+    return c.json(result.report);
   }catch(e){return c.json({error:`${e}`},500);}
+});
+
+// Cron / manual: generate one national or state seasonal report snapshot (GitHub Actions loops states).
+app.post(`${P}/internal/reports/generate`,async(c)=>{
+  try{
+    const secret=Deno.env.get("REPORTS_CRON_SECRET")||Deno.env.get("TWITTER_WEBHOOK_SECRET")||"";
+    const body=await c.req.json().catch(()=>({}));
+    if(!secret||body?.secret!==secret)return c.json({error:"Unauthorized"},401);
+    const force=body.force===true;
+    const slugParam=(body.slug||"").toString().trim();
+    const slug=slugParam||seasonSlugToPublish(new Date());
+    if(!slug||!/^[a-z]+-\d{4}$/.test(slug)){
+      return c.json({skipped:true,reason:"No slug and not a scheduled publish day (Mar/Jun/Sep/Dec)"},200);
+    }
+    const national=body.national===true;
+    const stateRaw=(body.state||"").toString().trim().toUpperCase();
+    if(!national&&!stateRaw)return c.json({error:"Specify national:true and/or state:XX"},400);
+    const out:{slug:string;results:any[]}={slug,results:[]};
+    if(national){
+      const r=await generateAndCacheReport(slug,{type:"national"},force);
+      if(!r.ok)return c.json({error:r.error},r.status);
+      out.results.push({scope:"national",cached:r.cached,generatedAt:r.report?.generatedAt});
+    }
+    if(stateRaw){
+      if(!/^[A-Z]{2}$/.test(stateRaw))return c.json({error:"Invalid state"},400);
+      const r=await generateAndCacheReport(slug,{type:"state",stateAbbrev:stateRaw},force);
+      if(!r.ok)return c.json({error:r.error},r.status);
+      out.results.push({scope:stateRaw,cached:r.cached,generatedAt:r.report?.generatedAt});
+    }
+    return c.json(out);
+  }catch(e){return c.json({error:String(e)},500);}
 });
 
 Deno.serve(app.fetch);
