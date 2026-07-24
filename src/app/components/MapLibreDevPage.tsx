@@ -4,8 +4,8 @@
  */
 import { useEffect, useState } from "react";
 import { MapLibreCanvas, US_DEFAULT_CENTER, US_DEFAULT_ZOOM } from "./MapLibreCanvas";
-import { fetchStates } from "./api";
-import type { StateInfo } from "./church-data";
+import { fetchStates, fetchChurches } from "./api";
+import type { Church, StateInfo } from "./church-data";
 
 export function MapLibreDevPage() {
   const [view, setView] = useState<{ center: [number, number]; zoom: number }>({
@@ -14,6 +14,18 @@ export function MapLibreDevPage() {
   });
   const [states, setStates] = useState<StateInfo[]>([]);
   const [focusedState, setFocusedState] = useState<string | null>(null);
+  const [churches, setChurches] = useState<Church[]>([]);
+
+  // Load churches for the focused state (mirrors useChurchMapData's behavior).
+  useEffect(() => {
+    if (!focusedState) {
+      setChurches([]);
+      return;
+    }
+    fetchChurches(focusedState)
+      .then((r) => setChurches(r.churches))
+      .catch((e) => console.error("[maplibre-dev] fetchChurches failed", e));
+  }, [focusedState]);
 
   useEffect(() => {
     fetchStates()
@@ -64,6 +76,7 @@ export function MapLibreDevPage() {
         zoom={view.zoom}
         states={states}
         focusedState={focusedState}
+        churches={churches}
         onMoveEnd={(c, z) => console.log("[maplibre-dev] moveend", c, z)}
       />
     </div>
