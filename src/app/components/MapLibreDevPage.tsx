@@ -16,6 +16,7 @@ export function MapLibreDevPage() {
   const [focusedState, setFocusedState] = useState<string | null>(null);
   const [churches, setChurches] = useState<Church[]>([]);
   const [bounds, setBounds] = useState<[[number, number], [number, number]] | null>(null);
+  const [selectedChurchId, setSelectedChurchId] = useState<string | null>(null);
 
   // Derived, not captured at moveend: churches often arrive *after* the camera
   // has settled, so the count must recompute when either bounds or data change.
@@ -85,7 +86,11 @@ export function MapLibreDevPage() {
           setFocusedState(abbrev);
         }}
         onCountyClick={(fips) => console.log("[maplibre-dev] county click", fips)}
-        onChurchClick={(ch) => console.log("[maplibre-dev] church click", ch.name, ch.id)}
+        selectedChurchId={selectedChurchId}
+        onChurchClick={(ch) => {
+          console.log("[maplibre-dev] church click", ch.name, ch.id);
+          setSelectedChurchId(ch.id);
+        }}
         onChurchHover={(ch) => ch && console.log("[maplibre-dev] church hover", ch.name)}
         onResetView={() => {
           console.log("[maplibre-dev] reset view");

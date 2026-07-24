@@ -33,8 +33,11 @@ import {
   STATE_TO_FIPS,
   STATE_BOUNDS,
   getStateTier,
+  getCountyPerCapitaColor,
   STATE_COUNT_TIERS,
+  ACTIVE_PIN_FILL,
 } from "./map-constants";
+import type { CountyStats } from "./MapCanvas";
 import { getSizeCategory, type Church, type StateInfo } from "./church-data";
 
 const CREAM = "#F5F0E8"; // --background (national view)
@@ -69,6 +72,12 @@ interface MapLibreCanvasProps {
   focusedState?: string | null;
   /** Churches to plot as dots. */
   churches?: Church[];
+  /** Currently selected church — drawn as the "you are here" pin. */
+  selectedChurchId?: string | null;
+  /** Per-county church/population stats; drives the per-capita choropleth. */
+  countyStats?: CountyStats | null;
+  /** Currently focused county FIPS. */
+  focusedCounty?: string | null;
   /**
    * Zoom the camera to the focused state's bounds (and back out when cleared).
    * Set false if the parent drives the camera itself via center/zoom.
@@ -256,11 +265,18 @@ function statesFillExpression(focusedState: string | null, hoveredState: string 
   return ["get", "fill"];
 }
 
-function countiesFillExpression(hoveredCounty: string | null) {
-  if (hoveredCounty) {
-    return ["case", ["==", ["get", "fips"], hoveredCounty], COUNTY_HOVER_FILL, COUNTY_FILL];
-  }
-  return COUNTY_FILL;
+/**
+ * County fill: hover and focus both highlight (as in CountyGeographies),
+ * otherwise use the per-capita color precomputed onto each feature.
+ */
+function countiesFillExpression(hoveredCounty: string | null, focusedCounty: string | null) {
+  const base: unknown = ["get", "fill"];
+  const cases: unknown[] = ["case"];
+  if (focusedCounty) cases.push(["==", ["get", "fips"], focusedCounty], COUNTY_HOVER_FILL);
+  if (hoveredCounty) cases.push(["==", ["get", "fips"], hoveredCounty], COUNTY_HOVER_FILL);
+  if (cases.length === 1) return base;
+  cases.push(base);
+  return cases;
 }
 
 function applyStatePaint(map: MaplibreMap, focusedState: string | null, hoveredState: string | null) {
@@ -270,10 +286,14 @@ function applyStatePaint(map: MaplibreMap, focusedState: string | null, hoveredS
   });
 }
 
-function applyCountyPaint(map: MaplibreMap, hoveredCounty: string | null) {
+function applyCountyPaint(map: MaplibreMap, hoveredCounty: string | null, focusedCounty: string | null) {
   whenStyleReady(map, () => {
     if (!map.getLayer("counties-fill")) return;
-    map.setPaintProperty("counties-fill", "fill-color", countiesFillExpression(hoveredCounty) as never);
+    map.setPaintProperty(
+      "counties-fill",
+      "fill-color",
+      countiesFillExpression(hoveredCounty, focusedCounty) as never,
+    );
   });
 }
 
@@ -283,7 +303,13 @@ function applyCountyPaint(map: MaplibreMap, hoveredCounty: string | null) {
  * the state's 2-digit FIPS prefix — the same rule CountyGeographies uses.
  * Per-capita choropleth shading follows once church-per-county stats are wired.
  */
-async function setCountyLayer(map: MaplibreMap, focusedState: string | null) {
+async function setCountyLayer(
+  map: MaplibreMap,
+  focusedState: string | null,
+  countyStats: CountyStats | null,
+  hoveredCounty: string | null,
+  focusedCounty: string | null,
+) {
   const clear = () => {
     whenStyleReady(map, () => {
       if (map.getLayer("counties-line")) map.removeLayer("counties-line");
@@ -299,12 +325,19 @@ async function setCountyLayer(map: MaplibreMap, focusedState: string | null) {
   try {
     const topo = await fetchTopo(COUNTIES_GEO_URL);
     const all = feature(topo, topo.objects.counties) as GeoJSON.FeatureCollection;
+    const sorted = countyStats?.sortedByPerCapita ?? [];
     geo = {
       type: "FeatureCollection",
       features: all.features
         .filter((f) => String(f.id).padStart(5, "0").slice(0, 2) === stateFips)
-        // Surface the 5-digit FIPS as a property so hover/click can identify it.
-        .map((f) => ({ ...f, properties: { ...f.properties, fips: String(f.id).padStart(5, "0") } })),
+        .map((f) => {
+          // Surface the 5-digit FIPS so hover/click can identify the county,
+          // and precompute its per-capita color for data-driven styling.
+          const fips = String(f.id).padStart(5, "0");
+          const data = countyStats?.byFips[fips];
+          const fill = data ? getCountyPerCapitaColor(data.perCapita, sorted) : COUNTY_FILL;
+          return { ...f, properties: { ...f.properties, fips, fill } };
+        }),
     };
   } catch (err) {
     console.error("[maplibre] failed to load county boundaries", err);
@@ -321,8 +354,10 @@ async function setCountyLayer(map: MaplibreMap, focusedState: string | null) {
         id: "counties-fill",
         type: "fill",
         source: "counties",
-        paint: { "fill-color": COUNTY_FILL },
+        paint: { "fill-color": countiesFillExpression(hoveredCounty, focusedCounty) as never },
       });
+    } else {
+      applyCountyPaint(map, hoveredCounty, focusedCounty);
     }
     if (!map.getLayer("counties-line")) {
       map.addLayer({
@@ -342,7 +377,7 @@ async function setCountyLayer(map: MaplibreMap, focusedState: string | null) {
  * feature properties for data-driven styling. MapLibre culls off-screen features
  * itself, so the manual viewport culling in ChurchDots is no longer needed.
  */
-function setChurchLayer(map: MaplibreMap, churches: Church[]) {
+function setChurchLayer(map: MaplibreMap, churches: Church[], selectedChurchId: string | null) {
   const geo: GeoJSON.FeatureCollection = {
     type: "FeatureCollection",
     features: churches.map((ch) => {
@@ -360,25 +395,32 @@ function setChurchLayer(map: MaplibreMap, churches: Church[]) {
     if (src) src.setData(geo);
     else map.addSource("churches", { type: "geojson", data: geo });
 
+    // The selected church is drawn as a distinct "you are here" pin: deeper
+    // purple with a white ring, matching ChurchDots' active marker.
+    const sel = selectedChurchId ?? "__no_selection__";
+    const isSelected = ["==", ["get", "id"], sel];
+    const paint = {
+      // Scale the per-category base radius with zoom, mirroring how the SVG
+      // dots grew as you zoomed in.
+      "circle-radius": [
+        "interpolate", ["linear"], ["zoom"],
+        3, ["*", ["case", isSelected, 14, ["get", "radius"]], 0.35],
+        6, ["*", ["case", isSelected, 14, ["get", "radius"]], 0.7],
+        10, ["*", ["case", isSelected, 14, ["get", "radius"]], 1.4],
+        14, ["*", ["case", isSelected, 14, ["get", "radius"]], 2.2],
+      ],
+      "circle-color": ["case", isSelected, ACTIVE_PIN_FILL, ["get", "color"]],
+      "circle-opacity": ["case", isSelected, 1, 0.8],
+      "circle-stroke-width": ["case", isSelected, 2, 0],
+      "circle-stroke-color": "#FFFFFF",
+    };
+
     if (!map.getLayer("churches")) {
-      map.addLayer({
-        id: "churches",
-        type: "circle",
-        source: "churches",
-        paint: {
-          // Scale the per-category base radius with zoom, mirroring how the SVG
-          // dots grew as you zoomed in.
-          "circle-radius": [
-            "interpolate", ["linear"], ["zoom"],
-            3, ["*", ["get", "radius"], 0.35],
-            6, ["*", ["get", "radius"], 0.7],
-            10, ["*", ["get", "radius"], 1.4],
-            14, ["*", ["get", "radius"], 2.2],
-          ],
-          "circle-color": ["get", "color"],
-          "circle-opacity": 0.8,
-        },
-      });
+      map.addLayer({ id: "churches", type: "circle", source: "churches", paint: paint as never });
+    } else {
+      for (const [prop, value] of Object.entries(paint)) {
+        map.setPaintProperty("churches", prop, value as never);
+      }
     }
     enforceLayerOrder(map);
   });
@@ -390,6 +432,9 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   states,
   focusedState = null,
   churches,
+  selectedChurchId = null,
+  countyStats = null,
+  focusedCounty = null,
   fitToFocusedState = true,
   bottomPadding = 0,
   onMoveEnd,
@@ -410,6 +455,8 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   focusedStateRef.current = focusedState;
   const hoveredStateRef = useRef<string | null>(null);
   const hoveredCountyRef = useRef<string | null>(null);
+  const focusedCountyRef = useRef<string | null>(focusedCounty);
+  focusedCountyRef.current = focusedCounty;
   const churchByIdRef = useRef<Map<string, Church>>(new Map());
   churchByIdRef.current = new Map((churches ?? []).map((c) => [c.id, c]));
   const handlersRef = useRef({
@@ -509,7 +556,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       const fips = county && !church ? String(county.properties?.fips) : null;
       if (fips !== hoveredCountyRef.current) {
         hoveredCountyRef.current = fips;
-        applyCountyPaint(map, fips);
+        applyCountyPaint(map, fips, focusedCountyRef.current);
         h.onCountyHover?.(fips);
       }
 
@@ -527,7 +574,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       map.getCanvas().style.cursor = "";
       if (hoveredCountyRef.current !== null) {
         hoveredCountyRef.current = null;
-        applyCountyPaint(map, null);
+        applyCountyPaint(map, null, focusedCountyRef.current);
         h.onCountyHover?.(null);
       }
       if (hoveredStateRef.current !== null) {
@@ -596,7 +643,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     const map = mapRef.current;
     if (!map) return;
     applyStatePaint(map, focusedState, hoveredStateRef.current);
-    void setCountyLayer(map, focusedState);
+    void setCountyLayer(map, focusedState, countyStats, hoveredCountyRef.current, focusedCounty);
 
     if (!fitToFocusedState) return;
     const bounds = focusedState ? boundsForState(focusedState) : null;
@@ -615,12 +662,21 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedState]);
 
-  // Plot churches whenever the list changes.
+  // Plot churches whenever the list or selection changes.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    setChurchLayer(map, churches ?? []);
-  }, [churches]);
+    setChurchLayer(map, churches ?? [], selectedChurchId);
+  }, [churches, selectedChurchId]);
+
+  // Recolor counties when stats or the focused county change.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    void setCountyLayer(map, focusedState, countyStats, hoveredCountyRef.current, focusedCounty);
+    // focusedState changes are handled by the focus effect above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countyStats, focusedCounty]);
 
   return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
 });
