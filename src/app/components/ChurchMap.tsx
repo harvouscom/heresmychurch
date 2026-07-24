@@ -20,6 +20,7 @@ import { MapControls } from "./MapControls";
 import { HelpModal } from "./HelpModal";
 import { AuditModal } from "./AuditModal";
 import { MapCanvas } from "./MapCanvas";
+import { MapLibreCanvas } from "./MapLibreCanvas";
 import { VerificationModal, NationalReviewModal } from "./VerificationModal";
 import { StateFlag } from "./StateFlag";
 import { CloseButton } from "./ui/close-button";
@@ -56,6 +57,15 @@ import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 import { Easter2026SpecialReportBlurbModal } from "./special-report/Easter2026SpecialReportBlurbModal";
 /** Set to true to temporarily hide All States button, Map Key, and action controls (zoom/filter). */
 const HIDE_MAP_UI = false;
+
+/**
+ * Phase 0 (worldwide support): opt into the MapLibre engine with ?maplibre=1.
+ * Off by default so react-simple-maps stays the live map until MapLibreCanvas
+ * reaches full parity. See docs/future/mapbox-migration.md.
+ */
+const USE_MAPLIBRE =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("maplibre") === "1";
 
 /** Sample per-state active counts for testing on localhost (see tooltip + on-map labels). */
 const SAMPLE_ACTIVE_BY_STATE: Record<string, number> = {
@@ -1000,7 +1010,30 @@ function MapArea({
         />
       )}
 
-      {/* Map canvas */}
+      {/* Map canvas.
+          Phase 0 migration: ?maplibre=1 renders the MapLibre engine instead of
+          react-simple-maps. Opt-in because the zoom models differ — the SVG map
+          uses a 1-500 Albers scale while MapLibre uses Web Mercator 0-22, so
+          d.zoom/d.center are NOT passed through. MapLibreCanvas drives its own
+          camera from focusedState (fitBounds) until useChurchMapData's zoom
+          model is converted. See docs/future/mapbox-migration.md. */}
+      {USE_MAPLIBRE ? (
+        <MapLibreCanvas
+          states={d.states}
+          focusedState={d.focusedState}
+          churches={churchesToShowOnMap}
+          selectedChurchId={d.selectedChurch?.id ?? null}
+          countyStats={d.countyStats ?? null}
+          focusedCounty={d.focusedCounty ?? null}
+          onStateClick={d.handleStateClick}
+          onResetView={d.handleResetView}
+          onStateHover={d.setHoveredState}
+          onChurchClick={d.handleChurchDotClick}
+          onChurchHover={d.setHoveredChurch}
+          onCountyHover={d.setHoveredCounty}
+          onCountyClick={d.handleCountyClick}
+        />
+      ) : (
       <MapCanvas
         center={d.center}
         zoom={d.zoom}
@@ -1027,6 +1060,7 @@ function MapArea({
         focusedCounty={d.focusedCounty ?? null}
         onCountyClick={d.handleCountyClick}
       />
+      )}
 
       {/* Tooltips */}
       {!d.focusedState && !(d.previewChurch ?? d.hoveredChurch) && (d.hoveredState || (d.previewStatePinned && d.previewState)) && (() => {
