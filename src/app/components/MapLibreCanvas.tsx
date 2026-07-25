@@ -15,7 +15,7 @@
  * interactions and the zoom-model conversion come next; MapCanvas remains the
  * live map until this reaches parity and is wired into ChurchMap.
  */
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useRef, type MutableRefObject } from "react";
 import {
   Map as MaplibreMap,
   NavigationControl,
@@ -108,6 +108,19 @@ interface MapLibreCanvasProps {
   onChurchHover?: (church: Church | null) => void;
   /** Clicking empty canvas / outside the focused state. */
   onResetView?: () => void;
+  /**
+   * Populated with imperative map controls so the app's own chrome (the styled
+   * zoom buttons) can drive the camera. The app's zoom state is in the legacy
+   * 1–500 Albers scale, which is meaningless here, so those buttons call these
+   * instead of writing a zoom number.
+   */
+  apiRef?: MutableRefObject<MapLibreHandle | null>;
+}
+
+/** Imperative controls exposed via `apiRef`. */
+export interface MapLibreHandle {
+  zoomIn: () => void;
+  zoomOut: () => void;
 }
 
 /** Topmost-first hit-test order: a church dot beats the county beneath it. */
@@ -152,6 +165,8 @@ const FIT_PADDING = 40;
 const VIEW_TRANSITION_MS = 800;
 /** Web Mercator zoom for the church detail view (street level). */
 const CHURCH_VIEW_ZOOM = 13;
+/** Matches the app's existing zoom-button transition feel. */
+const ZOOM_STEP_MS = 320;
 
 /**
  * Run a layer mutation once the style is actually ready.
@@ -464,6 +479,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   onChurchClick,
   onChurchHover,
   onResetView,
+  apiRef,
 }: MapLibreCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
@@ -635,6 +651,18 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   };
   const paddingRef = useRef(cameraPadding);
   paddingRef.current = cameraPadding;
+
+  // Publish imperative controls for the app's own zoom buttons.
+  useEffect(() => {
+    if (!apiRef) return;
+    apiRef.current = {
+      zoomIn: () => mapRef.current?.zoomIn({ duration: ZOOM_STEP_MS }),
+      zoomOut: () => mapRef.current?.zoomOut({ duration: ZOOM_STEP_MS }),
+    };
+    return () => {
+      apiRef.current = null;
+    };
+  }, [apiRef]);
 
   // Parent-driven camera. Skipped when self-driving, so the two never fight
   // over the view — exactly one owner at a time.

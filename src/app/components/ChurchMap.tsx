@@ -20,7 +20,7 @@ import { MapControls } from "./MapControls";
 import { HelpModal } from "./HelpModal";
 import { AuditModal } from "./AuditModal";
 import { MapCanvas } from "./MapCanvas";
-import { MapLibreCanvas } from "./MapLibreCanvas";
+import { MapLibreCanvas, type MapLibreHandle } from "./MapLibreCanvas";
 import { VerificationModal, NationalReviewModal } from "./VerificationModal";
 import { StateFlag } from "./StateFlag";
 import { CloseButton } from "./ui/close-button";
@@ -52,7 +52,7 @@ type ModerationPendingData = Pick<
   "pendingSuggestions" | "pendingChurches" | "inReviewSuggestions" | "inReviewChurches"
 >;
 import { reportIssueEnabled } from "../config/pendingAlerts";
-import { useReducer, useEffect, useMemo, useState, useCallback } from "react";
+import { useReducer, useEffect, useMemo, useState, useCallback, useRef } from "react";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 import { Easter2026SpecialReportBlurbModal } from "./special-report/Easter2026SpecialReportBlurbModal";
 /** Set to true to temporarily hide All States button, Map Key, and action controls (zoom/filter). */
@@ -846,6 +846,8 @@ function MapArea({
   onToggleVerified: () => void;
   churchTooltipCountyName: string | null;
 }) {
+  /** Imperative MapLibre controls, so the app's zoom buttons can drive it. */
+  const mapLibreApi = useRef<MapLibreHandle | null>(null);
   const isNationalView = !d.focusedState;
   const verifiedCountForView = isNationalView
     ? (verifiedChurches?.length ?? null)
@@ -1019,6 +1021,7 @@ function MapArea({
           model is converted. See docs/future/mapbox-migration.md. */}
       {USE_MAPLIBRE ? (
         <MapLibreCanvas
+          apiRef={mapLibreApi}
           states={d.states}
           focusedState={d.focusedState}
           churches={churchesToShowOnMap}
@@ -1174,11 +1177,13 @@ function MapArea({
             focusedState={d.focusedState}
             showFilterPanel={d.showFilterPanel}
             showLegend={d.showLegend}
-            onZoomIn={d.handleZoomIn}
-            onZoomOut={d.handleZoomOut}
+            onZoomIn={USE_MAPLIBRE ? () => mapLibreApi.current?.zoomIn() : d.handleZoomIn}
+            onZoomOut={USE_MAPLIBRE ? () => mapLibreApi.current?.zoomOut() : d.handleZoomOut}
             onResetView={d.handleResetView}
-            minZoom={d.minZoom}
-            maxZoom={500}
+            // MapLibre owns its own zoom, so d.zoom never moves in that path —
+            // widen the bounds so the buttons don't render permanently disabled.
+            minZoom={USE_MAPLIBRE ? -Infinity : d.minZoom}
+            maxZoom={USE_MAPLIBRE ? Infinity : 500}
             onToggleFilter={() => {
               d.setShowFilterPanel((v) => {
                 if (!v) { d.setShowSummary(false); d.setShowLegend(false); d.setSearchCollapsed(true); }
