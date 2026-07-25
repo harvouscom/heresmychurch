@@ -482,6 +482,8 @@ export function ChurchMap({
         navigateToChurch={navigateToChurchWithContext}
         navigateToCounty={navigateToCounty}
         navigateToStateOnly={navigateToStateOnly}
+        routeStateAbbrev={routeStateAbbrev}
+        routeCountyFips={routeCountyFips}
         onShowVerification={onShowVerification}
         onShowNationalReviewModal={() => localDispatch({ type: "SET", key: "showNationalReviewModal", value: true })}
         pendingReviewCount={local.pendingReviewCount}
@@ -722,6 +724,8 @@ function MapArea({
   navigateToChurch,
   navigateToCounty,
   navigateToStateOnly,
+  routeStateAbbrev,
+  routeCountyFips,
   onShowVerification,
   onShowNationalReviewModal,
   pendingReviewCount,
@@ -777,6 +781,8 @@ function MapArea({
   navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean; countyFips?: string }) => void;
   navigateToCounty: (stateAbbrev: string, countyFips: string) => void;
   navigateToStateOnly: (stateAbbrev: string) => void;
+  routeStateAbbrev: string | null;
+  routeCountyFips: string | null;
   onShowVerification: () => void;
   onShowNationalReviewModal: () => void;
   pendingReviewCount: number;
@@ -1008,6 +1014,10 @@ function MapArea({
         }
         states={d.states}
         focusedState={d.focusedState}
+        // Camera follows the URL, which updates instantly; d.focusedState waits
+        // for the loading overlay to finish its verses (~7s).
+        cameraState={routeStateAbbrev}
+        cameraCounty={routeCountyFips}
         churches={churchesToShowOnMap}
         selectedChurchId={d.selectedChurch?.id ?? null}
         countyStats={d.countyStats ?? null}

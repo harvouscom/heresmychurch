@@ -15,7 +15,7 @@
  * interactions and the zoom-model conversion come next; MapCanvas remains the
  * live map until this reaches parity and is wired into ChurchMap.
  */
-import { memo, useEffect, useRef, type MutableRefObject } from "react";
+import { memo, useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import {
   Map as MaplibreMap,
   type GeoJSONSource,
@@ -38,6 +38,7 @@ import {
   ACTIVE_PIN_FILL,
 } from "./map-constants";
 import { getSizeCategory, type Church, type StateInfo } from "./church-data";
+import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
 
 /** Per-county church counts and per-capita rates, keyed by 5-digit FIPS. */
 export type CountyStats = {
@@ -65,6 +66,9 @@ const STATE_HOVER_FILL = "#D4B8E8"; // hovered state (national view only)
 const COUNTY_FILL = "rgba(255, 255, 255, 0.8)";
 const COUNTY_STROKE = "rgba(107, 33, 168, 0.25)";
 const COUNTY_HOVER_FILL = "#D4B8E8";
+const CLUSTER_FILL = "#6B21A8"; // deep brand purple; cream count label on top
+/** Above this zoom clusters dissolve into individual attendance-sized dots. */
+const CLUSTER_MAX_ZOOM = 10;
 
 // Street basemap for church-level navigation. Kept invisible at the national and
 // state zooms so those stay a clean purple-on-cream data visualization, then
@@ -206,6 +210,14 @@ interface MapLibreCanvasProps {
   states?: StateInfo[];
   /** Abbrev of the focused state; shows counties and dims other states. */
   focusedState?: string | null;
+  /**
+   * Region the URL is pointing at, which is known the instant a state is
+   * clicked — whereas `focusedState` only flips once the loading overlay
+   * finishes its verses (~7s). The camera keys off these so the map starts
+   * flying immediately; the layers still follow `focusedState`.
+   */
+  cameraState?: string | null;
+  cameraCounty?: string | null;
   /** Churches to plot as dots. */
   churches?: Church[];
   /** Currently selected church — drawn as the "you are here" pin. */
@@ -266,7 +278,7 @@ export interface MapLibreHandle {
 }
 
 /** Topmost-first hit-test order: a church dot beats the county beneath it. */
-const HIT_LAYERS = ["churches", "counties-fill", "states-fill"];
+const HIT_LAYERS = ["clusters", "churches", "counties-fill", "states-fill"];
 
 /**
  * Zoom model: the SVG map used a bespoke 1–500 Albers scale with a hand-tuned
@@ -379,7 +391,15 @@ function whenStyleReady(map: MaplibreMap, fn: () => void) {
 // Canonical bottom→top draw order. Layers are added asynchronously (each waits
 // on a TopoJSON fetch or an API call), so insertion order is not reliable —
 // re-assert the stacking explicitly after any layer is added.
-const LAYER_ORDER = ["states-fill", "states-line", "counties-fill", "counties-line", "churches"];
+const LAYER_ORDER = [
+  "states-fill",
+  "states-line",
+  "counties-fill",
+  "counties-line",
+  "churches",
+  "clusters",
+  "cluster-count",
+];
 
 function enforceLayerOrder(map: MaplibreMap) {
   // moveLayer without a beforeId moves the layer to the top, so walking the
@@ -593,7 +613,39 @@ async function setCountyLayer(
  * feature properties for data-driven styling. MapLibre culls off-screen features
  * itself, so the manual viewport culling in ChurchDots is no longer needed.
  */
-function setChurchLayer(map: MaplibreMap, churches: Church[], selectedChurchId: string | null) {
+/** Paint for the individual-church dots; selection only changes these. */
+function churchPaint(selectedChurchId: string | null) {
+  // The selected church is drawn as a distinct "you are here" pin: deeper
+  // purple with a white ring, matching the old ChurchDots active marker.
+  const isSelected = ["==", ["get", "id"], selectedChurchId ?? "__no_selection__"];
+  const radius = ["case", isSelected, 14, ["get", "radius"]];
+  return {
+    // Scale the per-category base radius with zoom, mirroring how the SVG dots
+    // grew as you zoomed in.
+    "circle-radius": [
+      "interpolate", ["linear"], ["zoom"],
+      3, ["*", radius, 0.35],
+      6, ["*", radius, 0.7],
+      10, ["*", radius, 1.4],
+      14, ["*", radius, 2.2],
+    ],
+    "circle-color": ["case", isSelected, ACTIVE_PIN_FILL, ["get", "color"]],
+    "circle-opacity": ["case", isSelected, 1, 0.8],
+    "circle-stroke-width": ["case", isSelected, 2, 0],
+    "circle-stroke-color": "#FFFFFF",
+  };
+}
+
+/**
+ * Build the church source and its three layers.
+ *
+ * Clustered below CLUSTER_MAX_ZOOM: dense states rendered as one indistinct
+ * purple mass at state zoom, where individual dots are neither legible nor
+ * clickable. Past that zoom the clusters dissolve into attendance-sized dots,
+ * so the "bigger church, bigger dot" signal survives where it can actually be
+ * read. MapLibre clusters in its worker, which also keeps the main thread free.
+ */
+function setChurchData(map: MaplibreMap, churches: Church[], selectedChurchId: string | null) {
   const geo: GeoJSON.FeatureCollection = {
     type: "FeatureCollection",
     features: churches.map((ch) => {
@@ -609,36 +661,66 @@ function setChurchLayer(map: MaplibreMap, churches: Church[], selectedChurchId: 
   whenStyleReady(map, () => {
     const src = map.getSource("churches") as GeoJSONSource | undefined;
     if (src) src.setData(geo);
-    else map.addSource("churches", { type: "geojson", data: geo });
+    else {
+      map.addSource("churches", {
+        type: "geojson",
+        data: geo,
+        cluster: true,
+        clusterMaxZoom: CLUSTER_MAX_ZOOM,
+        clusterRadius: 48,
+      });
+    }
 
-    // The selected church is drawn as a distinct "you are here" pin: deeper
-    // purple with a white ring, matching ChurchDots' active marker.
-    const sel = selectedChurchId ?? "__no_selection__";
-    const isSelected = ["==", ["get", "id"], sel];
-    const paint = {
-      // Scale the per-category base radius with zoom, mirroring how the SVG
-      // dots grew as you zoomed in.
-      "circle-radius": [
-        "interpolate", ["linear"], ["zoom"],
-        3, ["*", ["case", isSelected, 14, ["get", "radius"]], 0.35],
-        6, ["*", ["case", isSelected, 14, ["get", "radius"]], 0.7],
-        10, ["*", ["case", isSelected, 14, ["get", "radius"]], 1.4],
-        14, ["*", ["case", isSelected, 14, ["get", "radius"]], 2.2],
-      ],
-      "circle-color": ["case", isSelected, ACTIVE_PIN_FILL, ["get", "color"]],
-      "circle-opacity": ["case", isSelected, 1, 0.8],
-      "circle-stroke-width": ["case", isSelected, 2, 0],
-      "circle-stroke-color": "#FFFFFF",
-    };
-
+    if (!map.getLayer("clusters")) {
+      map.addLayer({
+        id: "clusters",
+        type: "circle",
+        source: "churches",
+        filter: ["has", "point_count"],
+        paint: {
+          "circle-color": CLUSTER_FILL,
+          "circle-opacity": 0.9,
+          "circle-stroke-width": 2,
+          "circle-stroke-color": CREAM,
+          // Stepped by how many churches the bubble stands for.
+          "circle-radius": ["step", ["get", "point_count"], 14, 25, 18, 100, 24, 500, 30],
+        },
+      });
+    }
+    if (!map.getLayer("cluster-count")) {
+      map.addLayer({
+        id: "cluster-count",
+        type: "symbol",
+        source: "churches",
+        filter: ["has", "point_count"],
+        layout: {
+          "text-field": ["get", "point_count_abbreviated"],
+          "text-font": ["Open Sans Regular"],
+          "text-size": 12,
+        },
+        paint: { "text-color": CREAM },
+      });
+    }
     if (!map.getLayer("churches")) {
-      map.addLayer({ id: "churches", type: "circle", source: "churches", paint: paint as never });
-    } else {
-      for (const [prop, value] of Object.entries(paint)) {
-        map.setPaintProperty("churches", prop, value as never);
-      }
+      map.addLayer({
+        id: "churches",
+        type: "circle",
+        source: "churches",
+        filter: ["!", ["has", "point_count"]],
+        paint: churchPaint(selectedChurchId) as never,
+      });
     }
     enforceLayerOrder(map);
+  });
+}
+
+/** Selection changes paint only — never the source, which would re-tile everything. */
+function setChurchSelection(map: MaplibreMap, selectedChurchId: string | null) {
+  whenStyleReady(map, () => {
+    if (!map.getLayer("churches")) return;
+    for (const [prop, value] of Object.entries(churchPaint(selectedChurchId))) {
+      map.setPaintProperty("churches", prop, value as never);
+    }
   });
 }
 
@@ -647,6 +729,8 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   zoom = US_DEFAULT_ZOOM,
   states,
   focusedState = null,
+  cameraState,
+  cameraCounty,
   churches,
   selectedChurchId = null,
   countyStats = null,
@@ -667,6 +751,17 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
 
+  // The map is the app's most motion-heavy surface, and the reports already
+  // honour this preference — flying the camera across a state ignores it no
+  // less than an animated chart would. Zero duration makes moves cut instantly.
+  const reducedMotion = usePrefersReducedMotion();
+  const transitionMs = reducedMotion ? 0 : VIEW_TRANSITION_MS;
+  const zoomStepMs = reducedMotion ? 0 : ZOOM_STEP_MS;
+  const transitionMsRef = useRef(transitionMs);
+  transitionMsRef.current = transitionMs;
+  const zoomStepMsRef = useRef(zoomStepMs);
+  zoomStepMsRef.current = zoomStepMs;
+
   // Interaction state lives in refs so the map's event handlers (registered
   // once) always read current values without being re-bound on every render.
   const focusedStateRef = useRef<string | null>(focusedState);
@@ -677,12 +772,21 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   focusedCountyRef.current = focusedCounty;
   /** Bounds of the focused county, resolved asynchronously by the camera effect. */
   const countyBoundsRef = useRef<[[number, number], [number, number]] | null>(null);
+  /** What the camera is framing (route-derived), for the zoom-out comparison. */
+  const targetStateRef = useRef<string | null>(null);
+  const targetCountyRef = useRef<string | null>(null);
   /** Set before each camera move we initiate, so moveend can tell them apart. */
   const programmaticMoveRef = useRef(false);
   /** Min-zoom floor for the region being flown to, applied once it settles. */
   const pendingMinZoomRef = useRef<number | null>(null);
-  const churchByIdRef = useRef<Map<string, Church>>(new Map());
-  churchByIdRef.current = new Map((churches ?? []).map((c) => [c.id, c]));
+  // Memoized: rebuilding this on every render meant re-creating a Map of tens
+  // of thousands of entries for something as routine as a hover.
+  const churchById = useMemo(
+    () => new Map((churches ?? []).map((c) => [c.id, c])),
+    [churches],
+  );
+  const churchByIdRef = useRef(churchById);
+  churchByIdRef.current = churchById;
   // Church view is its own zoom level; stepping out from it is the panel's job,
   // not a side effect of zooming.
   const selectedChurchIdRef = useRef<string | null>(selectedChurchId);
@@ -733,10 +837,12 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       }
 
       if (!wasProgrammatic && !selectedChurchIdRef.current) {
-        const region = focusedCountyRef.current
+        // Compare against what the camera actually framed, not what the UI has
+        // caught up to — they differ while a state is still loading.
+        const region = targetCountyRef.current
           ? countyBoundsRef.current
-          : focusedStateRef.current
-            ? boundsForState(focusedStateRef.current)
+          : targetStateRef.current
+            ? boundsForState(targetStateRef.current)
             : null;
         if (region && viewportExceedsRegion(view, region, ZOOM_OUT_FACTOR)) {
           handlersRef.current.onZoomedOutPastRegion?.();
@@ -768,6 +874,28 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       const h = handlersRef.current;
       const feats = hitTest(e.point);
 
+      // A cluster stands for churches too close together to pick apart at this
+      // zoom, so clicking it drills in rather than selecting an arbitrary one.
+      const cluster = topmost(feats, "clusters");
+      if (cluster) {
+        const src = map.getSource("churches") as GeoJSONSource | undefined;
+        const clusterId = cluster.properties?.cluster_id as number | undefined;
+        if (src && clusterId != null) {
+          void src
+            .getClusterExpansionZoom(clusterId)
+            .then((z) => {
+              programmaticMoveRef.current = true;
+              map.easeTo({
+                center: (cluster.geometry as GeoJSON.Point).coordinates as [number, number],
+                zoom: z,
+                duration: transitionMsRef.current,
+              });
+            })
+            .catch(() => {});
+        }
+        return;
+      }
+
       const church = topmost(feats, "churches");
       if (church) {
         const found = churchByIdRef.current.get(String(church.properties?.id));
@@ -788,15 +916,31 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       h.onStateClick?.(abbrev);
     };
 
-    const handleMouseMove = (e: MapMouseEvent) => {
-      const h = handlersRef.current;
-      const feats = hitTest(e.point);
+    // Coalesce to one hit-test per frame. queryRenderedFeatures across four
+    // layers on every mousemove is a lot of work to do dozens of times between
+    // paints, and only the latest position can matter.
+    let hoverFrame: number | null = null;
+    let hoverPoint: Point | null = null;
 
+    const handleMouseMove = (e: MapMouseEvent) => {
+      hoverPoint = e.point;
+      if (hoverFrame != null) return;
+      hoverFrame = requestAnimationFrame(() => {
+        hoverFrame = null;
+        if (hoverPoint) processHover(hoverPoint);
+      });
+    };
+
+    const processHover = (point: Point) => {
+      const h = handlersRef.current;
+      const feats = hitTest(point);
+
+      const cluster = topmost(feats, "clusters");
       const church = topmost(feats, "churches");
       const county = topmost(feats, "counties-fill");
       const state = topmost(feats, "states-fill");
 
-      map.getCanvas().style.cursor = church || county || state ? "pointer" : "";
+      map.getCanvas().style.cursor = cluster || church || county || state ? "pointer" : "";
 
       // Church hover
       const churchObj = church
@@ -849,6 +993,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
 
     return () => {
       ro.disconnect();
+      if (hoverFrame != null) cancelAnimationFrame(hoverFrame);
       map.off("moveend", handleMoveEnd);
       map.remove();
       mapRef.current = null;
@@ -873,8 +1018,8 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   useEffect(() => {
     if (!apiRef) return;
     apiRef.current = {
-      zoomIn: () => mapRef.current?.zoomIn({ duration: ZOOM_STEP_MS }),
-      zoomOut: () => mapRef.current?.zoomOut({ duration: ZOOM_STEP_MS }),
+      zoomIn: () => mapRef.current?.zoomIn({ duration: zoomStepMsRef.current }),
+      zoomOut: () => mapRef.current?.zoomOut({ duration: zoomStepMsRef.current }),
     };
     return () => {
       apiRef.current = null;
@@ -891,7 +1036,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       center,
       zoom,
       padding: paddingRef.current,
-      duration: VIEW_TRANSITION_MS,
+      duration: transitionMs,
       essential: true,
     });
     // fitToFocusedState is config, not a trigger.
@@ -918,6 +1063,14 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   const selectedLng = selectedChurch?.lng;
   const selectedLat = selectedChurch?.lat;
 
+  // Prefer the route-derived region so the camera moves the moment a state is
+  // clicked, rather than waiting for the loading overlay to release
+  // focusedState. Falls back to focusedState when no route hint is supplied.
+  const targetState = cameraState !== undefined ? cameraState : focusedState;
+  const targetCounty = cameraCounty !== undefined ? cameraCounty : focusedCounty;
+  targetStateRef.current = targetState;
+  targetCountyRef.current = targetCounty;
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !fitToFocusedState) return;
@@ -932,7 +1085,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       const target = map.cameraForBounds(bounds, { padding: paddingRef.current });
       pendingMinZoomRef.current =
         target?.zoom != null ? Math.max(0, target.zoom - ZOOM_OUT_ALLOWANCE) : null;
-      map.fitBounds(bounds, { padding: paddingRef.current, duration: VIEW_TRANSITION_MS });
+      map.fitBounds(bounds, { padding: paddingRef.current, duration: transitionMs });
     };
 
     const apply = async () => {
@@ -942,20 +1095,20 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
           center: [selectedLng, selectedLat],
           zoom: CHURCH_VIEW_ZOOM,
           padding: paddingRef.current,
-          duration: VIEW_TRANSITION_MS,
+          duration: transitionMs,
           essential: true,
         });
         return;
       }
-      if (focusedCounty) {
-        const bounds = await boundsForCounty(focusedCounty);
+      if (targetCounty) {
+        const bounds = await boundsForCounty(targetCounty);
         // The target may have changed while the TopoJSON was in flight.
         if (cancelled) return;
         countyBoundsRef.current = bounds;
         if (bounds) return fit(bounds);
       }
-      if (focusedState) {
-        const bounds = boundsForState(focusedState);
+      if (targetState) {
+        const bounds = boundsForState(targetState);
         if (bounds) return fit(bounds);
       }
       // National view: the floor stops the map being pulled out to the whole globe.
@@ -966,7 +1119,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
         center: US_DEFAULT_CENTER,
         zoom: US_DEFAULT_ZOOM,
         padding: paddingRef.current,
-        duration: VIEW_TRANSITION_MS,
+        duration: transitionMs,
         essential: true,
       });
     };
@@ -977,7 +1130,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     };
     // fitToFocusedState is config, not a trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedChurchId, selectedLng, selectedLat, focusedCounty, focusedState]);
+  }, [selectedChurchId, selectedLng, selectedLat, targetCounty, targetState]);
 
   // Build/recolor the state choropleth when church counts arrive or change.
   useEffect(() => {
@@ -996,12 +1149,22 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedState]);
 
-  // Plot churches whenever the list or selection changes.
+  // Rebuild the church source only when the churches themselves change.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    setChurchLayer(map, churches ?? [], selectedChurchId);
-  }, [churches, selectedChurchId]);
+    setChurchData(map, churches ?? [], selectedChurchIdRef.current);
+    // selectedChurchId is handled by the paint-only effect below; including it
+    // here would re-tile every dot in the state just to highlight one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [churches]);
+
+  // Selection is a paint change, not a data change.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    setChurchSelection(map, selectedChurchId);
+  }, [selectedChurchId]);
 
   // Recolor counties when stats or the focused county change.
   useEffect(() => {
