@@ -57,8 +57,8 @@ const COUNTY_HOVER_FILL = "#D4B8E8";
 // faded in as you approach a single church — the point being to locate churches
 // that have no address (docs/future/mapbox-migration.md). The choropleth fills
 // fade out across the same range so the streets are legible underneath.
-// Raster tiles (not vector) because they decode on the main thread and render
-// reliably everywhere; no API key or token.
+// Vector tiles (free, no API key) so every road, label and water body can be
+// drawn in the app's own palette rather than a fixed grey bitmap.
 const STREET_FADE_START = 9; // pure data-viz at and below this
 const STREET_FADE_END = 12; // streets fully visible from here in
 
@@ -75,27 +75,106 @@ const streetFadeOut = (end: number) => [
   STREET_FADE_END, end,
 ];
 
+// Brand palette for the street layer. Raster basemaps ship as fixed bitmaps —
+// generic grey, impossible to recolor — so the streets are drawn from vector
+// tiles instead and styled here: cream land, white roads with soft purple
+// casing, light purple water, deep purple labels. Same palette as the
+// choropleth, so zooming in never leaves the app's visual language.
+const WATER_FILL = "#E4D4F0";
+const ROAD_FILL = "#FFFFFF";
+const ROAD_CASING = "#D4B8E8";
+const LABEL_COLOR = "#6B21A8";
+const LABEL_HALO = CREAM;
+
 const BASEMAP_STYLE: StyleSpecification = {
   version: 8,
+  glyphs: "https://tiles.basemaps.cartocdn.com/fonts/{fontstack}/{range}.pbf",
   sources: {
     streets: {
-      type: "raster",
-      tiles: [
-        "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-        "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-        "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-      ],
-      tileSize: 256,
+      type: "vector",
+      url: "https://tiles.basemaps.cartocdn.com/vector/carto.streets/v1/tiles.json",
       attribution: '© <a href="https://carto.com/">CARTO</a> © OpenStreetMap contributors',
     },
   },
   layers: [
     { id: "bg", type: "background", paint: { "background-color": CREAM } },
     {
-      id: "streets",
-      type: "raster",
+      id: "water",
+      type: "fill",
       source: "streets",
-      paint: { "raster-opacity": streetFadeIn as never },
+      "source-layer": "water",
+      paint: { "fill-color": WATER_FILL, "fill-opacity": streetFadeIn as never },
+    },
+    {
+      id: "road-casing",
+      type: "line",
+      source: "streets",
+      "source-layer": "transportation",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": ROAD_CASING,
+        "line-opacity": streetFadeIn as never,
+        "line-width": [
+          "interpolate", ["exponential", 1.5], ["zoom"],
+          10, 1.4,
+          14, 5,
+          18, 22,
+        ],
+      },
+    },
+    {
+      id: "road",
+      type: "line",
+      source: "streets",
+      "source-layer": "transportation",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": ROAD_FILL,
+        "line-opacity": streetFadeIn as never,
+        "line-width": [
+          "interpolate", ["exponential", 1.5], ["zoom"],
+          10, 0.6,
+          14, 3,
+          18, 17,
+        ],
+      },
+    },
+    {
+      id: "road-label",
+      type: "symbol",
+      source: "streets",
+      "source-layer": "transportation_name",
+      minzoom: 12,
+      layout: {
+        "text-field": ["get", "name"],
+        "text-font": ["Open Sans Regular"],
+        "text-size": 11,
+        "symbol-placement": "line",
+      },
+      paint: {
+        "text-color": LABEL_COLOR,
+        "text-halo-color": LABEL_HALO,
+        "text-halo-width": 1.2,
+        "text-opacity": streetFadeIn as never,
+      },
+    },
+    {
+      id: "place-label",
+      type: "symbol",
+      source: "streets",
+      "source-layer": "place",
+      minzoom: 9,
+      layout: {
+        "text-field": ["get", "name"],
+        "text-font": ["Open Sans Regular"],
+        "text-size": 13,
+      },
+      paint: {
+        "text-color": LABEL_COLOR,
+        "text-halo-color": LABEL_HALO,
+        "text-halo-width": 1.4,
+        "text-opacity": streetFadeIn as never,
+      },
     },
   ],
 };
