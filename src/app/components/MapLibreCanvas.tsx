@@ -52,10 +52,52 @@ const COUNTY_FILL = "rgba(255, 255, 255, 0.8)";
 const COUNTY_STROKE = "rgba(107, 33, 168, 0.25)";
 const COUNTY_HOVER_FILL = "#D4B8E8";
 
+// Street basemap for church-level navigation. Kept invisible at the national and
+// state zooms so those stay a clean purple-on-cream data visualization, then
+// faded in as you approach a single church — the point being to locate churches
+// that have no address (docs/future/mapbox-migration.md). The choropleth fills
+// fade out across the same range so the streets are legible underneath.
+// Raster tiles (not vector) because they decode on the main thread and render
+// reliably everywhere; no API key or token.
+const STREET_FADE_START = 9; // pure data-viz at and below this
+const STREET_FADE_END = 12; // streets fully visible from here in
+
+/** 0 → 1 across the fade range. */
+const streetFadeIn = [
+  "interpolate", ["linear"], ["zoom"],
+  STREET_FADE_START, 0,
+  STREET_FADE_END, 1,
+];
+/** 1 → `end` across the fade range (choropleth receding as streets arrive). */
+const streetFadeOut = (end: number) => [
+  "interpolate", ["linear"], ["zoom"],
+  STREET_FADE_START, 1,
+  STREET_FADE_END, end,
+];
+
 const BASEMAP_STYLE: StyleSpecification = {
   version: 8,
-  sources: {},
-  layers: [{ id: "bg", type: "background", paint: { "background-color": CREAM } }],
+  sources: {
+    streets: {
+      type: "raster",
+      tiles: [
+        "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+        "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+        "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+      ],
+      tileSize: 256,
+      attribution: '© <a href="https://carto.com/">CARTO</a> © OpenStreetMap contributors',
+    },
+  },
+  layers: [
+    { id: "bg", type: "background", paint: { "background-color": CREAM } },
+    {
+      id: "streets",
+      type: "raster",
+      source: "streets",
+      paint: { "raster-opacity": streetFadeIn as never },
+    },
+  ],
 };
 
 // Continental-US default view (Web Mercator zoom 0–22, not the old 1–500 scale).
@@ -270,7 +312,8 @@ async function setStatesLayer(map: MaplibreMap, states: StateInfo[]) {
         id: "states-fill",
         type: "fill",
         source: "states",
-        paint: { "fill-color": ["get", "fill"], "fill-opacity": 1 },
+        // Recedes entirely at church-level zoom so the streets show through.
+        paint: { "fill-color": ["get", "fill"], "fill-opacity": streetFadeOut(0) as never },
       });
     }
     if (!map.getLayer("states-line")) {
@@ -278,7 +321,12 @@ async function setStatesLayer(map: MaplibreMap, states: StateInfo[]) {
         id: "states-line",
         type: "line",
         source: "states",
-        paint: { "line-color": STATE_STROKE, "line-width": 0.5 },
+        // Borders stay as faint context once the streets take over.
+        paint: {
+          "line-color": STATE_STROKE,
+          "line-width": 0.5,
+          "line-opacity": streetFadeOut(0.35) as never,
+        },
       });
     }
     enforceLayerOrder(map);
@@ -388,7 +436,10 @@ async function setCountyLayer(
         id: "counties-fill",
         type: "fill",
         source: "counties",
-        paint: { "fill-color": countiesFillExpression(hoveredCounty, focusedCounty) as never },
+        paint: {
+          "fill-color": countiesFillExpression(hoveredCounty, focusedCounty) as never,
+          "fill-opacity": streetFadeOut(0) as never,
+        },
       });
     } else {
       applyCountyPaint(map, hoveredCounty, focusedCounty);
@@ -398,7 +449,11 @@ async function setCountyLayer(
         id: "counties-line",
         type: "line",
         source: "counties",
-        paint: { "line-color": COUNTY_STROKE, "line-width": 0.4 },
+        paint: {
+          "line-color": COUNTY_STROKE,
+          "line-width": 0.4,
+          "line-opacity": streetFadeOut(0.35) as never,
+        },
       });
     }
     enforceLayerOrder(map);

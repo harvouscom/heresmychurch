@@ -1027,6 +1027,11 @@ function MapArea({
         <MapLibreCanvas
           apiRef={mapLibreApi}
           onMoveEnd={(_center, _zoom, bounds) => setMapLibreBounds(bounds)}
+          // On mobile the detail panel covers the bottom 55vh, so keep that
+          // much clear of the camera and the pin stays visible above it.
+          bottomPadding={
+            isMobile && d.selectedChurch ? Math.round(window.innerHeight * 0.55) : 0
+          }
           states={d.states}
           focusedState={d.focusedState}
           churches={churchesToShowOnMap}
