@@ -31,6 +31,14 @@ interface MapSearchBarProps {
   detectedState?: string | null;
   zoom?: number;
   center?: [number, number];
+  /**
+   * Visible map extent as [[west, south], [east, north]], supplied by the
+   * MapLibre canvas. When present it replaces the geoAlbersUsa projection math
+   * below with a plain lng/lat test — that projection only describes the SVG
+   * map's coordinate space, so it gives wrong answers for any other engine
+   * (and none at all outside the US).
+   */
+  mapBounds?: [[number, number], [number, number]] | null;
   /** When in state view, report search result church IDs so the map can show only those dots. */
   onStateViewSearchResultsChange?: (churchIds: Set<string> | null) => void;
   /** US county features (TopoJSON) for fallback location labels when city is missing. */
@@ -59,6 +67,7 @@ export function MapSearchBar({
   detectedState,
   zoom = 1,
   center = [-96, 38],
+  mapBounds = null,
   onStateViewSearchResultsChange,
   countyFeatures = null,
 }: MapSearchBarProps) {
@@ -181,11 +190,26 @@ export function MapSearchBar({
     return scored.slice(0, MAX_RESULTS_STATE_VIEW).map((s) => s.church);
   }, [query, focusedState, churches]);
 
-  const isViewportSearchMode = zoom > VIEWPORT_ZOOM_THRESHOLD && !!focusedState;
-
-  // Filter to churches in current viewport when zoomed in (same math as ChurchDots viewport culling)
+  // Churches inside the current viewport.
+  //
+  // With real map bounds (MapLibre) this is a direct lng/lat test. Without them
+  // we fall back to the SVG map's projection math: project to Albers space and
+  // compare against a half-extent derived from the 1–500 zoom scale.
   const churchesInView = useMemo(() => {
-    if (!isViewportSearchMode || churches.length === 0) return null;
+    if (!focusedState || churches.length === 0) return null;
+
+    if (mapBounds) {
+      const [[west, south], [east, north]] = mapBounds;
+      const inView = new Set<string>();
+      for (const ch of churches) {
+        if (ch.lng >= west && ch.lng <= east && ch.lat >= south && ch.lat <= north) {
+          inView.add(ch.id);
+        }
+      }
+      return inView;
+    }
+
+    if (zoom <= VIEWPORT_ZOOM_THRESHOLD) return null;
     const centerSvg = projection(center);
     if (!centerSvg) return new Set<string>();
     const halfW = (400 / zoom) * 1.5;
@@ -201,7 +225,18 @@ export function MapSearchBar({
       }
     }
     return inView;
-  }, [isViewportSearchMode, churches, center, zoom, projection]);
+  }, [focusedState, churches, center, zoom, projection, mapBounds]);
+
+  // With bounds we can ask whether the view actually excludes anything, rather
+  // than guessing a zoom cutoff — a fitted state lands at very different
+  // MapLibre zooms (Rhode Island ~9, Texas ~5.5), so an absolute threshold
+  // would behave inconsistently between states.
+  const isViewportSearchMode = mapBounds
+    ? !!focusedState && !!churchesInView && churchesInView.size < churches.length
+    : zoom > VIEWPORT_ZOOM_THRESHOLD && !!focusedState;
+
+  /** Whether the placeholder should say "in view" rather than "in {state}". */
+  const showInViewCopy = mapBounds ? isViewportSearchMode : zoom > VIEWPORT_ZOOM_THRESHOLD;
 
   const localResults = useMemo(() => {
     if (!isViewportSearchMode || searchAllMode || !churchesInView) return localResultsRaw;
@@ -374,7 +409,7 @@ export function MapSearchBar({
         >
           <Search size={17} className="text-purple-400" />
           <span className="text-white text-sm font-medium">
-            {zoom > VIEWPORT_ZOOM_THRESHOLD ? "Search churches in view…" : "Search churches…"}
+            {showInViewCopy ? "Search churches in view…" : "Search churches…"}
           </span>
         </button>
       ) : (
@@ -645,7 +680,7 @@ export function MapSearchBar({
           onKeyDown={handleKeyDown}
           placeholder={
             focusedState
-              ? zoom > VIEWPORT_ZOOM_THRESHOLD
+              ? showInViewCopy
                 ? "Search churches in view…"
                 : `Search churches in ${focusedStateName}…`
               : stateFilter

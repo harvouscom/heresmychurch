@@ -848,6 +848,10 @@ function MapArea({
 }) {
   /** Imperative MapLibre controls, so the app's zoom buttons can drive it. */
   const mapLibreApi = useRef<MapLibreHandle | null>(null);
+  /** MapLibre's visible extent, so search can filter to "churches in view". */
+  const [mapLibreBounds, setMapLibreBounds] = useState<
+    [[number, number], [number, number]] | null
+  >(null);
   const isNationalView = !d.focusedState;
   const verifiedCountForView = isNationalView
     ? (verifiedChurches?.length ?? null)
@@ -1022,6 +1026,7 @@ function MapArea({
       {USE_MAPLIBRE ? (
         <MapLibreCanvas
           apiRef={mapLibreApi}
+          onMoveEnd={(_center, _zoom, bounds) => setMapLibreBounds(bounds)}
           states={d.states}
           focusedState={d.focusedState}
           churches={churchesToShowOnMap}
@@ -1284,6 +1289,7 @@ function MapArea({
               detectedState={d.detectedState}
               zoom={d.zoom}
               center={d.center}
+              mapBounds={mapLibreBounds}
               onStateViewSearchResultsChange={onStateViewSearchResultsChange}
               countyFeatures={d.countyFeatures}
             />
