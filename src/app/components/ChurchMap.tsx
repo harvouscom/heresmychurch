@@ -59,13 +59,17 @@ import { Easter2026SpecialReportBlurbModal } from "./special-report/Easter2026Sp
 const HIDE_MAP_UI = false;
 
 /**
- * Phase 0 (worldwide support): opt into the MapLibre engine with ?maplibre=1.
- * Off by default so react-simple-maps stays the live map until MapLibreCanvas
- * reaches full parity. See docs/future/mapbox-migration.md.
+ * Phase 0 (worldwide support): MapLibre is the map engine.
+ *
+ * Web Mercator can plot any coordinate on Earth, where the previous
+ * geoAlbersUsa projection returned null outside the US — so this is what makes
+ * non-US churches renderable at all. The legacy react-simple-maps canvas is
+ * still reachable with ?legacy=1 for side-by-side comparison, and comes out
+ * once this has had real-world use. See docs/future/mapbox-migration.md.
  */
 const USE_MAPLIBRE =
-  typeof window !== "undefined" &&
-  new URLSearchParams(window.location.search).get("maplibre") === "1";
+  typeof window === "undefined" ||
+  new URLSearchParams(window.location.search).get("legacy") !== "1";
 
 /** Sample per-state active counts for testing on localhost (see tooltip + on-map labels). */
 const SAMPLE_ACTIVE_BY_STATE: Record<string, number> = {
@@ -1016,13 +1020,13 @@ function MapArea({
         />
       )}
 
-      {/* Map canvas.
-          Phase 0 migration: ?maplibre=1 renders the MapLibre engine instead of
-          react-simple-maps. Opt-in because the zoom models differ — the SVG map
-          uses a 1-500 Albers scale while MapLibre uses Web Mercator 0-22, so
-          d.zoom/d.center are NOT passed through. MapLibreCanvas drives its own
-          camera from focusedState (fitBounds) until useChurchMapData's zoom
-          model is converted. See docs/future/mapbox-migration.md. */}
+      {/* Map canvas (MapLibre; ?legacy=1 for the old react-simple-maps one).
+          d.zoom/d.center are deliberately NOT passed through: the two engines
+          use different zoom models — a 1-500 Albers scale vs Web Mercator 0-22 —
+          so those numbers are meaningless to MapLibre. It drives its own camera
+          from focusedState/focusedCounty/selectedChurch instead, which is why
+          d.zoom stays frozen here (MapControls and MapSearchBar compensate).
+          See docs/future/mapbox-migration.md. */}
       {USE_MAPLIBRE ? (
         <MapLibreCanvas
           apiRef={mapLibreApi}
