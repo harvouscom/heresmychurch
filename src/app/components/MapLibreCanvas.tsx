@@ -18,7 +18,6 @@
 import { memo, useEffect, useRef, type MutableRefObject } from "react";
 import {
   Map as MaplibreMap,
-  NavigationControl,
   type GeoJSONSource,
   type MapMouseEvent,
   type Point,
@@ -38,8 +37,23 @@ import {
   STATE_COUNT_TIERS,
   ACTIVE_PIN_FILL,
 } from "./map-constants";
-import type { CountyStats } from "./MapCanvas";
 import { getSizeCategory, type Church, type StateInfo } from "./church-data";
+
+/** Per-county church counts and per-capita rates, keyed by 5-digit FIPS. */
+export type CountyStats = {
+  byFips: Record<
+    string,
+    { churchCount: number; population: number; perCapita: number; peoplePer: number; name: string }
+  >;
+  sortedByPerCapita: Array<{
+    fips: string;
+    name: string;
+    churchCount: number;
+    population: number;
+    perCapita: number;
+    peoplePer: number;
+  }>;
+};
 
 const CREAM = "#F5F0E8"; // --background (national view)
 const STATE_FILL = STATE_COUNT_TIERS[0].color; // "not yet explored" tier, for states with no data
@@ -647,7 +661,9 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       zoom,
       attributionControl: { compact: true },
     });
-    map.addControl(new NavigationControl({ showCompass: false }), "bottom-right");
+    // No NavigationControl: the app has its own zoom buttons bottom-left, which
+    // drive the map through apiRef. MapLibre's default pair would duplicate them
+    // in the opposite corner and in someone else's visual style.
     mapRef.current = map;
 
     const handleMoveEnd = () => {

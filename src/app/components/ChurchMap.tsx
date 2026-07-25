@@ -19,7 +19,6 @@ import { MapLegend } from "./MapLegend";
 import { MapControls } from "./MapControls";
 import { HelpModal } from "./HelpModal";
 import { AuditModal } from "./AuditModal";
-import { MapCanvas } from "./MapCanvas";
 import { MapLibreCanvas, type MapLibreHandle } from "./MapLibreCanvas";
 import { VerificationModal, NationalReviewModal } from "./VerificationModal";
 import { StateFlag } from "./StateFlag";
@@ -58,18 +57,6 @@ import { Easter2026SpecialReportBlurbModal } from "./special-report/Easter2026Sp
 /** Set to true to temporarily hide All States button, Map Key, and action controls (zoom/filter). */
 const HIDE_MAP_UI = false;
 
-/**
- * Phase 0 (worldwide support): MapLibre is the map engine.
- *
- * Web Mercator can plot any coordinate on Earth, where the previous
- * geoAlbersUsa projection returned null outside the US — so this is what makes
- * non-US churches renderable at all. The legacy react-simple-maps canvas is
- * still reachable with ?legacy=1 for side-by-side comparison, and comes out
- * once this has had real-world use. See docs/future/mapbox-migration.md.
- */
-const USE_MAPLIBRE =
-  typeof window === "undefined" ||
-  new URLSearchParams(window.location.search).get("legacy") !== "1";
 
 /** Sample per-state active counts for testing on localhost (see tooltip + on-map labels). */
 const SAMPLE_ACTIVE_BY_STATE: Record<string, number> = {
@@ -242,22 +229,6 @@ export function ChurchMap({
       // ignore
     }
   }, [verifiedDotsEnabled, isNationalView]);
-
-  const handleMoveEnd = (coords: [number, number], z: number) => {
-    if (Date.now() < d.moveEndSuppressedUntilRef.current.moveEndSuppressedUntil) return;
-    // Let pinch/trackpad zoom out all the way to national (zoom 1); then switch to national view
-    if (d.focusedState && z <= 1) {
-      d.handleResetView();
-      return;
-    }
-    // When in county view, zooming out to state level switches to state view
-    if (d.focusedCounty && d.focusedState && z <= getStateZoom(d.focusedState)) {
-      navigateToStateOnly(d.focusedState);
-      return;
-    }
-    d.setCenter(coords);
-    d.setZoom(z);
-  };
 
   // Consolidated local state (was 6 useState — saves 5 hooks)
   const hasSeenAbout = typeof document !== "undefined" && document.cookie.includes("hmc_seen_about=1");
@@ -507,7 +478,6 @@ export function ChurchMap({
         anyOverlayOpen={anyOverlayOpen}
         dismissAllOverlays={dismissAllOverlays}
         verifiedDotsEnabled={verifiedDotsEnabled}
-        handleMoveEnd={handleMoveEnd}
         navigateToState={navigateToState}
         navigateToChurch={navigateToChurchWithContext}
         navigateToCounty={navigateToCounty}
@@ -747,7 +717,6 @@ function MapArea({
   anyOverlayOpen,
   dismissAllOverlays,
   verifiedDotsEnabled,
-  handleMoveEnd,
   navigateToState,
   navigateToChurch,
   navigateToCounty,
@@ -802,7 +771,6 @@ function MapArea({
   anyOverlayOpen: boolean;
   dismissAllOverlays: () => void;
   verifiedDotsEnabled: boolean;
-  handleMoveEnd: (coords: [number, number], z: number) => void;
   navigateToState: (abbrev: string) => void;
   navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean; countyFips?: string }) => void;
   navigateToCounty: (stateAbbrev: string, countyFips: string) => void;
@@ -1020,64 +988,35 @@ function MapArea({
         />
       )}
 
-      {/* Map canvas (MapLibre; ?legacy=1 for the old react-simple-maps one).
-          d.zoom/d.center are deliberately NOT passed through: the two engines
-          use different zoom models — a 1-500 Albers scale vs Web Mercator 0-22 —
-          so those numbers are meaningless to MapLibre. It drives its own camera
-          from focusedState/focusedCounty/selectedChurch instead, which is why
-          d.zoom stays frozen here (MapControls and MapSearchBar compensate).
+      {/* Map canvas.
+          d.zoom/d.center are deliberately NOT passed: MapLibre uses Web Mercator
+          zoom 0–22 while the app's state still holds the old 1–500 Albers scale,
+          so those numbers would be meaningless here. The canvas drives its own
+          camera from focusedState/focusedCounty/selectedChurch instead, which is
+          why d.zoom stays frozen (MapControls and MapSearchBar compensate).
           See docs/future/mapbox-migration.md. */}
-      {USE_MAPLIBRE ? (
-        <MapLibreCanvas
-          apiRef={mapLibreApi}
-          onMoveEnd={(_center, _zoom, bounds) => setMapLibreBounds(bounds)}
-          // On mobile the detail panel covers the bottom 55vh, so keep that
-          // much clear of the camera and the pin stays visible above it.
-          bottomPadding={
-            isMobile && d.selectedChurch ? Math.round(window.innerHeight * 0.55) : 0
-          }
-          states={d.states}
-          focusedState={d.focusedState}
-          churches={churchesToShowOnMap}
-          selectedChurchId={d.selectedChurch?.id ?? null}
-          countyStats={d.countyStats ?? null}
-          focusedCounty={d.focusedCounty ?? null}
-          onStateClick={d.handleStateClick}
-          onResetView={d.handleResetView}
-          onStateHover={d.setHoveredState}
-          onChurchClick={d.handleChurchDotClick}
-          onChurchHover={d.setHoveredChurch}
-          onCountyHover={d.setHoveredCounty}
-          onCountyClick={d.handleCountyClick}
-        />
-      ) : (
-      <MapCanvas
-        center={d.center}
-        zoom={d.zoom}
-        minZoom={d.minZoom}
-        maxZoom={500}
-        focusedState={d.focusedState}
-        hoveredState={d.hoveredState}
+      <MapLibreCanvas
+        apiRef={mapLibreApi}
+        onMoveEnd={(_center, _zoom, bounds) => setMapLibreBounds(bounds)}
+        // On mobile the detail panel covers the bottom 55vh, so keep that much
+        // clear of the camera and the pin stays visible above it.
+        bottomPadding={
+          isMobile && d.selectedChurch ? Math.round(window.innerHeight * 0.55) : 0
+        }
         states={d.states}
-        filteredChurches={churchesToShowOnMap}
+        focusedState={d.focusedState}
+        churches={churchesToShowOnMap}
         selectedChurchId={d.selectedChurch?.id ?? null}
-        onMoveEnd={handleMoveEnd}
+        countyStats={d.countyStats ?? null}
+        focusedCounty={d.focusedCounty ?? null}
         onStateClick={d.handleStateClick}
         onResetView={d.handleResetView}
         onStateHover={d.setHoveredState}
         onChurchClick={d.handleChurchDotClick}
         onChurchHover={d.setHoveredChurch}
-        isTransitioning={d.isTransitioning}
-        onUserInteractionStart={d.clearTransition}
-        zoomTransitioning={d.zoomTransitioning}
-        countyStats={d.countyStats ?? null}
-        countyFeatures={d.countyFeatures ?? null}
-        hoveredCounty={d.hoveredCounty ?? null}
         onCountyHover={d.setHoveredCounty}
-        focusedCounty={d.focusedCounty ?? null}
         onCountyClick={d.handleCountyClick}
       />
-      )}
 
       {/* Tooltips */}
       {!d.focusedState && !(d.previewChurch ?? d.hoveredChurch) && (d.hoveredState || (d.previewStatePinned && d.previewState)) && (() => {
@@ -1191,13 +1130,14 @@ function MapArea({
             focusedState={d.focusedState}
             showFilterPanel={d.showFilterPanel}
             showLegend={d.showLegend}
-            onZoomIn={USE_MAPLIBRE ? () => mapLibreApi.current?.zoomIn() : d.handleZoomIn}
-            onZoomOut={USE_MAPLIBRE ? () => mapLibreApi.current?.zoomOut() : d.handleZoomOut}
+            onZoomIn={() => mapLibreApi.current?.zoomIn()}
+            onZoomOut={() => mapLibreApi.current?.zoomOut()}
             onResetView={d.handleResetView}
-            // MapLibre owns its own zoom, so d.zoom never moves in that path —
-            // widen the bounds so the buttons don't render permanently disabled.
-            minZoom={USE_MAPLIBRE ? -Infinity : d.minZoom}
-            maxZoom={USE_MAPLIBRE ? Infinity : 500}
+            // MapLibre owns its own zoom and clamps internally, so d.zoom never
+            // moves — leave the bounds open or the buttons render permanently
+            // disabled (d.zoom starts equal to d.minZoom).
+            minZoom={-Infinity}
+            maxZoom={Infinity}
             onToggleFilter={() => {
               d.setShowFilterPanel((v) => {
                 if (!v) { d.setShowSummary(false); d.setShowLegend(false); d.setSearchCollapsed(true); }

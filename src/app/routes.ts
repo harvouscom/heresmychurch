@@ -5,7 +5,6 @@ import { ReportsHubPage } from "./components/report/ReportsHubPage";
 import { RouteError } from "./components/RouteError";
 import { Easter2026EntryRedirect } from "./components/special-report/Easter2026EntryRedirect";
 import { PrivacyPolicyPage } from "./components/report/PrivacyPolicyPage";
-import { MapLibreDevPage } from "./components/MapLibreDevPage"; // TEMP: Phase 0 migration harness
 import { RootLayout } from "./RootLayout";
 
 // All routes render ChurchMapPage — URL params drive the map state
@@ -27,8 +26,6 @@ export const router = createBrowserRouter([
       { path: "/special-report/easter-2026", Component: Easter2026EntryRedirect, ErrorBoundary: RouteError },
       { path: "/reports", Component: ReportsHubPage, ErrorBoundary: RouteError },
       { path: "/privacy", Component: PrivacyPolicyPage, ErrorBoundary: RouteError },
-      { path: "/dev/maplibre", Component: MapLibreDevPage, ErrorBoundary: RouteError }, // TEMP: Phase 0 migration harness
-
       { path: "/report/:slug", Component: SeasonalReportPage, ErrorBoundary: RouteError },
       { path: "/report/:slug/:sectionId", Component: SeasonalReportPage, ErrorBoundary: RouteError },
       { path: "/report/state/:stateAbbrev/:slug", Component: SeasonalReportPage, ErrorBoundary: RouteError },
