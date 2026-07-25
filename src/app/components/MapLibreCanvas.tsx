@@ -341,8 +341,11 @@ const ZOOM_OUT_ALLOWANCE = 1;
 /** Leaves room for the UI chrome around the fitted region. */
 const FIT_PADDING = 40;
 const VIEW_TRANSITION_MS = 800;
-/** Web Mercator zoom for the church detail view (street level). */
-const CHURCH_VIEW_ZOOM = 13;
+/**
+ * Web Mercator zoom for the church detail view. Building level, so the view is
+ * essentially the selected church and its street rather than its whole town.
+ */
+const CHURCH_VIEW_ZOOM = 16;
 /** Matches the app's existing zoom-button transition feel. */
 const ZOOM_STEP_MS = 320;
 
@@ -613,16 +616,23 @@ function churchPaint(selectedChurchId: string | null) {
   // The selected church is drawn as a distinct "you are here" pin: deeper
   // purple with a white ring, matching the old ChurchDots active marker.
   const isSelected = ["==", ["get", "id"], selectedChurchId ?? "__no_selection__"];
-  const radius = ["case", isSelected, 14, ["get", "radius"]];
+  const radius = ["get", "radius"];
   return {
-    // Scale the per-category base radius with zoom, mirroring how the SVG dots
-    // grew as you zoomed in.
+    // One zoom interpolation with the selection branch inside each stop —
+    // MapLibre permits only a single zoom-based interpolate per expression, so
+    // two of them under a `case` is rejected outright and nothing renders.
+    //
+    // Unselected dots keep the attendance scale, mirroring how the SVG dots
+    // grew with zoom. The selected pin is a marker rather than a data point, so
+    // it ramps gently: on the attendance scale it would exceed 30px at
+    // church-view zoom, covering the building it is pointing at.
     "circle-radius": [
       "interpolate", ["linear"], ["zoom"],
-      3, ["*", radius, 0.35],
-      6, ["*", radius, 0.7],
-      10, ["*", radius, 1.4],
-      14, ["*", radius, 2.2],
+      3, ["case", isSelected, 6, ["*", radius, 0.35]],
+      6, ["case", isSelected, 7, ["*", radius, 0.7]],
+      10, ["case", isSelected, 9, ["*", radius, 1.4]],
+      14, ["case", isSelected, 11, ["*", radius, 2.2]],
+      16, ["case", isSelected, 12, ["*", radius, 2.2]],
     ],
     "circle-color": ["case", isSelected, ACTIVE_PIN_FILL, ["get", "color"]],
     "circle-opacity": ["case", isSelected, 1, 0.8],
