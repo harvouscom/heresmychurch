@@ -244,6 +244,13 @@ interface MapLibreCanvasProps {
   /** Clicking empty canvas / outside the focused state. */
   onResetView?: () => void;
   /**
+   * The user zoomed out far enough that the focused region no longer fills the
+   * view — the gesture that steps county → state → national. Expressed as a
+   * bounds comparison rather than a zoom threshold, so it needs no per-region
+   * constants and holds for any country's subdivisions.
+   */
+  onZoomedOutPastRegion?: () => void;
+  /**
    * Populated with imperative map controls so the app's own chrome (the styled
    * zoom buttons) can drive the camera. The app's zoom state is in the legacy
    * 1–500 Albers scale, which is meaningless here, so those buttons call these
@@ -294,6 +301,25 @@ async function boundsForCounty(
     return null;
   }
 }
+
+/**
+ * True when the viewport is `factor`× larger than the region in both
+ * dimensions — i.e. the user has zoomed well past it, not merely nudged out.
+ */
+function viewportExceedsRegion(
+  view: [[number, number], [number, number]],
+  region: [[number, number], [number, number]],
+  factor: number,
+) {
+  const viewW = view[1][0] - view[0][0];
+  const viewH = view[1][1] - view[0][1];
+  const regionW = region[1][0] - region[0][0];
+  const regionH = region[1][1] - region[0][1];
+  return viewW > regionW * factor && viewH > regionH * factor;
+}
+
+/** How much larger than the region the view must get before stepping out. */
+const ZOOM_OUT_FACTOR = 1.6;
 
 /** Leaves room for the UI chrome around the fitted region. */
 const FIT_PADDING = 40;
@@ -627,6 +653,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   onChurchClick,
   onChurchHover,
   onResetView,
+  onZoomedOutPastRegion,
   apiRef,
 }: MapLibreCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -640,15 +667,23 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   const hoveredCountyRef = useRef<string | null>(null);
   const focusedCountyRef = useRef<string | null>(focusedCounty);
   focusedCountyRef.current = focusedCounty;
+  /** Bounds of the focused county, resolved asynchronously by the camera effect. */
+  const countyBoundsRef = useRef<[[number, number], [number, number]] | null>(null);
+  /** Set before each camera move we initiate, so moveend can tell them apart. */
+  const programmaticMoveRef = useRef(false);
   const churchByIdRef = useRef<Map<string, Church>>(new Map());
   churchByIdRef.current = new Map((churches ?? []).map((c) => [c.id, c]));
+  // Church view is its own zoom level; stepping out from it is the panel's job,
+  // not a side effect of zooming.
+  const selectedChurchIdRef = useRef<string | null>(selectedChurchId);
+  selectedChurchIdRef.current = selectedChurchId;
   const handlersRef = useRef({
     onStateClick, onStateHover, onCountyClick, onCountyHover,
-    onChurchClick, onChurchHover, onResetView, onMoveEnd,
+    onChurchClick, onChurchHover, onResetView, onMoveEnd, onZoomedOutPastRegion,
   });
   handlersRef.current = {
     onStateClick, onStateHover, onCountyClick, onCountyHover,
-    onChurchClick, onChurchHover, onResetView, onMoveEnd,
+    onChurchClick, onChurchHover, onResetView, onMoveEnd, onZoomedOutPastRegion,
   };
 
   // Initialize the map once.
@@ -669,16 +704,31 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     const handleMoveEnd = () => {
       const c = map.getCenter();
       const b = map.getBounds();
+      const view: [[number, number], [number, number]] = [
+        [b.getWest(), b.getSouth()],
+        [b.getEast(), b.getNorth()],
+      ];
+
+      // Our own flyTo/fitBounds must not trigger a step-out — they would undo
+      // the view they just set. A flag is used rather than the event's
+      // originalEvent, which wheel-zoom's inertial ease does not carry.
+      const wasProgrammatic = programmaticMoveRef.current;
+      programmaticMoveRef.current = false;
+
+      if (!wasProgrammatic && !selectedChurchIdRef.current) {
+        const region = focusedCountyRef.current
+          ? countyBoundsRef.current
+          : focusedStateRef.current
+            ? boundsForState(focusedStateRef.current)
+            : null;
+        if (region && viewportExceedsRegion(view, region, ZOOM_OUT_FACTOR)) {
+          handlersRef.current.onZoomedOutPastRegion?.();
+        }
+      }
+
       // Via the ref: this handler is registered once, so calling the prop
       // directly would invoke a stale closure from the first render.
-      handlersRef.current.onMoveEnd?.(
-        [c.lng, c.lat],
-        map.getZoom(),
-        [
-          [b.getWest(), b.getSouth()],
-          [b.getEast(), b.getNorth()],
-        ],
-      );
+      handlersRef.current.onMoveEnd?.([c.lng, c.lat], map.getZoom(), view);
     };
     map.on("moveend", handleMoveEnd);
     map.on("error", (e) => console.error("[maplibre]", (e as { error?: { message?: string } })?.error?.message ?? e));
@@ -819,6 +869,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || fitToFocusedState) return;
+    programmaticMoveRef.current = true;
     map.flyTo({
       center,
       zoom,
@@ -881,11 +932,14 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     if (!map || !fitToFocusedState) return;
     let cancelled = false;
 
-    const fit = (bounds: [[number, number], [number, number]]) =>
+    const fit = (bounds: [[number, number], [number, number]]) => {
+      programmaticMoveRef.current = true;
       map.fitBounds(bounds, { padding: paddingRef.current, duration: VIEW_TRANSITION_MS });
+    };
 
     const apply = async () => {
       if (selectedLng != null && selectedLat != null) {
+        programmaticMoveRef.current = true;
         map.flyTo({
           center: [selectedLng, selectedLat],
           zoom: CHURCH_VIEW_ZOOM,
@@ -899,12 +953,14 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
         const bounds = await boundsForCounty(focusedCounty);
         // The target may have changed while the TopoJSON was in flight.
         if (cancelled) return;
+        countyBoundsRef.current = bounds;
         if (bounds) return fit(bounds);
       }
       if (focusedState) {
         const bounds = boundsForState(focusedState);
         if (bounds) return fit(bounds);
       }
+      programmaticMoveRef.current = true;
       map.flyTo({
         center: US_DEFAULT_CENTER,
         zoom: US_DEFAULT_ZOOM,

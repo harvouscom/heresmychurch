@@ -481,6 +481,7 @@ export function ChurchMap({
         navigateToState={navigateToState}
         navigateToChurch={navigateToChurchWithContext}
         navigateToCounty={navigateToCounty}
+        navigateToStateOnly={navigateToStateOnly}
         onShowVerification={onShowVerification}
         onShowNationalReviewModal={() => localDispatch({ type: "SET", key: "showNationalReviewModal", value: true })}
         pendingReviewCount={local.pendingReviewCount}
@@ -720,6 +721,7 @@ function MapArea({
   navigateToState,
   navigateToChurch,
   navigateToCounty,
+  navigateToStateOnly,
   onShowVerification,
   onShowNationalReviewModal,
   pendingReviewCount,
@@ -774,6 +776,7 @@ function MapArea({
   navigateToState: (abbrev: string) => void;
   navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean; countyFips?: string }) => void;
   navigateToCounty: (stateAbbrev: string, countyFips: string) => void;
+  navigateToStateOnly: (stateAbbrev: string) => void;
   onShowVerification: () => void;
   onShowNationalReviewModal: () => void;
   pendingReviewCount: number;
@@ -1016,6 +1019,11 @@ function MapArea({
         onChurchHover={d.setHoveredChurch}
         onCountyHover={d.setHoveredCounty}
         onCountyClick={d.handleCountyClick}
+        // Pinch/scroll out past the focused region to step back up a level.
+        onZoomedOutPastRegion={() => {
+          if (d.focusedCounty && d.focusedState) navigateToStateOnly(d.focusedState);
+          else if (d.focusedState) d.handleResetView();
+        }}
       />
 
       {/* Tooltips */}
