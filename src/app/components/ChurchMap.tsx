@@ -57,6 +57,10 @@ import { Easter2026SpecialReportBlurbModal } from "./special-report/Easter2026Sp
 /** Set to true to temporarily hide All States button, Map Key, and action controls (zoom/filter). */
 const HIDE_MAP_UI = false;
 
+/** Desktop detail-panel width; the map camera insets by this so the selected
+ *  church centres in the space the panel leaves visible. */
+const DETAIL_PANEL_WIDTH = 396;
+
 
 /** Sample per-state active counts for testing on localhost (see tooltip + on-map labels). */
 const SAMPLE_ACTIVE_BY_STATE: Record<string, number> = {
@@ -639,18 +643,25 @@ export function ChurchMap({
         />
       )}
 
+      {/* Detail panel — overlays the map on both breakpoints. As a desktop flex
+          sibling it squeezed the map into the remaining width and filled the
+          gutter with a flat panel colour; floating it lets the map run
+          full-bleed underneath, and the camera offsets by the panel width so
+          the selected church still centres in the visible area. */}
       <AnimatePresence mode="wait">
         {d.selectedChurch && (
           <motion.div
             key={`church-detail-panel-${isMobile ? "mobile" : "desktop"}`}
-            className={`flex-shrink-0 overflow-hidden ${isMobile ? 'absolute bottom-0 left-0 right-0 z-40' : ''}`}
-            style={{ backgroundColor: "#EDE4F3", ...(isMobile ? { height: "55vh" } : {}) }}
+            className={`overflow-hidden absolute z-40 ${
+              isMobile ? "bottom-0 left-0 right-0" : "top-0 right-0 bottom-0"
+            }`}
+            style={isMobile ? { height: "55vh" } : undefined}
             initial={isMobile ? { y: "100%" } : { width: 0, height: "100%" }}
-            animate={isMobile ? { y: 0 } : { width: 396, height: "100%" }}
+            animate={isMobile ? { y: 0 } : { width: DETAIL_PANEL_WIDTH, height: "100%" }}
             exit={isMobile ? { y: "100%" } : { width: 0, height: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
           >
-            <div className="pr-4 pb-4 pt-0 pl-4 md:pl-0 md:pt-4 md:pr-4 md:pb-4" style={{ width: isMobile ? "100%" : 396, height: isMobile ? "55vh" : "100%" }}>
+            <div className="pr-4 pb-4 pt-0 pl-4 md:pl-0 md:pt-4 md:pr-4 md:pb-4" style={{ width: isMobile ? "100%" : DETAIL_PANEL_WIDTH, height: isMobile ? "55vh" : "100%" }}>
               <ChurchDetailPanel
                 church={d.selectedChurch}
                 resolvedCountyName={resolvedCountyForSelectedChurch}
@@ -1012,6 +1023,7 @@ function MapArea({
         bottomPadding={
           isMobile && d.selectedChurch ? Math.round(window.innerHeight * 0.55) : 0
         }
+        rightPadding={!isMobile && d.selectedChurch ? DETAIL_PANEL_WIDTH : 0}
         states={d.states}
         focusedState={d.focusedState}
         // Camera follows the URL, which updates instantly; d.focusedState waits

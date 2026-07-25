@@ -229,11 +229,13 @@ interface MapLibreCanvasProps {
    */
   fitToFocusedState?: boolean;
   /**
-   * Extra bottom padding in px kept clear of the camera — used on mobile so the
-   * selected church's pin sits above the detail panel. Replaces the
-   * Albers/viewBox-specific getMobileLatOffset() math.
+   * Screen space the detail panel covers, kept clear of the camera so the
+   * selected church centres in what's actually visible rather than behind the
+   * panel — bottom on mobile, right on desktop. Replaces the Albers/viewBox
+   * specific getMobileLatOffset() math.
    */
   bottomPadding?: number;
+  rightPadding?: number;
   /**
    * Called after the user finishes moving the map. `bounds` is the visible
    * extent as [[west, south], [east, north]] — this is what replaces
@@ -702,6 +704,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   focusedCounty = null,
   fitToFocusedState = true,
   bottomPadding = 0,
+  rightPadding = 0,
   onMoveEnd,
   onStateClick,
   onStateHover,
@@ -955,7 +958,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     top: FIT_PADDING,
     bottom: FIT_PADDING + bottomPadding,
     left: FIT_PADDING,
-    right: FIT_PADDING,
+    right: FIT_PADDING + rightPadding,
   };
   const paddingRef = useRef(cameraPadding);
   paddingRef.current = cameraPadding;
