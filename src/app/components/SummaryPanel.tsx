@@ -179,7 +179,29 @@ export function SummaryPanel({
             Church data and building footprints from OpenStreetMap via Overpass API{" "}&middot;{" "}
             Cross-referenced with The Association of Religion Data Archives (ARDA){" "}&middot;{" "}
             Population from U.S. Census Bureau{" "}&middot;{" "}
-            Boundaries from Natural Earth / U.S. Census TIGER
+            Boundaries from Natural Earth / U.S. Census TIGER{" "}&middot;{" "}
+            {/* Basemap credit lives here rather than as a control pinned over the
+                map. OpenStreetMap's ODbL and CARTO's terms both require it to be
+                shown, so it is relocated, not removed. */}
+            Street basemap{" "}
+            <a
+              href="https://carto.com/attributions"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-white/40"
+            >
+              &copy; CARTO
+            </a>{" "}
+            &amp;{" "}
+            <a
+              href="https://www.openstreetmap.org/copyright"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-white/40"
+            >
+              &copy; OpenStreetMap
+            </a>{" "}
+            contributors
           </p>
         </div>
       </div>

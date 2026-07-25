@@ -66,9 +66,6 @@ const STATE_HOVER_FILL = "#D4B8E8"; // hovered state (national view only)
 const COUNTY_FILL = "rgba(255, 255, 255, 0.8)";
 const COUNTY_STROKE = "rgba(107, 33, 168, 0.25)";
 const COUNTY_HOVER_FILL = "#D4B8E8";
-const CLUSTER_FILL = "#6B21A8"; // deep brand purple; cream count label on top
-/** Above this zoom clusters dissolve into individual attendance-sized dots. */
-const CLUSTER_MAX_ZOOM = 10;
 
 // Street basemap for church-level navigation. Kept invisible at the national and
 // state zooms so those stay a clean purple-on-cream data visualization, then
@@ -278,7 +275,7 @@ export interface MapLibreHandle {
 }
 
 /** Topmost-first hit-test order: a church dot beats the county beneath it. */
-const HIT_LAYERS = ["clusters", "churches", "counties-fill", "states-fill"];
+const HIT_LAYERS = ["churches", "counties-fill", "states-fill"];
 
 /**
  * Zoom model: the SVG map used a bespoke 1–500 Albers scale with a hand-tuned
@@ -397,8 +394,6 @@ const LAYER_ORDER = [
   "counties-fill",
   "counties-line",
   "churches",
-  "clusters",
-  "cluster-count",
 ];
 
 function enforceLayerOrder(map: MaplibreMap) {
@@ -639,11 +634,8 @@ function churchPaint(selectedChurchId: string | null) {
 /**
  * Build the church source and its three layers.
  *
- * Clustered below CLUSTER_MAX_ZOOM: dense states rendered as one indistinct
- * purple mass at state zoom, where individual dots are neither legible nor
- * clickable. Past that zoom the clusters dissolve into attendance-sized dots,
- * so the "bigger church, bigger dot" signal survives where it can actually be
- * read. MapLibre clusters in its worker, which also keeps the main thread free.
+ * Every church is its own dot, sized by attendance — dense areas read as a
+ * mass of overlapping dots, which is the intended texture.
  */
 function setChurchData(map: MaplibreMap, churches: Church[], selectedChurchId: string | null) {
   const geo: GeoJSON.FeatureCollection = {
@@ -662,51 +654,14 @@ function setChurchData(map: MaplibreMap, churches: Church[], selectedChurchId: s
     const src = map.getSource("churches") as GeoJSONSource | undefined;
     if (src) src.setData(geo);
     else {
-      map.addSource("churches", {
-        type: "geojson",
-        data: geo,
-        cluster: true,
-        clusterMaxZoom: CLUSTER_MAX_ZOOM,
-        clusterRadius: 48,
-      });
+      map.addSource("churches", { type: "geojson", data: geo });
     }
 
-    if (!map.getLayer("clusters")) {
-      map.addLayer({
-        id: "clusters",
-        type: "circle",
-        source: "churches",
-        filter: ["has", "point_count"],
-        paint: {
-          "circle-color": CLUSTER_FILL,
-          "circle-opacity": 0.9,
-          "circle-stroke-width": 2,
-          "circle-stroke-color": CREAM,
-          // Stepped by how many churches the bubble stands for.
-          "circle-radius": ["step", ["get", "point_count"], 14, 25, 18, 100, 24, 500, 30],
-        },
-      });
-    }
-    if (!map.getLayer("cluster-count")) {
-      map.addLayer({
-        id: "cluster-count",
-        type: "symbol",
-        source: "churches",
-        filter: ["has", "point_count"],
-        layout: {
-          "text-field": ["get", "point_count_abbreviated"],
-          "text-font": ["Open Sans Regular"],
-          "text-size": 12,
-        },
-        paint: { "text-color": CREAM },
-      });
-    }
     if (!map.getLayer("churches")) {
       map.addLayer({
         id: "churches",
         type: "circle",
         source: "churches",
-        filter: ["!", ["has", "point_count"]],
         paint: churchPaint(selectedChurchId) as never,
       });
     }
@@ -808,7 +763,11 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       style: BASEMAP_STYLE,
       center,
       zoom,
-      attributionControl: { compact: true },
+      // No on-map attribution control — the basemap credit is shown in the
+      // summary panel's data-source footer alongside OSM, ARDA and Census, so
+      // it stays visible (OSM's ODbL and CARTO's terms require it) without a
+      // badge pinned over the corner of the map.
+      attributionControl: false,
     });
     // No NavigationControl: the app has its own zoom buttons bottom-left, which
     // drive the map through apiRef. MapLibre's default pair would duplicate them
@@ -874,28 +833,6 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       const h = handlersRef.current;
       const feats = hitTest(e.point);
 
-      // A cluster stands for churches too close together to pick apart at this
-      // zoom, so clicking it drills in rather than selecting an arbitrary one.
-      const cluster = topmost(feats, "clusters");
-      if (cluster) {
-        const src = map.getSource("churches") as GeoJSONSource | undefined;
-        const clusterId = cluster.properties?.cluster_id as number | undefined;
-        if (src && clusterId != null) {
-          void src
-            .getClusterExpansionZoom(clusterId)
-            .then((z) => {
-              programmaticMoveRef.current = true;
-              map.easeTo({
-                center: (cluster.geometry as GeoJSON.Point).coordinates as [number, number],
-                zoom: z,
-                duration: transitionMsRef.current,
-              });
-            })
-            .catch(() => {});
-        }
-        return;
-      }
-
       const church = topmost(feats, "churches");
       if (church) {
         const found = churchByIdRef.current.get(String(church.properties?.id));
@@ -935,12 +872,11 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       const h = handlersRef.current;
       const feats = hitTest(point);
 
-      const cluster = topmost(feats, "clusters");
       const church = topmost(feats, "churches");
       const county = topmost(feats, "counties-fill");
       const state = topmost(feats, "states-fill");
 
-      map.getCanvas().style.cursor = cluster || church || county || state ? "pointer" : "";
+      map.getCanvas().style.cursor = church || county || state ? "pointer" : "";
 
       // Church hover
       const churchObj = church
