@@ -321,6 +321,14 @@ function viewportExceedsRegion(
 /** How much larger than the region the view must get before stepping out. */
 const ZOOM_OUT_FACTOR = 1.6;
 
+/**
+ * How far below the fitted zoom the user may pull out while a region is
+ * focused. One zoom level doubles the visible span — enough to cross
+ * ZOOM_OUT_FACTOR (1.6×) and trigger the step back up a level, but not enough
+ * to leave the region and stare at the whole country or globe first.
+ */
+const ZOOM_OUT_ALLOWANCE = 1;
+
 /** Leaves room for the UI chrome around the fitted region. */
 const FIT_PADDING = 40;
 const VIEW_TRANSITION_MS = 800;
@@ -671,6 +679,8 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   const countyBoundsRef = useRef<[[number, number], [number, number]] | null>(null);
   /** Set before each camera move we initiate, so moveend can tell them apart. */
   const programmaticMoveRef = useRef(false);
+  /** Min-zoom floor for the region being flown to, applied once it settles. */
+  const pendingMinZoomRef = useRef<number | null>(null);
   const churchByIdRef = useRef<Map<string, Church>>(new Map());
   churchByIdRef.current = new Map((churches ?? []).map((c) => [c.id, c]));
   // Church view is its own zoom level; stepping out from it is the panel's job,
@@ -714,6 +724,13 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       // originalEvent, which wheel-zoom's inertial ease does not carry.
       const wasProgrammatic = programmaticMoveRef.current;
       programmaticMoveRef.current = false;
+
+      // Apply the new floor only now the camera has settled, so it can't clip
+      // the move that was still animating toward it.
+      if (wasProgrammatic && pendingMinZoomRef.current != null) {
+        map.setMinZoom(pendingMinZoomRef.current);
+        pendingMinZoomRef.current = null;
+      }
 
       if (!wasProgrammatic && !selectedChurchIdRef.current) {
         const region = focusedCountyRef.current
@@ -881,6 +898,87 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [center, zoom]);
 
+  // ── Camera ──
+  // Declared BEFORE the layer effects on purpose. React runs effects in
+  // declaration order, and focusedState/churches arrive in the same commit when
+  // a state finishes loading — so if the layer work ran first, the camera would
+  // not start moving until a FeatureCollection had been built for every church
+  // in the state (tens of thousands for a large one). Flying first makes the
+  // transition immediate and lets the dots populate during the animation.
+  //
+  // A single effect owns the view, resolving the most specific target first:
+  // church > county > state > national. Separate fitBounds/flyTo calls spread
+  // across effects would fight each other whenever more than one of these
+  // changed in the same update (e.g. selecting a church inside a new county).
+  //
+  // Depend on the church's coordinates rather than the `churches` array so the
+  // camera doesn't snap back when a state's church list finishes loading after
+  // the user has already panned away.
+  const selectedChurch = selectedChurchId ? churchByIdRef.current.get(selectedChurchId) : undefined;
+  const selectedLng = selectedChurch?.lng;
+  const selectedLat = selectedChurch?.lat;
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !fitToFocusedState) return;
+    let cancelled = false;
+
+    // Clear any existing floor first: it belongs to the region we're leaving and
+    // would otherwise clamp a move outward. The new floor is applied on moveend,
+    // so it can't clip the animation itself.
+    const fit = (bounds: [[number, number], [number, number]]) => {
+      programmaticMoveRef.current = true;
+      map.setMinZoom(0);
+      const target = map.cameraForBounds(bounds, { padding: paddingRef.current });
+      pendingMinZoomRef.current =
+        target?.zoom != null ? Math.max(0, target.zoom - ZOOM_OUT_ALLOWANCE) : null;
+      map.fitBounds(bounds, { padding: paddingRef.current, duration: VIEW_TRANSITION_MS });
+    };
+
+    const apply = async () => {
+      if (selectedLng != null && selectedLat != null) {
+        programmaticMoveRef.current = true;
+        map.flyTo({
+          center: [selectedLng, selectedLat],
+          zoom: CHURCH_VIEW_ZOOM,
+          padding: paddingRef.current,
+          duration: VIEW_TRANSITION_MS,
+          essential: true,
+        });
+        return;
+      }
+      if (focusedCounty) {
+        const bounds = await boundsForCounty(focusedCounty);
+        // The target may have changed while the TopoJSON was in flight.
+        if (cancelled) return;
+        countyBoundsRef.current = bounds;
+        if (bounds) return fit(bounds);
+      }
+      if (focusedState) {
+        const bounds = boundsForState(focusedState);
+        if (bounds) return fit(bounds);
+      }
+      // National view: the floor stops the map being pulled out to the whole globe.
+      programmaticMoveRef.current = true;
+      map.setMinZoom(0);
+      pendingMinZoomRef.current = US_DEFAULT_ZOOM - ZOOM_OUT_ALLOWANCE;
+      map.flyTo({
+        center: US_DEFAULT_CENTER,
+        zoom: US_DEFAULT_ZOOM,
+        padding: paddingRef.current,
+        duration: VIEW_TRANSITION_MS,
+        essential: true,
+      });
+    };
+
+    void apply();
+    return () => {
+      cancelled = true;
+    };
+    // fitToFocusedState is config, not a trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedChurchId, selectedLng, selectedLat, focusedCounty, focusedState]);
+
   // Build/recolor the state choropleth when church counts arrive or change.
   useEffect(() => {
     const map = mapRef.current;
@@ -913,70 +1011,6 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     // focusedState changes are handled by the focus effect above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countyStats, focusedCounty]);
-
-  // ── Camera ──
-  // A single effect owns the view, resolving the most specific target first:
-  // church > county > state > national. Separate fitBounds/flyTo calls spread
-  // across effects would fight each other whenever more than one of these
-  // changed in the same update (e.g. selecting a church inside a new county).
-  //
-  // Depend on the church's coordinates rather than the `churches` array so the
-  // camera doesn't snap back when a state's church list finishes loading after
-  // the user has already panned away.
-  const selectedChurch = selectedChurchId ? churchByIdRef.current.get(selectedChurchId) : undefined;
-  const selectedLng = selectedChurch?.lng;
-  const selectedLat = selectedChurch?.lat;
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !fitToFocusedState) return;
-    let cancelled = false;
-
-    const fit = (bounds: [[number, number], [number, number]]) => {
-      programmaticMoveRef.current = true;
-      map.fitBounds(bounds, { padding: paddingRef.current, duration: VIEW_TRANSITION_MS });
-    };
-
-    const apply = async () => {
-      if (selectedLng != null && selectedLat != null) {
-        programmaticMoveRef.current = true;
-        map.flyTo({
-          center: [selectedLng, selectedLat],
-          zoom: CHURCH_VIEW_ZOOM,
-          padding: paddingRef.current,
-          duration: VIEW_TRANSITION_MS,
-          essential: true,
-        });
-        return;
-      }
-      if (focusedCounty) {
-        const bounds = await boundsForCounty(focusedCounty);
-        // The target may have changed while the TopoJSON was in flight.
-        if (cancelled) return;
-        countyBoundsRef.current = bounds;
-        if (bounds) return fit(bounds);
-      }
-      if (focusedState) {
-        const bounds = boundsForState(focusedState);
-        if (bounds) return fit(bounds);
-      }
-      programmaticMoveRef.current = true;
-      map.flyTo({
-        center: US_DEFAULT_CENTER,
-        zoom: US_DEFAULT_ZOOM,
-        padding: paddingRef.current,
-        duration: VIEW_TRANSITION_MS,
-        essential: true,
-      });
-    };
-
-    void apply();
-    return () => {
-      cancelled = true;
-    };
-    // fitToFocusedState is config, not a trigger.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedChurchId, selectedLng, selectedLat, focusedCounty, focusedState]);
 
   return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
 });
