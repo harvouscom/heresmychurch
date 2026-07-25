@@ -26,6 +26,7 @@ import {
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { feature } from "topojson-client";
+import { geoBounds } from "d3-geo";
 import {
   GEO_URL,
   COUNTIES_GEO_URL,
@@ -130,9 +131,27 @@ function boundsForState(abbrev: string): [[number, number], [number, number]] | 
   ];
 }
 
+/** Bounding box of a single county, from the cached counties TopoJSON. */
+async function boundsForCounty(
+  fips: string,
+): Promise<[[number, number], [number, number]] | null> {
+  try {
+    const topo = await fetchTopo(COUNTIES_GEO_URL);
+    const all = feature(topo, topo.objects.counties) as GeoJSON.FeatureCollection;
+    const match = all.features.find((f) => String(f.id).padStart(5, "0") === fips);
+    if (!match) return null;
+    // d3-geo's geoBounds already returns [[west, south], [east, north]].
+    return geoBounds(match as GeoJSON.Feature) as [[number, number], [number, number]];
+  } catch {
+    return null;
+  }
+}
+
 /** Leaves room for the UI chrome around the fitted region. */
 const FIT_PADDING = 40;
 const VIEW_TRANSITION_MS = 800;
+/** Web Mercator zoom for the church detail view (street level). */
+const CHURCH_VIEW_ZOOM = 13;
 
 /**
  * Run a layer mutation once the style is actually ready.
@@ -617,10 +636,11 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   const paddingRef = useRef(cameraPadding);
   paddingRef.current = cameraPadding;
 
-  // Fly to new center/zoom when props change (view transitions).
+  // Parent-driven camera. Skipped when self-driving, so the two never fight
+  // over the view — exactly one owner at a time.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || fitToFocusedState) return;
     map.flyTo({
       center,
       zoom,
@@ -628,6 +648,8 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       duration: VIEW_TRANSITION_MS,
       essential: true,
     });
+    // fitToFocusedState is config, not a trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [center, zoom]);
 
   // Build/recolor the state choropleth when church counts arrive or change.
@@ -637,28 +659,13 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     void setStatesLayer(map, states ?? []);
   }, [states]);
 
-  // Focus: show the focused state's counties, dim the other states, and move
-  // the camera — matching the SVG map's state view.
+  // Focus: show the focused state's counties and dim the other states,
+  // matching the SVG map's state view. (Camera is owned by the effect below.)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     applyStatePaint(map, focusedState, hoveredStateRef.current);
     void setCountyLayer(map, focusedState, countyStats, hoveredCountyRef.current, focusedCounty);
-
-    if (!fitToFocusedState) return;
-    const bounds = focusedState ? boundsForState(focusedState) : null;
-    if (bounds) {
-      map.fitBounds(bounds, { padding: paddingRef.current, duration: VIEW_TRANSITION_MS });
-    } else if (!focusedState) {
-      map.flyTo({
-        center: US_DEFAULT_CENTER,
-        zoom: US_DEFAULT_ZOOM,
-        padding: paddingRef.current,
-        duration: VIEW_TRANSITION_MS,
-        essential: true,
-      });
-    }
-    // fitToFocusedState is config, not a trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedState]);
 
@@ -677,6 +684,65 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     // focusedState changes are handled by the focus effect above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countyStats, focusedCounty]);
+
+  // ── Camera ──
+  // A single effect owns the view, resolving the most specific target first:
+  // church > county > state > national. Separate fitBounds/flyTo calls spread
+  // across effects would fight each other whenever more than one of these
+  // changed in the same update (e.g. selecting a church inside a new county).
+  //
+  // Depend on the church's coordinates rather than the `churches` array so the
+  // camera doesn't snap back when a state's church list finishes loading after
+  // the user has already panned away.
+  const selectedChurch = selectedChurchId ? churchByIdRef.current.get(selectedChurchId) : undefined;
+  const selectedLng = selectedChurch?.lng;
+  const selectedLat = selectedChurch?.lat;
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !fitToFocusedState) return;
+    let cancelled = false;
+
+    const fit = (bounds: [[number, number], [number, number]]) =>
+      map.fitBounds(bounds, { padding: paddingRef.current, duration: VIEW_TRANSITION_MS });
+
+    const apply = async () => {
+      if (selectedLng != null && selectedLat != null) {
+        map.flyTo({
+          center: [selectedLng, selectedLat],
+          zoom: CHURCH_VIEW_ZOOM,
+          padding: paddingRef.current,
+          duration: VIEW_TRANSITION_MS,
+          essential: true,
+        });
+        return;
+      }
+      if (focusedCounty) {
+        const bounds = await boundsForCounty(focusedCounty);
+        // The target may have changed while the TopoJSON was in flight.
+        if (cancelled) return;
+        if (bounds) return fit(bounds);
+      }
+      if (focusedState) {
+        const bounds = boundsForState(focusedState);
+        if (bounds) return fit(bounds);
+      }
+      map.flyTo({
+        center: US_DEFAULT_CENTER,
+        zoom: US_DEFAULT_ZOOM,
+        padding: paddingRef.current,
+        duration: VIEW_TRANSITION_MS,
+        essential: true,
+      });
+    };
+
+    void apply();
+    return () => {
+      cancelled = true;
+    };
+    // fitToFocusedState is config, not a trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedChurchId, selectedLng, selectedLat, focusedCounty, focusedState]);
 
   return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
 });
