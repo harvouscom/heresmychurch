@@ -10,11 +10,32 @@ import {
   loadCountyEntriesForState,
 } from "./county-aggregate.ts";
 
+import { INTL_REGIONS } from "./regions-intl.ts";
+
 // ── State data ──
 interface SI{a:string;n:string;la:number;lo:number;}
 const S:[string,string,number,number][]=[["AL","Alabama",32.81,-86.79],["AK","Alaska",61.37,-152.4],["AZ","Arizona",33.73,-111.43],["AR","Arkansas",34.97,-92.37],["CA","California",36.12,-119.68],["CO","Colorado",39.06,-105.31],["CT","Connecticut",41.6,-72.76],["DE","Delaware",39.32,-75.51],["FL","Florida",27.77,-81.69],["GA","Georgia",33.04,-83.64],["HI","Hawaii",21.09,-157.5],["ID","Idaho",44.24,-114.48],["IL","Illinois",40.35,-88.99],["IN","Indiana",39.85,-86.26],["IA","Iowa",42.01,-93.21],["KS","Kansas",38.53,-96.73],["KY","Kentucky",37.67,-84.67],["LA","Louisiana",31.17,-91.87],["ME","Maine",44.69,-69.38],["MD","Maryland",39.06,-76.8],["MA","Massachusetts",42.23,-71.53],["MI","Michigan",43.33,-84.54],["MN","Minnesota",45.69,-93.9],["MS","Mississippi",32.74,-89.68],["MO","Missouri",38.46,-92.29],["MT","Montana",46.92,-110.45],["NE","Nebraska",41.13,-98.27],["NV","Nevada",38.31,-117.06],["NH","New Hampshire",43.45,-71.56],["NJ","New Jersey",40.3,-74.52],["NM","New Mexico",34.84,-106.25],["NY","New York",42.17,-74.95],["NC","North Carolina",35.63,-79.81],["ND","North Dakota",47.53,-99.78],["OH","Ohio",40.39,-82.76],["OK","Oklahoma",35.57,-96.93],["OR","Oregon",44.57,-122.07],["PA","Pennsylvania",40.59,-77.21],["RI","Rhode Island",41.68,-71.51],["SC","South Carolina",33.86,-80.95],["SD","South Dakota",44.3,-99.44],["TN","Tennessee",35.75,-86.69],["TX","Texas",31.05,-97.56],["UT","Utah",40.15,-111.86],["VT","Vermont",44.05,-72.71],["VA","Virginia",37.77,-78.17],["WA","Washington",47.4,-121.49],["WV","West Virginia",38.49,-80.95],["WI","Wisconsin",44.27,-89.62],["WY","Wyoming",42.76,-107.3]];
 const US:SI[]=S.map(([a,n,la,lo])=>({a,n,la,lo}));
-function gS(a:string):SI|undefined{return US.find(s=>s.a===a.toUpperCase());}
+// Regions outside the US come from the generated INTL_REGIONS table. Keeping one
+// lookup means every caller — populate, the cell walker, the read routes — gains
+// non-US support at once, rather than each growing its own special case.
+function gS(a:string):SI|undefined{
+  const k=a.toUpperCase();
+  const us=US.find(s=>s.a===k);
+  if(us)return us;
+  const r=INTL_REGIONS[k];
+  return r?{a:r.a,n:r.n,la:r.la,lo:r.lo}:undefined;
+}
+/** Overpass area code for a region: US states are US-XX, others carry their own. */
+function regionIso(a:string):string{
+  const k=a.toUpperCase();
+  return INTL_REGIONS[k]?.iso??`US-${k}`;
+}
+/** Bounding box, from the US table or the generated international one. */
+function regionBounds(a:string):[number,number,number,number]|undefined{
+  const k=a.toUpperCase();
+  return B[k]??(INTL_REGIONS[k]?.b as [number,number,number,number]|undefined);
+}
 
 // ── Geographic data ──
 const B:Record<string,[number,number,number,number]>={AL:[30.22,-88.47,35.01,-84.89],AK:[51.21,-179.15,71.39,-129.98],AZ:[31.33,-114.81,37,-109.04],AR:[33,-94.62,36.5,-89.64],CA:[32.53,-124.41,42.01,-114.13],CO:[36.99,-109.06,41,-102.04],CT:[40.95,-73.73,42.05,-71.79],DE:[38.45,-75.79,39.84,-75.05],FL:[24.4,-87.63,31,-79.97],GA:[30.36,-85.61,35,-80.84],HI:[18.91,-160.24,22.24,-154.81],ID:[42,-117.24,49,-111.04],IL:[36.97,-91.51,42.51,-87.02],IN:[37.77,-88.1,41.76,-84.78],IA:[40.38,-96.64,43.5,-90.14],KS:[36.99,-102.05,40,-94.59],KY:[36.5,-89.57,39.15,-81.96],LA:[28.93,-94.04,33.02,-88.82],ME:[42.98,-71.08,47.46,-66.95],MD:[37.91,-79.49,39.72,-75.05],MA:[41.24,-73.5,42.89,-69.93],MI:[41.7,-90.42,48.31,-82.12],MN:[43.5,-97.24,49.38,-89.49],MS:[30.17,-91.66,34.99,-88.1],MO:[35.99,-95.77,40.61,-89.1],MT:[44.36,-116.05,49,-104.04],NE:[39.99,-104.05,43,-95.31],NV:[35,-120.01,42,-114.04],NH:[42.7,-72.56,45.31,-70.7],NJ:[38.93,-75.56,41.36,-73.89],NM:[31.33,-109.05,37,-103],NY:[40.5,-79.76,45.02,-71.86],NC:[33.84,-84.32,36.59,-75.46],ND:[45.94,-104.05,49,-96.55],OH:[38.4,-84.82,42.33,-80.52],OK:[33.62,-103,37,-94.43],OR:[41.99,-124.57,46.29,-116.46],PA:[39.72,-80.52,42.27,-74.69],RI:[41.15,-71.86,42.02,-71.12],SC:[32.03,-83.35,35.22,-78.54],SD:[42.48,-104.06,45.95,-96.44],TN:[34.98,-90.31,36.68,-81.65],TX:[25.84,-106.65,36.5,-93.51],UT:[36.99,-114.05,42,-109.04],VT:[42.73,-73.44,45.02,-71.46],VA:[36.54,-83.68,39.47,-75.24],WA:[45.54,-124.85,49,-116.92],WV:[37.2,-82.64,40.64,-77.72],WI:[42.49,-92.89,47.08,-86.25],WY:[40.99,-111.06,45.01,-104.05],DC:[38.79,-77.12,38.99,-76.91]};
@@ -304,8 +325,19 @@ async function fetchArea(
   for(const c of parse(els,st)){if(!seen.has(c.id)){seen.add(c.id);out.push(c);}}
 }
 
+// RULES canonicalises denominations with US names, which read wrong elsewhere:
+// an Anglican church in Canada is not "Episcopal", and OSM's `denomination=united`
+// is the United Church of Canada — the country's largest Protestant body — not a
+// bare "United". Applied after normD so the OSM tag still drives the match.
+const DENOM_BY_COUNTRY:Record<string,Record<string,string>>={
+  CA:{Episcopal:"Anglican",United:"United Church of Canada"},
+  GB:{Episcopal:"Anglican"},
+  IE:{Episcopal:"Anglican"},
+};
+function localizeDenom(d:string,cc:string):string{return DENOM_BY_COUNTRY[cc]?.[d]??d;}
+
 function parse(els:any[],st:string):any[]{
-  const b=B[st.toUpperCase()];
+  const b=regionBounds(st);
   return els.map((el:any,i:number)=>{
     // out geom: nodes have lat/lon; ways/relations have bounds (and geometry array)
     let lat=el.lat,lng=el.lon;
@@ -321,7 +353,10 @@ function parse(els:any[],st:string):any[]{
     if(el.geometry)el.geometry=undefined;
     if(el.members)for(const m of el.members)if(m.geometry)m.geometry=undefined;
     const attendance=sqft>0?Math.max(10,Math.min(25000,Math.round(sqft/55))):estA(t,el.id,el.type);
-    const obj:any={id:`${st}-${el.id||i}`,name:t.name||t["name:en"]||"Unnamed Church",lat,lng,denomination,attendance,state:st.toUpperCase(),city:city(t),address:t["addr:street"]?`${t["addr:housenumber"]||""} ${t["addr:street"]}`.trim():"",website:t.website||t["contact:website"]||""};
+    // country/region are the country-namespaced identity the app is moving to;
+    // `state` stays populated for US back-compat while both are in use.
+    const reg=INTL_REGIONS[st.toUpperCase()];
+    const obj:any={id:`${st}-${el.id||i}`,name:t.name||t["name:en"]||"Unnamed Church",lat,lng,denomination:localizeDenom(denomination,reg?.cc??"US"),attendance,state:st.toUpperCase(),country:reg?.cc??"US",region:reg?.iso??`US-${st.toUpperCase()}`,city:city(t),address:t["addr:street"]?`${t["addr:housenumber"]||""} ${t["addr:street"]}`.trim():"",website:t.website||t["contact:website"]||""};
     if(sqft>0)obj.buildingSqft=Math.round(sqft);
     return obj;
   }).filter(Boolean);
@@ -329,7 +364,7 @@ function parse(els:any[],st:string):any[]{
 
 async function fetchCh(st:string):Promise<any[]>{
   const info=gS(st);if(!info)throw new Error(`Unknown: ${st}`);
-  const iso=`US-${st.toUpperCase()}`,b=B[st.toUpperCase()];
+  const iso=regionIso(st),b=regionBounds(st);
   const seen=new Set<string>();const all:any[]=[];
 
   if(b){
@@ -582,7 +617,11 @@ app.get(`${P}/churches/states`,async(c)=>{
   try{
     const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
     if(sc["DC"]){sc["MD"]=(sc["MD"]||0)+sc["DC"];delete sc["DC"];}
-    return c.json({states:US.map(s=>({abbrev:s.a,name:s.n,lat:s.la,lng:s.lo,churchCount:sc[s.a]||0,isPopulated:!!sc[s.a]})),totalChurches:Object.values(sc).reduce((a:number,b:number)=>a+b,0),populatedStates:Object.keys(sc).length});
+    // Count only the states actually returned. stateCounts now also holds non-US
+    // regions, and summing it made the UI headline ("N churches across 50
+    // states") include Canadian churches that were absent from the list below.
+    const states=US.map(s=>({abbrev:s.a,name:s.n,lat:s.la,lng:s.lo,churchCount:sc[s.a]||0,isPopulated:!!sc[s.a]}));
+    return c.json({states,totalChurches:states.reduce((a,s)=>a+s.churchCount,0),populatedStates:states.filter(s=>s.isPopulated).length});
   }catch(e){return c.json({states:[],totalChurches:0,populatedStates:0,error:`${e}`},500);}
 });
 
@@ -994,7 +1033,15 @@ app.get(`${P}/churches/:state`,async(c)=>{
  * are subtle enough that a second copy would eventually diverge.
  */
 async function finalizePopulate(st:string,ch:any[],ex:any,force:boolean){
-  const ardaEnriched=enrichARDA(ch);applyStateScaling(ch,st);
+  // ARDA medians and Census state-scaling are US datasets. refARDA only skips
+  // denominations missing from its table, and that table holds Catholic,
+  // Lutheran and Baptist — so left on, it blends US norms (ARDA Catholic ~849)
+  // into a Prince Edward Island parish. Confirmed on the first PEI ingest,
+  // which reported 56 churches "ardaEnriched" before this gate.
+  // Non-US regions use the building-footprint estimate alone.
+  const isUS=!INTL_REGIONS[st.toUpperCase()];
+  const ardaEnriched=isUS?enrichARDA(ch):0;
+  if(isUS)applyStateScaling(ch,st);
   // Preserve community-submitted churches from pending store
   const pending=await kv.get(`pending-churches:${st}`);
   let communityPreserved=0;
@@ -1047,7 +1094,7 @@ app.post(`${P}/churches/populate-cell/:state`,async(c)=>{
     if(!bbox)return c.json({error:"bbox required as s,w,n,e"},400);
     if(c.req.query("reset")==="true")await kv.set(STAGE(st),[]);
 
-    const els=await ovpQ(bQ(`US-${st}`,bbox),`${st}-cell`);
+    const els=await ovpQ(bQ(regionIso(st),bbox),`${st}-cell`);
     // Report truncation rather than acting on it: the caller owns the splitting
     // decision, so one cell is always exactly one Overpass query.
     const truncated=els.length>=OVP_TRUNCATION_SUSPECT;
