@@ -19,7 +19,6 @@ function gS(a:string):SI|undefined{return US.find(s=>s.a===a.toUpperCase());}
 // ── Geographic data ──
 const B:Record<string,[number,number,number,number]>={AL:[30.22,-88.47,35.01,-84.89],AK:[51.21,-179.15,71.39,-129.98],AZ:[31.33,-114.81,37,-109.04],AR:[33,-94.62,36.5,-89.64],CA:[32.53,-124.41,42.01,-114.13],CO:[36.99,-109.06,41,-102.04],CT:[40.95,-73.73,42.05,-71.79],DE:[38.45,-75.79,39.84,-75.05],FL:[24.4,-87.63,31,-79.97],GA:[30.36,-85.61,35,-80.84],HI:[18.91,-160.24,22.24,-154.81],ID:[42,-117.24,49,-111.04],IL:[36.97,-91.51,42.51,-87.02],IN:[37.77,-88.1,41.76,-84.78],IA:[40.38,-96.64,43.5,-90.14],KS:[36.99,-102.05,40,-94.59],KY:[36.5,-89.57,39.15,-81.96],LA:[28.93,-94.04,33.02,-88.82],ME:[42.98,-71.08,47.46,-66.95],MD:[37.91,-79.49,39.72,-75.05],MA:[41.24,-73.5,42.89,-69.93],MI:[41.7,-90.42,48.31,-82.12],MN:[43.5,-97.24,49.38,-89.49],MS:[30.17,-91.66,34.99,-88.1],MO:[35.99,-95.77,40.61,-89.1],MT:[44.36,-116.05,49,-104.04],NE:[39.99,-104.05,43,-95.31],NV:[35,-120.01,42,-114.04],NH:[42.7,-72.56,45.31,-70.7],NJ:[38.93,-75.56,41.36,-73.89],NM:[31.33,-109.05,37,-103],NY:[40.5,-79.76,45.02,-71.86],NC:[33.84,-84.32,36.59,-75.46],ND:[45.94,-104.05,49,-96.55],OH:[38.4,-84.82,42.33,-80.52],OK:[33.62,-103,37,-94.43],OR:[41.99,-124.57,46.29,-116.46],PA:[39.72,-80.52,42.27,-74.69],RI:[41.15,-71.86,42.02,-71.12],SC:[32.03,-83.35,35.22,-78.54],SD:[42.48,-104.06,45.95,-96.44],TN:[34.98,-90.31,36.68,-81.65],TX:[25.84,-106.65,36.5,-93.51],UT:[36.99,-114.05,42,-109.04],VT:[42.73,-73.44,45.02,-71.46],VA:[36.54,-83.68,39.47,-75.24],WA:[45.54,-124.85,49,-116.92],WV:[37.2,-82.64,40.64,-77.72],WI:[42.49,-92.89,47.08,-86.25],WY:[40.99,-111.06,45.01,-104.05],DC:[38.79,-77.12,38.99,-76.91]};
 // States that use 4-quadrant Overpass queries to avoid single-query 2000 truncation
-const BIG=new Set(["TX","CA","FL","NY","PA","OH","IL","GA","NC","MI","TN","VA","AL","MO","IN","SC","KY","LA","WI","MN","MS","AR","OK","IA","KS","NJ","AZ","WA","OR","MA","NV","NM","UT","CT","MD","CO"]);
 
 // ── Denomination matching (lazy regex compilation) ──
 type DR=[string,string[]?,string?,string[]?];
@@ -205,9 +204,15 @@ function city(t:Record<string,string>):string{
 // ── Overpass ──
 const OVP=["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
 
-async function ovpF(ep:string,q:string,ms=60000):Promise<Response>{
+// Must exceed the `[timeout:90]` in bQ — at 60s the client gave up 30s before
+// Overpass did, turning slow-but-successful queries into spurious failures.
+const OVP_CLIENT_TIMEOUT_MS=110000;
+// Overpass is a free shared resource; identify ourselves as its usage policy asks.
+const OVP_UA="HeresMyChurch/1.0 (+https://heresmychurch.com)";
+
+async function ovpF(ep:string,q:string,ms=OVP_CLIENT_TIMEOUT_MS):Promise<Response>{
   const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);
-  try{return await fetch(ep,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:`data=${encodeURIComponent(q)}`,signal:c.signal});}
+  try{return await fetch(ep,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","User-Agent":OVP_UA},body:`data=${encodeURIComponent(q)}`,signal:c.signal});}
   finally{clearTimeout(t);}
 }
 async function ovpQ(q:string,label:string):Promise<any[]>{
@@ -230,6 +235,59 @@ function bQ(iso:string,bbox?:[number,number,number,number]):string{
   return`[out:json][timeout:90];area["ISO3166-2"="${iso}"]->.searchArea;(node["amenity"="place_of_worship"]["religion"="christian"]${f};way["amenity"="place_of_worship"]["religion"="christian"]${f};relation["amenity"="place_of_worship"]["religion"="christian"]${f};);out geom 10000;`;
 }
 function splitB(b:[number,number,number,number]):[number,number,number,number][]{const[s,w,n,e]=b,mL=(s+n)/2,mN=(w+e)/2;return[[s,w,mL,mN],[s,mN,mL,e],[mL,w,n,mN],[mL,mN,n,e]];}
+
+// ── Adaptive area splitting ──
+// bQ asks for `out geom 10000`, but public Overpass instances commonly cap a
+// response well below that and return it with no error and no indication it was
+// truncated. Nothing used to check, so over-cap regions silently lost churches:
+// re-populating with finer areas took Iowa 3,964 -> 5,174 and Texas
+// 14,765 -> 16,596 (docs/future/quadrant-gap-fix.md).
+//
+// So treat any response at or above the suspect size as possibly incomplete and
+// subdivide rather than trust it. Splitting when it wasn't needed only costs an
+// extra query — results are deduped by id — whereas trusting a capped response
+// loses data permanently. This replaces the hand-curated BIG list: depth is
+// decided by what comes back, not by guessing which regions are large.
+const OVP_TRUNCATION_SUSPECT=1900;
+const OVP_MAX_SPLIT_DEPTH=4; // up to 256 cells; guards against runaway recursion
+const OVP_PACE_MS=500;
+
+async function fetchArea(
+  iso:string,
+  bbox:[number,number,number,number],
+  st:string,
+  label:string,
+  seen:Set<string>,
+  out:any[],
+  depth=0,
+):Promise<void>{
+  const subdivide=async(why:string)=>{
+    if(depth>=OVP_MAX_SPLIT_DEPTH){console.log(`[${label}] ${why} but at max depth — keeping what we have`);return false;}
+    console.log(`[${label}] ${why} — splitting`);
+    const cells=splitB(bbox);
+    for(let i=0;i<cells.length;i++){
+      await fetchArea(iso,cells[i],st,`${label}.${i+1}`,seen,out,depth+1);
+      if(i<cells.length-1)await new Promise(r=>setTimeout(r,OVP_PACE_MS));
+    }
+    return true;
+  };
+
+  let els:any[];
+  try{
+    els=await ovpQ(bQ(iso,bbox),label);
+  }catch(e){
+    // ovpQ has already exhausted both endpoints and its retries. A smaller area
+    // often succeeds where the whole one timed out, so split before giving up.
+    if(await subdivide(`query failed (${e})`))return;
+    throw e;
+  }
+
+  if(els.length>=OVP_TRUNCATION_SUSPECT){
+    if(await subdivide(`${els.length} elements — likely capped`))return;
+  }
+
+  for(const c of parse(els,st)){if(!seen.has(c.id)){seen.add(c.id);out.push(c);}}
+}
 
 function parse(els:any[],st:string):any[]{
   const b=B[st.toUpperCase()];
@@ -257,27 +315,28 @@ function parse(els:any[],st:string):any[]{
 async function fetchCh(st:string):Promise<any[]>{
   const info=gS(st);if(!info)throw new Error(`Unknown: ${st}`);
   const iso=`US-${st.toUpperCase()}`,b=B[st.toUpperCase()];
-  if(BIG.has(st.toUpperCase())&&b){
-    const qs=splitB(b);const seen=new Set<string>();let all:any[]=[];
-    const failed:number[]=[];
-    for(let i=0;i<qs.length;i++){
-      try{const els=await ovpQ(bQ(iso,qs[i]),`${st}-Q${i+1}`);for(const c of parse(els,st)){if(!seen.has(c.id)){seen.add(c.id);all.push(c);}}}catch(e){console.log(`Q${i+1} fail:${e}`);failed.push(i);}
-      if(i<qs.length-1)await new Promise(r=>setTimeout(r,500));
-    }
-    // Retry failed quadrants once after a pause
-    if(failed.length>0){
-      console.log(`[${st}] Retrying ${failed.length} failed quadrant(s): ${failed.map(i=>`Q${i+1}`).join(",")}`);
-      await new Promise(r=>setTimeout(r,3000));
-      for(const i of failed){
-        try{const els=await ovpQ(bQ(iso,qs[i]),`${st}-Q${i+1}-retry`);for(const c of parse(els,st)){if(!seen.has(c.id)){seen.add(c.id);all.push(c);}}}catch(e){console.log(`Q${i+1} retry fail:${e}`);}
-        await new Promise(r=>setTimeout(r,1000));
-      }
-    }
-    return all;
+  const seen=new Set<string>();const all:any[]=[];
+
+  if(b){
+    // Every region goes through the adaptive path: it starts with one whole-area
+    // query and only splits if that comes back capped or fails, so small regions
+    // cost exactly what they used to.
+    await fetchArea(iso,b,st,st,seen,all,0);
+  }else{
+    const els=await ovpQ(bQ(iso),st);
+    for(const c of parse(els,st)){if(!seen.has(c.id)){seen.add(c.id);all.push(c);}}
   }
-  const els=await ovpQ(bQ(iso),st);let ch=parse(els,st);
-  if(st.toUpperCase()==="MD"){try{const dc=await ovpQ(bQ("US-DC"),"DC");const d=parse(dc,"MD");const seen=new Set(ch.map((c:any)=>c.id));for(const c of d)if(!seen.has(c.id))ch.push(c);}catch(_){}}
-  return ch;
+
+  if(st.toUpperCase()==="MD"){
+    // DC has no map polygon of its own, so its churches live under Maryland.
+    try{
+      const dcB=B["DC"];
+      if(dcB)await fetchArea("US-DC",dcB,"MD","DC",seen,all,0);
+      else{const dc=await ovpQ(bQ("US-DC"),"DC");for(const c of parse(dc,"MD")){if(!seen.has(c.id)){seen.add(c.id);all.push(c);}}}
+    }catch(_){}
+  }
+  console.log(`[${st}] fetched ${all.length} churches`);
+  return all;
 }
 
 // ── shortId (8-digit, unique per state, for URLs) ──
