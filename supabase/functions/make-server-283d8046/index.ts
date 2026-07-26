@@ -221,7 +221,15 @@ async function ovpQ(q:string,label:string):Promise<any[]>{
     for(let a=0;a<=1;a++){
       try{
         const r=await ovpF(ep,q);
-        if(r.status===429||r.status===504){await new Promise(r=>setTimeout(r,(a+1)*3000));continue;}
+        if(r.status===429||r.status===504){
+          // Record it: silently retrying left "Overpass fail X: " with an empty
+          // reason, which is useless when a run dies mid-region.
+          errs.push(`${r.status}`);
+          // Overpass is rate-limited and free; back off properly rather than
+          // hammering it 3s later.
+          await new Promise(r=>setTimeout(r,(a+1)*15000));
+          continue;
+        }
         if(!r.ok){errs.push(`${r.status}`);break;}
         return(await r.json()).elements||[];
       }catch(e:any){errs.push(e?.name==="AbortError"?"timeout":String(e));if(e?.name==="AbortError")break;await new Promise(r=>setTimeout(r,1000));}
@@ -976,6 +984,98 @@ app.get(`${P}/churches/:state`,async(c)=>{
   }catch(e){return c.json({churches:[],error:`${e}`},500);}
 });
 
+/**
+ * Everything that turns a freshly fetched church list into stored state:
+ * attendance enrichment, community-submission merge, user-field preservation,
+ * short ids, index, meta and audit.
+ *
+ * Shared by the one-shot populate route and the resumable cell flow so the two
+ * cannot drift — the community merge and user-field preservation in particular
+ * are subtle enough that a second copy would eventually diverge.
+ */
+async function finalizePopulate(st:string,ch:any[],ex:any,force:boolean){
+  const ardaEnriched=enrichARDA(ch);applyStateScaling(ch,st);
+  // Preserve community-submitted churches from pending store
+  const pending=await kv.get(`pending-churches:${st}`);
+  let communityPreserved=0;
+  if(pending&&Array.isArray(pending.churches)){
+    const osmIds=new Set(ch.map((x:any)=>x.id));
+    const existingShortIds=new Set(ch.map((x:any)=>x.shortId).filter(Boolean));
+    for(const pc of pending.churches){
+      if(pc.approved&&pc.id?.startsWith("community-")&&!osmIds.has(pc.id)){
+        let sid=pc.shortId;
+        if(!sid){do{sid=Math.floor(10000000+Math.random()*90000000).toString();}while(existingShortIds.has(sid));}
+        existingShortIds.add(sid);
+        const churchForMain={id:pc.id,shortId:sid,name:pc.name,address:pc.address||"",city:pc.city||"",state:st,lat:pc.lat,lng:pc.lng,denomination:pc.denomination||"Unknown",attendance:pc.attendance||50,website:pc.website||"",serviceTimes:pc.serviceTimes,languages:pc.languages,ministries:pc.ministries,pastorName:pc.pastorName,phone:pc.phone,email:pc.email,lastVerified:pc.submittedAt||Date.now()};
+        ch.push(churchForMain);communityPreserved++;
+      }
+    }
+  }
+  if(force&&Array.isArray(ex)&&ex.length)mergeUserFieldsFromExisting(ex,ch);
+  const chWithShort=addShortIdsUnique(ch,st);
+  await kv.set(`churches:${st}`,chWithShort);await writeIdx(st,chWithShort);
+  void recordChurchAudit({state:st,action:"state_populated",old_value:Array.isArray(ex)?{churchCount:ex.length}:undefined,new_value:{churchCount:ch.length},source:"populate",actor_type:"system"});
+  const meta=(await getMeta())||{stateCounts:{}};meta.stateCounts[st]=ch.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();
+  await invalidateReviewStatsCache();
+  return{count:ch.length,communityPreserved,ardaEnriched};
+}
+
+// ── Resumable populate ──
+// Supabase kills a function at 150s. Texas already takes ~114s in one shot, so
+// any region needing deeper splitting cannot finish — and no country rollout is
+// possible on a route that must complete in a single request. These two routes
+// move the recursion out to a caller that has no time limit: it fetches one
+// bbox cell per request, accumulating into a staging key, then finalises once.
+// The live `churches:{ST}` value is untouched until finalise, so readers never
+// see a half-populated state.
+const STAGE=(st:string)=>`populate:staging:${st}`;
+
+function parseBbox(s:string|undefined):[number,number,number,number]|null{
+  if(!s)return null;
+  const p=s.split(",").map(Number);
+  if(p.length!==4||p.some(n=>!Number.isFinite(n)))return null;
+  const[so,w,n,e]=p;
+  if(so>=n||w>=e)return null;
+  return[so,w,n,e];
+}
+
+app.post(`${P}/churches/populate-cell/:state`,async(c)=>{
+  try{
+    const st=c.req.param("state").toUpperCase(),info=gS(st);
+    if(!info)return c.json({error:`Unknown state: ${st}`},400);
+    const bbox=parseBbox(c.req.query("bbox"));
+    if(!bbox)return c.json({error:"bbox required as s,w,n,e"},400);
+    if(c.req.query("reset")==="true")await kv.set(STAGE(st),[]);
+
+    const els=await ovpQ(bQ(`US-${st}`,bbox),`${st}-cell`);
+    // Report truncation rather than acting on it: the caller owns the splitting
+    // decision, so one cell is always exactly one Overpass query.
+    const truncated=els.length>=OVP_TRUNCATION_SUSPECT;
+    let added=0,total=0;
+    if(!truncated){
+      const staged=(await kv.get(STAGE(st)))||[];
+      const seen=new Set(staged.map((x:any)=>x.id));
+      for(const ch of parse(els,st)){if(!seen.has(ch.id)){seen.add(ch.id);staged.push(ch);added++;}}
+      await kv.set(STAGE(st),staged);
+      total=staged.length;
+    }
+    return c.json({fetched:els.length,truncated,added,staged:total});
+  }catch(e){console.log(`populate-cell error:${e}`);return c.json({error:`${e}`},500);}
+});
+
+app.post(`${P}/churches/populate-finalize/:state`,async(c)=>{
+  try{
+    const st=c.req.param("state").toUpperCase(),info=gS(st);
+    if(!info)return c.json({error:`Unknown state: ${st}`},400);
+    const staged=await kv.get(STAGE(st));
+    if(!Array.isArray(staged)||!staged.length)return c.json({error:`No staged churches for ${st}. Run populate-cell first.`},400);
+    const ex=await kv.get(`churches:${st}`);
+    const r=await finalizePopulate(st,staged,ex,true);
+    await kv.del(STAGE(st));
+    return c.json({message:`Populated ${r.count} churches for ${info.n}`,count:r.count,communityPreserved:r.communityPreserved,ardaEnriched:r.ardaEnriched});
+  }catch(e){console.log(`populate-finalize error:${e}`);return c.json({error:`${e}`},500);}
+});
+
 app.post(`${P}/churches/populate/:state`,async(c)=>{
   try{
     const st=c.req.param("state").toUpperCase(),info=gS(st);
@@ -984,30 +1084,9 @@ app.post(`${P}/churches/populate/:state`,async(c)=>{
     const ex=await kv.get(`churches:${st}`);
     if(!force&&Array.isArray(ex)&&ex.length)return c.json({message:`${info.n} already has ${ex.length} churches.`,count:ex.length,alreadyCached:true});
     console.log(`Populating ${info.n}${force?" (force)":""}...`);
-    const ch=await fetchCh(st);const en=enrichARDA(ch);applyStateScaling(ch,st);
-    // Preserve community-submitted churches from pending store
-    const pending=await kv.get(`pending-churches:${st}`);
-    let communityCount=0;
-    if(pending&&Array.isArray(pending.churches)){
-      const osmIds=new Set(ch.map((x:any)=>x.id));
-      const existingShortIds=new Set(ch.map((x:any)=>x.shortId).filter(Boolean));
-      for(const pc of pending.churches){
-        if(pc.approved&&pc.id?.startsWith("community-")&&!osmIds.has(pc.id)){
-          let sid=pc.shortId;
-          if(!sid){do{sid=Math.floor(10000000+Math.random()*90000000).toString();}while(existingShortIds.has(sid));}
-          existingShortIds.add(sid);
-          const churchForMain={id:pc.id,shortId:sid,name:pc.name,address:pc.address||"",city:pc.city||"",state:st,lat:pc.lat,lng:pc.lng,denomination:pc.denomination||"Unknown",attendance:pc.attendance||50,website:pc.website||"",serviceTimes:pc.serviceTimes,languages:pc.languages,ministries:pc.ministries,pastorName:pc.pastorName,phone:pc.phone,email:pc.email,lastVerified:pc.submittedAt||Date.now()};
-          ch.push(churchForMain);communityCount++;
-        }
-      }
-    }
-    if(force&&Array.isArray(ex)&&ex.length)mergeUserFieldsFromExisting(ex,ch);
-    const chWithShort=addShortIdsUnique(ch,st);
-    await kv.set(`churches:${st}`,chWithShort);await writeIdx(st,chWithShort);
-    void recordChurchAudit({state:st,action:"state_populated",old_value:Array.isArray(ex)?{churchCount:ex.length}:undefined,new_value:{churchCount:ch.length},source:"populate",actor_type:"system"});
-    const meta=(await getMeta())||{stateCounts:{}};meta.stateCounts[st]=ch.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();
-    await invalidateReviewStatsCache();
-    return c.json({message:`Populated ${ch.length} churches for ${info.n}`,count:ch.length,communityPreserved:communityCount,state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},ardaEnriched:en});
+    const ch=await fetchCh(st);
+    const r=await finalizePopulate(st,ch,ex,force);
+    return c.json({message:`Populated ${r.count} churches for ${info.n}`,count:r.count,communityPreserved:r.communityPreserved,state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},ardaEnriched:r.ardaEnriched});
   }catch(e){console.log(`Populate error:${e}`);return c.json({error:`${e}`},500);}
 });
 
