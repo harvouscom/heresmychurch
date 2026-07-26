@@ -625,6 +625,21 @@ app.get(`${P}/churches/states`,async(c)=>{
   }catch(e){return c.json({states:[],totalChurches:0,populatedStates:0,error:`${e}`},500);}
 });
 
+// Regions of a non-US country, shaped like /churches/states so the map can
+// consume either without caring which country it is looking at.
+app.get(`${P}/churches/regions/:country`,async(c)=>{
+  try{
+    const cc=c.req.param("country").toUpperCase();
+    const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
+    const regions=Object.values(INTL_REGIONS)
+      .filter(r=>r.cc===cc)
+      .map(r=>({abbrev:r.a,name:r.n,lat:r.la,lng:r.lo,churchCount:sc[r.a]||0,isPopulated:!!sc[r.a]}))
+      .sort((a,b)=>a.name.localeCompare(b.name));
+    if(!regions.length)return c.json({error:`No regions for country ${cc}`,regions:[],totalChurches:0},404);
+    return c.json({country:cc,regions,totalChurches:regions.reduce((a,r)=>a+r.churchCount,0),populatedRegions:regions.filter(r=>r.isPopulated).length});
+  }catch(e){return c.json({regions:[],totalChurches:0,error:`${e}`},500);}
+});
+
 app.get(`${P}/churches/search`,async(c)=>{
   try{
     const rawQ=c.req.query("q")||"",q=rawQ.toLowerCase().trim();

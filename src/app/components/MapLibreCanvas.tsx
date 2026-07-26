@@ -38,6 +38,7 @@ import {
   ACTIVE_PIN_FILL,
 } from "./map-constants";
 import { getSizeCategory, type Church, type StateInfo } from "./church-data";
+import { getCountry, getRegion, DEFAULT_COUNTRY_CODE } from "../config/countries";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
 
 /** Per-county church counts and per-capita rates, keyed by 5-digit FIPS. */
@@ -203,6 +204,8 @@ interface MapLibreCanvasProps {
   center?: [number, number];
   /** MapLibre zoom (0–22). */
   zoom?: number;
+  /** ISO 3166-1 alpha-2 country being browsed; selects the boundary source. */
+  countryCode?: string;
   /** State list with church counts; drives the choropleth tier coloring. */
   states?: StateInfo[];
   /** Abbrev of the focused state; shows counties and dims other states. */
@@ -287,8 +290,14 @@ const HIT_LAYERS = ["churches", "counties-fill", "states-fill"];
  * states. STATE_BOUNDS is [south, west, north, east]; MapLibre wants
  * [[west, south], [east, north]].
  */
-function boundsForState(abbrev: string): [[number, number], [number, number]] | null {
-  const b = STATE_BOUNDS[abbrev];
+function boundsForState(
+  abbrev: string,
+  countryCode: string = DEFAULT_COUNTRY_CODE,
+): [[number, number], [number, number]] | null {
+  // US states keep their hand-tuned table; other countries read the generated
+  // registry, whose bounds come from the same Natural Earth geometry the map
+  // draws — so the fit always matches the shape on screen.
+  const b = STATE_BOUNDS[abbrev] ?? getRegion(countryCode, abbrev)?.bounds;
   if (!b) return null;
   const [south, west, north, east] = b;
   return [
@@ -339,6 +348,24 @@ const ZOOM_OUT_FACTOR = 1.6;
  * to leave the region and stare at the whole country or globe first.
  */
 const ZOOM_OUT_ALLOWANCE = 1;
+
+/**
+ * A country's full extent, unioned from its region bounds. Derived rather than
+ * configured so it can never disagree with the regions actually drawn.
+ */
+function boundsForCountry(countryCode: string): [[number, number], [number, number]] | null {
+  const regions = Object.values(getCountry(countryCode)?.regions ?? {});
+  if (!regions.length) return null;
+  let s = 90, w = 180, n = -90, e = -180;
+  for (const r of regions) {
+    const [rs, rw, rn, re] = r.bounds;
+    if (rs < s) s = rs;
+    if (rw < w) w = rw;
+    if (rn > n) n = rn;
+    if (re > e) e = re;
+  }
+  return [[w, s], [e, n]];
+}
 
 /** Leaves room for the UI chrome around the fitted region. */
 const FIT_PADDING = 40;
@@ -427,20 +454,42 @@ function fetchTopo(url: string): Promise<any> {
  * state to its church count (by FIPS→abbrev) and precompute the tier color as a
  * feature property so MapLibre can style it data-driven.
  */
-async function setStatesLayer(map: MaplibreMap, states: StateInfo[]) {
+/**
+ * Region outlines for a country, normalised so every feature carries `abbrev`.
+ *
+ * The US comes from us-atlas TopoJSON keyed by FIPS; other countries come from
+ * pre-extracted Natural Earth GeoJSON that already carries `abbrev`
+ * (scripts/generate-admin1.mjs). Normalising here means the layer code below
+ * never has to know which country it is drawing.
+ */
+async function loadRegionFeatures(countryCode: string): Promise<GeoJSON.FeatureCollection> {
+  if (countryCode === "US") {
+    const topo = await fetchTopo(GEO_URL);
+    const geo = feature(topo, topo.objects.states) as GeoJSON.FeatureCollection;
+    for (const f of geo.features) {
+      f.properties = { ...f.properties, abbrev: FIPS_TO_STATE[String(f.id).padStart(2, "0")] };
+    }
+    return geo;
+  }
+  const url = getCountry(countryCode)?.regionSourceUrl;
+  if (!url) throw new Error(`No boundary source for country ${countryCode}`);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${url} -> ${res.status}`);
+  return (await res.json()) as GeoJSON.FeatureCollection;
+}
+
+async function setStatesLayer(map: MaplibreMap, states: StateInfo[], countryCode: string) {
   let geo: GeoJSON.FeatureCollection;
   try {
-    const topo = await fetchTopo(GEO_URL);
-    geo = feature(topo, topo.objects.states) as GeoJSON.FeatureCollection;
+    geo = await loadRegionFeatures(countryCode);
   } catch (err) {
-    console.error("[maplibre] failed to load state boundaries", err);
+    console.error("[maplibre] failed to load region boundaries", err);
     return;
   }
 
   const countByAbbrev = new Map(states.map((s) => [s.abbrev, s.churchCount]));
   for (const f of geo.features) {
-    const fips = String(f.id).padStart(2, "0");
-    const abbrev = FIPS_TO_STATE[fips];
+    const abbrev = f.properties?.abbrev as string | undefined;
     const count = abbrev ? countByAbbrev.get(abbrev) ?? 0 : 0;
     // No church data yet → keep the flat brand purple so the map still reads as
     // branded; otherwise color by the same tier scale as the SVG map.
@@ -694,6 +743,7 @@ function setChurchSelection(map: MaplibreMap, selectedChurchId: string | null) {
 export const MapLibreCanvas = memo(function MapLibreCanvas({
   center = US_DEFAULT_CENTER,
   zoom = US_DEFAULT_ZOOM,
+  countryCode = DEFAULT_COUNTRY_CODE,
   states,
   focusedState = null,
   cameraState,
@@ -742,6 +792,8 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   const countyBoundsRef = useRef<[[number, number], [number, number]] | null>(null);
   /** What the camera is framing (route-derived), for the zoom-out comparison. */
   const targetStateRef = useRef<string | null>(null);
+  const countryCodeRef = useRef(countryCode);
+  countryCodeRef.current = countryCode;
   const targetCountyRef = useRef<string | null>(null);
   /** Set before each camera move we initiate, so moveend can tell them apart. */
   const programmaticMoveRef = useRef(false);
@@ -814,7 +866,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
         const region = targetCountyRef.current
           ? countyBoundsRef.current
           : targetStateRef.current
-            ? boundsForState(targetStateRef.current)
+            ? boundsForState(targetStateRef.current, countryCodeRef.current)
             : null;
         if (region && viewportExceedsRegion(view, region, ZOOM_OUT_FACTOR)) {
           handlersRef.current.onZoomedOutPastRegion?.();
@@ -1057,10 +1109,16 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
         if (bounds) return fit(bounds);
       }
       if (targetState) {
-        const bounds = boundsForState(targetState);
+        const bounds = boundsForState(targetState, countryCode);
         if (bounds) return fit(bounds);
       }
-      // National view: the floor stops the map being pulled out to the whole globe.
+      // Whole-country view. Non-US countries fit their own extent; the US keeps
+      // its tuned center/zoom so the familiar framing is unchanged.
+      if (countryCode !== "US") {
+        const cb = boundsForCountry(countryCode);
+        if (cb) return fit(cb);
+      }
+      // The floor stops the map being pulled out to the whole globe.
       programmaticMoveRef.current = true;
       map.setMinZoom(0);
       pendingMinZoomRef.current = US_DEFAULT_ZOOM - ZOOM_OUT_ALLOWANCE;
@@ -1079,14 +1137,14 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     };
     // fitToFocusedState is config, not a trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedChurchId, selectedLng, selectedLat, targetCounty, targetState]);
+  }, [selectedChurchId, selectedLng, selectedLat, targetCounty, targetState, countryCode]);
 
   // Build/recolor the state choropleth when church counts arrive or change.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    void setStatesLayer(map, states ?? []);
-  }, [states]);
+    void setStatesLayer(map, states ?? [], countryCode);
+  }, [states, countryCode]);
 
   // Focus: show the focused state's counties and dim the other states,
   // matching the SVG map's state view. (Camera is owned by the effect below.)

@@ -6,7 +6,7 @@ import {
   Check,
   CheckCheck,
 } from "lucide-react";
-import type { Church } from "./church-data";
+import type { Church, StateInfo } from "./church-data";
 import { churchMeetsVerifiedListingCriteria, churchNeedsReview } from "./church-data";
 import { ChurchListModal } from "./ChurchListModal";
 import { MapSearchBar } from "./MapSearchBar";
@@ -20,6 +20,7 @@ import { MapControls } from "./MapControls";
 import { HelpModal } from "./HelpModal";
 import { AuditModal } from "./AuditModal";
 import { MapLibreCanvas, type MapLibreHandle } from "./MapLibreCanvas";
+import { fetchRegions, fetchChurches as fetchChurchesApi } from "./api";
 import { VerificationModal, NationalReviewModal } from "./VerificationModal";
 import { StateFlag } from "./StateFlag";
 import { CloseButton } from "./ui/close-button";
@@ -70,6 +71,7 @@ const SAMPLE_ACTIVE_BY_STATE: Record<string, number> = {
 /* eslint-disable @refresh/only-export-components -- force clean re-mount after hook changes */
 
 interface ChurchMapProps {
+  countryCode?: string;
   routeStateAbbrev: string | null;
   routeCountyFips: string | null;
   routeChurchShortId: string | null;
@@ -88,6 +90,7 @@ interface ChurchMapProps {
 }
 
 export function ChurchMap({
+  countryCode = "US",
   routeStateAbbrev,
   routeCountyFips,
   routeChurchShortId,
@@ -106,11 +109,40 @@ export function ChurchMap({
 }: ChurchMapProps) {
   const isMobile = useIsMobile();
 
+  // Country mode. useChurchMapData is US-shaped end to end — it looks regions up
+  // in a 50-state list and loads county geography from us-atlas — so non-US
+  // browsing runs on its own small data path rather than bending that hook out
+  // of shape. The two never overlap: countryCode is either US or it isn't.
+  const isIntl = countryCode !== "US";
+  const [intlRegions, setIntlRegions] = useState<StateInfo[]>([]);
+  const [intlChurches, setIntlChurches] = useState<Church[]>([]);
+
+  useEffect(() => {
+    if (!isIntl) { setIntlRegions([]); return; }
+    let cancelled = false;
+    fetchRegions(countryCode)
+      .then((r) => { if (!cancelled) setIntlRegions(r.regions); })
+      .catch((e) => console.error("[ChurchMap] fetchRegions failed", e));
+    return () => { cancelled = true; };
+  }, [isIntl, countryCode]);
+
+  useEffect(() => {
+    if (!isIntl || !routeStateAbbrev) { setIntlChurches([]); return; }
+    let cancelled = false;
+    fetchChurchesApi(routeStateAbbrev)
+      .then((r) => { if (!cancelled) setIntlChurches(r.churches); })
+      .catch((e) => console.error("[ChurchMap] fetchChurches failed", e));
+    return () => { cancelled = true; };
+  }, [isIntl, routeStateAbbrev]);
+
   const d = useChurchMapData({
-    routeStateAbbrev,
-    routeCountyFips,
-    routeChurchShortId,
-    routeLegacyChurchId,
+    // Country mode keeps its route params away from this hook. It resolves a
+    // region against a hardcoded 50-state list and resets to the national view
+    // when the lookup misses — which bounced /country/CA/PE straight back to /.
+    routeStateAbbrev: isIntl ? null : routeStateAbbrev,
+    routeCountyFips: isIntl ? null : routeCountyFips,
+    routeChurchShortId: isIntl ? null : routeChurchShortId,
+    routeLegacyChurchId: isIntl ? null : routeLegacyChurchId,
     navigateToState,
     navigateToChurch,
     navigateToNational,
@@ -488,6 +520,9 @@ export function ChurchMap({
         navigateToStateOnly={navigateToStateOnly}
         routeStateAbbrev={routeStateAbbrev}
         routeCountyFips={routeCountyFips}
+        countryCode={countryCode}
+        intlRegions={intlRegions}
+        intlChurches={intlChurches}
         onShowVerification={onShowVerification}
         onShowNationalReviewModal={() => localDispatch({ type: "SET", key: "showNationalReviewModal", value: true })}
         pendingReviewCount={local.pendingReviewCount}
@@ -737,6 +772,9 @@ function MapArea({
   navigateToStateOnly,
   routeStateAbbrev,
   routeCountyFips,
+  countryCode,
+  intlRegions,
+  intlChurches,
   onShowVerification,
   onShowNationalReviewModal,
   pendingReviewCount,
@@ -794,6 +832,9 @@ function MapArea({
   navigateToStateOnly: (stateAbbrev: string) => void;
   routeStateAbbrev: string | null;
   routeCountyFips: string | null;
+  countryCode: string;
+  intlRegions: StateInfo[];
+  intlChurches: Church[];
   onShowVerification: () => void;
   onShowNationalReviewModal: () => void;
   pendingReviewCount: number;
@@ -1024,13 +1065,14 @@ function MapArea({
           isMobile && d.selectedChurch ? Math.round(window.innerHeight * 0.55) : 0
         }
         rightPadding={!isMobile && d.selectedChurch ? DETAIL_PANEL_WIDTH : 0}
-        states={d.states}
-        focusedState={d.focusedState}
+        countryCode={countryCode}
+        states={countryCode === "US" ? d.states : intlRegions}
+        focusedState={countryCode === "US" ? d.focusedState : routeStateAbbrev}
         // Camera follows the URL, which updates instantly; d.focusedState waits
         // for the loading overlay to finish its verses (~7s).
         cameraState={routeStateAbbrev}
         cameraCounty={routeCountyFips}
-        churches={churchesToShowOnMap}
+        churches={countryCode === "US" ? churchesToShowOnMap : intlChurches}
         selectedChurchId={d.selectedChurch?.id ?? null}
         countyStats={d.countyStats ?? null}
         focusedCounty={d.focusedCounty ?? null}

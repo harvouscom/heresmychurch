@@ -16,9 +16,17 @@ export function ChurchMapPage() {
 
   const routeParams = useMemo(() => {
     const parts = location.pathname.split("/").filter(Boolean);
-    const stateAbbrev =
-      parts[0] === "state" && parts[1] ? parts[1].toUpperCase() : null;
-    const segment1 = parts[2];
+    // /country/:cc[/:region] is the country-scoped form; /state/:abbrev is the
+    // US alias. Both resolve to a country code plus an optional region, so
+    // everything downstream stays on one shape.
+    const isCountryPath = parts[0] === "country" && !!parts[1];
+    const countryCode = isCountryPath ? parts[1].toUpperCase() : "US";
+    const stateAbbrev = isCountryPath
+      ? (parts[2] ? parts[2].toUpperCase() : null)
+      : parts[0] === "state" && parts[1]
+        ? parts[1].toUpperCase()
+        : null;
+    const segment1 = isCountryPath ? undefined : parts[2];
     const segment2 = parts[3];
     const segment3 = parts[4];
     const segment4 = parts[5];
@@ -45,13 +53,18 @@ export function ChurchMapPage() {
     const queryCounty = searchParams.get("county");
     const routeCountyFipsResolved =
       routeCountyFips ?? (queryCounty && /^\d{5}$/.test(queryCounty) ? queryCounty : null);
-    return { stateAbbrev, routeCountyFips: routeCountyFipsResolved, churchShortId, legacyChurchId, openReviewModalFromQuery, showVerifiedDots, moderatorKey };
+    return { countryCode, stateAbbrev, routeCountyFips: routeCountyFipsResolved, churchShortId, legacyChurchId, openReviewModalFromQuery, showVerifiedDots, moderatorKey };
   }, [location.pathname, location.search]);
 
   // location.search already includes the leading "?" (or is ""), so append as-is to avoid "??"
   const navigateToState = useCallback(
-    (abbrev: string) => nav(`/state/${abbrev}${location.search}`),
-    [nav, location.search]
+    (abbrev: string) =>
+      nav(
+        routeParams.countryCode === "US"
+          ? `/state/${abbrev}${location.search}`
+          : `/country/${routeParams.countryCode}/${abbrev}${location.search}`,
+      ),
+    [nav, location.search, routeParams.countryCode]
   );
   const navigateToStateWithReview = useCallback(
     (abbrev: string) => {
@@ -108,6 +121,7 @@ export function ChurchMapPage() {
 
   return (
     <ChurchMap
+      countryCode={routeParams.countryCode}
       routeStateAbbrev={routeParams.stateAbbrev}
       routeCountyFips={routeParams.routeCountyFips}
       routeChurchShortId={routeParams.churchShortId}

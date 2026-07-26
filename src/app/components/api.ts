@@ -193,6 +193,21 @@ export async function fetchNationalReviewStats(): Promise<NationalReviewStatsRes
   };
 }
 
+/** Regions of a non-US country, shaped like fetchStates' `states`. */
+export async function fetchRegions(
+  countryCode: string
+): Promise<{ regions: StateInfo[]; totalChurches: number }> {
+  const res = await fetchWithRetry(`${BASE_URL}/churches/regions/${countryCode.toUpperCase()}`, {
+    headers,
+  });
+  if (!res.ok) throw new Error(`Failed to fetch regions: ${res.status}`);
+  const data = await res.json();
+  return {
+    regions: Array.isArray(data.regions) ? data.regions : [],
+    totalChurches: data.totalChurches ?? 0,
+  };
+}
+
 export async function fetchChurches(
   stateAbbrev: string
 ): Promise<ChurchesResponse> {

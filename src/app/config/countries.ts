@@ -18,6 +18,7 @@ import {
   GEO_URL,
   COUNTIES_GEO_URL,
 } from "../components/map-constants";
+import { GENERATED_REGIONS } from "./regions-generated";
 
 /** An admin subdivision within a country (US state, CA province, etc.). */
 export interface RegionConfig {
@@ -97,11 +98,33 @@ const US: CountryConfig = {
   regions: US_REGIONS,
 };
 
+// ── Canada ───────────────────────────────────────────────────────────────────
+
+const CA: CountryConfig = {
+  code: "CA",
+  name: "Canada",
+  units: "km",
+  defaultLocale: "en-CA",
+  geocodeCountryCode: "ca",
+  placesRegionCode: "CA",
+  osmReligionFilter: "christian",
+  // Natural Earth admin-1, pre-extracted by scripts/generate-admin1.mjs. Plain
+  // GeoJSON rather than us-atlas TopoJSON, so it needs no conversion step.
+  regionSourceUrl: "/regions-ca.geojson",
+  hasAdmin2: false, // no county-equivalent layer yet
+  // No free Canada-wide population table wired up, so no per-capita shading —
+  // and no ARDA equivalent, so attendance comes from building footprints alone.
+  populationSource: null,
+  attendanceModel: "sqft-only",
+  regions: GENERATED_REGIONS.CA,
+};
+
 // ── Registry ─────────────────────────────────────────────────────────────────
 
 /** All supported countries, keyed by ISO 3166-1 alpha-2 code. */
 export const COUNTRIES: Record<string, CountryConfig> = {
   US,
+  CA,
 };
 
 /** The country used when none is specified (preserves today's US-only behavior). */
