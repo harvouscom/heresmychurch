@@ -231,8 +231,9 @@ async function ovpQ(q:string,label:string):Promise<any[]>{
 }
 function bQ(iso:string,bbox?:[number,number,number,number]):string{
   const f=bbox?`(area.searchArea)(${bbox.join(",")})`:"(area.searchArea)";
-  // Request up to 10000 elements per query; public Overpass may still cap at 2000
-  return`[out:json][timeout:90];area["ISO3166-2"="${iso}"]->.searchArea;(node["amenity"="place_of_worship"]["religion"="christian"]${f};way["amenity"="place_of_worship"]["religion"="christian"]${f};relation["amenity"="place_of_worship"]["religion"="christian"]${f};);out geom 10000;`;
+  // Verified: this limit is honoured — a whole-state Iowa query returns all
+  // 5,361 elements. fetchArea splits any area that comes back near it.
+  return`[out:json][timeout:90];area["ISO3166-2"="${iso}"]->.searchArea;(node["amenity"="place_of_worship"]["religion"="christian"]${f};way["amenity"="place_of_worship"]["religion"="christian"]${f};relation["amenity"="place_of_worship"]["religion"="christian"]${f};);out geom ${OVP_REQUEST_LIMIT};`;
 }
 function splitB(b:[number,number,number,number]):[number,number,number,number][]{const[s,w,n,e]=b,mL=(s+n)/2,mN=(w+e)/2;return[[s,w,mL,mN],[s,mN,mL,e],[mL,w,n,mN],[mL,mN,n,e]];}
 
@@ -248,7 +249,13 @@ function splitB(b:[number,number,number,number]):[number,number,number,number][]
 // extra query — results are deduped by id — whereas trusting a capped response
 // loses data permanently. This replaces the hand-curated BIG list: depth is
 // decided by what comes back, not by guessing which regions are large.
-const OVP_TRUNCATION_SUSPECT=1900;
+// Measured, not assumed: a whole-state Iowa query returns all 5,361 elements in
+// one response, so the `out geom 10000` limit is honoured and the old "may cap
+// at 2000" note was wrong. Sit just under the requested limit — splitting below
+// it only multiplies queries (an over-eager 1,900 pushed Texas past Supabase's
+// 150s function timeout), while anything at the limit is genuinely suspect.
+const OVP_REQUEST_LIMIT=10000;
+const OVP_TRUNCATION_SUSPECT=OVP_REQUEST_LIMIT-500;
 const OVP_MAX_SPLIT_DEPTH=4; // up to 256 cells; guards against runaway recursion
 const OVP_PACE_MS=500;
 
