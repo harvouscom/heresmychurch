@@ -20,7 +20,7 @@ import { Link } from "react-router";
 import { sizeCategories } from "./church-data";
 import type { StateInfo, SeasonalReportSummary } from "./church-data";
 import { fetchCommunityStats, fetchReportList, reportPath, type CommunityStats } from "./api";
-import { getCountry } from "../config/countries";
+import { getCountry, UN_MEMBER_COUNTRIES } from "../config/countries";
 import { PlaceFlag } from "./PlaceFlag";
 import { CloseButton } from "./ui/close-button";
 
@@ -538,16 +538,16 @@ function NationalSummaryContent({
   const regionLabel = regionNoun.many;
   const regionOne = regionNoun.one;
   const isWorld = countryCode === "WORLD";
-  const unitTotal = stats.populated + stats.unpopulated;
-  const coveragePct =
-    unitTotal > 0 ? Math.round((stats.populated / unitTotal) * 1000) / 10 : null;
+  // World coverage is vs UN member states, not HMC's supported-country catalog.
+  const worldCoveragePct =
+    isWorld && stats.populated > 0
+      ? Math.round((stats.populated / UN_MEMBER_COUNTRIES) * 1000) / 10
+      : null;
   const fullLoadedLabel =
     countryCode === "US" && allStatesLoaded
       ? "50 states"
-      : isWorld && unitTotal > 0 && coveragePct != null
-        ? `${stats.populated.toLocaleString()} of ${unitTotal.toLocaleString()} ${
-            unitTotal === 1 ? regionOne : regionLabel
-          } (${coveragePct}%)`
+      : isWorld && worldCoveragePct != null
+        ? `${stats.populated.toLocaleString()} of ${UN_MEMBER_COUNTRIES.toLocaleString()} countries (${worldCoveragePct}%)`
         : `${stats.populated} ${stats.populated === 1 ? regionOne : regionLabel}`;
   return (
     <>

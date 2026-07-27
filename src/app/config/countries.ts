@@ -292,6 +292,12 @@ export const DEFAULT_COUNTRY_CODE = "US";
 
 export const SUPPORTED_COUNTRY_CODES = Object.keys(COUNTRIES);
 
+/**
+ * UN member states — denominator for world coverage copy
+ * (“N of 193 countries”), not `SUPPORTED_COUNTRY_CODES.length`.
+ */
+export const UN_MEMBER_COUNTRIES = 193;
+
 export function getCountry(code: string | undefined): CountryConfig | undefined {
   if (!code) return undefined;
   return COUNTRIES[code.toUpperCase()];
