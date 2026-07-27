@@ -17,9 +17,17 @@
  *   node scripts/populate-region.mjs TX
  *   node scripts/populate-region.mjs TX --dry-run   # walk + count, never write
  *   node scripts/populate-region.mjs TX --resume    # keep staging from a failed run
+ *   node scripts/populate-region.mjs --list-intl    # print intl abbrevs
+ *   node scripts/populate-country.mjs FR            # see sibling script
  *
  * Env: SUPABASE_PROJECT_ID, SUPABASE_ANON_KEY (both default to the app's).
  */
+
+import { readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const PROJECT_ID = process.env.SUPABASE_PROJECT_ID ?? "epufchwxofsyuictfufy";
 const ANON_KEY =
@@ -27,16 +35,8 @@ const ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwdWZjaHd4b2ZzeXVpY3RmdWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5NzcxMTUsImV4cCI6MjA4ODU1MzExNX0.v11kHHpM1IsK6q81909CYkWgX5TdV8kJhCkNqSEs5QM";
 const BASE = `https://${PROJECT_ID}.supabase.co/functions/v1/make-server-283d8046`;
 
-const region = (process.argv[2] || "").toUpperCase();
-const dryRun = process.argv.includes("--dry-run");
-const resume = process.argv.includes("--resume");
-if (!/^[A-Z]{2}$/.test(region)) {
-  console.error("Usage: node scripts/populate-region.mjs <REGION> [--dry-run]");
-  process.exit(1);
-}
-
-/** Region bounding boxes [south, west, north, east] — mirrors the server's B table. */
-const BOUNDS = {
+/** US state bounding boxes [south, west, north, east]. */
+const US_BOUNDS = {
   AL: [30.22, -88.47, 35.01, -84.89], AK: [51.21, -179.15, 71.39, -129.98],
   AZ: [31.33, -114.81, 37.0, -109.04], AR: [33.0, -94.62, 36.5, -89.64],
   CA: [32.53, -124.41, 42.01, -114.13], CO: [36.99, -109.06, 41.0, -102.04],
@@ -64,6 +64,33 @@ const BOUNDS = {
   WI: [42.49, -92.89, 47.08, -86.25], WY: [40.99, -111.06, 45.01, -104.05],
   DC: [38.79, -77.12, 38.99, -76.91],
 };
+
+function loadIntlBounds() {
+  const path = join(__dirname, "intl-region-bounds.generated.json");
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (e) {
+    console.warn(`Could not load ${path}: ${e.message}`);
+    return {};
+  }
+}
+
+const INTL_BOUNDS = loadIntlBounds();
+const BOUNDS = { ...US_BOUNDS, ...INTL_BOUNDS };
+
+const listIntl = process.argv.includes("--list-intl");
+if (listIntl) {
+  console.log(Object.keys(INTL_BOUNDS).sort().join("\n"));
+  process.exit(0);
+}
+
+const region = (process.argv[2] || "").toUpperCase();
+const dryRun = process.argv.includes("--dry-run");
+const resume = process.argv.includes("--resume");
+if (!/^[A-Z][A-Z0-9]{1,30}$/.test(region)) {
+  console.error("Usage: node scripts/populate-region.mjs <REGION> [--dry-run] [--resume]");
+  process.exit(1);
+}
 
 const MAX_DEPTH = 6; // 4^6 cells; far more headroom than the server's one-shot path
 const PACE_MS = 600; // be a good citizen to a free shared Overpass
@@ -133,6 +160,7 @@ async function main() {
   const bbox = BOUNDS[region];
   if (!bbox) {
     console.error(`No bounds for ${region}`);
+    console.error("Run: node scripts/generate-admin1.mjs");
     process.exit(1);
   }
 

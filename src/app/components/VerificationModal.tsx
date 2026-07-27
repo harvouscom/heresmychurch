@@ -15,8 +15,9 @@ import type { Church } from "./church-data";
 import { CloseButton } from "./ui/close-button";
 import { churchNeedsReview, getTier1Completeness } from "./church-data";
 import { fetchCommunityStats, type CommunityStats, type NationalReviewStatsResponse } from "./api";
-import { StateFlag } from "./StateFlag";
+import { PlaceFlag } from "./PlaceFlag";
 import { STATE_NAMES } from "./map-constants";
+import { getCountry, getRegion } from "../config/countries";
 
 // Green Community Impact block (national or state-scoped)
 function CommunityImpactCard({
@@ -64,7 +65,7 @@ function CommunityImpactCard({
               const n = t.uniqueChurches;
               return (
                 <li key={t.abbrev} className="flex items-center gap-2 text-[13px] text-white/70">
-                  <StateFlag abbrev={t.abbrev} size="sm" />
+                  <PlaceFlag abbrev={t.abbrev} countryCode="US" size="sm" />
                   <span className="font-medium text-white truncate min-w-0 flex-1">{name}</span>
                   <span className="text-white/45 whitespace-nowrap flex-shrink-0">
                     {n} listing{n !== 1 ? "s" : ""} updated
@@ -110,7 +111,7 @@ export function VerificationModal({
   const incompleteTotal = incompleteChurches.length;
   const scopeLabel = countyName ? "county" : "state";
   const headerSubtitle = countyName
-    ? (countyName.includes("County") ? `${countyName}, ${stateName}` : `${countyName} County, ${stateName}`)
+    ? `${countyName}, ${stateName}`
     : stateName;
 
   return (
@@ -308,10 +309,25 @@ export interface NationalReviewModalProps {
   stats: NationalReviewStatsResponse | null;
   onClose: () => void;
   onSelectState: (abbrev: string) => void;
+  countryCode?: string;
+  regionNoun?: { one: string; many: string };
 }
 
-export function NationalReviewModal({ stats, onClose, onSelectState }: NationalReviewModalProps) {
+export function NationalReviewModal({
+  stats,
+  onClose,
+  onSelectState,
+  countryCode = "US",
+  regionNoun = { one: "state", many: "states" },
+}: NationalReviewModalProps) {
   const [search, setSearch] = useState("");
+  const regionOne = regionNoun.one;
+  const regionMany = regionNoun.many;
+  const isWorld = countryCode === "WORLD";
+  const regionName = (abbrev: string) =>
+    isWorld
+      ? (getCountry(abbrev)?.name || abbrev)
+      : (getRegion(countryCode, abbrev)?.name || STATE_NAMES[abbrev] || abbrev);
 
   const stateEntries = useMemo(
     () =>
@@ -332,10 +348,10 @@ export function NationalReviewModal({ stats, onClose, onSelectState }: NationalR
     if (!q) return stateEntries;
     const tokens = q.split(/\s+/).filter(Boolean);
     return stateEntries.filter(([abbrev]) => {
-      const name = (STATE_NAMES[abbrev] || abbrev).toLowerCase();
+      const name = regionName(abbrev).toLowerCase();
       return tokens.every((t) => name.includes(t));
     });
-  }, [search, stateEntries]);
+  }, [search, stateEntries, countryCode]);
 
   return (
     <div
@@ -360,11 +376,11 @@ export function NationalReviewModal({ stats, onClose, onSelectState }: NationalR
             </div>
             <div>
               <h2 className="text-white font-semibold text-lg leading-tight">
-                States Needing Review
+                {regionMany.charAt(0).toUpperCase() + regionMany.slice(1)} Needing Review
               </h2>
               <p className="text-white/40 text-xs mt-0.5">
                 {stats
-                  ? `Nationwide · ${stats.totalNeedsReview.toLocaleString()} church${stats.totalNeedsReview !== 1 ? "es" : ""} missing 2+ critical fields (${stats.percentage}%)`
+                  ? `${stats.totalNeedsReview.toLocaleString()} church${stats.totalNeedsReview !== 1 ? "es" : ""} missing 2+ critical fields (${stats.percentage}%)`
                   : "Review stats could not be loaded."}
               </p>
             </div>
@@ -377,10 +393,10 @@ export function NationalReviewModal({ stats, onClose, onSelectState }: NationalR
             <div className="flex flex-col items-center justify-center py-12 gap-3">
               <AlertTriangle size={32} className="text-pink-400/60" />
               <p className="text-white/60 text-sm font-medium text-center max-w-[260px]">
-                National review stats could not be loaded. The review-stats API may not be deployed yet, or there was a network error.
+                Review stats could not be loaded. The review-stats API may not be deployed yet, or there was a network error.
               </p>
               <p className="text-white/40 text-xs text-center max-w-[260px]">
-                You can still open any state and use the state-level &ldquo;need review&rdquo; pill to see churches needing review there.
+                You can still open any {regionOne} and use its &ldquo;need review&rdquo; pill to see churches needing review there.
               </p>
             </div>
           ) : (
@@ -394,7 +410,7 @@ export function NationalReviewModal({ stats, onClose, onSelectState }: NationalR
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search states..."
+                    placeholder={`Search ${regionMany}...`}
                     className="w-full pl-10 pr-3 py-3 rounded-full bg-white/[0.05] border border-white/8 text-white text-[15px] placeholder:text-white/25 focus:outline-none focus:border-purple-500/40 transition-colors"
                   />
                 </div>
@@ -404,16 +420,16 @@ export function NationalReviewModal({ stats, onClose, onSelectState }: NationalR
                 <CheckCircle2 size={32} className="text-green-400/40" />
                 <p className="text-white/40 text-sm font-medium">All caught up!</p>
                 <p className="text-white/25 text-xs text-center max-w-[240px]">
-                  No states have churches missing critical information.
+                  No {regionMany} have churches missing critical information.
                 </p>
               </div>
             ) : filtered.length === 0 ? (
               <p className="text-white/40 text-xs py-6 text-center">
-                No states found for &ldquo;{search}&rdquo;
+                No {regionMany} found for &ldquo;{search}&rdquo;
               </p>
             ) : (
               filtered.map(([abbrev, s]) => {
-                const stateName = STATE_NAMES[abbrev] || abbrev;
+                const name = regionName(abbrev);
                 const pct = s.total > 0 ? Math.round((s.needsReview / s.total) * 1000) / 10 : 0;
                 return (
                   <div
@@ -424,10 +440,10 @@ export function NationalReviewModal({ stats, onClose, onSelectState }: NationalR
                       onSelectState(abbrev);
                     }}
                   >
-                    <StateFlag abbrev={abbrev} size="sm" />
+                    <PlaceFlag abbrev={abbrev} countryCode={countryCode} size="sm" />
                     <div className="flex-1 min-w-0 flex items-center gap-2 text-sm">
                       <span className="text-white font-medium truncate group-hover:text-purple-300 transition-colors">
-                        {stateName}
+                        {name}
                       </span>
                       <span className="text-white/40 whitespace-nowrap">
                         {pct}% need review
@@ -445,7 +461,7 @@ export function NationalReviewModal({ stats, onClose, onSelectState }: NationalR
 
         <div className="flex-shrink-0 px-5 py-3 border-t border-white/6 text-pretty">
           <p className="text-white/25 text-[10px] text-center leading-relaxed">
-            Click a state to open its churches needing review. Critical fields: address, service times, denomination.
+            Click a {regionOne} to open its churches needing review. Critical fields: address, service times, denomination.
           </p>
         </div>
       </motion.div>

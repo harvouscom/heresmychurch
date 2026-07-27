@@ -13,7 +13,6 @@ import {
 import type { PendingSuggestion } from "./api";
 import {
   GEO_URL,
-  COUNTIES_GEO_URL,
   FIPS_TO_STATE,
   STATE_TO_FIPS,
   filterToStateBounds,
@@ -21,32 +20,13 @@ import {
   getCountyCenter,
   getCountyZoom,
 } from "./map-constants";
-import { COUNTY_POPULATIONS } from "./data/county-populations";
-import { getChurchUrlSegment } from "./url-utils";
+import { churchMatchesRouteSegment, getChurchUrlSegment } from "./url-utils";
 import { getRegion } from "../config/countries";
-
-/** Match church by route segment (legacy id or numeric shortId). Coerce shortId to string so API number still matches. */
-function churchMatchesRouteSegment(
-  church: Church,
-  segment: string,
-  stateAbbrev: string
-): boolean {
-  if (church.id === segment) return true;
-  if (church.shortId != null && String(church.shortId) === segment) return true;
-  if (getChurchUrlSegment(church, stateAbbrev) === segment) return true;
-  // Match segment to numeric part of id (e.g. OK-18899678 -> 18899678) when shortId is missing or inconsistent
-  const st = (stateAbbrev || "").toUpperCase();
-  const statePrefix = st && st.length === 2 ? `${st}-` : "";
-  if (statePrefix && church.id.startsWith(statePrefix)) {
-    const numPart = church.id.slice(statePrefix.length);
-    if (/^\d+$/.test(numPart)) {
-      const normalized = numPart.length >= 8 ? numPart.slice(0, 8) : numPart.padStart(8, "0");
-      if (normalized === segment || numPart === segment) return true;
-    }
-  }
-  return false;
-}
-
+import {
+  buildAdmin2Stats,
+  filterChurchesToAdmin2,
+  loadAdmin2Features,
+} from "./admin2";
 import { useLoadingOverlay } from "./hooks/useLoadingOverlay";
 import { useUIState } from "./hooks/useUIState";
 import { useChurchFilters } from "./hooks/useChurchFilters";
@@ -151,68 +131,20 @@ export function useChurchMapData({
   // ── Sub-hook: UI state (filters, tooltips, modals) ──
   const ui = useUIState(focusedState);
 
-  // County-level church counts and per-capita (point-in-polygon vs county TopoJSON)
-  const countyStats = useMemo(() => {
-    if (!focusedState || !countyFeatures?.size || churches.length === 0) return null;
-    const stateFips = STATE_TO_FIPS[focusedState];
-    if (!stateFips) return null;
-    const stateCounties = Array.from(countyFeatures.entries()).filter(([key]) => key.substring(0, 2) === stateFips);
-    const countyNames: Record<string, string> = {};
-    for (const [key, feat] of stateCounties) {
-      countyNames[key] = (feat.properties?.name as string) ?? `County ${key}`;
-    }
-    const byFips: Record<string, { churchCount: number; population: number; perCapita: number; peoplePer: number; name: string }> = {};
-    for (const church of churches) {
-      let fips: string | null = null;
-      for (const [key, feat] of stateCounties) {
-        if (geoContains(feat, [church.lng, church.lat])) {
-          fips = key;
-          break;
-        }
-      }
-      if (!fips) continue;
-      const pop = COUNTY_POPULATIONS[fips] ?? 0;
-      if (!byFips[fips]) {
-        byFips[fips] = { churchCount: 0, population: pop, perCapita: 0, peoplePer: 0, name: countyNames[fips] ?? `County ${fips}` };
-      }
-      byFips[fips].churchCount += 1;
-    }
-    const sorted: Array<{ fips: string; name: string; churchCount: number; population: number; perCapita: number; peoplePer: number }> = [];
-    for (const [fips, data] of Object.entries(byFips)) {
-      const pop = data.population || 1;
-      const perCapita = data.churchCount / pop;
-      const peoplePer = Math.round(pop / data.churchCount);
-      sorted.push({
-        fips,
-        name: data.name,
-        churchCount: data.churchCount,
-        population: data.population,
-        perCapita,
-        peoplePer,
-      });
-    }
-    sorted.sort((a, b) => b.perCapita - a.perCapita);
-    return {
-      byFips: Object.fromEntries(
-        Object.entries(byFips).map(([f, d]) => [
-          f,
-          { ...d, perCapita: d.churchCount / (d.population || 1), peoplePer: Math.round((d.population || 1) / d.churchCount) },
-        ])
-      ),
-      sortedByPerCapita: sorted,
-    };
-  }, [focusedState, countyFeatures, churches]);
+  // County / admin-2 church counts and per-capita (point-in-polygon)
+  const countyStats = useMemo(
+    () => buildAdmin2Stats("US", focusedState ?? "", churches, countyFeatures),
+    [focusedState, countyFeatures, churches],
+  );
 
   // Focused county (when in state view and route has county segment)
   const focusedCounty = focusedState && routeCountyFips ? routeCountyFips : null;
 
   // When in county view, scope church list to county for filters + map
-  const viewChurches = useMemo(() => {
-    if (!focusedCounty || !countyFeatures?.size) return churches;
-    const feat = countyFeatures.get(focusedCounty);
-    if (!feat) return churches;
-    return churches.filter((ch) => geoContains(feat, [ch.lng, ch.lat]));
-  }, [focusedCounty, countyFeatures, churches]);
+  const viewChurches = useMemo(
+    () => filterChurchesToAdmin2(churches, focusedCounty, countyFeatures),
+    [focusedCounty, countyFeatures, churches],
+  );
 
   // ── Sub-hook: filtered churches + derived stats ──
   const filters = useChurchFilters(
@@ -760,18 +692,23 @@ export function useChurchMapData({
   loadFnsRef.current.loadStateDataSilent = loadStateDataSilent;
   loadFnsRef.current.loadStateDataSilentForChurch = loadStateDataSilentForChurch;
 
-  // ── Apply pending state transition once loading overlay fully dismisses ──
+  // ── Apply pending state transition once data is ready ──
+  // Don't wait on forceLoadingVisible / verse min-time — the full-screen
+  // overlay only shows for slow `populating` refreshes now; the header pill
+  // already tracks loading. Holding focusedState/churches until verses finish
+  // left the map without counties or dots after "Loading churches…" ended.
   useEffect(() => {
-    if (!overlay.forceLoadingVisible && !loading && !populating && refs.current.pendingTransition) {
+    if (!loading && !populating && refs.current.pendingTransition) {
       const p = refs.current.pendingTransition;
       refs.current.pendingTransition = null;
       setFocusedState(p.abbrev);
       setFocusedStateName(p.name);
       setChurches(p.churches);
       setLoadingStateName("");
+      overlay.setForceLoadingVisible(false);
       moveToView([p.lng, p.lat], getStateZoom(p.abbrev));
     }
-  }, [overlay.forceLoadingVisible, loading, populating]);
+  }, [loading, populating]);
 
   // ── Sync local state churchCount with actual polygon-filtered count ──
   useEffect(() => {
@@ -828,26 +765,13 @@ export function useChurchMapData({
         console.warn("[ChurchMap] Failed to load topojson for polygon filtering:", err)
       );
 
-    fetch(COUNTIES_GEO_URL)
-      .then((res) => res.json())
-      .then((topology: any) => {
-        if (!topology?.objects?.counties) {
-          console.warn("[ChurchMap] Invalid counties topology");
-          return;
-        }
-        const geojson = feature(topology, topology.objects.counties) as any;
-        const countyMap = new Map<string, any>();
-        if (geojson?.features) {
-          for (const f of geojson.features) {
-            const fips = String(f.id ?? "").padStart(5, "0");
-            if (fips.length === 5) countyMap.set(fips, f);
-          }
-        }
+    loadAdmin2Features("US")
+      .then((countyMap) => {
         setCountyFeatures(countyMap);
-        console.log(`[ChurchMap] Loaded county features for ${countyMap.size} counties`);
+        console.log(`[ChurchMap] Loaded admin-2 features for ${countyMap.size} US counties`);
       })
       .catch((err) =>
-        console.warn("[ChurchMap] Failed to load county topojson:", err)
+        console.warn("[ChurchMap] Failed to load US county geography:", err)
       );
 
     fetchStatePopulations()
@@ -1094,7 +1018,7 @@ export function useChurchMapData({
   useEffect(() => {
     let el = document.getElementById(CHURCH_JSONLD_ID) as HTMLScriptElement | null;
     if (selectedChurch && focusedState) {
-      const url = `https://heresmychurch.com/state/${focusedState}/${getChurchUrlSegment(selectedChurch, focusedState)}`;
+      const url = `https://heresmychurch.com/US/${focusedState}/${getChurchUrlSegment(selectedChurch, focusedState)}`;
       const address =
         selectedChurch.address
           ? { "@type": "PostalAddress" as const, streetAddress: selectedChurch.address, addressLocality: selectedChurch.city || undefined, addressRegion: selectedChurch.state || undefined }
@@ -1208,7 +1132,11 @@ export function useChurchMapData({
   };
 
   const handleStateClick = (abbrev: string, e?: { clientX: number; clientY: number }) => {
-    if (focusedState) return;
+    // Already in a region: jump to a neighboring state/province instead of no-op.
+    if (focusedState) {
+      if (abbrev !== focusedState) navigateToState(abbrev);
+      return;
+    }
     if (isMobile) {
       const pos = e ? { x: e.clientX, y: e.clientY } : ui.tooltipPos;
       ui.setPinnedStatePreview(abbrev, pos);
@@ -1257,6 +1185,7 @@ export function useChurchMapData({
     setHoveredState: ui.setHoveredState,
     previewState: ui.previewState,
     previewStatePinned: ui.previewStatePinned,
+    setPinnedStatePreview: ui.setPinnedStatePreview,
     clearStatePreview: ui.clearStatePreview,
     handleStateClick,
     handleCountyClick,

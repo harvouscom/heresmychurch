@@ -19,9 +19,9 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { sizeCategories } from "./church-data";
 import type { StateInfo, SeasonalReportSummary } from "./church-data";
-import { fetchCommunityStats, fetchReportList } from "./api";
-import type { CommunityStats } from "./api";
-import { StateFlag } from "./StateFlag";
+import { fetchCommunityStats, fetchReportList, reportPath, type CommunityStats } from "./api";
+import { getCountry } from "../config/countries";
+import { PlaceFlag } from "./PlaceFlag";
 import { CloseButton } from "./ui/close-button";
 
 type InterestingFact = {
@@ -84,6 +84,14 @@ interface SummaryPanelProps {
   countyStats?: CountyStatsForSummary | null;
   /** When in focused county view, show county-level summary. */
   focusedCounty?: string | null;
+  /** ISO country — controls whether admin-2 names get a "County" suffix. */
+  countryCode?: string;
+  /** Singular/plural noun for admin-1 areas (e.g. "province" / "provinces"). */
+  regionNoun?: { one: string; many: string };
+  /** Plural noun for admin-2 areas (e.g. "census divisions"). */
+  admin2Noun?: string;
+  /** Boundary attribution line for the data footer. */
+  boundaryAttribution?: string;
 }
 
 export function SummaryPanel({
@@ -101,22 +109,33 @@ export function SummaryPanel({
   onShowVerification,
   countyStats,
   focusedCounty = null,
+  countryCode = "US",
+  regionNoun = { one: "state", many: "states" },
+  admin2Noun = "counties",
+  boundaryAttribution,
 }: SummaryPanelProps) {
   const [latestReportSlug, setLatestReportSlug] = useState<string>("launch-2026");
   const [seasonalReports, setSeasonalReports] = useState<SeasonalReportSummary[]>([]);
+  const reportScopeCode = countryCode === "WORLD" ? "WORLD" : (countryCode || "US").toUpperCase();
   useEffect(() => {
-    fetchReportList()
+    fetchReportList(reportScopeCode)
       .then((reports) => {
         setSeasonalReports(reports);
         const latest = reports[reports.length - 1];
         if (latest?.slug) setLatestReportSlug(latest.slug);
       })
       .catch(() => {});
-  }, []);
+  }, [reportScopeCode]);
   const previousNationalReports =
     seasonalReports.length > 1
       ? seasonalReports.slice(0, -1).reverse()
       : [];
+  const countryReportLabel =
+    reportScopeCode === "WORLD"
+      ? "World"
+      : reportScopeCode === "US"
+        ? "U.S."
+        : (getCountry(reportScopeCode)?.name || reportScopeCode);
   const countyData = focusedCounty && countyStats?.byFips[focusedCounty];
   return (
     <motion.div
@@ -129,13 +148,14 @@ export function SummaryPanel({
     >
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-white/8 flex-shrink-0">
-        <span className="flex items-center gap-1.5 text-xs font-medium text-white uppercase tracking-widest">
-          {focusedState && <StateFlag abbrev={focusedState} size="sm" />}
+        <span className="text-xs font-medium text-white uppercase tracking-widest">
           {focusedCounty && countyData
-            ? `${countyData.name.includes("County") ? countyData.name : `${countyData.name} County`}, ${focusedStateName}`
+            ? `${countyData.name}, ${focusedStateName}`
             : focusedState
               ? `${focusedStateName} Summary`
-              : "Summary"}
+              : countryCode === "WORLD"
+                ? "World Summary"
+                : "Summary"}
         </span>
         <CloseButton onClick={onClose} />
       </div>
@@ -157,12 +177,16 @@ export function SummaryPanel({
             churchCount={churches.length}
             statePopulation={statePopulations[focusedState!]}
             countyStats={countyStats ?? null}
+            admin2Noun={admin2Noun}
+            countryCode={countryCode}
           />
         ) : (
           <NationalSummaryContent
             stats={summaryStats}
             totalChurches={totalChurches}
             allStatesLoaded={allStatesLoaded}
+            regionNoun={regionNoun}
+            countryCode={countryCode}
             onNavigateToState={onNavigateToState}
           />
         )}
@@ -173,13 +197,14 @@ export function SummaryPanel({
             Not all churches may be represented yet — our goal is for every church to be included.{" "}
             {focusedState
               ? "Find your church or add it below!"
-              : "Click any state to find or add your church!"}
+              : `Click any ${regionNoun.one} to find or add your church!`}
           </p>
           <p className="text-white/20 text-[10px] text-center leading-relaxed">
             Church data and building footprints from OpenStreetMap via Overpass API{" "}&middot;{" "}
-            Cross-referenced with The Association of Religion Data Archives (ARDA){" "}&middot;{" "}
-            Population from U.S. Census Bureau{" "}&middot;{" "}
-            Boundaries from Natural Earth / U.S. Census TIGER{" "}&middot;{" "}
+            {countryCode === "US"
+              ? <>Cross-referenced with The Association of Religion Data Archives (ARDA){" "}&middot;{" "}Population from U.S. Census Bureau{" "}&middot;{" "}</>
+              : null}
+            {boundaryAttribution ? <>{boundaryAttribution}{" "}&middot;{" "}</> : null}
             {/* Basemap credit lives here rather than as a control pinned over the
                 map. OpenStreetMap's ODbL and CARTO's terms both require it to be
                 shown, so it is relocated, not removed. */}
@@ -206,21 +231,23 @@ export function SummaryPanel({
         </div>
       </div>
 
-      {/* National report — pinned bottom (matches state report CTA styling) */}
-      {summaryStats.type === "national" && (
+      {/* Country / world seasonal report — pinned bottom (national overview) */}
+      {summaryStats.type === "national" && seasonalReports.length > 0 && (
         <div className="px-5 pb-4 pt-3 border-t border-white/8 flex-shrink-0 space-y-2">
           <Link
-            to={`/report/${latestReportSlug}`}
+            to={reportPath({ slug: latestReportSlug, countryCode: reportScopeCode })}
             className="w-full py-2.5 rounded-xl text-xs font-semibold text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 transition-colors cursor-pointer flex items-center justify-center gap-2"
             onClick={onClose}
           >
             <FileText size={13} />
-            View U.S. Report
+            View {countryReportLabel} Report
           </Link>
-          <NationalPreviousReportsExpand
-            previous={previousNationalReports}
-            onNavigate={onClose}
-          />
+          {reportScopeCode === "US" && (
+            <NationalPreviousReportsExpand
+              previous={previousNationalReports}
+              onNavigate={onClose}
+            />
+          )}
           <Link
             to="/reports"
             onClick={onClose}
@@ -232,10 +259,10 @@ export function SummaryPanel({
         </div>
       )}
 
-      {/* Action buttons — pinned bottom (state view only) */}
+      {/* Action buttons — pinned bottom (state/region view only) */}
       {summaryStats.type === "state" && (
         <div className="px-5 pb-4 pt-3 border-t border-white/8 flex-shrink-0 space-y-2">
-          {focusedState && (
+          {countryCode === "US" && focusedState && (
             <Link
               to={`/report/state/${focusedState}/${latestReportSlug}`}
               className="w-full py-2.5 rounded-xl text-xs font-semibold text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 transition-colors cursor-pointer flex items-center justify-center gap-2"
@@ -243,6 +270,16 @@ export function SummaryPanel({
             >
               <FileText size={13} />
               View {focusedState} Report
+            </Link>
+          )}
+          {countryCode !== "US" && countryCode !== "WORLD" && seasonalReports.length > 0 && (
+            <Link
+              to={reportPath({ slug: latestReportSlug, countryCode: reportScopeCode })}
+              className="w-full py-2.5 rounded-xl text-xs font-semibold text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 transition-colors cursor-pointer flex items-center justify-center gap-2"
+              onClick={onClose}
+            >
+              <FileText size={13} />
+              View {countryReportLabel} Report
             </Link>
           )}
           <Link
@@ -295,15 +332,15 @@ function CountySummaryContent({
   peoplePer: number;
   stats?: StateSummaryData;
 }) {
-  const displayName = countyName.includes("County") ? countyName : `${countyName} County`;
   const countyFacts = stats?.interestingFacts?.filter(
-    (f) => f.label !== "County that could use more churches"
+    (f) => f.label !== "Area that could use more churches"
+      && f.label !== "County that could use more churches"
   ) ?? [];
 
   return (
     <>
       <p className="text-white/70 text-xs leading-relaxed">
-        <span className="font-medium text-purple-300">{displayName}</span> has{" "}
+        <span className="font-medium text-purple-300">{countyName}</span> has{" "}
         <span className="font-medium text-white">{churchCount.toLocaleString()} churches</span>
         {population > 0 && (
           <> and a population of <span className="font-medium text-white">{population.toLocaleString()}</span> — about{" "}
@@ -377,6 +414,8 @@ function StateSummaryContent({
   churchCount,
   statePopulation,
   countyStats,
+  admin2Noun = "counties",
+  countryCode = "US",
 }: {
   stats: StateSummaryData;
   focusedState: string;
@@ -384,7 +423,10 @@ function StateSummaryContent({
   churchCount: number;
   statePopulation?: number;
   countyStats?: CountyStatsForSummary | null;
+  admin2Noun?: string;
+  countryCode?: string;
 }) {
+  const admin2Heading = `${admin2Noun.charAt(0).toUpperCase()}${admin2Noun.slice(1)} by churches per capita`;
   return (
     <>
       <p className="text-white/70 text-xs leading-relaxed">
@@ -400,13 +442,13 @@ function StateSummaryContent({
       <CommunityStatsCard key={focusedState} stateAbbrev={focusedState} />
 
       {/* Interesting facts */}
-      <FactsList facts={stats.interestingFacts} />
+      <FactsList facts={stats.interestingFacts} countryCode={countryCode} />
 
-      {/* County ranking by churches per capita */}
+      {/* Admin-2 ranking by churches per capita */}
       {countyStats && countyStats.sortedByPerCapita.length > 0 && (
         <div>
           <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-medium block mb-1.5">
-            Counties by churches per capita
+            {admin2Heading}
           </span>
           <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
             <div>
@@ -482,13 +524,26 @@ function NationalSummaryContent({
   stats,
   totalChurches,
   allStatesLoaded,
+  regionNoun,
+  countryCode,
   onNavigateToState,
 }: {
   stats: NationalSummaryData;
   totalChurches: number;
   allStatesLoaded: boolean;
+  regionNoun: { one: string; many: string };
+  countryCode: string;
   onNavigateToState: (abbrev: string) => void;
 }) {
+  const regionLabel = regionNoun.many;
+  const regionOne = regionNoun.one;
+  const isWorld = countryCode === "WORLD";
+  const fullLoadedLabel =
+    countryCode === "US" && allStatesLoaded
+      ? "50 states"
+      : isWorld
+        ? `${stats.populated} ${stats.populated === 1 ? regionOne : regionLabel}`
+        : `${stats.populated} ${regionLabel}`;
   return (
     <>
       <p className="text-white/70 text-xs leading-relaxed">
@@ -496,24 +551,25 @@ function NationalSummaryContent({
           <>
             Currently tracking <span className="font-medium text-white">{totalChurches.toLocaleString()} churches</span> across{" "}
             <span className="font-medium text-purple-300">
-              {allStatesLoaded ? "50 states" : `${stats.populated} states`}
-            </span>.
+              {fullLoadedLabel}
+            </span>
+            {isWorld ? " worldwide" : ""}.
             {stats.nationalPeoplePer != null && stats.populationMillions != null && (
               <> That&apos;s about <span className="font-medium text-white">1 church per {stats.nationalPeoplePer.toLocaleString()} people</span>, covering <span className="font-medium text-white">{stats.populationMillions} million people</span>.</>
             )}
             {!allStatesLoaded && stats.unpopulated > 0 && (
-              <> <span className="text-white/50">{stats.unpopulated} states haven&apos;t been explored yet.</span></>
+              <> <span className="text-white/50">{stats.unpopulated} {stats.unpopulated === 1 ? regionOne : regionLabel} haven&apos;t been explored yet.</span></>
             )}
           </>
         ) : (
-          <>Click any state on the map to fetch its church data from OpenStreetMap.</>
+          <>Click any {regionOne} on the map to fetch its church data from OpenStreetMap.</>
         )}
       </p>
 
-      {/* Community impact (nation-wide totals) */}
-      <CommunityStatsCard key="national" />
+      {/* Community impact (nation-wide totals) — US corrections rollup for now */}
+      {countryCode === "US" && <CommunityStatsCard key="national" />}
 
-      {/* Top 3 states by church count — podium style */}
+      {/* Top 3 regions by church count — podium style */}
       {stats.topStates.length > 0 && (
         <div>
           <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-medium block mb-2">
@@ -526,7 +582,7 @@ function NationalSummaryContent({
                   onClick={() => onNavigateToState(st.abbrev)}
                   className="flex-1 rounded-lg bg-white/4 border border-white/5 px-2 py-2.5 hover:bg-white/8 transition-colors text-center group cursor-pointer flex flex-col items-center"
                 >
-                  <StateFlag abbrev={st.abbrev} size="md" />
+                  <PlaceFlag abbrev={st.abbrev} countryCode={countryCode} size="md" />
                   <span className="text-white text-[13px] font-semibold group-hover:text-purple-300 transition-colors block truncate mt-1 w-full">
                     {st.name}
                   </span>
@@ -540,13 +596,17 @@ function NationalSummaryContent({
       )}
 
       {/* Interesting facts */}
-      <FactsList facts={stats.interestingFacts} onNavigateToState={onNavigateToState} />
+      <FactsList
+        facts={stats.interestingFacts}
+        onNavigateToState={onNavigateToState}
+        countryCode={countryCode}
+      />
 
-      {/* Unloaded states hint */}
+      {/* Unloaded regions hint */}
       {stats.unpopulated > 0 && (
         <div className="rounded-lg bg-purple-900/20 border border-purple-500/10 px-3 py-2.5">
           <p className="text-white/40 text-[11px] leading-relaxed text-center">
-            {stats.unpopulated} state{stats.unpopulated > 1 ? "s" : ""} remaining — click any state to fetch its data from OpenStreetMap
+            {stats.unpopulated} {stats.unpopulated === 1 ? regionOne : regionLabel} remaining — click any {regionOne} to fetch its data from OpenStreetMap
           </p>
         </div>
       )}
@@ -634,9 +694,11 @@ function CommunityStatsCard({ stateAbbrev }: { stateAbbrev?: string }) {
 function FactsList({
   facts,
   onNavigateToState,
+  countryCode = "US",
 }: {
   facts: InterestingFact[];
   onNavigateToState?: (abbrev: string) => void;
+  countryCode?: string;
 }) {
   if (!facts || facts.length === 0) return null;
 
@@ -670,7 +732,9 @@ function FactsList({
                   </span>
                   <div className="flex items-center justify-between mt-0.5 gap-2">
                     <span className="flex items-center gap-1.5 min-w-0">
-                      {fact.abbrev && <StateFlag abbrev={fact.abbrev} size="sm" />}
+                      {fact.abbrev && (
+                        <PlaceFlag abbrev={fact.abbrev} countryCode={countryCode} size="sm" />
+                      )}
                       <span
                         className={`text-white text-xs font-semibold truncate ${
                           isClickable ? "group-hover:text-purple-300" : ""

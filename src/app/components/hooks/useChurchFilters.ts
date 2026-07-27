@@ -132,7 +132,7 @@ export function useChurchFilters(
 }
 
 // --- Helper: compute state-level summary stats ---
-function computeStateSummary(
+export function computeStateSummary(
   churches: Church[],
   denomCounts: Record<string, number>,
   sizeCounts: Record<string, number>,
@@ -201,16 +201,16 @@ function computeStateSummary(
       icon: "mapPin",
       label: "Church capital",
       primary: topCity[0],
-      secondary: `${topCity[1].toLocaleString()} churches (${pctOfState}% of state)`,
+      secondary: `${topCity[1].toLocaleString()} churches (${pctOfState}% of region)`,
     });
   }
 
-  // Most underserved county (fewest churches per capita)
+  // Most underserved admin-2 (fewest churches per capita)
   if (countyStats?.sortedByPerCapita?.length > 0) {
     const underserved = countyStats.sortedByPerCapita[countyStats.sortedByPerCapita.length - 1];
     facts.push({
       icon: "mapPin",
-      label: "County that could use more churches",
+      label: "Area that could use more churches",
       primary: underserved.name,
       secondary: `1 per ${underserved.peoplePer.toLocaleString()} people`,
     });
@@ -238,7 +238,7 @@ function computeStateSummary(
   return { type: "state" as const, totalAttendance, topDenoms, topSizes, interestingFacts: facts };
 }
 
-function computeNationalSummary(
+export function computeNationalSummary(
   states: StateInfo[],
   statePopulations: Record<string, number>,
 ) {
@@ -313,7 +313,7 @@ function computeNationalSummary(
       );
       facts.push({
         icon: "mapPin",
-        label: "Closest to national ratio",
+        label: "Closest to country ratio",
         primary: mostAverage.name,
         secondary: `1 per ${mostAverage.peoplePer.toLocaleString()} people`,
         abbrev: mostAverage.abbrev,
@@ -332,4 +332,139 @@ function computeNationalSummary(
     nationalPeoplePer: nationalPeoplePer > 0 ? nationalPeoplePer : undefined,
     populationMillions,
   };
+}
+
+export type WorldReviewStatsInput = {
+  states: Record<string, { total: number; needsReview: number }>;
+  percentage?: number;
+} | null | undefined;
+
+/** World summary from /churches/countries — reuses national summary shape (abbrev = ISO CC). */
+export function computeWorldSummary(
+  countries: Array<{
+    code: string;
+    name: string;
+    churchCount: number;
+    isPopulated: boolean;
+    regionCount?: number;
+    populatedRegions?: number;
+  }>,
+  reviewStats?: WorldReviewStatsInput,
+) {
+  const asStates: StateInfo[] = countries.map((c) => ({
+    abbrev: c.code,
+    name: c.name,
+    lat: 0,
+    lng: 0,
+    churchCount: c.churchCount || 0,
+    isPopulated: !!c.isPopulated && (c.churchCount || 0) > 0,
+  }));
+  const base = computeNationalSummary(asStates, {});
+  const populated = countries.filter((c) => c.isPopulated && (c.churchCount || 0) > 0);
+  const totalChurches = populated.reduce((sum, c) => sum + (c.churchCount || 0), 0);
+  const nameByCode = Object.fromEntries(countries.map((c) => [c.code.toUpperCase(), c.name]));
+  const facts: InterestingFact[] = [];
+
+  // Fewest churches among populated countries (contrast to the top-3 podium).
+  if (populated.length >= 2) {
+    const fewest = [...populated].sort((a, b) => a.churchCount - b.churchCount)[0];
+    if (!base.topStates.some((s) => s.abbrev === fewest.code)) {
+      facts.push({
+        icon: "search",
+        label: "Fewest churches",
+        primary: fewest.name,
+        secondary: `${fewest.churchCount.toLocaleString()} churches`,
+        abbrev: fewest.code,
+      });
+    }
+  }
+
+  // Largest share of the world total.
+  if (populated.length > 0 && totalChurches > 0) {
+    const top = [...populated].sort((a, b) => b.churchCount - a.churchCount)[0];
+    const pct = Math.round((top.churchCount / totalChurches) * 1000) / 10;
+    facts.push({
+      icon: "chart",
+      label: "Largest share of world total",
+      primary: top.name,
+      secondary: `${pct}%`,
+      abbrev: top.code,
+    });
+  }
+
+  // Region coverage across all supported countries.
+  const regionTotal = countries.reduce((sum, c) => sum + (c.regionCount || 0), 0);
+  const regionPopulated = countries.reduce((sum, c) => sum + (c.populatedRegions || 0), 0);
+  if (regionTotal > 0) {
+    facts.push({
+      icon: "globe",
+      label: "Regions mapped",
+      primary: `${regionPopulated.toLocaleString()} of ${regionTotal.toLocaleString()}`,
+      secondary: `${populated.length} of ${countries.length} countries`,
+    });
+  }
+
+  // Review completeness from world rollup (states keyed by ISO CC).
+  if (reviewStats?.states) {
+    const entries = Object.entries(reviewStats.states)
+      .filter(([, s]) => s.total > 0)
+      .map(([cc, s]) => ({
+        cc: cc.toUpperCase(),
+        pctNeed: s.needsReview / s.total,
+        total: s.total,
+      }));
+    if (entries.length >= 2) {
+      const mostComplete = [...entries].sort((a, b) => a.pctNeed - b.pctNeed)[0];
+      const mostNeeding = [...entries].sort((a, b) => b.pctNeed - a.pctNeed)[0];
+      const label = (cc: string) => nameByCode[cc] || cc;
+      facts.push({
+        icon: "trending",
+        label: "Most complete reviews",
+        primary: label(mostComplete.cc),
+        secondary: `${Math.round((1 - mostComplete.pctNeed) * 1000) / 10}% complete`,
+        abbrev: mostComplete.cc,
+      });
+      if (mostNeeding.cc !== mostComplete.cc) {
+        facts.push({
+          icon: "search",
+          label: "Most needing review",
+          primary: label(mostNeeding.cc),
+          secondary: `${Math.round(mostNeeding.pctNeed * 1000) / 10}% need review`,
+          abbrev: mostNeeding.cc,
+        });
+      }
+    }
+  }
+
+  // Keep any base facts that aren't duplicates of what we just added.
+  for (const f of base.interestingFacts) {
+    if (facts.some((x) => x.label === f.label && x.abbrev === f.abbrev)) continue;
+    // World path already adds an explicit "Fewest churches" row.
+    if (f.label.toLowerCase().includes("fewest")) continue;
+    facts.push(f);
+  }
+
+  return {
+    ...base,
+    // Prefer explicit country coverage wording over "N countries" alone when partial.
+    populated: populated.length,
+    unpopulated: Math.max(0, countries.length - populated.length),
+    interestingFacts: facts.slice(0, 8),
+  };
+}
+
+/** Build denom/size counts + state summary for an intl (or any) church list. */
+export function buildRegionSummaryStats(
+  churches: Church[],
+  countyStats: CountyStatsForSummary = null,
+) {
+  const denomCounts: Record<string, number> = {};
+  const sizeCounts: Record<string, number> = {};
+  for (const ch of churches) {
+    const group = getDenominationGroup(ch.denomination);
+    denomCounts[group] = (denomCounts[group] || 0) + 1;
+    const cat = getSizeCategory(ch.attendance);
+    sizeCounts[cat.label] = (sizeCounts[cat.label] || 0) + 1;
+  }
+  return computeStateSummary(churches, denomCounts, sizeCounts, countyStats);
 }

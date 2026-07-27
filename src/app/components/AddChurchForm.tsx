@@ -20,11 +20,12 @@ import { ThreeDotLoader } from "./ThreeDotLoader";
 import type { Church } from "./church-data";
 import { DENOMINATION_GROUPS, COMMON_LANGUAGES, COMMON_MINISTRIES } from "./church-data";
 import { addChurch } from "./api";
-import { ServiceTimesInput } from "./ServiceTimesInput";
+import { ServiceTimesInput, normalizeServiceTimes } from "./ServiceTimesInput";
 import { normalizePhone } from "./ui/utils";
 import { CloseButton } from "./ui/close-button";
+import { resolveRegionByAbbrev } from "../config/countries";
 
-/** Geocode a US address to lat/lng using Nominatim (OpenStreetMap). Returns null if not found or error. */
+/** Geocode an address to lat/lng using Nominatim (OpenStreetMap). Supports all HMC regions. */
 export async function geocodeAddress(
   address: string,
   city: string,
@@ -32,14 +33,21 @@ export async function geocodeAddress(
 ): Promise<{ lat: number; lng: number } | null> {
   const street = (address || "").trim();
   const ci = (city || "").trim();
-  const st = (stateAbbrev || "").trim().toUpperCase().slice(0, 2);
+  const st = (stateAbbrev || "").trim().toUpperCase();
   if (!street || !ci || !st) return null;
-  const q = `${street}, ${ci}, ${st}, USA`;
+  const resolved = resolveRegionByAbbrev(st);
+  if (!resolved) return null;
+  const { country, region } = resolved;
+  const cc = country.code.toUpperCase();
+  const q =
+    cc === "US"
+      ? `${street}, ${ci}, ${st}, USA`
+      : `${street}, ${ci}, ${region.name}`;
   const url = `https://nominatim.openstreetmap.org/search?${new URLSearchParams({
     q,
     format: "json",
     limit: "1",
-    countrycodes: "us",
+    countrycodes: country.geocodeCountryCode || cc.toLowerCase(),
   })}`;
   try {
     const res = await fetch(url, {
@@ -51,7 +59,10 @@ export async function geocodeAddress(
     if (!first || first.lat == null || first.lon == null) return null;
     const lat = parseFloat(first.lat);
     const lng = parseFloat(first.lon);
-    if (isNaN(lat) || isNaN(lng) || lat < 18 || lat > 72 || lng < -180 || lng > -65) return null;
+    if (isNaN(lat) || isNaN(lng)) return null;
+    const [s, w, n, e] = region.bounds;
+    const pad = 0.5;
+    if (lat < s - pad || lat > n + pad || lng < w - pad || lng > e + pad) return null;
     return { lat, lng };
   } catch {
     return null;
@@ -176,7 +187,7 @@ export function AddChurchForm({
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
 
-  const submitToApi = async (parsedLat: number, parsedLng: number) => {
+  const submitToApi = async (parsedLat: number, parsedLng: number, confirmAdd = false) => {
     setSubmitting(true);
     setError(null);
     setSuccess(null);
@@ -192,13 +203,37 @@ export function AddChurchForm({
         denomination: denomination || undefined,
         attendance: attendance ? parseInt(attendance) : undefined,
         website: website.trim() || undefined,
-        serviceTimes: serviceTimes.trim() || undefined,
+        serviceTimes: serviceTimes.trim()
+          ? normalizeServiceTimes(serviceTimes) || serviceTimes.trim()
+          : undefined,
         languages: selectedLanguages.size > 0 ? Array.from(selectedLanguages) : undefined,
         ministries: selectedMinistries.size > 0 ? Array.from(selectedMinistries) : undefined,
         pastorName: pastorName.trim() || undefined,
         phone: normalizePhone(phone) || undefined,
         email: email.trim() || undefined,
+        confirmAdd: confirmAdd || undefined,
       });
+
+      if (result.needsConfirmation && result.similar?.length) {
+        setSimilarMatches(
+          result.similar.map((ch) => ({
+            id: ch.id,
+            shortId: ch.shortId,
+            name: ch.name,
+            city: ch.city || "",
+            state: ch.state || stateAbbrev,
+            country: ch.country,
+            address: ch.address,
+            denomination: ch.denomination || "Unknown",
+            lat: ch.lat ?? parsedLat,
+            lng: ch.lng ?? parsedLng,
+            attendance: 0,
+          }))
+        );
+        setShowSimilarWarning(true);
+        setGeocodedCoords({ lat: parsedLat, lng: parsedLng });
+        return;
+      }
 
       const church = result.church ?? result.existingChurch;
       const state = church?.state ?? stateAbbrev;
@@ -425,7 +460,7 @@ export function AddChurchForm({
               <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
                 <button
                   type="button"
-                  onClick={() => geocodedCoords && submitToApi(geocodedCoords.lat, geocodedCoords.lng)}
+                  onClick={() => geocodedCoords && submitToApi(geocodedCoords.lat, geocodedCoords.lng, true)}
                   disabled={submitting || !geocodedCoords}
                   className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-purple-500/20 text-purple-200 text-xs font-medium hover:bg-purple-500/30 transition-colors disabled:opacity-50"
                 >

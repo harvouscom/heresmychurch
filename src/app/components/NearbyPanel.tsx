@@ -5,21 +5,10 @@ import { CloseButton } from "./ui/close-button";
 import { Button } from "./ui/button";
 import { spotlightMapHref } from "./url-utils";
 import { STATE_NAMES } from "./map-constants";
+import { haversineMiles, formatDistance } from "../lib/geo";
+import { getCountry } from "../config/countries";
 
 const SESSION_LOC_KEY = "hmc_easter_loc";
-
-function haversineMiles(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
-  const R = 3958.7613;
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const s1 = Math.sin(dLat / 2);
-  const s2 = Math.sin(dLng / 2);
-  const h = s1 * s1 + Math.cos(lat1) * Math.cos(lat2) * s2 * s2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
 
 export interface NearbyPanelProps {
   open: boolean;
@@ -91,7 +80,10 @@ export function NearbyPanel({ open, onClose, churches, onLocationResolved }: Nea
     if (!myLoc || !churches?.length) return [];
     return churches
       .filter((c) => typeof c.lat === "number" && typeof c.lng === "number")
-      .map((c) => ({ c, miles: haversineMiles(myLoc, { lat: c.lat, lng: c.lng }) }))
+      .map((c) => ({
+        c,
+        miles: haversineMiles(myLoc.lat, myLoc.lng, c.lat, c.lng),
+      }))
       .sort((a, b) => a.miles - b.miles)
       .slice(0, 8);
   }, [myLoc, churches]);
@@ -225,7 +217,10 @@ export function NearbyPanel({ open, onClose, churches, onLocationResolved }: Nea
           )}
 
           {showGpsResults && churches && nearest.length > 0 && (
-            <ChurchList items={nearest.map(({ c, miles }) => ({ c, label: `${miles.toFixed(miles < 10 ? 1 : 0)} mi away` }))} />
+            <ChurchList items={nearest.map(({ c, miles }) => {
+              const units = getCountry(c.country)?.units ?? "mi";
+              return { c, label: `${formatDistance(miles, units, miles < 10 ? 1 : 0)} away` };
+            })} />
           )}
 
           {/* State results */}
@@ -246,7 +241,7 @@ function ChurchList({ items }: { items: { c: Church; label: string }[] }) {
   return (
     <ul className="space-y-2 max-h-[40vh] overflow-y-auto -mx-1 px-1">
       {items.map(({ c, label }) => {
-        const href = spotlightMapHref({ id: c.id, shortId: c.shortId, state: c.state }) || `/state/${c.state}`;
+        const href = spotlightMapHref({ id: c.id, shortId: c.shortId, state: c.state }) || `/US/${c.state}`;
         return (
           <li key={c.id}>
             <a

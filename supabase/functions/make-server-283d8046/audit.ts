@@ -18,6 +18,8 @@ export type AuditEntry = {
   church_name?: string | null;
   church_city_state?: string | null;
   state: string;
+  /** ISO 3166-1 alpha-2; optional for back-compat with existing callers. */
+  country?: string | null;
   action: string;
   field?: string | null;
   old_value?: unknown;
@@ -54,6 +56,7 @@ export async function recordChurchAudit(
       church_name: entry.church_name ?? null,
       church_city_state: entry.church_city_state ?? null,
       state: entry.state,
+      country: entry.country ?? null,
       action: entry.action,
       field: entry.field ?? null,
       old_value: entry.old_value ?? null,

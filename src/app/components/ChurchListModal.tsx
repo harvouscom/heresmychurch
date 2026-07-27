@@ -27,7 +27,6 @@ import {
   getDenominationGroup,
 } from "./church-data";
 import { AddChurchForm } from "./AddChurchForm";
-import { StateFlag } from "./StateFlag";
 import { FixedSizeList as List } from "react-window";
 import { matchQueryToChurch } from "./church-search-match";
 import { findCountyNameForPoint } from "./county-resolve";
@@ -369,14 +368,11 @@ export function ChurchListModal({
                 <ChurchIcon size={18} className="text-white" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <StateFlag abbrev={stateAbbrev} size="sm" />
-                  <h2 className="text-white font-semibold text-base leading-tight">
-                    Churches in {countyName
-                      ? (countyName.includes("County") ? countyName : `${countyName} County`)
-                      : stateName}
-                  </h2>
-                </div>
+                <h2 className="text-white font-semibold text-base leading-tight">
+                  Churches in {countyName
+                    ? countyName
+                    : stateName}
+                </h2>
                 <p className="text-white/40 text-xs mt-0.5">
                   {filteredChurches.length.toLocaleString()} of{" "}
                   {churches.length.toLocaleString()} churches

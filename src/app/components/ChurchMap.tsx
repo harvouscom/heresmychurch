@@ -20,9 +20,9 @@ import { MapControls } from "./MapControls";
 import { HelpModal } from "./HelpModal";
 import { AuditModal } from "./AuditModal";
 import { MapLibreCanvas, type MapLibreHandle } from "./MapLibreCanvas";
-import { fetchRegions, fetchChurches as fetchChurchesApi } from "./api";
+import { fetchRegions, fetchChurches as fetchChurchesApi, fetchCountries, type CountrySummary } from "./api";
+import { getCountry, getRegion, resolveRegionByAbbrev } from "../config/countries";
 import { VerificationModal, NationalReviewModal } from "./VerificationModal";
-import { StateFlag } from "./StateFlag";
 import { CloseButton } from "./ui/close-button";
 import { useActiveUsers } from "./hooks/useActiveUsers";
 import {
@@ -34,9 +34,17 @@ import {
   CountyTooltip,
 } from "./MapOverlays";
 import { useChurchMapData } from "./useChurchMapData";
+import { buildRegionSummaryStats, computeNationalSummary, computeWorldSummary } from "./hooks/useChurchFilters";
 import { findCountyNameForPoint } from "./county-resolve";
-import { getChurchUrlSegment } from "./url-utils";
+import { churchMatchesRouteSegment, getChurchUrlSegment } from "./url-utils";
 import { getStateZoom, REVIEW_SAYINGS } from "./map-constants";
+import {
+  buildAdmin2Stats,
+  filterChurchesToAdmin2,
+  loadAdmin2Features,
+  type Admin2Feature,
+} from "./admin2";
+import type { CountyStats } from "./MapLibreCanvas";
 import type { ChurchClickTarget } from "./ChurchDetailPanel";
 import { fetchNationalReviewStats, fetchModeratorPending, fetchSpecialReportEaster2026 } from "./api";
 import type { SpecialReportEaster2026Church } from "./api";
@@ -62,7 +70,6 @@ const HIDE_MAP_UI = false;
  *  church centres in the space the panel leaves visible. */
 const DETAIL_PANEL_WIDTH = 396;
 
-
 /** Sample per-state active counts for testing on localhost (see tooltip + on-map labels). */
 const SAMPLE_ACTIVE_BY_STATE: Record<string, number> = {
   CA: 2, TX: 3, NY: 1, FL: 4, IL: 2, OH: 1, GA: 2, NC: 1, WA: 1,
@@ -71,7 +78,10 @@ const SAMPLE_ACTIVE_BY_STATE: Record<string, number> = {
 /* eslint-disable @refresh/only-export-components -- force clean re-mount after hook changes */
 
 interface ChurchMapProps {
+  viewLevel?: "world" | "country" | "region";
   countryCode?: string;
+  navigateToWorld: () => void;
+  navigateToCountry: (countryCode: string) => void;
   routeStateAbbrev: string | null;
   routeCountyFips: string | null;
   routeChurchShortId: string | null;
@@ -83,14 +93,21 @@ interface ChurchMapProps {
   onExitReviewView?: () => void;
   navigateToState: (abbrev: string) => void;
   navigateToStateWithReview: (abbrev: string) => void;
-  navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean; countyFips?: string }) => void;
+  navigateToChurch: (
+    stateAbbrev: string,
+    churchShortId: string,
+    options?: { replace?: boolean; countyFips?: string; countryCode?: string },
+  ) => void;
   navigateToNational: () => void;
   navigateToCounty: (stateAbbrev: string, countyFips: string) => void;
   navigateToStateOnly: (stateAbbrev: string) => void;
 }
 
 export function ChurchMap({
+  viewLevel = "country",
   countryCode = "US",
+  navigateToWorld,
+  navigateToCountry,
   routeStateAbbrev,
   routeCountyFips,
   routeChurchShortId,
@@ -108,41 +125,82 @@ export function ChurchMap({
   navigateToStateOnly,
 }: ChurchMapProps) {
   const isMobile = useIsMobile();
+  const isWorld = viewLevel === "world";
 
   // Country mode. useChurchMapData is US-shaped end to end — it looks regions up
-  // in a 50-state list and loads county geography from us-atlas — so non-US
-  // browsing runs on its own small data path rather than bending that hook out
-  // of shape. The two never overlap: countryCode is either US or it isn't.
-  const isIntl = countryCode !== "US";
+  // in a 50-state list — so non-US browsing runs on its own data path. Admin-2
+  // (CA census divisions / AU LGAs) is layered on here when CountryConfig.hasAdmin2.
+  const isIntl = !isWorld && countryCode !== "US";
+  const countryCfg = getCountry(countryCode);
+  const hasAdmin2 = !!countryCfg?.hasAdmin2;
   const [intlRegions, setIntlRegions] = useState<StateInfo[]>([]);
   const [intlChurches, setIntlChurches] = useState<Church[]>([]);
+  const [worldCountries, setWorldCountries] = useState<CountrySummary[]>([]);
+  const [worldLoading, setWorldLoading] = useState(() => isWorld);
+  const [intlRegionsLoading, setIntlRegionsLoading] = useState(false);
+  const [intlChurchesLoading, setIntlChurchesLoading] = useState(false);
+  const [intlAdmin2Features, setIntlAdmin2Features] = useState<Map<string, Admin2Feature> | null>(null);
+  const [intlHoveredAdmin2, setIntlHoveredAdmin2] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isIntl) { setIntlRegions([]); return; }
+    if (!isWorld) return;
     let cancelled = false;
+    setWorldLoading(true);
+    fetchCountries()
+      .then((r) => { if (!cancelled) setWorldCountries(r.countries); })
+      .catch((e) => console.error("[ChurchMap] fetchCountries failed", e))
+      .finally(() => { if (!cancelled) setWorldLoading(false); });
+    return () => { cancelled = true; };
+  }, [isWorld]);
+
+  useEffect(() => {
+    if (!isIntl) { setIntlRegions([]); setIntlRegionsLoading(false); return; }
+    let cancelled = false;
+    setIntlRegionsLoading(true);
+    setIntlRegions([]);
     fetchRegions(countryCode)
       .then((r) => { if (!cancelled) setIntlRegions(r.regions); })
-      .catch((e) => console.error("[ChurchMap] fetchRegions failed", e));
+      .catch((e) => console.error("[ChurchMap] fetchRegions failed", e))
+      .finally(() => { if (!cancelled) setIntlRegionsLoading(false); });
     return () => { cancelled = true; };
   }, [isIntl, countryCode]);
 
   useEffect(() => {
-    if (!isIntl || !routeStateAbbrev) { setIntlChurches([]); return; }
+    if (!isIntl || !routeStateAbbrev) {
+      setIntlChurches([]);
+      setIntlChurchesLoading(false);
+      return;
+    }
     let cancelled = false;
+    setIntlChurchesLoading(true);
+    setIntlChurches([]);
     fetchChurchesApi(routeStateAbbrev)
       .then((r) => { if (!cancelled) setIntlChurches(r.churches); })
-      .catch((e) => console.error("[ChurchMap] fetchChurches failed", e));
+      .catch((e) => console.error("[ChurchMap] fetchChurches failed", e))
+      .finally(() => { if (!cancelled) setIntlChurchesLoading(false); });
     return () => { cancelled = true; };
   }, [isIntl, routeStateAbbrev]);
+
+  useEffect(() => {
+    if (!isIntl || !hasAdmin2) {
+      setIntlAdmin2Features(null);
+      return;
+    }
+    let cancelled = false;
+    loadAdmin2Features(countryCode)
+      .then((m) => { if (!cancelled) setIntlAdmin2Features(m); })
+      .catch((e) => console.error("[ChurchMap] loadAdmin2Features failed", e));
+    return () => { cancelled = true; };
+  }, [isIntl, hasAdmin2, countryCode]);
 
   const d = useChurchMapData({
     // Country mode keeps its route params away from this hook. It resolves a
     // region against a hardcoded 50-state list and resets to the national view
-    // when the lookup misses — which bounced /country/CA/PE straight back to /.
-    routeStateAbbrev: isIntl ? null : routeStateAbbrev,
-    routeCountyFips: isIntl ? null : routeCountyFips,
-    routeChurchShortId: isIntl ? null : routeChurchShortId,
-    routeLegacyChurchId: isIntl ? null : routeLegacyChurchId,
+    // when the lookup misses — which bounced /CA/PE straight back to /.
+    routeStateAbbrev: isIntl || isWorld ? null : routeStateAbbrev,
+    routeCountyFips: isIntl || isWorld ? null : routeCountyFips,
+    routeChurchShortId: isIntl || isWorld ? null : routeChurchShortId,
+    routeLegacyChurchId: isIntl || isWorld ? null : routeLegacyChurchId,
     navigateToState,
     navigateToChurch,
     navigateToNational,
@@ -151,24 +209,128 @@ export function ChurchMap({
     isMobile,
   });
 
+  const intlFocusedAdmin2 =
+    isIntl && hasAdmin2 && routeStateAbbrev && routeCountyFips ? routeCountyFips : null;
+  const intlCountyStats: CountyStats | null = useMemo(() => {
+    if (!isIntl || !hasAdmin2 || !routeStateAbbrev) return null;
+    return buildAdmin2Stats(countryCode, routeStateAbbrev, intlChurches, intlAdmin2Features);
+  }, [isIntl, hasAdmin2, countryCode, routeStateAbbrev, intlChurches, intlAdmin2Features]);
+  const intlChurchesForMap = useMemo(
+    () => filterChurchesToAdmin2(intlChurches, intlFocusedAdmin2, intlAdmin2Features),
+    [intlChurches, intlFocusedAdmin2, intlAdmin2Features],
+  );
+  const mapCountyStats = countryCode === "US" ? (d.countyStats ?? null) : intlCountyStats;
+  const mapFocusedCounty = countryCode === "US" ? (d.focusedCounty ?? null) : intlFocusedAdmin2;
+  const mapCountyFeatures =
+    countryCode === "US" ? d.countyFeatures : intlAdmin2Features;
+
+  // Intl church view is URL-driven (useChurchMapData ignores intl route church ids).
+  const selectedChurch = useMemo(() => {
+    if (isIntl) {
+      if (!routeChurchShortId || !routeStateAbbrev) return null;
+      return (
+        intlChurches.find((c) =>
+          churchMatchesRouteSegment(c, routeChurchShortId, routeStateAbbrev, countryCode),
+        ) ?? null
+      );
+    }
+    return d.selectedChurch;
+  }, [
+    isIntl,
+    routeChurchShortId,
+    routeStateAbbrev,
+    intlChurches,
+    countryCode,
+    d.selectedChurch,
+  ]);
+
+  useEffect(() => {
+    if (!isIntl || !selectedChurch) return;
+    const place = selectedChurch.city || routeStateAbbrev || countryCode;
+    document.title = `${selectedChurch.name} -- ${place} | Here's My Church`;
+  }, [isIntl, selectedChurch, routeStateAbbrev, countryCode]);
+
+  const handleIntlCountyClick = useCallback(
+    (admin2Id: string) => {
+      if (!routeStateAbbrev) return;
+      navigateToCounty(routeStateAbbrev, admin2Id);
+    },
+    [routeStateAbbrev, navigateToCounty],
+  );
+
   // When in county view, preserve county in URL when navigating to a church
   const navigateToChurchWithContext = useCallback(
     (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => {
-      navigateToChurch(stateAbbrev, churchShortId, { ...options, countyFips: d.focusedCounty ?? undefined });
+      navigateToChurch(stateAbbrev, churchShortId, {
+        ...options,
+        countyFips: mapFocusedCounty ?? undefined,
+        countryCode,
+      });
     },
-    [navigateToChurch, d.focusedCounty]
+    [navigateToChurch, mapFocusedCounty, countryCode],
   );
 
-  const isLoadingVisible = d.loading || d.populating || d.forceLoadingVisible;
+  const handleChurchDotClick = useCallback(
+    (church: Church, e?: { clientX: number; clientY: number }) => {
+      if (!isIntl) {
+        d.handleChurchDotClick(church, e);
+        return;
+      }
+      d.setHoveredChurch(null);
+      const st = (routeStateAbbrev ?? church.state ?? "").toUpperCase();
+      if (!st) return;
+      if (isMobile) {
+        // Preview pin on mobile — same UX as US; confirm opens church view.
+        d.handleChurchDotClick(church, e);
+        return;
+      }
+      navigateToChurchWithContext(st, getChurchUrlSegment(church, st, countryCode));
+    },
+    [
+      isIntl,
+      isMobile,
+      routeStateAbbrev,
+      countryCode,
+      navigateToChurchWithContext,
+      d.handleChurchDotClick,
+      d.setHoveredChurch,
+    ],
+  );
+
+  const onViewChurch = useCallback(
+    (church: Church) => {
+      if (!isIntl) {
+        d.onViewChurch(church);
+        return;
+      }
+      d.clearPreview();
+      const st = (routeStateAbbrev ?? church.state ?? "").toUpperCase();
+      if (st) {
+        navigateToChurchWithContext(st, getChurchUrlSegment(church, st, countryCode));
+      }
+    },
+    [
+      isIntl,
+      routeStateAbbrev,
+      countryCode,
+      navigateToChurchWithContext,
+      d.onViewChurch,
+      d.clearPreview,
+    ],
+  );
+
+  // Prefer HeaderPill "Loading churches…" for normal loads; keep the full-screen
+  // verse overlay only for slow first-time populate jobs.
+  const isLoadingVisible = d.populating && d.forceLoadingVisible;
   const showErrorOverlay = d.error && d.focusedState && !d.loading && !d.populating && !d.forceLoadingVisible && d.churches.length === 0;
   const showErrorBanner = d.error && (d.churches.length > 0 || !d.focusedState);
   // When Filter or Map Key panel is open, collapse search (same as filter behavior). Otherwise: state/church view always show full search; national collapsed only on mobile.
   const effectiveSearchCollapsed =
     d.showFilterPanel || d.showLegend
       ? true
-      : (d.focusedState || d.selectedChurch ? false : (d.searchCollapsed && isMobile));
+      : (d.focusedState || routeStateAbbrev || selectedChurch ? false : (d.searchCollapsed && isMobile));
   // Only count search as "overlay open" on national + mobile (so map tap can collapse the pill). Desktop national and state/church always show full search — no overlay for search.
-  const isNationalView = !d.focusedState && !d.selectedChurch;
+  const isNationalView = !d.focusedState && !routeStateAbbrev && !selectedChurch;
 
   // Verified-dots mode (national view): use a compact, pre-aggregated payload.
   const [verifiedDotsEnabled, setVerifiedDotsEnabled] = useState(false);
@@ -297,6 +459,13 @@ export function ChurchMap({
     if (!d.focusedState) setStateViewSearchResultIds(null);
   }, [d.focusedState]);
 
+  // Clear region hover/preview when leaving the world map or switching countries so
+  // a country code like "US" doesn't linger as a bare-abbrev tooltip.
+  useEffect(() => {
+    d.setHoveredState(null);
+    d.clearStatePreview();
+  }, [viewLevel, countryCode]); // intentionally omit d — only reset on geography change
+
   const churchesToShowOnMap = useMemo(() => {
     // National view: verified filter swaps in the pre-fetched verified dataset
     if (verifiedDotsEnabled && !d.focusedState) return verifiedChurches ?? [];
@@ -334,17 +503,31 @@ export function ChurchMap({
 
   // Pending suggestion field names for the selected church (so all visitors see "updates pending review")
   const pendingFieldsForChurch = useMemo(() => {
-    if (!d.selectedChurch?.id || !d.statePendingSuggestions?.length) return [];
-    const p = d.statePendingSuggestions.find((x) => x.churchId === d.selectedChurch!.id);
+    if (!selectedChurch?.id || !d.statePendingSuggestions?.length) return [];
+    const p = d.statePendingSuggestions.find((x) => x.churchId === selectedChurch.id);
     return p ? Object.keys(p.fields) : [];
-  }, [d.selectedChurch?.id, d.statePendingSuggestions]);
+  }, [selectedChurch?.id, d.statePendingSuggestions]);
 
   // Compute churches that need review (missing 2+ of address, service times, denomination)
-  // When in county view, scope to county; otherwise state
+  // When in county/admin-2 view, scope to that area; otherwise region/state
   const incompleteChurches = useMemo(() => {
+    if (isWorld) return [];
+    if (isIntl) {
+      const list = intlFocusedAdmin2 ? intlChurchesForMap : intlChurches;
+      return list.filter(churchNeedsReview);
+    }
     const list = d.focusedCounty ? d.filteredChurches : d.churches;
     return list.filter(churchNeedsReview);
-  }, [d.focusedCounty, d.filteredChurches, d.churches]);
+  }, [
+    isWorld,
+    isIntl,
+    intlFocusedAdmin2,
+    intlChurchesForMap,
+    intlChurches,
+    d.focusedCounty,
+    d.filteredChurches,
+    d.churches,
+  ]);
 
   // Set review count based on incomplete churches
   useEffect(() => {
@@ -367,21 +550,25 @@ export function ChurchMap({
     onExitReviewView?.();
   }, [onExitReviewView]);
 
-  // Fetch national review stats when at national level
+  // Fetch review stats: world rollup, or country-level when not in a region
   useEffect(() => {
-    if (!d.focusedState) {
-      localDispatch({ type: "SET", key: "nationalReviewStatsLoading", value: true });
-      fetchNationalReviewStats()
-        .then((stats: NationalReviewStatsResponse) => {
-          localDispatch({ type: "SET", key: "nationalReviewStats", value: stats });
-          localDispatch({ type: "SET", key: "nationalReviewStatsLoading", value: false });
-        })
-        .catch(() => {
-          localDispatch({ type: "SET", key: "nationalReviewStats", value: null });
-          localDispatch({ type: "SET", key: "nationalReviewStatsLoading", value: false });
-        });
-    }
-  }, [d.focusedState]);
+    const atCountryLevel = isIntl ? !routeStateAbbrev : !d.focusedState;
+    if (!isWorld && !atCountryLevel) return;
+    let cancelled = false;
+    localDispatch({ type: "SET", key: "nationalReviewStatsLoading", value: true });
+    fetchNationalReviewStats(isWorld ? "WORLD" : countryCode)
+      .then((stats: NationalReviewStatsResponse) => {
+        if (cancelled) return;
+        localDispatch({ type: "SET", key: "nationalReviewStats", value: stats });
+        localDispatch({ type: "SET", key: "nationalReviewStatsLoading", value: false });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        localDispatch({ type: "SET", key: "nationalReviewStats", value: null });
+        localDispatch({ type: "SET", key: "nationalReviewStatsLoading", value: false });
+      });
+    return () => { cancelled = true; };
+  }, [isWorld, isIntl, countryCode, routeStateAbbrev, d.focusedState]);
 
   // Refetch state churches when opening the verification modal so stats use latest API data (incl. merged corrections)
   useEffect(() => {
@@ -461,7 +648,7 @@ export function ChurchMap({
   }, [openReviewModalFromQuery, moderatorKey, clearReviewQueryParam, d.focusedState, d.churches.length, d.loading, d.populating]);
 
   const { people: activePeople, bots: activeBots, byState: activeByState } = useActiveUsers(
-    d.selectedChurch?.state ?? d.focusedState ?? null
+    selectedChurch?.state ?? routeStateAbbrev ?? d.focusedState ?? null
   );
   const [isLocalhost, setIsLocalhost] = useState(false);
   useEffect(() => {
@@ -472,7 +659,7 @@ export function ChurchMap({
     ? { ...SAMPLE_ACTIVE_BY_STATE, ...activeByState }
     : activeByState;
 
-  const isStateOrChurchView = !!d.focusedState || !!d.selectedChurch;
+  const isStateOrChurchView = !!d.focusedState || !!routeStateAbbrev || !!selectedChurch;
   useEffect(() => {
     const color = isStateOrChurchView ? "#EDE4F3" : "#F5F0E8";
     document.documentElement.style.backgroundColor = color;
@@ -484,23 +671,23 @@ export function ChurchMap({
   }, [isStateOrChurchView]);
 
   const resolvedCountyForSelectedChurch = useMemo(() => {
-    if (!d.selectedChurch || !d.countyFeatures?.size) return null;
-    const st = (d.selectedChurch.state || "").toUpperCase().slice(0, 2);
+    if (!selectedChurch || !mapCountyFeatures?.size) return null;
+    const st = (selectedChurch.state || routeStateAbbrev || "").toUpperCase();
     if (!st) return null;
-    return findCountyNameForPoint(st, d.selectedChurch.lng, d.selectedChurch.lat, d.countyFeatures);
-  }, [d.selectedChurch, d.countyFeatures]);
+    return findCountyNameForPoint(st, selectedChurch.lng, selectedChurch.lat, mapCountyFeatures);
+  }, [selectedChurch, mapCountyFeatures, routeStateAbbrev]);
 
   const churchTooltipChurch = d.previewChurch ?? d.hoveredChurch;
   const churchTooltipCountyName = useMemo(() => {
-    if (!churchTooltipChurch || !d.countyFeatures?.size) return null;
-    const st = (churchTooltipChurch.state || "").toUpperCase().slice(0, 2);
+    if (!churchTooltipChurch || !mapCountyFeatures?.size) return null;
+    const st = (churchTooltipChurch.state || routeStateAbbrev || "").toUpperCase();
     if (!st) return null;
-    return findCountyNameForPoint(st, churchTooltipChurch.lng, churchTooltipChurch.lat, d.countyFeatures);
-  }, [churchTooltipChurch, d.countyFeatures]);
+    return findCountyNameForPoint(st, churchTooltipChurch.lng, churchTooltipChurch.lat, mapCountyFeatures);
+  }, [churchTooltipChurch, mapCountyFeatures, routeStateAbbrev]);
 
   return (
     <div
-      className={`relative size-full overflow-hidden flex ${d.selectedChurch ? 'flex-col md:flex-row' : ''}`}
+      className={`relative size-full overflow-hidden flex ${selectedChurch ? 'flex-col md:flex-row' : ''}`}
       style={{ fontFamily: "'Livvic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" }}
       onMouseMove={d.handleMouseMove}
       onMouseLeave={d.handleMouseLeave}
@@ -508,6 +695,9 @@ export function ChurchMap({
       {/* Map area — pure render, no hooks */}
       <MapArea
         d={d}
+        selectedChurch={selectedChurch}
+        onChurchDotClick={handleChurchDotClick}
+        onViewChurch={onViewChurch}
         isLoadingVisible={isLoadingVisible}
         showErrorOverlay={!!showErrorOverlay}
         showErrorBanner={!!showErrorBanner}
@@ -520,9 +710,22 @@ export function ChurchMap({
         navigateToStateOnly={navigateToStateOnly}
         routeStateAbbrev={routeStateAbbrev}
         routeCountyFips={routeCountyFips}
+        viewLevel={viewLevel}
         countryCode={countryCode}
+        navigateToWorld={navigateToWorld}
+        navigateToCountry={navigateToCountry}
+        worldCountries={worldCountries}
+        worldLoading={worldLoading}
         intlRegions={intlRegions}
-        intlChurches={intlChurches}
+        intlRegionsLoading={intlRegionsLoading}
+        intlChurches={intlChurchesForMap}
+        intlChurchesLoading={intlChurchesLoading}
+        mapCountyStats={mapCountyStats}
+        mapFocusedCounty={mapFocusedCounty}
+        mapCountyFeatures={mapCountyFeatures}
+        intlHoveredAdmin2={intlHoveredAdmin2}
+        onIntlCountyHover={setIntlHoveredAdmin2}
+        onIntlCountyClick={handleIntlCountyClick}
         onShowVerification={onShowVerification}
         onShowNationalReviewModal={() => localDispatch({ type: "SET", key: "showNationalReviewModal", value: true })}
         pendingReviewCount={local.pendingReviewCount}
@@ -580,49 +783,70 @@ export function ChurchMap({
       />
 
       {/* Modals (rendered outside map area to reduce nesting depth) */}
-      {d.showListModal && d.focusedState && (
+      {d.showListModal && (isIntl ? routeStateAbbrev : d.focusedState) && (
         <ChurchListModal
-          churches={d.focusedCounty ? d.filteredChurches : d.churches}
-          stateName={d.focusedStateName}
-          stateAbbrev={d.focusedState}
-          countyName={d.focusedCounty ? (d.countyStats?.byFips[d.focusedCounty]?.name ?? null) : null}
-          countyFeatures={d.countyFeatures}
-          statePopulation={d.statePopulations[d.focusedState] || null}
+          churches={
+            isIntl
+              ? (intlFocusedAdmin2 ? intlChurchesForMap : intlChurches)
+              : (d.focusedCounty ? d.filteredChurches : d.churches)
+          }
+          stateName={
+            isIntl
+              ? (intlRegions.find((r) => r.abbrev === routeStateAbbrev)?.name ?? routeStateAbbrev ?? "")
+              : d.focusedStateName
+          }
+          stateAbbrev={(isIntl ? routeStateAbbrev : d.focusedState)!}
+          countyName={
+            isIntl
+              ? (intlFocusedAdmin2 && mapCountyStats?.byFips[intlFocusedAdmin2]?.name) || null
+              : (d.focusedCounty ? (d.countyStats?.byFips[d.focusedCounty]?.name ?? null) : null)
+          }
+          countyFeatures={mapCountyFeatures}
+          statePopulation={isIntl ? null : (d.statePopulations[d.focusedState!] || null)}
           onClose={() => d.setShowListModal(false)}
           onChurchClick={(church: Church) => {
             d.setShowListModal(false);
-            if (d.focusedState) navigateToChurchWithContext(d.focusedState, getChurchUrlSegment(church, d.focusedState));
+            const st = isIntl ? routeStateAbbrev : d.focusedState;
+            if (st) navigateToChurchWithContext(st, getChurchUrlSegment(church, st, countryCode));
           }}
           onSelectChurchForEdit={(church: Church) => {
             d.setShowListModal(false);
-            d.setSelectedChurch(church);
-            if (d.focusedState) navigateToChurchWithContext(d.focusedState, getChurchUrlSegment(church, d.focusedState));
+            const st = isIntl ? routeStateAbbrev : d.focusedState;
+            if (!isIntl) d.setSelectedChurch(church);
+            if (st) navigateToChurchWithContext(st, getChurchUrlSegment(church, st, countryCode));
             setTimeout(() => localDispatch({ type: "SET", key: "forceEditForm", value: true }), 50);
           }}
           onChurchAdded={(state, shortId) => {
             d.setShowListModal(false);
-            d.refetchCurrentStateChurches().then(() => navigateToChurchWithContext(state, shortId));
+            if (isIntl) navigateToChurchWithContext(state, shortId);
+            else d.refetchCurrentStateChurches().then(() => navigateToChurchWithContext(state, shortId));
           }}
         />
       )}
 
-      {d.showAddChurchFromSummary && d.focusedState && (
+      {d.showAddChurchFromSummary && (isIntl ? routeStateAbbrev : d.focusedState) && (
         <AddChurchForm
-          stateAbbrev={d.focusedState}
-          stateName={d.focusedStateName}
+          stateAbbrev={(isIntl ? routeStateAbbrev : d.focusedState)!}
+          stateName={
+            isIntl
+              ? (intlRegions.find((r) => r.abbrev === routeStateAbbrev)?.name ?? routeStateAbbrev ?? "")
+              : d.focusedStateName
+          }
           onClose={() => { d.setShowAddChurchFromSummary(false); d.setAddChurchForState(null); }}
-          churches={d.churches}
+          churches={isIntl ? intlChurches : d.churches}
           onSelectChurch={(church) => {
             d.setShowAddChurchFromSummary(false);
             d.setAddChurchForState(null);
-            d.setSelectedChurch(church);
-            if (d.focusedState) navigateToChurchWithContext(d.focusedState, getChurchUrlSegment(church, d.focusedState));
+            const st = isIntl ? routeStateAbbrev : d.focusedState;
+            if (!isIntl) d.setSelectedChurch(church);
+            if (st) navigateToChurchWithContext(st, getChurchUrlSegment(church, st, countryCode));
             setTimeout(() => localDispatch({ type: "SET", key: "forceEditForm", value: true }), 50);
           }}
           onChurchAdded={(state, shortId) => {
             d.setShowAddChurchFromSummary(false);
             d.setAddChurchForState(null);
-            d.refetchCurrentStateChurches().then(() => navigateToChurchWithContext(state, shortId));
+            if (isIntl) navigateToChurchWithContext(state, shortId);
+            else d.refetchCurrentStateChurches().then(() => navigateToChurchWithContext(state, shortId));
           }}
         />
       )}
@@ -649,17 +873,33 @@ export function ChurchMap({
         />
       )}
 
-      {local.showVerificationModal && d.focusedState && (
+      {local.showVerificationModal && (isIntl ? routeStateAbbrev : d.focusedState) && (
         <VerificationModal
-          stateAbbrev={d.focusedState}
-          stateName={d.focusedStateName}
-          churches={d.focusedCounty ? d.filteredChurches : d.churches}
-          countyName={d.focusedCounty ? (d.countyStats?.byFips[d.focusedCounty]?.name ?? null) : null}
-          selectedChurch={d.selectedChurch}
+          stateAbbrev={(isIntl ? routeStateAbbrev : d.focusedState)!}
+          stateName={
+            isIntl
+              ? (intlRegions.find((r) => r.abbrev === routeStateAbbrev)?.name
+                ?? getRegion(countryCode, routeStateAbbrev ?? undefined)?.name
+                ?? routeStateAbbrev
+                ?? "")
+              : d.focusedStateName
+          }
+          churches={
+            isIntl
+              ? (intlFocusedAdmin2 ? intlChurchesForMap : intlChurches)
+              : (d.focusedCounty ? d.filteredChurches : d.churches)
+          }
+          countyName={
+            isIntl
+              ? (intlFocusedAdmin2 && mapCountyStats?.byFips[intlFocusedAdmin2]?.name) || null
+              : (d.focusedCounty ? (d.countyStats?.byFips[d.focusedCounty]?.name ?? null) : null)
+          }
+          selectedChurch={selectedChurch}
           onClose={() => localDispatch({ type: "SET", key: "showVerificationModal", value: false })}
           onChurchClick={(church: Church) => {
             localDispatch({ type: "SET", key: "showVerificationModal", value: false });
-            if (d.focusedState) navigateToChurchWithContext(d.focusedState, getChurchUrlSegment(church, d.focusedState));
+            const st = isIntl ? routeStateAbbrev : d.focusedState;
+            if (st) navigateToChurchWithContext(st, getChurchUrlSegment(church, st, countryCode));
             // Defer so the new ChurchDetailPanel mounts before the flag is set
             setTimeout(() => localDispatch({ type: "SET", key: "forceEditForm", value: true }), 50);
           }}
@@ -673,8 +913,17 @@ export function ChurchMap({
       {local.showNationalReviewModal && (
         <NationalReviewModal
           stats={local.nationalReviewStats}
+          countryCode={isWorld ? "WORLD" : countryCode}
+          regionNoun={
+            isWorld
+              ? { one: "country", many: "countries" }
+              : (countryCfg?.regionNoun ?? { one: "state", many: "states" })
+          }
           onClose={() => localDispatch({ type: "SET", key: "showNationalReviewModal", value: false })}
-          onSelectState={(abbrev) => navigateToStateWithReview(abbrev)}
+          onSelectState={(abbrev) => {
+            if (isWorld) navigateToCountry(abbrev);
+            else navigateToStateWithReview(abbrev);
+          }}
         />
       )}
 
@@ -684,7 +933,7 @@ export function ChurchMap({
           full-bleed underneath, and the camera offsets by the panel width so
           the selected church still centres in the visible area. */}
       <AnimatePresence mode="wait">
-        {d.selectedChurch && (
+        {selectedChurch && (
           <motion.div
             key={`church-detail-panel-${isMobile ? "mobile" : "desktop"}`}
             className={`overflow-hidden absolute z-40 ${
@@ -698,10 +947,19 @@ export function ChurchMap({
           >
             <div className="pr-4 pb-4 pt-0 pl-4 md:pl-0 md:pt-4 md:pr-4 md:pb-4" style={{ width: isMobile ? "100%" : DETAIL_PANEL_WIDTH, height: isMobile ? "55vh" : "100%" }}>
               <ChurchDetailPanel
-                church={d.selectedChurch}
+                church={selectedChurch}
                 resolvedCountyName={resolvedCountyForSelectedChurch}
-                allChurches={d.filteredChurches}
+                allChurches={isIntl ? intlChurches : d.filteredChurches}
                 onClose={() => {
+                  if (isIntl) {
+                    if (routeStateAbbrev) {
+                      if (mapFocusedCounty) navigateToCounty(routeStateAbbrev, mapFocusedCounty);
+                      else navigateToState(routeStateAbbrev);
+                    } else {
+                      navigateToCountry(countryCode);
+                    }
+                    return;
+                  }
                   if (d.focusedState) {
                     if (d.focusedCounty) navigateToCounty(d.focusedState, d.focusedCounty);
                     else navigateToState(d.focusedState);
@@ -709,18 +967,20 @@ export function ChurchMap({
                 }}
                 onChurchClick={(target: ChurchClickTarget) => {
                   const state = target.state;
-                  const shortId = "shortId" in target && target.shortId ? target.shortId : getChurchUrlSegment(target as Church, state);
+                  const shortId = "shortId" in target && target.shortId
+                    ? target.shortId
+                    : getChurchUrlSegment(target as Church, state, countryCode);
                   if (state) navigateToChurchWithContext(state, shortId);
                 }}
                 externalShowEditForm={local.forceEditForm}
                 onEditFormClosed={() => localDispatch({ type: "SET", key: "forceEditForm", value: false })}
-                onChurchUpdated={d.refetchCurrentStateChurches}
+                onChurchUpdated={isIntl ? undefined : d.refetchCurrentStateChurches}
                 moderationMode={local.moderationMode}
                 moderationPending={local.moderationPending}
                 moderatorKey={moderatorKey || ""}
                 onModerationAction={refreshModeration}
                 pendingFieldsForChurch={pendingFieldsForChurch}
-                onPendingSubmitted={d.refetchStatePendingSuggestions}
+                onPendingSubmitted={isIntl ? undefined : d.refetchStatePendingSuggestions}
               />
             </div>
           </motion.div>
@@ -760,6 +1020,9 @@ function localReducer(state: LocalState, action: LocalAction): LocalState {
 // ── MapArea: the map + all overlays — ZERO hooks (pure render) ──
 function MapArea({
   d,
+  selectedChurch,
+  onChurchDotClick,
+  onViewChurch,
   isLoadingVisible,
   showErrorOverlay,
   showErrorBanner,
@@ -772,9 +1035,22 @@ function MapArea({
   navigateToStateOnly,
   routeStateAbbrev,
   routeCountyFips,
+  viewLevel,
   countryCode,
+  navigateToWorld,
+  navigateToCountry,
+  worldCountries,
+  worldLoading,
   intlRegions,
+  intlRegionsLoading,
   intlChurches,
+  intlChurchesLoading,
+  mapCountyStats,
+  mapFocusedCounty,
+  mapCountyFeatures,
+  intlHoveredAdmin2,
+  onIntlCountyHover,
+  onIntlCountyClick,
   onShowVerification,
   onShowNationalReviewModal,
   pendingReviewCount,
@@ -820,6 +1096,9 @@ function MapArea({
   churchTooltipCountyName,
 }: {
   d: ReturnType<typeof useChurchMapData>;
+  selectedChurch: Church | null;
+  onChurchDotClick: (church: Church, e?: { clientX: number; clientY: number }) => void;
+  onViewChurch: (church: Church) => void;
   isLoadingVisible: boolean;
   showErrorOverlay: boolean;
   showErrorBanner: boolean;
@@ -832,9 +1111,22 @@ function MapArea({
   navigateToStateOnly: (stateAbbrev: string) => void;
   routeStateAbbrev: string | null;
   routeCountyFips: string | null;
+  viewLevel: "world" | "country" | "region";
   countryCode: string;
+  navigateToWorld: () => void;
+  navigateToCountry: (countryCode: string) => void;
+  worldCountries: CountrySummary[];
+  worldLoading: boolean;
   intlRegions: StateInfo[];
+  intlRegionsLoading: boolean;
   intlChurches: Church[];
+  intlChurchesLoading: boolean;
+  mapCountyStats: CountyStats | null;
+  mapFocusedCounty: string | null;
+  mapCountyFeatures: Map<string, unknown> | null | undefined;
+  intlHoveredAdmin2: string | null;
+  onIntlCountyHover: (id: string | null) => void;
+  onIntlCountyClick: (id: string) => void;
   onShowVerification: () => void;
   onShowNationalReviewModal: () => void;
   pendingReviewCount: number;
@@ -885,6 +1177,9 @@ function MapArea({
   const [mapLibreBounds, setMapLibreBounds] = useState<
     [[number, number], [number, number]] | null
   >(null);
+  const isWorld = viewLevel === "world";
+  const isIntl = !isWorld && countryCode !== "US";
+  const countryCfg = getCountry(countryCode);
   const isNationalView = !d.focusedState;
   const verifiedCountForView = isNationalView
     ? (verifiedChurches?.length ?? null)
@@ -893,6 +1188,55 @@ function MapArea({
         0,
       );
   const verifiedTotalCountForView = isNationalView ? null : d.filteredChurches.length;
+
+  // Prefer the URL region so the pill keeps the place name + loading state while
+  // US `d.focusedState` is cleared during fetch (it only flips once data is ready).
+  // Don't fall back to US `d.focusedState` on country overviews / intl — that briefly
+  // showed a bare abbrev ("Loading churches in DE") during world→country transitions.
+  const focusedRegionAbbrev = isWorld
+    ? null
+    : (routeStateAbbrev ?? (countryCode === "US" ? d.focusedState : null));
+  const focusedRegionName = (() => {
+    if (!focusedRegionAbbrev) return getCountry(countryCode)?.name ?? countryCode;
+    if (countryCode === "US") {
+      return (
+        d.focusedStateName
+        || d.states.find((s) => s.abbrev === focusedRegionAbbrev)?.name
+        || getRegion("US", focusedRegionAbbrev)?.name
+        || resolveRegionByAbbrev(focusedRegionAbbrev)?.region.name
+        || focusedRegionAbbrev
+      );
+    }
+    return (
+      intlRegions.find((r) => r.abbrev === focusedRegionAbbrev)?.name
+      || getRegion(countryCode, focusedRegionAbbrev)?.name
+      || resolveRegionByAbbrev(focusedRegionAbbrev)?.region.name
+      || focusedRegionAbbrev
+    );
+  })();
+  // Admin-2 place name (US county / CA census division). Prefer geometry props so
+  // empty divisions still label correctly — stats only include units with churches.
+  const focusedAdmin2Feature = mapFocusedCounty
+    ? mapCountyFeatures?.get(mapFocusedCounty) as { properties?: { name?: string } } | undefined
+    : undefined;
+  const focusedAdmin2Name = mapFocusedCounty
+    ? (mapCountyStats?.byFips[mapFocusedCounty]?.name
+      ?? focusedAdmin2Feature?.properties?.name
+      ?? null)
+    : null;
+  const focusedAdmin2ChurchCount = mapFocusedCounty
+    ? (mapCountyStats?.byFips[mapFocusedCounty]?.churchCount
+      ?? (countryCode === "US" ? d.filteredChurches.length : intlChurches.length))
+    : null;
+  // Keep "Loading churches…" until region data is on the map — not merely until
+  // the network call ends — so the pill covers the paint/settle gap.
+  const headerLoading = isWorld
+    ? worldLoading
+    : routeStateAbbrev
+      ? (countryCode === "US"
+          ? (d.loading || d.populating || d.focusedState !== routeStateAbbrev)
+          : (intlChurchesLoading || (intlRegions.length === 0 && intlRegionsLoading)))
+      : (isIntl ? intlRegionsLoading : d.states.length === 0);
 
   return (
     <div className="flex flex-1 flex-col relative" style={{ backgroundColor: "#F5F0E8" }}>
@@ -914,7 +1258,6 @@ function MapArea({
 
       <div className="flex-1 relative min-h-0">
       {/* Top row: header pill only (secondary controls moved to bottom-left cluster); z-40 so summary stacks above All states + MapControls (z-30). pointer-events-none so click-outside hits the catcher. */}
-      {!isLoadingVisible && d.states.length > 0 && (
       <div className="absolute top-4 left-4 right-4 z-40 flex flex-row items-center justify-center animate-in fade-in duration-300 pointer-events-none">
         <div className="flex flex-col items-center justify-center min-w-0 max-w-full pointer-events-auto overflow-visible" ref={d.summaryRef}>
           {moderatorKey && moderationMode ? (
@@ -945,19 +1288,29 @@ function MapArea({
           ) : (
             <>
               <HeaderPill
-                focusedState={d.focusedState}
-                focusedStateName={d.focusedStateName}
-                focusedCountyName={(d.focusedCounty && d.countyStats?.byFips[d.focusedCounty]?.name) ?? null}
+                focusedState={focusedRegionAbbrev}
+                focusedStateName={focusedRegionName}
+                focusedCountyName={focusedAdmin2Name}
+                loading={headerLoading}
                 filteredCount={
-                  d.selectedChurch && d.focusedState && d.filteredChurches.length <= 1
-                    ? (d.focusedCounty
-                        ? (d.countyStats?.byFips[d.focusedCounty]?.churchCount ?? d.filteredChurches.length)
-                        : (d.states.find(s => s.abbrev === d.focusedState)?.churchCount ?? d.filteredChurches.length))
-                    : d.filteredChurches.length
+                  focusedAdmin2ChurchCount != null
+                    ? focusedAdmin2ChurchCount
+                    : selectedChurch && (d.focusedState || routeStateAbbrev) && (countryCode === "US" ? d.filteredChurches.length <= 1 : intlChurches.length <= 1)
+                      ? (countryCode === "US"
+                        ? (d.states.find(s => s.abbrev === d.focusedState)?.churchCount ?? d.filteredChurches.length)
+                        : (intlRegions.find(r => r.abbrev === routeStateAbbrev)?.churchCount ?? intlChurches.length))
+                      : (countryCode === "US" ? d.filteredChurches.length : intlChurches.length)
                 }
-                totalChurches={d.totalChurches}
-                allStatesLoaded={d.allStatesLoaded}
-                populatedCount={d.states.filter((s) => s.isPopulated).length}
+                countryCode={countryCode}
+                placeLabel={isWorld ? "the world" : undefined}
+                showReviewPercentage={isWorld || !focusedRegionAbbrev}
+                totalChurches={
+                  isWorld
+                    ? worldCountries.reduce((a, c) => a + (c.churchCount || 0), 0)
+                    : countryCode === "US"
+                      ? d.totalChurches
+                      : intlRegions.reduce((a, r) => a + r.churchCount, 0)
+                }
                 showSummary={d.showSummary}
                 pendingReviewCount={pendingReviewCount}
                 nationalReviewStats={nationalReviewStats}
@@ -991,19 +1344,56 @@ function MapArea({
               <AnimatePresence>
                 {d.showSummary && (
                   <SummaryPanel
-                    summaryStats={d.summaryStats as SummaryStats}
-                    focusedState={d.focusedState}
-                    focusedStateName={d.focusedStateName}
-                    churches={d.focusedCounty ? d.filteredChurches : d.churches}
-                    totalChurches={d.totalChurches}
-                    allStatesLoaded={d.allStatesLoaded}
-                    statePopulations={d.statePopulations}
-                    countyStats={d.countyStats ?? null}
-                    focusedCounty={d.focusedCounty ?? null}
+                    summaryStats={
+                      isWorld
+                        ? computeWorldSummary(worldCountries, nationalReviewStats)
+                        : isIntl
+                          ? (routeStateAbbrev && intlChurches.length > 0
+                              ? buildRegionSummaryStats(intlChurches, mapCountyStats)
+                              : computeNationalSummary(intlRegions, {}))
+                          : (d.summaryStats as SummaryStats)
+                    }
+                    focusedState={focusedRegionAbbrev}
+                    focusedStateName={isWorld ? "the World" : focusedRegionName}
+                    churches={
+                      isIntl
+                        ? intlChurches
+                        : (d.focusedCounty ? d.filteredChurches : d.churches)
+                    }
+                    totalChurches={
+                      isWorld
+                        ? worldCountries.reduce((a, c) => a + (c.churchCount || 0), 0)
+                        : isIntl
+                          ? intlRegions.reduce((a, r) => a + r.churchCount, 0)
+                          : d.totalChurches
+                    }
+                    allStatesLoaded={
+                      isWorld
+                        ? worldCountries.length > 0 && !worldLoading
+                        : isIntl
+                          ? intlRegions.length > 0 && !intlRegionsLoading
+                          : d.allStatesLoaded
+                    }
+                    statePopulations={isIntl || isWorld ? {} : d.statePopulations}
+                    countyStats={isIntl ? mapCountyStats : (d.countyStats ?? null)}
+                    focusedCounty={mapFocusedCounty}
+                    countryCode={isWorld ? "WORLD" : countryCode}
+                    regionNoun={
+                      isWorld
+                        ? { one: "country", many: "countries" }
+                        : (countryCfg?.regionNoun ?? { one: "state", many: "states" })
+                    }
+                    admin2Noun={countryCfg?.admin2Noun?.many ?? "counties"}
+                    boundaryAttribution={
+                      isWorld
+                        ? "Boundaries: Natural Earth / U.S. Census TIGER via us-atlas"
+                        : countryCfg?.boundaryAttribution
+                    }
                     onClose={() => d.setShowSummary(false)}
                     onNavigateToState={(abbrev) => {
                       d.setShowSummary(false);
-                      navigateToState(abbrev);
+                      if (isWorld) navigateToCountry(abbrev);
+                      else navigateToState(abbrev);
                     }}
                     onShowListModal={() => {
                       d.setShowSummary(false);
@@ -1021,7 +1411,6 @@ function MapArea({
           )}
         </div>
       </div>
-      )}
 
       {/* About Modal / Reviewer Login */}
       {showAbout && (moderatorKey && !moderationMode ? (
@@ -1062,58 +1451,127 @@ function MapArea({
         // On mobile the detail panel covers the bottom 55vh, so keep that much
         // clear of the camera and the pin stays visible above it.
         bottomPadding={
-          isMobile && d.selectedChurch ? Math.round(window.innerHeight * 0.55) : 0
+          isMobile && selectedChurch ? Math.round(window.innerHeight * 0.55) : 0
         }
-        rightPadding={!isMobile && d.selectedChurch ? DETAIL_PANEL_WIDTH : 0}
+        rightPadding={!isMobile && selectedChurch ? DETAIL_PANEL_WIDTH : 0}
+        viewLevel={viewLevel}
         countryCode={countryCode}
-        states={countryCode === "US" ? d.states : intlRegions}
-        focusedState={countryCode === "US" ? d.focusedState : routeStateAbbrev}
-        // Camera follows the URL, which updates instantly; d.focusedState waits
-        // for the loading overlay to finish its verses (~7s).
-        cameraState={routeStateAbbrev}
-        cameraCounty={routeCountyFips}
-        churches={countryCode === "US" ? churchesToShowOnMap : intlChurches}
-        selectedChurchId={d.selectedChurch?.id ?? null}
-        countyStats={d.countyStats ?? null}
-        focusedCounty={d.focusedCounty ?? null}
-        onStateClick={d.handleStateClick}
-        onResetView={d.handleResetView}
+        countries={worldCountries}
+        states={viewLevel === "world" ? [] : countryCode === "US" ? d.states : intlRegions}
+        focusedState={
+          viewLevel === "world" ? null : countryCode === "US" ? d.focusedState : routeStateAbbrev
+        }
+        // Camera follows the URL immediately; d.focusedState applies when the
+        // church fetch finishes (same moment the header pill leaves loading).
+        cameraState={viewLevel === "world" ? null : routeStateAbbrev}
+        cameraCounty={viewLevel === "world" ? null : routeCountyFips}
+        churches={
+          viewLevel === "world"
+            ? []
+            : countryCode === "US"
+              ? churchesToShowOnMap
+              : (
+                  selectedChurch && !intlChurches.some((c) => c.id === selectedChurch.id)
+                    ? [...intlChurches, selectedChurch]
+                    : intlChurches
+                )
+        }
+        selectedChurchId={viewLevel === "world" ? null : (selectedChurch?.id ?? null)}
+        countyStats={mapCountyStats}
+        focusedCounty={mapFocusedCounty}
+        onStateClick={(abbrev, e) => {
+          if (!isIntl) {
+            d.handleStateClick(abbrev, e);
+            return;
+          }
+          // Neighbor jump when already in a region (hook's focusedState is always null for intl).
+          if (routeStateAbbrev) {
+            if (abbrev !== routeStateAbbrev) navigateToState(abbrev);
+            return;
+          }
+          d.handleStateClick(abbrev, e);
+        }}
+        onCountryClick={(cc) => navigateToCountry(cc)}
+        // Step up one level only: world←country←region←admin2. Never jump from
+        // a province/CD click-miss straight to /world (that used handleResetView
+        // → navigateToNational, which is now the world map).
+        onResetView={() => {
+          if (viewLevel === "world") return;
+          if (mapFocusedCounty && (d.focusedState || routeStateAbbrev)) {
+            navigateToStateOnly(d.focusedState ?? routeStateAbbrev!);
+          } else if (routeStateAbbrev || d.focusedState) {
+            navigateToCountry(countryCode);
+          } else if (viewLevel === "country") {
+            navigateToWorld();
+          }
+        }}
         onStateHover={d.setHoveredState}
-        onChurchClick={d.handleChurchDotClick}
+        onChurchClick={onChurchDotClick}
         onChurchHover={d.setHoveredChurch}
-        onCountyHover={d.setHoveredCounty}
-        onCountyClick={d.handleCountyClick}
+        onCountyHover={isIntl ? onIntlCountyHover : d.setHoveredCounty}
+        onCountyClick={isIntl ? onIntlCountyClick : d.handleCountyClick}
         // Pinch/scroll out past the focused region to step back up a level.
         onZoomedOutPastRegion={() => {
-          if (d.focusedCounty && d.focusedState) navigateToStateOnly(d.focusedState);
-          else if (d.focusedState) d.handleResetView();
+          if (viewLevel === "world") return;
+          if (mapFocusedCounty && (d.focusedState || routeStateAbbrev)) {
+            navigateToStateOnly(d.focusedState ?? routeStateAbbrev!);
+          } else if (routeStateAbbrev || d.focusedState) navigateToCountry(countryCode);
+          else navigateToWorld();
         }}
       />
 
       {/* Tooltips */}
-      {!d.focusedState && !(d.previewChurch ?? d.hoveredChurch) && (d.hoveredState || (d.previewStatePinned && d.previewState)) && (() => {
-        const stateAbbrev = d.previewStatePinned && d.previewState ? d.previewState : d.hoveredState!;
+      {!d.focusedState && !routeStateAbbrev && !(d.previewChurch ?? d.hoveredChurch) && (d.hoveredState || (d.previewStatePinned && d.previewState)) && (() => {
+        const hoverId = d.previewStatePinned && d.previewState ? d.previewState : d.hoveredState!;
+        if (!hoverId || hoverId === "undefined") return null;
+        const tooltipRegions = isWorld
+          ? worldCountries.map((c) => ({
+              abbrev: c.code,
+              name: c.name,
+              isPopulated: !!c.isPopulated,
+              churchCount: c.churchCount || 0,
+            }))
+          : isIntl
+            ? intlRegions
+            : d.states;
+        // Drop stale world-map country codes (e.g. "US") once we've drilled into
+        // a country — they aren't in the region list and flash as bare abbrevs.
+        if (!tooltipRegions.some((r) => r.abbrev === hoverId)) return null;
         return (
           <StateTooltip
-            hoveredState={stateAbbrev}
-            states={d.states}
+            hoveredState={hoverId}
+            states={tooltipRegions}
             tooltipPos={d.tooltipPos}
-            activeByState={activeByState}
-            reviewCount={moderatorKey && moderationMode && nationalReviewStats ? (nationalReviewStats.states[stateAbbrev]?.needsReview ?? 0) : undefined}
+            activeByState={isWorld || isIntl ? {} : activeByState}
+            reviewCount={
+              !isWorld && !isIntl && moderatorKey && moderationMode && nationalReviewStats
+                ? (nationalReviewStats.states[hoverId]?.needsReview ?? 0)
+                : undefined
+            }
             pinned={d.previewStatePinned}
-            onViewState={d.previewStatePinned ? () => { d.clearStatePreview(); navigateToState(stateAbbrev); } : undefined}
+            unpopulatedLabel={isWorld ? "Coming soon" : "Click to explore"}
+            viewLabel={isWorld ? "View country" : isIntl ? "View region" : "View state"}
+            onViewState={
+              d.previewStatePinned
+                ? () => {
+                    d.clearStatePreview();
+                    if (isWorld) navigateToCountry(hoverId);
+                    else navigateToState(hoverId);
+                  }
+                : undefined
+            }
             onClose={d.previewStatePinned ? d.clearStatePreview : undefined}
           />
         );
       })()}
-      {(d.previewChurch ?? d.hoveredChurch) && (d.previewChurch ?? d.hoveredChurch)!.id !== d.selectedChurch?.id && (
+      {(d.previewChurch ?? d.hoveredChurch) && (d.previewChurch ?? d.hoveredChurch)!.id !== selectedChurch?.id && (
         <ChurchTooltip
           church={(d.previewChurch ?? d.hoveredChurch)!}
           resolvedCountyName={churchTooltipCountyName}
           tooltipPos={d.tooltipPos}
           showReviewStatus={!!(moderatorKey && moderationMode)}
           pinned={d.previewPinned}
-          onViewChurch={d.previewPinned ? d.onViewChurch : undefined}
+          onViewChurch={d.previewPinned ? onViewChurch : undefined}
           onClose={d.previewPinned ? d.clearPreview : undefined}
         />
       )}
@@ -1123,6 +1581,7 @@ function MapArea({
           countyStats={d.countyStats}
           tooltipPos={d.tooltipPos}
           pinned
+          viewLabel="View"
           onViewCounty={() => {
             const fips = d.previewCounty;
             d.clearCountyPreview();
@@ -1133,6 +1592,13 @@ function MapArea({
       )}
       {d.focusedState && d.hoveredCounty && d.countyStats && !(d.previewChurch ?? d.hoveredChurch) && !d.previewCountyPinned && (
         <CountyTooltip countyFips={d.hoveredCounty} countyStats={d.countyStats} tooltipPos={d.tooltipPos} />
+      )}
+      {isIntl && routeStateAbbrev && intlHoveredAdmin2 && mapCountyStats && !(d.previewChurch ?? d.hoveredChurch) && (
+        <CountyTooltip
+          countyFips={intlHoveredAdmin2}
+          countyStats={mapCountyStats}
+          tooltipPos={d.tooltipPos}
+        />
       )}
 
       {/* Click-outside backdrop: dismiss pinned church, state, or county preview */}
@@ -1173,33 +1639,10 @@ function MapArea({
       {!isLoadingVisible && (
         <div className="absolute left-4 bottom-4 z-30 flex flex-col gap-2 items-start pointer-events-none">
           <div className="pointer-events-auto flex flex-col gap-2 items-start">
-          {(d.focusedCounty || d.selectedChurch) && d.focusedState && (
-            <button
-              onClick={d.handleBackToState}
-              title={`Back to ${d.focusedStateName}`}
-              aria-label={`Back to ${d.focusedStateName}`}
-              className="flex items-center gap-1.5 h-8 pl-2 pr-2.5 rounded-full shadow-md transition-colors hover:opacity-90 text-white text-xs font-medium"
-              style={{ backgroundColor: "rgba(107, 33, 168, 0.9)" }}
-            >
-              <ArrowLeft size={14} color="#fff" />
-              Back to {d.focusedStateName}
-            </button>
-          )}
-          {(d.focusedState || d.selectedChurch) && (
-            <button
-              onClick={d.handleResetView}
-              title="All states"
-              aria-label="All states"
-              className="flex items-center gap-1.5 h-8 pl-2 pr-2.5 rounded-full shadow-md transition-colors hover:opacity-90 text-white text-xs font-medium"
-              style={{ backgroundColor: "rgba(107, 33, 168, 0.9)" }}
-            >
-              <ArrowLeft size={14} color="#fff" />
-              All states
-            </button>
-          )}
-          {!d.selectedChurch && (
+          {/* Location is the map (dimmed neighbors) + HeaderPill; zoom-out/reset goes up. */}
+          {!selectedChurch && (
           <MapControls
-            focusedState={d.focusedState}
+            focusedState={d.focusedState || routeStateAbbrev}
             showFilterPanel={d.showFilterPanel}
             showLegend={d.showLegend}
             onZoomIn={() => mapLibreApi.current?.zoomIn()}
@@ -1245,9 +1688,11 @@ function MapArea({
           setShowSummary={(v) => d.setShowSummary(v)}
           setShowFilterPanel={(v) => d.setShowFilterPanel(v)}
           allStatesLoaded={d.allStatesLoaded}
-          states={d.states}
+          states={countryCode === "US" ? d.states : intlRegions}
           filteredChurches={d.filteredChurches}
           sizeCounts={d.sizeCounts}
+          countryCode={countryCode}
+          viewLevel={viewLevel}
         />
       )}
 
@@ -1278,10 +1723,10 @@ function MapArea({
 
       {!isLoadingVisible && !d.showFilterPanel && !d.showLegend && (
         <div
-          className={`absolute left-6 right-6 md:left-12 md:right-12 z-40 flex flex-col items-center gap-2.5 pointer-events-none ${d.selectedChurch ? (isMobile ? "top-[80px] md:top-auto md:bottom-8" : "md:bottom-8") : "bottom-3 md:bottom-8"}`}
+          className={`absolute left-6 right-6 md:left-12 md:right-12 z-40 flex flex-col items-center gap-2.5 pointer-events-none ${selectedChurch ? (isMobile ? "top-[80px] md:top-auto md:bottom-8" : "md:bottom-8") : "bottom-3 md:bottom-8"}`}
         >
           {/* People with you now — bottom of map; hidden on church view (mobile and desktop) */}
-          {!d.selectedChurch && ((activePeople + activeBots) > 1 || (isLocalhost && (activePeople + activeBots) >= 1)) && (() => {
+          {!selectedChurch && ((activePeople + activeBots) > 1 || (isLocalhost && (activePeople + activeBots) >= 1)) && (() => {
             const withYou = (activePeople + activeBots) - 1; // exclude self so "people with you" = others only
             const label = withYou === 0 ? "0 people with you now" : withYou === 1 ? "1 person with you now" : `${withYou.toLocaleString()} people with you now`;
             return (
@@ -1294,25 +1739,55 @@ function MapArea({
               </div>
             );
           })()}
-          {!d.selectedChurch && (
+          {!selectedChurch && (
             <div className="pointer-events-none w-full max-w-full flex flex-col items-center">
             <MapSearchBar
-              churches={d.focusedCounty ? d.filteredChurches : d.churches}
-              states={d.states}
-              focusedState={d.focusedState}
-              focusedStateName={d.focusedStateName}
+              churches={
+                isWorld
+                  ? []
+                  : countryCode === "US"
+                    ? (d.focusedCounty ? d.filteredChurches : d.churches)
+                    : intlChurches
+              }
+              states={
+                isWorld
+                  ? []
+                  : countryCode === "US"
+                    ? d.states
+                    : intlRegions
+              }
+              focusedState={
+                isWorld
+                  ? null
+                  : countryCode === "US"
+                    ? d.focusedState
+                    : routeStateAbbrev
+              }
+              focusedStateName={
+                focusedAdmin2Name
+                || (countryCode === "US"
+                  ? d.focusedStateName
+                  : (intlRegions.find((r) => r.abbrev === routeStateAbbrev)?.name ?? ""))
+              }
               navigateToChurch={navigateToChurch}
+              countryCode={isWorld ? "WORLD" : countryCode}
+              isWorld={isWorld}
+              countries={worldCountries}
               onPreloadChurch={d.preloadChurch}
               collapsed={searchCollapsed}
               onExpand={() => { d.setSearchCollapsed(false); d.setShowFilterPanel(false); d.setShowLegend(false); }}
-              onAddChurch={d.focusedState ? () => { d.setShowAddChurchFromSummary(true); } : undefined}
-              onAddChurchForState={!d.focusedState ? (stateAbbrev) => d.setAddChurchForState(stateAbbrev) : undefined}
-              detectedState={d.detectedState}
+              onAddChurch={(d.focusedState || routeStateAbbrev) ? () => { d.setShowAddChurchFromSummary(true); } : undefined}
+              onAddChurchForState={
+                !isWorld && !(d.focusedState || routeStateAbbrev)
+                  ? (stateAbbrev) => d.setAddChurchForState(stateAbbrev)
+                  : undefined
+              }
+              detectedState={isWorld ? null : d.detectedState}
               zoom={d.zoom}
               center={d.center}
               mapBounds={mapLibreBounds}
               onStateViewSearchResultsChange={onStateViewSearchResultsChange}
-              countyFeatures={d.countyFeatures}
+              countyFeatures={mapCountyFeatures as Map<string, unknown> | null | undefined}
             />
             </div>
           )}
@@ -1325,14 +1800,21 @@ function MapArea({
 }
 
 // --- Header Pill ---
+/** Minimum time the spinner stays up once loading starts (avoids flash on cache hits). */
+const HEADER_LOADING_MIN_MS = 1100;
+/** Extra hold after data is ready so county/church layers can paint before the count appears. */
+const HEADER_LOADING_SETTLE_MS = 550;
+
 function HeaderPill({
   focusedState,
   focusedStateName,
   focusedCountyName,
+  loading = false,
   filteredCount,
   totalChurches,
-  allStatesLoaded,
-  populatedCount,
+  countryCode,
+  placeLabel,
+  showReviewPercentage,
   showSummary,
   pendingReviewCount,
   nationalReviewStats,
@@ -1344,10 +1826,15 @@ function HeaderPill({
   focusedState: string | null;
   focusedStateName: string;
   focusedCountyName?: string | null;
+  /** True while churches/regions are fetching — shows "Loading churches" for every country. */
+  loading?: boolean;
   filteredCount: number;
   totalChurches: number;
-  allStatesLoaded: boolean;
-  populatedCount: number;
+  countryCode: string;
+  /** Override place name (e.g. "the world" on /world). */
+  placeLabel?: string;
+  /** Show national/world % needing review under the pill. Defaults to country view (no region focus). */
+  showReviewPercentage?: boolean;
   showSummary: boolean;
   pendingReviewCount: number;
   nationalReviewStats: NationalReviewStatsResponse | null;
@@ -1356,8 +1843,37 @@ function HeaderPill({
   onShowNationalReviewModal: () => void;
   onToggle: () => void;
 }) {
+  const [showLoading, setShowLoading] = useState(loading);
+  const loadingStartedAt = useRef<number | null>(loading ? Date.now() : null);
+
+  useEffect(() => {
+    if (loading) {
+      loadingStartedAt.current = Date.now();
+      setShowLoading(true);
+      return;
+    }
+    const started = loadingStartedAt.current ?? Date.now();
+    const elapsed = Date.now() - started;
+    // Honor the overall min, and always wait a settle window after ready so the
+    // map's counties/dots aren't racing the pill's "N churches" reveal.
+    const remaining = Math.max(
+      HEADER_LOADING_SETTLE_MS,
+      HEADER_LOADING_MIN_MS - elapsed,
+    );
+    const t = window.setTimeout(() => {
+      loadingStartedAt.current = null;
+      setShowLoading(false);
+    }, remaining);
+    return () => window.clearTimeout(t);
+  }, [loading]);
+
   const nationalReviewPercentage = nationalReviewStats?.percentage ?? 0;
-  const showNationalReviewRow = !focusedState;
+  const showNationalReviewRow =
+    (showReviewPercentage ?? (!focusedState && !placeLabel)) && !showLoading;
+  const countryLabel = placeLabel ?? getCountry(countryCode)?.name ?? countryCode;
+  const readyCount = focusedState
+    ? `${filteredCount.toLocaleString()} churches`
+    : `${totalChurches.toLocaleString()} churches`;
   return (
     <div className="rounded-full shadow-lg transition-shadow hover:shadow-xl cursor-pointer w-auto max-w-full">
       <div
@@ -1369,32 +1885,44 @@ function HeaderPill({
         onClick={onToggle}
         className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-5 py-2.5 w-full min-w-0"
       >
-        <ChurchIcon size={18} className="text-purple-300 flex-shrink-0" />
+        <span className="relative flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center text-purple-300">
+          <ChurchIcon
+            size={18}
+            className={`absolute transition-opacity duration-300 ${showLoading ? "opacity-0" : "opacity-100"}`}
+          />
+          <span
+            className={`absolute flex items-center justify-center transition-opacity duration-300 ${showLoading ? "opacity-100" : "opacity-0"}`}
+            aria-hidden={!showLoading}
+          >
+            <ThreeDotLoader size={14} className="bg-purple-300" />
+          </span>
+        </span>
         {focusedState ? (
           <span className="text-white text-sm text-pretty min-w-0 truncate flex items-center gap-1.5">
-            <span className="font-medium whitespace-nowrap">
-              {filteredCount === 0 ? "Loading churches" : `${filteredCount.toLocaleString()} churches`}
+            <span
+              key={showLoading ? "loading" : "ready"}
+              className="font-medium whitespace-nowrap animate-in fade-in duration-300"
+            >
+              {showLoading ? "Loading churches" : readyCount}
               {" in "}
             </span>
-            <span className="text-white font-medium flex items-center gap-1.5 min-w-0 truncate">
-              {focusedCountyName ? (
-                <><span className="truncate">{focusedCountyName.includes("County") ? focusedCountyName : `${focusedCountyName} County`}</span><StateFlag abbrev={focusedState} size="sm" className="flex-shrink-0" /></>
-              ) : (
-                <>
-                  <StateFlag abbrev={focusedState} size="sm" className="flex-shrink-0" />
-                  <span className="truncate">{focusedStateName}</span>
-                </>
-              )}
+            <span className="text-white font-medium min-w-0 truncate">
+              <span className="truncate">
+                {focusedCountyName || focusedStateName}
+              </span>
             </span>
           </span>
         ) : (
           <span className="text-white text-sm text-pretty min-w-0 truncate">
-            <span className="font-medium">
-              {totalChurches === 0 ? "Loading churches" : `${totalChurches.toLocaleString()} churches`}
-            </span>{" "}
-            across{" "}
+            <span
+              key={showLoading ? "loading" : "ready"}
+              className="font-medium animate-in fade-in duration-300"
+            >
+              {showLoading ? "Loading churches" : readyCount}
+            </span>
+            {" in "}
             <span className="text-purple-300 font-medium">
-              {allStatesLoaded ? "50 states" : `${populatedCount} states`}
+              {countryLabel}
             </span>
           </span>
         )}
@@ -1565,7 +2093,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
             <img src={logoImg} alt="Here's My Church" className="w-full h-full object-cover" />
           </div>
           <h2 className="text-white font-medium text-[22px] leading-tight">Here's My Church</h2>
-          <p className="text-white/60 text-sm leading-relaxed mt-3 text-pretty">An interactive map of Christian churches in the U.S. with the goal to be the place with the most accurate data.</p>
+          <p className="text-white/60 text-sm leading-relaxed mt-3 text-pretty">An interactive map of Christian churches worldwide — with the goal to be the place with the most accurate data.</p>
         </div>
 
         {/* Content */}
@@ -1577,7 +2105,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
           <p className="text-white/40 text-[11px] uppercase tracking-wider font-medium mb-3">What you can do</p>
           <ul className="space-y-2.5">
             {[
-              "Browse Christian churches in the U.S.",
+              "Browse Christian churches by country and region",
               "Search and filter by name, denomination, size, or language",
               "View church info like address, website, and service times",
               "Easily add a church and make any corrections",
@@ -1604,7 +2132,12 @@ function AboutModal({ onClose }: { onClose: () => void }) {
           >
             Start Finding Churches
           </button>
-          <p className="text-white/30 text-[11px] text-center mt-2.5 text-pretty">Started by Derek Castelli, who's also building a Bible notes app called <a href="https://harvous.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-white/50 transition-colors">Harvous</a>. If you need any help email <a href="mailto:hey@heresmychurch.com" className="underline hover:text-white/50 transition-colors">hey@heresmychurch.com</a></p>
+          <p className="text-white/30 text-[11px] text-center mt-2.5 text-pretty">
+            An open-source project by{" "}
+            <a href="https://harvous.com/about" target="_blank" rel="noopener noreferrer" className="underline hover:text-white/50 transition-colors">Harvous</a>
+            . Need help?{" "}
+            <a href="mailto:hey@heresmychurch.com" className="underline hover:text-white/50 transition-colors">hey@heresmychurch.com</a>
+          </p>
           <p className="text-white/25 text-[10px] text-center mt-1.5">Version {__APP_VERSION__}</p>
         </div>
       </div>

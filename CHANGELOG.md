@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Add new changes here as you work. Move to a version section when releasing. -->
 
+## [2.0.0] - 2026-07-27
+
+### Changed
+
+- **Worldwide coverage** — Here's My Church is no longer U.S.-only. Browse Christian churches by country and region on a world map, with international search, add-church, seasonal reports, and product copy updated for global scope.
+
 ## [1.171.0] - 2026-04-01
 
 ### Changed
@@ -74,7 +80,8 @@ When cutting a new release:
 2. Bump `version` in `package.json` (and `package-lock.json`) to `X.Y.Z`.
 3. Commit with a message like: `chore: release vX.Y.Z`
 
-[Unreleased]: https://github.com/harvouscom/heresmychurch/compare/v1.171.0...HEAD
+[Unreleased]: https://github.com/harvouscom/heresmychurch/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/harvouscom/heresmychurch/compare/v1.171.0...v2.0.0
 [1.171.0]: https://github.com/harvouscom/heresmychurch/compare/v1.110.0...v1.171.0
 [1.110.0]: https://github.com/harvouscom/heresmychurch/compare/v1.2.0...v1.110.0
 [1.2.0]: https://github.com/harvouscom/heresmychurch/compare/v1.0.0...v1.2.0

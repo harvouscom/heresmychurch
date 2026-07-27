@@ -1,9 +1,30 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { useParams, Link } from "react-router";
-import { fetchCommunityStats, fetchReport, fetchStateReport, searchChurches } from "../api";
+import {
+  fetchCommunityStats,
+  fetchCountryReport,
+  fetchReport,
+  fetchStateReport,
+  reportPath,
+  searchChurches,
+} from "../api";
 import type { SeasonalReport, SeasonalReportChanges, SeasonalReportCommunity } from "../church-data";
 import { useReportScrollspy, REPORT_SECTIONS, type IconName } from "./useReportScrollspy";
+import {
+  isRegionReport,
+  isReportCountryParam,
+  isSeasonReportSlug,
+  isUsReport,
+  isWorldReport,
+  rankingsSectionTitle,
+  reportMapHref,
+  reportPlaceLabel,
+  reportPlaceTitle,
+  reportScopeAdverb,
+  reportScopePhrase,
+  reportUnitNoun,
+} from "./report-scope";
 import { ReportTOC } from "./ReportTOC";
 import {
   SeasonalReportGenerationFaqBrief,
@@ -23,7 +44,8 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "../ui/accordion";
-import { StateFlag } from "../StateFlag";
+import { PlaceFlag } from "../PlaceFlag";
+import { getCountry } from "../../config/countries";
 import { spotlightMapHref } from "../url-utils";
 import {
   Building2,
@@ -140,7 +162,7 @@ function ChurchSpotlightMapButton({ c }: { c: SpotlightRow }) {
   }, [directHref, c.name, c.city, c.state]);
 
   const idFallbackHref = useMemo(() => !hasReliableId ? spotlightMapHref(c) : null, [hasReliableId, c.id, c.state]);
-  const stateFallback = `/state/${encodeURIComponent(c.state)}`;
+  const stateFallback = `/US/${encodeURIComponent(c.state)}`;
   const href = directHref || searchHref || idFallbackHref || stateFallback;
   const isChurchDeepLink = Boolean(directHref || searchHref || idFallbackHref);
 
@@ -162,6 +184,11 @@ function useSectionCopy(r: SeasonalReport) {
   const isLaunch = r.season === "launch";
   const seasonLabel = r.season.charAt(0).toUpperCase() + r.season.slice(1);
   const date = new Date(r.generatedAt).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const unit = reportUnitNoun(r);
+  const place = reportPlaceLabel(r);
+  const us = isUsReport(r);
+  const world = isWorldReport(r.scope, r.countryCode);
+  const isState = r.scope === "state";
 
   return {
     bigPicture: {
@@ -173,26 +200,36 @@ function useSectionCopy(r: SeasonalReport) {
     dataQuality: {
       title: "The Data Quality Challenge",
       description: isLaunch
-        ? "Church data in America is fragmented — scattered across thousands of websites, denominational directories, and local records. We start with OpenStreetMap, then rely on the community to fill the gaps."
+        ? us
+          ? "Church data in America is fragmented — scattered across thousands of websites, denominational directories, and local records. We start with OpenStreetMap, then rely on the community to fill the gaps."
+          : `Church data in ${place} is fragmented across directories and local records. We start with OpenStreetMap, then rely on the community to fill the gaps.`
         : "Tracking our progress toward 99% accuracy. Every community correction brings us closer.",
     },
     geoDensity: {
       title: "Where Are the Churches?",
       description: isLaunch
-        ? "Church density varies dramatically across the country. The Bible Belt lives up to its name, while the West and Northeast look very different."
-        : "How church density has shifted across the country since our last report.",
+        ? world
+          ? "Church density varies dramatically by country — where we have population data, the contrast is sharp."
+          : us
+            ? "Church density varies dramatically across the country. The Bible Belt lives up to its name, while the West and Northeast look very different."
+            : `Church density varies across ${place}'s ${unit.many}.`
+        : `How church density compares across ${unit.many}.`,
     },
     denominations: {
       title: "The Denomination Landscape",
       description: isLaunch
-        ? "America's churches span dozens of denominations and traditions. Here's how they break down nationally and regionally."
+        ? us
+          ? "America's churches span dozens of denominations and traditions. Here's how they break down nationally and regionally."
+          : `Churches in ${place} span many denominations and traditions. Here's how they break down.`
         : "How the denomination mix is evolving as more churches are mapped and verified.",
     },
     diversity: {
       title: "Language & Diversity",
       description: isLaunch
-        ? "America's churches serve communities in dozens of languages. From Spanish-language services to Korean congregations, language diversity reflects the communities churches serve."
-        : "New languages, new communities — tracking the linguistic diversity of American churches.",
+        ? us
+          ? "America's churches serve communities in dozens of languages. From Spanish-language services to Korean congregations, language diversity reflects the communities churches serve."
+          : `Churches in ${place} serve communities in many languages — diversity on the map reflects the communities they serve.`
+        : "New languages, new communities — tracking linguistic diversity as more churches are mapped.",
     },
     spotlights: {
       title: "Church Spotlights",
@@ -201,36 +238,38 @@ function useSectionCopy(r: SeasonalReport) {
         : "Notable churches at both ends of the spectrum — the largest and smallest congregations we've mapped.",
     },
     howWeCompare: {
-      title:
-        r.scope === "state"
-          ? `${r.stateName ?? r.stateAbbrev ?? "This state"} vs other states`
-          : "How We Compare",
-      description:
-        r.scope === "state"
+      title: isState
+        ? `${r.stateName ?? r.stateAbbrev ?? "This state"} vs other states`
+        : "How We Compare",
+      description: isState
+        ? us
           ? "Rankings use every state’s mapped church count on HMC and Census population — same season as this report, nationwide snapshot."
-          : isLaunch
+          : `Rankings use every ${unit.one}'s mapped church count on HMC for the same season as this report.`
+        : us
+          ? isLaunch
             ? "Most church directories are afterthoughts — a category inside a general-purpose map app. Here's what sets HMC apart."
-            : "How HMC continues to differentiate from general-purpose directories.",
+            : "How HMC continues to differentiate from general-purpose directories."
+          : "How coverage and data quality on Here's My Church compare across this map.",
     },
     takeaways: {
       title: "Takeaways",
-      description:
-        r.scope === "state"
-          ? isLaunch
-            ? `What stands out in ${r.stateName ?? r.stateAbbrev ?? "this state"} — density, denominations, languages, and data health for churches mapped here.`
-            : `Key patterns for ${r.stateName ?? r.stateAbbrev ?? "this state"} from ${seasonLabel} ${r.year}.`
-          : isLaunch
-            ? "Digging into the data surfaced some surprises. Here are the patterns and outliers that stood out."
-            : `The key patterns and shifts from ${seasonLabel} ${r.year}.`,
+      description: isState
+        ? isLaunch
+          ? `What stands out in ${r.stateName ?? r.stateAbbrev ?? "this state"} — density, denominations, languages, and data health for churches mapped here.`
+          : `Key patterns for ${r.stateName ?? r.stateAbbrev ?? "this state"} from ${seasonLabel} ${r.year}.`
+        : isLaunch
+          ? "Digging into the data surfaced some surprises. Here are the patterns and outliers that stood out."
+          : `The key patterns and shifts from ${seasonLabel} ${r.year}.`,
     },
     stateRankings: {
-      title: r.scope === "state" ? "County Rankings" : "State Rankings",
-      description:
-        r.scope === "state"
-          ? "How counties compare within this state — sort by any column for coverage, completeness, and density."
+      title: rankingsSectionTitle(unit),
+      description: isState
+        ? "How counties compare within this state — sort by any column for coverage, completeness, and density."
+        : world
+          ? "How does each country stack up? Sort by any column for coverage, completeness, and community engagement."
           : isLaunch
-            ? "How does each state stack up? Sort by any column to explore church coverage, data completeness, and community engagement across the country."
-            : "Updated rankings — sort by any column to see how states compare and who's improving fastest.",
+            ? `How does each ${unit.one} stack up? Sort by any column to explore church coverage, data completeness, and community engagement.`
+            : `Updated rankings — sort by any column to see how ${unit.many} compare and who's improving fastest.`,
     },
   };
 }
@@ -544,7 +583,7 @@ function DataQualityBreakdownTable({
               >
                 <td className="px-4 py-2">
                   <span className="inline-flex items-center gap-2 font-medium text-stone-800">
-                    {row.flagAbbrev && <StateFlag abbrev={row.flagAbbrev} size="sm" />}
+                    {row.flagAbbrev && <PlaceFlag abbrev={row.flagAbbrev} size="sm" />}
                     {row.name}
                   </span>
                 </td>
@@ -641,7 +680,7 @@ function DenominationBreakdownByRegionTable({
             .map((r) => (
               <div key={r.id} className="rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-700">
                 <span className="inline-flex items-center gap-1.5 font-medium text-stone-900">
-                  {kind === "state" ? <StateFlag abbrev={r.id} size="sm" /> : null}
+                  {kind === "state" ? <PlaceFlag abbrev={r.id} size="sm" /> : null}
                   {kind === "county" ? (regionLabels?.[r.id] ?? r.id) : r.id}
                 </span>
                 <span className="ml-2 text-stone-600">
@@ -659,8 +698,12 @@ function DenominationBreakdownByRegionTable({
 function Takeaways({ report: r }: { report: SeasonalReport }) {
   const { bigPicture: bp, community: cmRaw, dataQuality: dq, geoDensity: gd, denominations: dn, diversity: dv, spotlights: sp } = r;
 
-  const isState = r.scope === "state";
-  const stateLabel = r.stateName ?? r.stateAbbrev ?? "this state";
+  const isState = isRegionReport(r.scope);
+  const stateLabel = r.stateName ?? r.stateAbbrev ?? "this region";
+  const unit = reportUnitNoun(r);
+  const place = reportPlaceLabel(r);
+  const scopeAdverb = reportScopeAdverb(r);
+  const scopePhrase = reportScopePhrase(r);
 
   const items: { icon: LucideIcon; title: string; body: React.ReactNode; tone?: "community" }[] = [];
 
@@ -673,11 +716,11 @@ function Takeaways({ report: r }: { report: SeasonalReport }) {
         body: `${bp.totalChurches.toLocaleString()} churches mapped here — coverage and data depth for ${stateLabel} on HMC.`,
       });
     } else {
-      const ratio = Math.round(bp.totalChurches / bp.statesPopulated);
+      const ratio = bp.statesPopulated > 0 ? Math.round(bp.totalChurches / bp.statesPopulated) : bp.totalChurches;
       items.push({
         icon: Building2,
         title: "A massive mapping effort",
-        body: `${bp.totalChurches.toLocaleString()} churches across ${bp.statesPopulated} states — that's an average of ${ratio.toLocaleString()} churches per state right out of the gate.`,
+        body: `${bp.totalChurches.toLocaleString()} churches across ${bp.statesPopulated} ${unit.many} — that's an average of ${ratio.toLocaleString()} churches per ${unit.one} right out of the gate.`,
       });
     }
   }
@@ -708,7 +751,7 @@ function Takeaways({ report: r }: { report: SeasonalReport }) {
         title: `${topDenoms[0].name} leads by ${gap.toFixed(1)} points`,
         body: isState
           ? `In ${stateLabel}, ${topDenoms[0].name} accounts for ${topDenoms[0].pct}% of mapped churches — the top denomination in this state. ${topDenoms[1].name} is next at ${topDenoms[1].pct}%. Together, the top two make up ${(topDenoms[0].pct + topDenoms[1].pct).toFixed(1)}% of listings here.`
-          : `At ${topDenoms[0].pct}% of all mapped churches, ${topDenoms[0].name} is the most common denomination nationally. ${topDenoms[1].name} follows at ${topDenoms[1].pct}%. The top two alone account for ${(topDenoms[0].pct + topDenoms[1].pct).toFixed(1)}% of all churches.`,
+          : `At ${topDenoms[0].pct}% of all mapped churches, ${topDenoms[0].name} is the most common denomination ${scopePhrase}. ${topDenoms[1].name} follows at ${topDenoms[1].pct}%. The top two alone account for ${(topDenoms[0].pct + topDenoms[1].pct).toFixed(1)}% of all churches.`,
       });
     }
   }
@@ -719,7 +762,7 @@ function Takeaways({ report: r }: { report: SeasonalReport }) {
     items.push({
       icon: Map,
       title: "Denominations cluster regionally",
-      body: `${p.denomination} churches make up ${p.nationalPct}% of churches nationally but reach ${p.regionalPct}% in ${p.strongStates.slice(0, 3).join(", ")}. Denomination identity is still deeply tied to geography.`,
+      body: `${p.denomination} churches make up ${p.nationalPct}% of churches ${scopePhrase} but reach ${p.regionalPct}% in ${p.strongStates.slice(0, 3).join(", ")}. Denomination identity is still deeply tied to geography.`,
     });
   }
 
@@ -762,20 +805,20 @@ function Takeaways({ report: r }: { report: SeasonalReport }) {
           <ChurchSpotlightMapButton c={S} />
           {isState
             ? ` in ${S.city}, ${S.state}) serves about ${S.attendance.toLocaleString()}. In ${stateLabel}, congregation sizes still span a huge range.`
-            : ` in ${S.state}) serves about ${S.attendance.toLocaleString()}. America's churches span an enormous range.`}
+            : ` in ${S.state}) serves about ${S.attendance.toLocaleString()}. Churches in ${place} span an enormous range.`}
         </>
       ),
     });
   }
 
-  // 8. People per church (statewide ratio for state reports; national for US report)
+  // 8. People per church (statewide ratio for state reports; national/country/world for others)
   if (gd.national.peoplePer > 0) {
     items.push({
       icon: Users,
       title: `1 church for every ${gd.national.peoplePer.toLocaleString()} people`,
       body: isState
         ? `Statewide in ${stateLabel}, there's roughly one church for every ${gd.national.peoplePer.toLocaleString()} residents — an average that still masks big differences from county to county.`
-        : `Nationally, there's roughly one church for every ${gd.national.peoplePer.toLocaleString()} Americans. That number hides huge variation — rural states have far more churches per person than urban ones.`,
+        : `${scopeAdverb}, there's roughly one church for every ${gd.national.peoplePer.toLocaleString()} people. That number hides huge variation — denser ${unit.many} often have fewer churches per person than more rural ones.`,
     });
   }
 
@@ -1052,7 +1095,7 @@ function StateVsOtherStatesComparison({ report }: { report: SeasonalReport }) {
                 </td>
                 <td className="px-4 py-3 text-right">
                   <span className="inline-flex items-center justify-end gap-1.5 tabular-nums">
-                    <StateFlag abbrev={p.leaderCount.abbrev} size="sm" />
+                    <PlaceFlag abbrev={p.leaderCount.abbrev} size="sm" />
                     <span className="text-stone-800">{p.leaderCount.count.toLocaleString()}</span>
                     <span className="text-stone-500 text-xs">({p.leaderCount.abbrev})</span>
                   </span>
@@ -1068,7 +1111,7 @@ function StateVsOtherStatesComparison({ report }: { report: SeasonalReport }) {
                 </td>
                 <td className="px-4 py-3 text-right">
                   <span className="inline-flex items-center justify-end gap-1.5 tabular-nums">
-                    <StateFlag abbrev={p.leaderDensity.abbrev} size="sm" />
+                    <PlaceFlag abbrev={p.leaderDensity.abbrev} size="sm" />
                     <span className="text-stone-800">{p.leaderDensity.churchesPer10k}</span>
                     <span className="text-stone-500 text-xs">({p.leaderDensity.abbrev})</span>
                   </span>
@@ -1092,7 +1135,7 @@ function StateVsOtherStatesComparison({ report }: { report: SeasonalReport }) {
                 to={`/report/state/${encodeURIComponent(s.abbrev)}/${encodeURIComponent(slug)}`}
                 className="inline-flex items-center gap-1.5 rounded-full border border-stone-200/80 bg-white px-2.5 py-1 text-xs font-medium text-stone-800 shadow-sm transition-colors hover:border-violet-200 hover:bg-violet-50/50"
               >
-                <StateFlag abbrev={s.abbrev} size="sm" />
+                <PlaceFlag abbrev={s.abbrev} size="sm" />
                 {s.name}
                 <span className="tabular-nums text-stone-500">{s.count.toLocaleString()}</span>
               </Link>
@@ -1108,7 +1151,7 @@ function StateVsOtherStatesComparison({ report }: { report: SeasonalReport }) {
                 to={`/report/state/${encodeURIComponent(s.abbrev)}/${encodeURIComponent(slug)}`}
                 className="inline-flex items-center gap-1.5 rounded-full border border-stone-200/60 bg-stone-50/80 px-2.5 py-1 text-xs font-medium text-stone-700 transition-colors hover:border-violet-200 hover:bg-violet-50/40"
               >
-                <StateFlag abbrev={s.abbrev} size="sm" />
+                <PlaceFlag abbrev={s.abbrev} size="sm" />
                 {s.name}
                 <span className="tabular-nums text-stone-500">{s.count.toLocaleString()}</span>
               </Link>
@@ -1130,7 +1173,7 @@ function StateVsOtherStatesComparison({ report }: { report: SeasonalReport }) {
                 to={`/report/state/${encodeURIComponent(s.abbrev)}/${encodeURIComponent(slug)}`}
                 className="inline-flex items-center gap-1.5 rounded-full border border-stone-200/80 bg-white px-2.5 py-1 text-xs font-medium text-stone-800 shadow-sm transition-colors hover:border-violet-200 hover:bg-violet-50/50"
               >
-                <StateFlag abbrev={s.abbrev} size="sm" />
+                <PlaceFlag abbrev={s.abbrev} size="sm" />
                 {s.name}
                 <span className="tabular-nums text-stone-500">{s.churchesPer10k}</span>
               </Link>
@@ -1146,7 +1189,7 @@ function StateVsOtherStatesComparison({ report }: { report: SeasonalReport }) {
                 to={`/report/state/${encodeURIComponent(s.abbrev)}/${encodeURIComponent(slug)}`}
                 className="inline-flex items-center gap-1.5 rounded-full border border-stone-200/60 bg-stone-50/80 px-2.5 py-1 text-xs font-medium text-stone-700 transition-colors hover:border-violet-200 hover:bg-violet-50/40"
               >
-                <StateFlag abbrev={s.abbrev} size="sm" />
+                <PlaceFlag abbrev={s.abbrev} size="sm" />
                 {s.name}
                 <span className="tabular-nums text-stone-500">{s.churchesPer10k}</span>
               </Link>
@@ -1176,9 +1219,42 @@ function StateVsOtherStatesComparison({ report }: { report: SeasonalReport }) {
 
 // ── Main page ──
 export function SeasonalReportPage() {
-  const { slug, sectionId, stateAbbrev } = useParams<{ slug: string; sectionId?: string; stateAbbrev?: string }>();
-  const normalizedStateAbbrev = stateAbbrev?.toUpperCase();
+  const params = useParams<{
+    slug?: string;
+    sectionId?: string;
+    stateAbbrev?: string;
+    a?: string;
+    b?: string;
+    c?: string;
+  }>();
+  const normalizedStateAbbrev = params.stateAbbrev?.toUpperCase();
   const isStateScopeRoute = Boolean(normalizedStateAbbrev);
+
+  // Disambiguate /report/:a/:b[/:c]:
+  //   country+slug[+section]  vs  US-slug+sectionId
+  const routeResolved = useMemo(() => {
+    if (isStateScopeRoute) {
+      return {
+        slug: params.slug,
+        sectionId: params.sectionId,
+        countryCode: "US" as string | undefined,
+      };
+    }
+    const a = params.a ?? params.slug;
+    const b = params.b ?? params.sectionId;
+    const c = params.c;
+    if (a && b && isReportCountryParam(a) && isSeasonReportSlug(b)) {
+      return { slug: b, sectionId: c, countryCode: a.toUpperCase() };
+    }
+    if (a && isSeasonReportSlug(a)) {
+      return { slug: a, sectionId: b, countryCode: "US" as string | undefined };
+    }
+    return { slug: a, sectionId: b, countryCode: undefined };
+  }, [isStateScopeRoute, params.a, params.b, params.c, params.slug, params.sectionId]);
+
+  const slug = routeResolved.slug;
+  const sectionId = routeResolved.sectionId;
+  const routeCountryCode = routeResolved.countryCode;
   const [report, setReport] = useState<SeasonalReport | null>(null);
   /** When the stored report predates `community`, fetch live totals from the API */
   const [communitySupplement, setCommunitySupplement] = useState<SeasonalReportCommunity | null>(null);
@@ -1191,6 +1267,14 @@ export function SeasonalReportPage() {
       report?.scope === "state"
         ? REPORT_SECTIONS.filter((section) => section.id !== "state-summaries")
         : [...REPORT_SECTIONS];
+    // Hide US-directory comparison outside US; keep a lighter "how we compare" for intl via rankings copy.
+    if (report && !isUsReport(report) && report.scope !== "state") {
+      list = list.filter((section) => section.id !== "how-we-compare");
+    }
+    // Region summary cards with deep links only for US national (state reports exist).
+    if (report && report.scope !== "state" && !isUsReport(report) && !isWorldReport(report.scope, report.countryCode)) {
+      list = list.filter((section) => section.id !== "state-summaries");
+    }
     if (report?.scope === "state") {
       const stName = report.stateName ?? report.stateAbbrev ?? "This state";
       list = list.map((section) => {
@@ -1202,9 +1286,22 @@ export function SeasonalReportPage() {
         }
         return section;
       });
+    } else if (report) {
+      const unit = reportUnitNoun(report);
+      list = list.map((section) => {
+        if (section.id === "state-rankings") {
+          return { ...section, label: rankingsSectionTitle(unit) };
+        }
+        if (section.id === "state-summaries") {
+          if (isWorldReport(report.scope, report.countryCode)) {
+            return { ...section, label: "Country summaries" };
+          }
+        }
+        return section;
+      });
     }
     return list;
-  }, [report?.scope, report?.stateName, report?.stateAbbrev]);
+  }, [report]);
   const { activeSection, scrollProgress, scrollTo } = useReportScrollspy(
     report?.generatedAt,
     tocSections
@@ -1262,14 +1359,17 @@ export function SeasonalReportPage() {
     setError(null);
     setCommunitySupplement(null);
     setCommunitySupplementDone(false);
-    const loadReport = isStateScopeRoute && normalizedStateAbbrev
-      ? fetchStateReport(normalizedStateAbbrev, slug)
-      : fetchReport(slug);
+    const loadReport =
+      isStateScopeRoute && normalizedStateAbbrev
+        ? fetchStateReport(normalizedStateAbbrev, slug)
+        : routeCountryCode && routeCountryCode !== "US"
+          ? fetchCountryReport(routeCountryCode, slug)
+          : fetchReport(slug);
     loadReport
       .then(setReport)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [slug, isStateScopeRoute, normalizedStateAbbrev]);
+  }, [slug, isStateScopeRoute, normalizedStateAbbrev, routeCountryCode]);
 
   useEffect(() => {
     if (!report) return;
@@ -1321,7 +1421,9 @@ export function SeasonalReportPage() {
       ? `${section.label} — ${report.title} — Here's My Church`
       : `${report.title} — Here's My Church`;
     const title =
-      report.scope !== "state" && report.season === "launch" ? `U.S. ${baseTitle}` : baseTitle;
+      isUsReport(report) && report.scope !== "state" && report.season === "launch"
+        ? `U.S. ${baseTitle}`
+        : baseTitle;
     const prevTitle = document.title;
     document.title = title;
 
@@ -1333,7 +1435,7 @@ export function SeasonalReportPage() {
       ? `${section.label} — from ${report.title}.`
       : report.scope === "state"
         ? `${report.subtitle} — ${report.bigPicture.totalChurches.toLocaleString()} churches mapped in ${report.stateName ?? report.stateAbbrev ?? "this state"}.`
-        : `${report.subtitle} — ${report.bigPicture.totalChurches.toLocaleString()} churches across ${report.bigPicture.statesPopulated} states.`;
+        : `${report.subtitle} — ${report.bigPicture.totalChurches.toLocaleString()} churches across ${report.bigPicture.statesPopulated} ${reportUnitNoun(report).many}.`;
     const imageUrl = `${window.location.origin}/og-report.png`;
 
     setMeta('meta[name="description"]', "content", description);
@@ -1405,12 +1507,16 @@ export function SeasonalReportPage() {
   const sectionLabel = excerptSectionId
     ? (REPORT_SECTIONS.find((s) => s.id === excerptSectionId)?.label ?? "Report section")
     : null;
+  const selfReportPath = (section?: string) =>
+    reportPath({
+      slug: slug || r.slug,
+      countryCode: isStateScopeRoute ? "US" : (routeCountryCode || r.countryCode || "US"),
+      stateAbbrev: isStateScopeRoute ? normalizedStateAbbrev : undefined,
+      sectionId: section,
+    });
   const copyExcerptLink = async (id: string) => {
     if (!slug) return;
-    const basePath = isStateScopeRoute && normalizedStateAbbrev
-      ? `/report/state/${encodeURIComponent(normalizedStateAbbrev)}/${encodeURIComponent(slug)}`
-      : `/report/${encodeURIComponent(slug)}`;
-    const url = `${window.location.origin}${basePath}/${id}`;
+    const url = `${window.location.origin}${selfReportPath(id)}`;
     try {
       await navigator.clipboard.writeText(url);
       setCopiedSectionId(id);
@@ -1454,7 +1560,7 @@ export function SeasonalReportPage() {
           <h1 className="text-2xl font-semibold text-stone-900">Section not found</h1>
           <p className="text-pretty mt-2 text-stone-700/70">This section can&apos;t be shared as a standalone page.</p>
           <Link
-            to={(r.scope === "state" && r.stateAbbrev) ? `/report/state/${r.stateAbbrev}/${r.slug}` : `/report/${r.slug}`}
+            to={selfReportPath()}
             className="mt-4 inline-block text-purple-600 hover:text-stone-700 font-medium"
           >
             View full report
@@ -1471,13 +1577,7 @@ export function SeasonalReportPage() {
         <div className="mx-auto max-w-3xl px-6 py-8 sm:py-10">
           <div className="flex items-center justify-between">
             <Link
-              to={
-                isExcerptMode
-                  ? (isStateScopeRoute && normalizedStateAbbrev
-                    ? `/report/state/${normalizedStateAbbrev}/${r.slug}`
-                    : `/report/${r.slug}`)
-                  : "/"
-              }
+              to={isExcerptMode ? selfReportPath() : "/"}
               className="inline-flex items-center gap-2 text-sm text-stone-400 hover:text-purple-600 transition-colors"
             >
               <div className="w-6 h-6 rounded overflow-hidden shrink-0">
@@ -1493,14 +1593,14 @@ export function SeasonalReportPage() {
           {!isExcerptMode && (
             <>
               <h1 className="mt-8 text-2xl font-bold text-stone-900 sm:text-4xl tracking-tight leading-[1.1]">
-                {r.scope === "state"
-                  ? `The State of Churches in ${r.stateName ?? r.stateAbbrev ?? "This State"}`
-                  : "The State of Churches in America"}
+                {isRegionReport(r.scope)
+                  ? `The State of Churches in ${r.stateName ?? r.stateAbbrev ?? "This Region"}`
+                  : (r.subtitle?.trim() || `The State of Churches in ${reportPlaceTitle(r)}`)}
               </h1>
               <p className="text-pretty mt-2 text-base sm:text-lg text-stone-500 leading-relaxed">
-                {r.scope === "state"
-                  ? "A state-level view of mapped churches, data quality, and community momentum."
-                  : "Here's My Church (HMC) is building the most accurate directory of Christian churches in America — crowd-sourced and 100% free."}
+                {isRegionReport(r.scope)
+                  ? `A ${reportUnitNoun(r).one}-level view of mapped churches, data quality, and community momentum.`
+                  : `Here's My Church (HMC) is building the most accurate directory of Christian churches in ${reportPlaceLabel(r)} — crowd-sourced and 100% free.`}
               </p>
             </>
           )}
@@ -1533,7 +1633,11 @@ export function SeasonalReportPage() {
                 <StatCard
                   value={bp.totalChurches}
                   label="Churches Mapped"
-                  sub={`~${((bp.totalChurches / 380000) * 100).toFixed(0)}% of est. 380k US churches`}
+                  sub={
+                    isUsReport(r) && !isRegionReport(r.scope)
+                      ? `~${((bp.totalChurches / 380000) * 100).toFixed(0)}% of est. 380k US churches`
+                      : `Across ${reportPlaceLabel(r)}`
+                  }
                   hint="Sourced from OpenStreetMap and community submissions"
                 />
                 <StatCard
@@ -1623,16 +1727,25 @@ export function SeasonalReportPage() {
               )}
               {(() => {
                 const topRank = [...rankData].sort((a, b) => b.pctComplete - a.pctComplete)[0];
-                if (topRank || r.scope === "state") {
+                const unit = reportUnitNoun(r);
+                const place = reportPlaceLabel(r);
+                const usNational = isUsReport(r) && !isRegionReport(r.scope);
+                const world = isWorldReport(r.scope, r.countryCode);
+                const glanceLead = isRegionReport(r.scope)
+                  ? `We've mapped ${bp.totalChurches.toLocaleString()} churches in ${r.stateName ?? r.stateAbbrev}.`
+                  : usNational && bp.statesPopulated >= 50
+                    ? `We've mapped churches across all 50 states — ${bp.totalChurches.toLocaleString()} and counting, representing ~${((bp.totalChurches / 380000) * 100).toFixed(0)}% of an estimated 380,000 US churches.`
+                    : usNational
+                      ? `We've covered ${bp.statesPopulated} of 50 states so far, with ${bp.totalChurches.toLocaleString()} churches mapped.`
+                      : world
+                        ? `We've mapped ${bp.totalChurches.toLocaleString()} churches across ${bp.statesPopulated} ${unit.many} worldwide.`
+                        : `We've mapped ${bp.totalChurches.toLocaleString()} churches across ${bp.statesPopulated} ${unit.many} in ${place}.`;
+                if (topRank || isRegionReport(r.scope)) {
                   return (
                     <Insight eyebrow="At a Glance">
-                      {r.scope === "state"
-                        ? `We've mapped ${bp.totalChurches.toLocaleString()} churches in ${r.stateName ?? r.stateAbbrev}.`
-                        : bp.statesPopulated >= 50
-                        ? `We've mapped churches across all 50 states — ${bp.totalChurches.toLocaleString()} and counting, representing ~${((bp.totalChurches / 380000) * 100).toFixed(0)}% of an estimated 380,000 US churches.`
-                        : `We've covered ${bp.statesPopulated} of 50 states so far, with ${bp.totalChurches.toLocaleString()} churches mapped.`}
+                      {glanceLead}
                       {topRank &&
-                        (r.scope === "state"
+                        (isRegionReport(r.scope)
                           ? ` ${topRank.name} leads counties in data completeness at ${topRank.pctComplete}% verified.`
                           : ` ${topRank.name} leads in data completeness at ${topRank.pctComplete}% verified.`)}
                     </Insight>
@@ -1640,9 +1753,7 @@ export function SeasonalReportPage() {
                 }
                 return (
                   <Insight eyebrow="At a Glance">
-                    {bp.statesPopulated >= 50
-                      ? `We've mapped churches across all 50 states — ${bp.totalChurches.toLocaleString()} and counting.`
-                      : `We've covered ${bp.statesPopulated} of 50 states so far, with ${bp.totalChurches.toLocaleString()} churches mapped.`}
+                    {glanceLead}
                   </Insight>
                 );
               })()}
@@ -1847,18 +1958,24 @@ export function SeasonalReportPage() {
                     once to rebuild the state report cache.
                   </div>
                 )
-              ) : (
+              ) : isUsReport(r) && Object.keys(gd.stateMetrics || {}).length > 0 ? (
                 <ChoroplethMap
                   values={Object.fromEntries(
                     Object.entries(gd.stateMetrics).map(([k, v]) => [k, v.churchesPer10k])
                   )}
                   label="churches per 10k people"
                 />
-              )}
+              ) : gd.mostChurched.length === 0 ? (
+                <div className="rounded-xl border border-stone-200/70 bg-stone-50/70 px-4 py-4 text-pretty text-sm text-stone-600">
+                  Population-based density isn&apos;t available for this geography yet. Rankings below still show mapped church counts.
+                </div>
+              ) : null}
               <div className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-2">
                 <div>
                   <h3 className="mb-3 text-lg font-semibold text-stone-900">
-                    {r.scope === "state" ? "Most Churched Counties" : "Most Churched States"}
+                    {r.scope === "state"
+                      ? "Most Churched Counties"
+                      : `Most Churched ${reportUnitNoun(r).many.charAt(0).toUpperCase()}${reportUnitNoun(r).many.slice(1)}`}
                   </h3>
                   <HorizontalBarChart
                     data={gd.mostChurched.slice(0, 8).map((s) => ({
@@ -1870,7 +1987,9 @@ export function SeasonalReportPage() {
                 </div>
                 <div>
                   <h3 className="mb-3 text-lg font-semibold text-stone-900">
-                    {r.scope === "state" ? "Least Churched Counties" : "Least Churched States"}
+                    {r.scope === "state"
+                      ? "Least Churched Counties"
+                      : `Least Churched ${reportUnitNoun(r).many.charAt(0).toUpperCase()}${reportUnitNoun(r).many.slice(1)}`}
                   </h3>
                   <HorizontalBarChart
                     data={gd.leastChurched.slice(0, 8).map((s) => ({
@@ -1882,11 +2001,11 @@ export function SeasonalReportPage() {
                 </div>
               </div>
               <Insight eyebrow="By the Numbers">
-                {r.scope === "state"
+                {isRegionReport(r.scope)
                   ? `Across ${r.stateName ?? r.stateAbbrev}, there's roughly 1 church for every ${gd.national.peoplePer.toLocaleString()} people (statewide).`
-                  : `Nationally, there's roughly 1 church for every ${gd.national.peoplePer.toLocaleString()} people.`}
+                  : `${reportScopeAdverb(r)}, there's roughly 1 church for every ${gd.national.peoplePer.toLocaleString()} people.`}
                 {gd.mostChurched[0] &&
-                  (r.scope === "state"
+                  (isRegionReport(r.scope)
                     ? ` ${gd.mostChurched[0].name} leads among counties with ${gd.mostChurched[0].churchesPer10k} churches per 10,000 residents.`
                     : ` ${gd.mostChurched[0].name} leads with ${gd.mostChurched[0].churchesPer10k} churches per 10,000 residents.`)}
               </Insight>
@@ -2086,7 +2205,7 @@ export function SeasonalReportPage() {
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold text-stone-800 truncate min-w-0 break-words">{c.name}</div>
                           <div className="text-sm text-stone-500 inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-0.5">
-                            <StateFlag abbrev={c.state} size="sm" />
+                            <PlaceFlag abbrev={c.state} size="sm" />
                             {c.city}, {c.state} &middot; {c.attendance.toLocaleString()} est.
                           </div>
                           {c.denomination && (
@@ -2116,7 +2235,7 @@ export function SeasonalReportPage() {
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold text-stone-800 truncate min-w-0 break-words">{c.name}</div>
                           <div className="text-sm text-stone-500 inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-0.5">
-                            <StateFlag abbrev={c.state} size="sm" />
+                            <PlaceFlag abbrev={c.state} size="sm" />
                             {c.city}, {c.state} &middot; {c.attendance.toLocaleString()} est.
                           </div>
                           <div className="mt-2">
@@ -2158,10 +2277,14 @@ export function SeasonalReportPage() {
               />
             </Section>)}
 
-            {!isExcerptMode && r.scope !== "state" && renderSection("state-summaries", <Section id="state-summaries">
+            {!isExcerptMode && r.scope !== "state" && (isUsReport(r) || isWorldReport(r.scope, r.countryCode)) && renderSection("state-summaries", <Section id="state-summaries">
               <SectionHeading
-                title="State Summaries"
-                description="A compact snapshot for every state in this report. Open any state to view its full state report."
+                title={isWorldReport(r.scope, r.countryCode) ? "Country Summaries" : "State Summaries"}
+                description={
+                  isWorldReport(r.scope, r.countryCode)
+                    ? "A compact snapshot for every country in this report. Open any country for its full seasonal report."
+                    : "A compact snapshot for every state in this report. Open any state to view its full state report."
+                }
                 icon={sectionIconFor("state-summaries")}
                 action={renderShareAction("state-summaries")}
               />
@@ -2169,21 +2292,24 @@ export function SeasonalReportPage() {
                 {[...sr].sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" })).map((state) => {
                   const breakdown = stateBreakdownByAbbrev[state.abbrev];
                   const metric = gd.stateMetrics[state.abbrev];
+                  const href = isWorldReport(r.scope, r.countryCode)
+                    ? reportPath({ slug: r.slug, countryCode: state.abbrev })
+                    : `/report/state/${state.abbrev}/${r.slug}`;
                   return (
                     <Link
                       key={state.abbrev}
-                      to={`/report/state/${state.abbrev}/${r.slug}`}
+                      to={href}
                       className="rounded-xl bg-stone-50 p-3 ring-1 ring-stone-100 transition-colors hover:bg-purple-50/60"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="inline-flex items-center gap-2 font-medium text-stone-900">
-                          <StateFlag abbrev={state.abbrev} size="sm" />
+                          <PlaceFlag abbrev={state.abbrev} size="sm" />
                           {state.name}
                         </span>
                         <span className="text-xs text-purple-700">{state.churchCount.toLocaleString()} churches</span>
                       </div>
                       <p className="mt-1 text-xs text-stone-600">
-                        {metric ? `${metric.peoplePer.toLocaleString()} people/church` : "No density data"}{" "}
+                        {metric && metric.peoplePer > 0 ? `${metric.peoplePer.toLocaleString()} people/church` : "No density data"}{" "}
                         · {state.pctComplete}% complete
                         {breakdown ? ` · ${breakdown.pct}% need review` : ""}
                       </p>
@@ -2216,15 +2342,17 @@ export function SeasonalReportPage() {
                     .
                   </div>
                 )
-              ) : (
+              ) : isUsReport(r) ? (
                 <DirectoryComparison report={r} />
-              )}
+              ) : null}
               <div className="mt-10 rounded-xl bg-stone-50 p-5">
                 <h3 className="text-sm font-semibold text-stone-700 mb-2">Our Data Sources</h3>
                 <p className="text-pretty text-sm text-stone-500 leading-relaxed">
-                  Church data sourced from OpenStreetMap and enriched with ARDA attendance benchmarks,
-                  Census population data, and community corrections. Attendance estimates derived from
-                  building geometry and denomination-specific benchmarks.
+                  Church data sourced from OpenStreetMap
+                  {isUsReport(r)
+                    ? " and enriched with ARDA attendance benchmarks, Census population data, and community corrections"
+                    : " and community corrections"}
+                  . Attendance estimates derived from building geometry and denomination-specific benchmarks.
                 </p>
               </div>
             </Section>)}
@@ -2268,7 +2396,7 @@ export function SeasonalReportPage() {
               </div>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Button asChild>
-                  <Link to={r.scope === "state" && r.stateAbbrev ? `/state/${r.stateAbbrev}` : "/"}>Explore the Map</Link>
+                  <Link to={reportMapHref(r)}>Explore the Map</Link>
                 </Button>
                 <Button
                   variant="outline"
@@ -2284,20 +2412,14 @@ export function SeasonalReportPage() {
             {isExcerptMode && excerptSectionId && (
               <div className="mb-10">
                 <Button asChild className="w-full">
-                  <Link
-                    to={
-                      (r.scope === "state" && r.stateAbbrev)
-                        ? `/report/state/${r.stateAbbrev}/${r.slug}#${excerptSectionId}`
-                        : `/report/${r.slug}#${excerptSectionId}`
-                    }
-                  >
+                  <Link to={`${selfReportPath()}#${excerptSectionId}`}>
                     Read the full report
                   </Link>
                 </Button>
               </div>
             )}
 
-            {!isExcerptMode && r.scope === "state" && slug && (
+            {!isExcerptMode && isRegionReport(r.scope) && slug && isUsReport(r) && (
               <div className="mb-10">
                 <p className="text-pretty mb-3 text-center text-sm text-stone-500">
                   This report focuses on {r.stateName ?? r.stateAbbrev}. See the same season for all 50 states.
@@ -2305,6 +2427,19 @@ export function SeasonalReportPage() {
                 <Button asChild className="w-full">
                   <Link to={`/report/${encodeURIComponent(slug)}`}>
                     View the national report
+                  </Link>
+                </Button>
+              </div>
+            )}
+            {!isExcerptMode && isRegionReport(r.scope) && slug && !isUsReport(r) && r.countryCode && (
+              <div className="mb-10">
+                <p className="text-pretty mb-3 text-center text-sm text-stone-500">
+                  This report focuses on {r.stateName ?? r.stateAbbrev}. See the full{" "}
+                  {getCountry(r.countryCode)?.name ?? r.countryCode} report for the same season.
+                </p>
+                <Button asChild className="w-full">
+                  <Link to={`/report/${encodeURIComponent(r.countryCode)}/${encodeURIComponent(slug)}`}>
+                    View the {getCountry(r.countryCode)?.name ?? r.countryCode} report
                   </Link>
                 </Button>
               </div>
@@ -2325,14 +2460,15 @@ export function SeasonalReportPage() {
                   </AccordionTrigger>
                   <AccordionContent className="text-stone-600 text-sm leading-relaxed space-y-2">
                     <p>
-                      Here&apos;s My Church (HMC) is a free, open-source, interactive map that helps people
-                      discover Christian churches across all 50 U.S. states. No account needed. You can
-                      browse by state, search and filter by denomination, size, or language, view church
-                      details, and contribute by adding churches or suggesting edits.
+                      {isWorldReport(r.scope, r.countryCode)
+                        ? "Here's My Church (HMC) is a free, open-source, interactive map that helps people discover Christian churches worldwide. No account needed. You can browse by country, search and filter by denomination, size, or language, view church details, and contribute by adding churches or suggesting edits."
+                        : isUsReport(r)
+                          ? "Here's My Church (HMC) is a free, open-source, interactive map of Christian churches worldwide — this report focuses on the United States. No account needed. You can browse by state, search and filter by denomination, size, or language, view church details, and contribute by adding churches or suggesting edits."
+                          : `Here's My Church (HMC) is a free, open-source, interactive map that helps people discover Christian churches in ${reportPlaceLabel(r)}. No account needed. You can browse by ${reportUnitNoun(r).one}, search and filter by denomination, size, or language, view church details, and contribute by adding churches or suggesting edits.`}
                     </p>
                     <p className="text-stone-400 text-xs">
-                      Started by Derek Castelli, who&apos;s also building a Bible notes app called{" "}
-                      <a href="https://harvous.com" target="_blank" rel="noopener noreferrer" className="underline text-purple-600 hover:text-purple-800 transition-colors">Harvous</a>.
+                      An open-source project by{" "}
+                      <a href="https://harvous.com/about" target="_blank" rel="noopener noreferrer" className="underline text-purple-600 hover:text-purple-800 transition-colors">Harvous</a>.
                     </p>
                   </AccordionContent>
                 </AccordionItem>
@@ -2351,10 +2487,9 @@ export function SeasonalReportPage() {
                     Where does the data come from?
                   </AccordionTrigger>
                   <AccordionContent className="text-stone-600 text-sm leading-relaxed">
-                    We use OpenStreetMap church data with denomination matching, ARDA reference data,
-                    U.S. Census population data, and community-submitted churches and corrections.
-                    Attendance estimates are primarily based on building footprint area, with denomination
-                    averages and regional scaling used where building data isn&apos;t available.
+                    {isUsReport(r)
+                      ? "We use OpenStreetMap church data with denomination matching, ARDA reference data, U.S. Census population data, and community-submitted churches and corrections. Attendance estimates are primarily based on building footprint area, with denomination averages and regional scaling used where building data isn't available."
+                      : "We use OpenStreetMap church data with denomination matching, population figures where available, and community-submitted churches and corrections. Attendance estimates are primarily based on building footprint area, with denomination averages and regional scaling used where building data isn't available."}
                   </AccordionContent>
                 </AccordionItem>
                 <AccordionItem value="how-generated" className="border-stone-200/60">
@@ -2362,7 +2497,20 @@ export function SeasonalReportPage() {
                     How is this report generated?
                   </AccordionTrigger>
                   <AccordionContent className="text-stone-600 text-sm leading-relaxed">
-                    <SeasonalReportGenerationFaqBrief variant="report" />
+                    <SeasonalReportGenerationFaqBrief
+                      variant="report"
+                      geography={
+                        isWorldReport(r.scope, r.countryCode)
+                          ? "world"
+                          : isRegionReport(r.scope)
+                            ? "region"
+                            : isUsReport(r)
+                              ? "us"
+                              : "country"
+                      }
+                      placeLabel={reportPlaceLabel(r)}
+                      unitNoun={reportUnitNoun(r)}
+                    />
                   </AccordionContent>
                 </AccordionItem>
                 <AccordionItem value="methodology-numbers" className="border-stone-200/60">
@@ -2370,7 +2518,20 @@ export function SeasonalReportPage() {
                     How are the numbers calculated and presented?
                   </AccordionTrigger>
                   <AccordionContent className="text-stone-600 text-sm leading-relaxed">
-                    <SeasonalReportMethodologyFaqDetails variant="report" />
+                    <SeasonalReportMethodologyFaqDetails
+                      variant="report"
+                      geography={
+                        isWorldReport(r.scope, r.countryCode)
+                          ? "world"
+                          : isRegionReport(r.scope)
+                            ? "region"
+                            : isUsReport(r)
+                              ? "us"
+                              : "country"
+                      }
+                      placeLabel={reportPlaceLabel(r)}
+                      unitNoun={reportUnitNoun(r)}
+                    />
                   </AccordionContent>
                 </AccordionItem>
                 <AccordionItem value="add-church" className="border-stone-200/60">
@@ -2379,9 +2540,9 @@ export function SeasonalReportPage() {
                   </AccordionTrigger>
                   <AccordionContent className="text-stone-600 text-sm leading-relaxed space-y-2">
                     <p>
-                      Click any state on the map to zoom in, then use the &quot;Add a Church&quot; button
-                      in the state summary panel. You can also start a search and you&apos;ll see the
-                      option to add your church. No account is required.
+                      {isUsReport(r)
+                        ? 'Click any state on the map to zoom in, then use the "Add a Church" button in the state summary panel. You can also start a search and you\'ll see the option to add your church. No account is required.'
+                        : `Open a ${reportUnitNoun(r).one} on the map, then use the "Add a Church" button in the summary panel. You can also start a search and you'll see the option to add your church. No account is required.`}
                     </p>
                     <p className="text-stone-400 text-xs italic">
                       We encourage you to find your church first; if it&apos;s already listed, please
@@ -2451,12 +2612,12 @@ export function SeasonalReportPage() {
                     </a>.
                   </AccordionContent>
                 </AccordionItem>
-                <AccordionItem value="expand-us" className="border-stone-200/60 border-b-0">
+                <AccordionItem value="expand-coverage" className="border-stone-200/60 border-b-0">
                   <AccordionTrigger className="text-stone-800 hover:text-stone-900 hover:no-underline text-left">
-                    Are there plans to expand beyond the U.S.?
+                    Will coverage keep expanding?
                   </AccordionTrigger>
                   <AccordionContent className="text-stone-600 text-sm leading-relaxed">
-                    Yes. We plan to expand to other countries in the future.
+                    Yes. HMC already includes churches in many countries. We keep adding regions and improving existing ones through OpenStreetMap refreshes and community submissions. Explore the world map to see every country currently on HMC.
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
@@ -2526,7 +2687,7 @@ function StateRankingsTable({
   }
 
   const columns: { key: typeof sortKey; label: string; align?: string; community?: boolean }[] = [
-    { key: "name", label: kind === "county" ? "County" : "State" },
+    { key: "name", label: kind === "county" ? "County" : "Place" },
     { key: "churchCount", label: "Churches", align: "right" },
     { key: "churchesPer10k", label: "Per 10k", align: "right" },
     { key: "pctComplete", label: "% Complete", align: "right" },
@@ -2567,9 +2728,9 @@ function StateRankingsTable({
               <td className="px-4 py-2.5 font-medium text-stone-800">
                 <span className="inline-flex items-center gap-2">
                   {kind === "state" ? (
-                    <StateFlag abbrev={row.abbrev} size="sm" />
+                    <PlaceFlag abbrev={row.abbrev} size="sm" />
                   ) : stateAbbrev ? (
-                    <StateFlag abbrev={stateAbbrev} size="sm" />
+                    <PlaceFlag abbrev={stateAbbrev} size="sm" />
                   ) : null}
                   {row.name}
                 </span>

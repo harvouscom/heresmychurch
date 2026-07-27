@@ -173,8 +173,14 @@ export async function fetchStates(): Promise<StatesResponse> {
   };
 }
 
-export async function fetchNationalReviewStats(): Promise<NationalReviewStatsResponse> {
-  const res = await fetchWithRetry(`${BASE_URL}/churches/review-stats`, { headers, timeoutMs: 60000 });
+export async function fetchNationalReviewStats(
+  countryCode: string = "US",
+): Promise<NationalReviewStatsResponse> {
+  const cc = encodeURIComponent(countryCode.toUpperCase());
+  const res = await fetchWithRetry(
+    `${BASE_URL}/churches/review-stats?country=${cc}`,
+    { headers, timeoutMs: 60000 },
+  );
   if (!res.ok) {
     const text = await res.text();
     console.error("Error fetching national review stats:", text);
@@ -206,6 +212,44 @@ export async function fetchRegions(
     regions: Array.isArray(data.regions) ? data.regions : [],
     totalChurches: data.totalChurches ?? 0,
   };
+}
+
+export interface CountrySummary {
+  code: string;
+  name: string;
+  isoNumeric: string;
+  churchCount: number;
+  isPopulated: boolean;
+  regionCount: number;
+  populatedRegions: number;
+}
+
+/** World choropleth: supported countries with church totals. */
+export async function fetchCountries(): Promise<{ countries: CountrySummary[]; totalChurches: number }> {
+  try {
+    const res = await fetchWithRetry(`${BASE_URL}/churches/countries`, { headers, timeoutMs: 15000 });
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        countries: Array.isArray(data.countries) ? data.countries : [],
+        totalChurches: data.totalChurches ?? 0,
+      };
+    }
+  } catch {
+    /* fall through to client registry */
+  }
+  // Fallback: registry-only when the countries endpoint is unavailable.
+  const { COUNTRIES } = await import("../config/countries");
+  const countries = Object.values(COUNTRIES).map((c) => ({
+    code: c.code,
+    name: c.name,
+    isoNumeric: c.isoNumeric,
+    churchCount: 0,
+    isPopulated: false,
+    regionCount: Object.keys(c.regions).length,
+    populatedRegions: 0,
+  }));
+  return { countries, totalChurches: 0 };
 }
 
 export async function fetchChurches(
@@ -366,7 +410,7 @@ export async function fetchSuggestions(
 
 export async function submitSuggestion(
   churchId: string,
-  field: "name" | "website" | "address" | "reportClosed" | "reportDuplicate" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email" | "homeCampusId",
+  field: "name" | "website" | "address" | "reportClosed" | "reportDuplicate" | "reportOutOfScope" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email" | "homeCampusId",
   value: string
 ): Promise<SubmitSuggestionResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/suggestions`, {
@@ -430,14 +474,30 @@ export interface PendingChurchesResponse {
   churches: PendingChurchData[];
 }
 
+export interface SimilarChurchMatch {
+  id: string;
+  shortId?: string;
+  name: string;
+  city?: string;
+  state: string;
+  country?: string;
+  address?: string;
+  denomination?: string;
+  lat?: number;
+  lng?: number;
+}
+
 export interface AddChurchResponse {
-  success: boolean;
+  success?: boolean;
   church?: PendingChurchData;
   message?: string;
   isDuplicate?: boolean;
   needsModeration?: boolean;
   /** When isDuplicate is true and the match was in main (not pending) data. */
   existingChurch?: { id: string; shortId?: string; name: string; city?: string; state: string };
+  /** Possible duplicates — caller should re-submit with confirmAdd: true to proceed. */
+  needsConfirmation?: boolean;
+  similar?: SimilarChurchMatch[];
 }
 
 export interface VerifyChurchResponse {
@@ -478,6 +538,8 @@ export async function addChurch(data: {
   pastorName?: string;
   phone?: string;
   email?: string;
+  /** Set true after the user confirms this is not one of the similar matches. */
+  confirmAdd?: boolean;
 }): Promise<AddChurchResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/churches/add`, {
     method: "POST",
@@ -563,11 +625,18 @@ export interface SearchResult {
   name: string;
   city: string;
   state: string;
+  /** ISO country code when known (returned by search for world/cross-country results). */
+  country?: string;
   denomination: string;
   attendance: number;
   lat: number;
   lng: number;
   address: string;
+  /**
+   * Best display place string: street+city, city+region, or "Somewhere in {region}".
+   * Raw `address` / `city` stay as stored (may be empty).
+   */
+  locationLabel?: string;
 }
 
 export interface SearchResponse {
@@ -582,9 +651,11 @@ export async function searchChurches(
   query: string,
   limit: number = 10,
   state?: string,
-  priorityStates?: string[]
+  priorityStates?: string[],
+  country?: string,
 ): Promise<SearchResponse> {
   let url = `${BASE_URL}/churches/search?q=${encodeURIComponent(query)}&limit=${limit}`;
+  if (country) url += `&country=${encodeURIComponent(country.toUpperCase())}`;
   if (priorityStates?.length) {
     url += `&priorityStates=${priorityStates.map((s) => s.toUpperCase()).join(",")}`;
   } else if (state) {
@@ -1111,6 +1182,24 @@ export async function fetchAuditByChurch(
 }
 
 // ── Seasonal Reports ──
+
+/** Client path for a seasonal report (US national keeps /report/:slug). */
+export function reportPath(opts: {
+  slug: string;
+  countryCode?: string;
+  stateAbbrev?: string;
+  sectionId?: string;
+}): string {
+  const slug = encodeURIComponent(opts.slug);
+  const section = opts.sectionId ? `/${encodeURIComponent(opts.sectionId)}` : "";
+  if (opts.stateAbbrev) {
+    return `/report/state/${encodeURIComponent(opts.stateAbbrev.toUpperCase())}/${slug}${section}`;
+  }
+  const cc = (opts.countryCode || "US").toUpperCase();
+  if (cc === "US") return `/report/${slug}${section}`;
+  return `/report/${encodeURIComponent(cc)}/${slug}${section}`;
+}
+
 export async function fetchReport(slug: string): Promise<import("./church-data").SeasonalReport> {
   const res = await fetchWithRetry(
     `${BASE_URL}/report/${encodeURIComponent(slug)}`,
@@ -1119,6 +1208,24 @@ export async function fetchReport(slug: string): Promise<import("./church-data")
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Failed to fetch report: ${res.status} — ${text}`);
+  }
+  return res.json();
+}
+
+/** Country or WORLD report. US aliases to the legacy national endpoint. */
+export async function fetchCountryReport(
+  countryCode: string,
+  slug: string
+): Promise<import("./church-data").SeasonalReport> {
+  const cc = countryCode.toUpperCase();
+  if (cc === "US") return fetchReport(slug);
+  const res = await fetchWithRetry(
+    `${BASE_URL}/report/${encodeURIComponent(cc)}/${encodeURIComponent(slug)}`,
+    { headers, timeoutMs: 120000, cache: "no-store" }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to fetch country report: ${res.status} — ${text}`);
   }
   return res.json();
 }
@@ -1139,8 +1246,12 @@ export async function fetchStateReport(
   return res.json();
 }
 
-export async function fetchReportList(): Promise<import("./church-data").SeasonalReportSummary[]> {
-  const res = await fetchWithRetry(`${BASE_URL}/reports`, { headers, timeoutMs: 15000 });
+/** List cached reports. `country` defaults to US; use WORLD or an ISO CC. */
+export async function fetchReportList(
+  country?: string
+): Promise<import("./church-data").SeasonalReportSummary[]> {
+  const q = country ? `?country=${encodeURIComponent(country.toUpperCase())}` : "";
+  const res = await fetchWithRetry(`${BASE_URL}/reports${q}`, { headers, timeoutMs: 15000 });
   if (!res.ok) return [];
   return res.json();
 }

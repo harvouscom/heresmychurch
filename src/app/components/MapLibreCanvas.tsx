@@ -25,10 +25,8 @@ import {
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { feature } from "topojson-client";
-import { geoBounds } from "d3-geo";
 import {
   GEO_URL,
-  COUNTIES_GEO_URL,
   FIPS_TO_STATE,
   STATE_TO_FIPS,
   STATE_BOUNDS,
@@ -38,10 +36,25 @@ import {
   ACTIVE_PIN_FILL,
 } from "./map-constants";
 import { getSizeCategory, type Church, type StateInfo } from "./church-data";
-import { getCountry, getRegion, DEFAULT_COUNTRY_CODE } from "../config/countries";
+import {
+  getCountry,
+  getRegion,
+  getCountryByNumeric,
+  getTierForCount,
+  DEFAULT_COUNTRY_CODE,
+  WORLD_GEO_URL,
+  WORLD_COUNT_TIERS,
+  type CountryConfig,
+} from "../config/countries";
+import type { CountrySummary } from "./api";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
+import {
+  admin2CollectionForRegion,
+  loadAdmin2Features,
+  planarBoundsForFeature,
+} from "./admin2";
 
-/** Per-county church counts and per-capita rates, keyed by 5-digit FIPS. */
+/** Per-admin-2 church counts and per-capita rates, keyed by id (FIPS / CDUID). */
 export type CountyStats = {
   byFips: Record<
     string,
@@ -63,10 +76,14 @@ const STATE_STROKE = "#C9A0DC"; // brand purple borders (matches national view)
 const STATE_FOCUSED_FILL = "#C9A0DC"; // focused state
 const STATE_DIMMED_FILL = "#EDE4F3"; // non-focused states in state view
 const STATE_HOVER_FILL = "#D4B8E8"; // hovered state (national view only)
+/** Other countries under a country/region view — same family as state dim. */
+const COUNTRY_DIMMED_FILL = "#EDE4F3";
 // County choropleth defaults (match CountyGeographies in MapCanvas)
 const COUNTY_FILL = "rgba(255, 255, 255, 0.8)";
 const COUNTY_STROKE = "rgba(107, 33, 168, 0.25)";
 const COUNTY_HOVER_FILL = "#D4B8E8";
+/** Sibling counties when one county is focused. */
+const COUNTY_DIMMED_FILL = "#F3EEF7";
 
 // Street basemap for church-level navigation. Kept invisible at the national and
 // state zooms so those stay a clean purple-on-cream data visualization, then
@@ -198,6 +215,9 @@ const BASEMAP_STYLE: StyleSpecification = {
 // Continental-US default view (Web Mercator zoom 0–22, not the old 1–500 scale).
 export const US_DEFAULT_CENTER: [number, number] = [-98.5, 39.5];
 export const US_DEFAULT_ZOOM = 3.4;
+/** World choropleth framing — keep in sync with the camera effect. */
+const WORLD_CENTER: [number, number] = [0, 20];
+const WORLD_ZOOM = 1.35;
 
 interface MapLibreCanvasProps {
   /** [lng, lat] center. */
@@ -206,6 +226,10 @@ interface MapLibreCanvasProps {
   zoom?: number;
   /** ISO 3166-1 alpha-2 country being browsed; selects the boundary source. */
   countryCode?: string;
+  /** world | country | region — world draws countries-110m choropleth. */
+  viewLevel?: "world" | "country" | "region";
+  /** Country summaries for the world choropleth. */
+  countries?: CountrySummary[];
   /** State list with church counts; drives the choropleth tier coloring. */
   states?: StateInfo[];
   /** Abbrev of the focused state; shows counties and dims other states. */
@@ -251,6 +275,8 @@ interface MapLibreCanvasProps {
   ) => void;
   onStateClick?: (abbrev: string) => void;
   onStateHover?: (abbrev: string | null) => void;
+  /** World view: click a populated country to open its region choropleth. */
+  onCountryClick?: (countryCode: string) => void;
   onCountyClick?: (fips: string) => void;
   onCountyHover?: (fips: string | null) => void;
   onChurchClick?: (church: Church) => void;
@@ -306,17 +332,18 @@ function boundsForState(
   ];
 }
 
-/** Bounding box of a single county, from the cached counties TopoJSON. */
+/** Bounding box of a single admin-2 unit (US county / CA census division). */
 async function boundsForCounty(
-  fips: string,
+  admin2Id: string,
+  countryCode: string = DEFAULT_COUNTRY_CODE,
 ): Promise<[[number, number], [number, number]] | null> {
   try {
-    const topo = await fetchTopo(COUNTIES_GEO_URL);
-    const all = feature(topo, topo.objects.counties) as GeoJSON.FeatureCollection;
-    const match = all.features.find((f) => String(f.id).padStart(5, "0") === fips);
+    const all = await loadAdmin2Features(countryCode);
+    const match = all.get(admin2Id);
     if (!match) return null;
-    // d3-geo's geoBounds already returns [[west, south], [east, north]].
-    return geoBounds(match as GeoJSON.Feature) as [[number, number], [number, number]];
+    // Planar bbox — d3 geoBounds returns the whole globe on simplified CA
+    // MultiPolygons with degenerate rings after mapshaper.
+    return planarBoundsForFeature(match as GeoJSON.Feature);
   } catch {
     return null;
   }
@@ -348,6 +375,15 @@ const ZOOM_OUT_FACTOR = 1.6;
  * to leave the region and stare at the whole country or globe first.
  */
 const ZOOM_OUT_ALLOWANCE = 1;
+
+/**
+ * Country → world uses a zoom delta instead of bbox size. US (and some others)
+ * have Alaska/Hawaii-style extents that make "viewport > 1.6× country" almost
+ * impossible, so pinch-out never left the country view.
+ */
+const COUNTRY_ZOOM_OUT_DELTA = 0.95;
+/** Min zoom floor sits a bit below the step-out trigger so the gesture can fire. */
+const COUNTRY_ZOOM_OUT_FLOOR_EXTRA = 0.55;
 
 /**
  * A country's full extent, unioned from its region bounds. Derived rather than
@@ -420,7 +456,10 @@ function whenStyleReady(map: MaplibreMap, fn: () => void) {
 // Canonical bottom→top draw order. Layers are added asynchronously (each waits
 // on a TopoJSON fetch or an API call), so insertion order is not reliable —
 // re-assert the stacking explicitly after any layer is added.
+// world-context sits under the active country regions so gray neighbors frame focus.
 const LAYER_ORDER = [
+  "world-context-fill",
+  "world-context-line",
   "states-fill",
   "states-line",
   "counties-fill",
@@ -462,23 +501,436 @@ function fetchTopo(url: string): Promise<any> {
  * (scripts/generate-admin1.mjs). Normalising here means the layer code below
  * never has to know which country it is drawing.
  */
-async function loadRegionFeatures(countryCode: string): Promise<GeoJSON.FeatureCollection> {
-  if (countryCode === "US") {
-    const topo = await fetchTopo(GEO_URL);
-    const geo = feature(topo, topo.objects.states) as GeoJSON.FeatureCollection;
-    for (const f of geo.features) {
-      f.properties = { ...f.properties, abbrev: FIPS_TO_STATE[String(f.id).padStart(2, "0")] };
-    }
-    return geo;
-  }
-  const url = getCountry(countryCode)?.regionSourceUrl;
-  if (!url) throw new Error(`No boundary source for country ${countryCode}`);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${url} -> ${res.status}`);
-  return (await res.json()) as GeoJSON.FeatureCollection;
+/** Cached admin-1 FeatureCollections (geometry only — callers clone props). */
+const regionFeaturesCache = new Map<string, Promise<GeoJSON.FeatureCollection>>();
+
+/** Warm admin-1 boundaries so country → region doesn't wait on the network. */
+function prefetchRegionFeatures(countryCode: string) {
+  const cc = countryCode.toUpperCase();
+  if (!cc || !getCountry(cc)) return;
+  void loadRegionFeatures(cc).catch(() => {
+    regionFeaturesCache.delete(cc);
+  });
 }
 
-async function setStatesLayer(map: MaplibreMap, states: StateInfo[], countryCode: string) {
+async function loadRegionFeatures(countryCode: string): Promise<GeoJSON.FeatureCollection> {
+  const cc = countryCode.toUpperCase();
+  let cached = regionFeaturesCache.get(cc);
+  if (!cached) {
+    cached = (async () => {
+      if (cc === "US") {
+        const topo = await fetchTopo(GEO_URL);
+        const geo = feature(topo, topo.objects.states) as GeoJSON.FeatureCollection;
+        for (const f of geo.features) {
+          f.properties = { ...f.properties, abbrev: FIPS_TO_STATE[String(f.id).padStart(2, "0")] };
+        }
+        return geo;
+      }
+      const url = getCountry(cc)?.regionSourceUrl;
+      if (!url) throw new Error(`No boundary source for country ${cc}`);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`${url} -> ${res.status}`);
+      return (await res.json()) as GeoJSON.FeatureCollection;
+    })();
+    regionFeaturesCache.set(cc, cached);
+  }
+  const base = await cached;
+  // Clone so fill/count joins don't mutate the cache.
+  return {
+    type: "FeatureCollection",
+    features: base.features.map((f) => ({
+      ...f,
+      properties: { ...f.properties },
+    })),
+  };
+}
+
+/** Antarctica spans the full southern edge and paints huge bands in Mercator. */
+const ANTARCTICA_ISO = "010";
+
+type LngLat = [number, number];
+
+/**
+ * World-atlas countries-110m attaches far-flung overseas polygons to the same
+ * ISO id (France includes Guyane in South America). Keep only parts whose
+ * centroid sits in the metropolitan bbox so /world matches our region maps.
+ */
+const METROPOLITAN_POLYGON_BBOX: Record<
+  string,
+  { minLng: number; maxLng: number; minLat: number; maxLat: number }
+> = {
+  // France: metropolitan hexagon + Corsica; drop Guyane (and any other DROM).
+  "250": { minLng: -10, maxLng: 12, minLat: 40, maxLat: 52 },
+};
+
+function polygonCentroid(poly: LngLat[][]): LngLat {
+  const ring = poly[0] ?? [];
+  let lng = 0;
+  let lat = 0;
+  const n = Math.max(ring.length, 1);
+  for (const p of ring) {
+    lng += p[0];
+    lat += p[1];
+  }
+  return [lng / n, lat / n];
+}
+
+/** Drop overseas MultiPolygon parts that sit outside a country's metro bbox. */
+function keepMetropolitanCountryParts(f: GeoJSON.Feature): GeoJSON.Feature {
+  const num = String(f.id ?? "").padStart(3, "0");
+  const box = METROPOLITAN_POLYGON_BBOX[num];
+  const g = f.geometry;
+  if (!box || !g || (g.type !== "Polygon" && g.type !== "MultiPolygon")) return f;
+  const polys = (g.type === "Polygon" ? [g.coordinates] : g.coordinates) as LngLat[][][];
+  const kept = polys.filter((poly) => {
+    const [lng, lat] = polygonCentroid(poly);
+    return (
+      lng >= box.minLng &&
+      lng <= box.maxLng &&
+      lat >= box.minLat &&
+      lat <= box.maxLat
+    );
+  });
+  if (!kept.length || kept.length === polys.length) return f;
+  return {
+    ...f,
+    geometry:
+      kept.length === 1
+        ? { type: "Polygon", coordinates: kept[0] }
+        : { type: "MultiPolygon", coordinates: kept },
+  };
+}
+
+/** Unwrap a ring so successive longitudes are continuous (no ±360 jumps). */
+function unwrapRing(ring: LngLat[]): LngLat[] {
+  const out: LngLat[] = [[ring[0][0], ring[0][1]]];
+  for (let i = 1; i < ring.length; i++) {
+    let lng = ring[i][0];
+    const prev = out[out.length - 1][0];
+    while (lng - prev > 180) lng -= 360;
+    while (lng - prev < -180) lng += 360;
+    out.push([lng, ring[i][1]]);
+  }
+  return out;
+}
+
+/**
+ * Split a ring that crosses the antimeridian into pieces that each sit inside
+ * one [-180, 180] world copy. MapLibre otherwise fills the shortest path across
+ * the map — the horizontal purple slabs over Canada/the Arctic (Russia/Fiji).
+ */
+function cutRingAtAntimeridian(ring: LngLat[]): LngLat[][] {
+  if (ring.length < 4) return [ring];
+  const unwrapped = unwrapRing(ring);
+  const lngs = unwrapped.map((p) => p[0]);
+  const min = Math.min(...lngs);
+  const max = Math.max(...lngs);
+  if (max - min <= 180 && min >= -180 && max <= 180) return [ring];
+
+  const parts: LngLat[][] = [];
+  const kMin = Math.floor((min + 180) / 360);
+  const kMax = Math.floor((max + 180) / 360);
+  for (let k = kMin; k <= kMax; k++) {
+    const left = -180 + 360 * k;
+    const right = 180 + 360 * k;
+    const clipped: LngLat[] = [];
+    const push = (lng: number, lat: number) => {
+      const p: LngLat = [lng - 360 * k, lat];
+      const prev = clipped[clipped.length - 1];
+      if (!prev || prev[0] !== p[0] || prev[1] !== p[1]) clipped.push(p);
+    };
+    for (let i = 0; i < unwrapped.length - 1; i++) {
+      const [ax, ay] = unwrapped[i];
+      const [bx, by] = unwrapped[i + 1];
+      const inA = ax >= left && ax <= right;
+      const inB = bx >= left && bx <= right;
+      if (inA) push(ax, ay);
+      if (inA !== inB && ax !== bx) {
+        for (const edge of [left, right]) {
+          if ((ax - edge) * (bx - edge) > 0) continue;
+          const t = (edge - ax) / (bx - ax);
+          if (t >= 0 && t <= 1) push(edge, ay + t * (by - ay));
+        }
+      }
+    }
+    const last = unwrapped[unwrapped.length - 1];
+    if (last[0] >= left && last[0] <= right) push(last[0], last[1]);
+    if (clipped.length < 3) continue;
+    const first = clipped[0];
+    const end = clipped[clipped.length - 1];
+    if (first[0] !== end[0] || first[1] !== end[1]) clipped.push([first[0], first[1]]);
+    if (clipped.length >= 4) parts.push(clipped);
+  }
+  return parts.length ? parts : [ring];
+}
+
+function cutPolygonAtAntimeridian(poly: LngLat[][]): LngLat[][][] {
+  const outerParts = cutRingAtAntimeridian(poly[0] as LngLat[]);
+  const out: LngLat[][][] = [];
+  for (const outer of outerParts) {
+    const oAvg = outer.reduce((s, p) => s + p[0], 0) / outer.length;
+    const rings: LngLat[][] = [outer];
+    for (let h = 1; h < poly.length; h++) {
+      for (const hole of cutRingAtAntimeridian(poly[h] as LngLat[])) {
+        const hAvg = hole.reduce((s, p) => s + p[0], 0) / hole.length;
+        if (Math.abs(oAvg - hAvg) < 90) rings.push(hole);
+      }
+    }
+    out.push(rings);
+  }
+  return out;
+}
+
+/** Cut Russia/Fiji-style wraps so fills stay clipped to country outlines. */
+function cutAntimeridianFeature(f: GeoJSON.Feature): GeoJSON.Feature {
+  const g = f.geometry;
+  if (!g || (g.type !== "Polygon" && g.type !== "MultiPolygon")) return f;
+  const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+  const outPolys: LngLat[][][] = [];
+  for (const poly of polys) outPolys.push(...cutPolygonAtAntimeridian(poly as LngLat[][]));
+  if (!outPolys.length) return f;
+  return {
+    ...f,
+    geometry:
+      outPolys.length === 1
+        ? { type: "Polygon", coordinates: outPolys[0] }
+        : { type: "MultiPolygon", coordinates: outPolys },
+  };
+}
+
+/** Cached, antimeridian-safe world countries (geometry only — clone props per use). */
+let worldCountryCollectionPromise: Promise<GeoJSON.FeatureCollection> | null = null;
+
+/**
+ * World-atlas countries as GeoJSON, without Antarctica / overseas exclaves, and
+ * with antimeridian rings split so Mercator fills don't paint ocean slabs.
+ */
+async function loadWorldCountryCollection(): Promise<GeoJSON.FeatureCollection> {
+  if (!worldCountryCollectionPromise) {
+    worldCountryCollectionPromise = (async () => {
+      const topo = await fetchTopo(WORLD_GEO_URL);
+      const geo = feature(topo, topo.objects.countries) as GeoJSON.FeatureCollection;
+      return {
+        type: "FeatureCollection",
+        features: geo.features
+          .filter((f) => String(f.id ?? "").padStart(3, "0") !== ANTARCTICA_ISO)
+          .map(keepMetropolitanCountryParts)
+          .map(cutAntimeridianFeature),
+      };
+    })();
+  }
+  const base = await worldCountryCollectionPromise;
+  // Clone features/properties so callers can attach fill/count without mutating cache.
+  return {
+    type: "FeatureCollection",
+    features: base.features.map((f) => ({
+      ...f,
+      properties: { ...f.properties },
+    })),
+  };
+}
+
+/** Track tile buffer per source — MapLibre can't change buffer via setData. */
+const polygonSourceBuffer = new Map<string, number>();
+
+/**
+ * Upsert a polygon GeoJSON source.
+ * Prefer buffer ≥ 128 — geojson-vt with buffer 0 paints faint tile-seam grids across land.
+ */
+function upsertPolygonSource(
+  map: MaplibreMap,
+  id: string,
+  data: GeoJSON.FeatureCollection,
+  opts: { buffer?: number; layerIds?: string[] } = {},
+) {
+  const buffer = opts.buffer ?? 128;
+  const src = map.getSource(id) as GeoJSONSource | undefined;
+  if (src && polygonSourceBuffer.get(id) === buffer) {
+    src.setData(data);
+    return;
+  }
+  for (const lid of opts.layerIds ?? []) {
+    if (map.getLayer(lid)) map.removeLayer(lid);
+  }
+  if (src) map.removeSource(id);
+  map.addSource(id, { type: "geojson", data, buffer });
+  polygonSourceBuffer.set(id, buffer);
+}
+
+function clearWorldContextLayer(map: MaplibreMap) {
+  if (map.getLayer("world-context-line")) map.removeLayer("world-context-line");
+  if (map.getLayer("world-context-fill")) map.removeLayer("world-context-fill");
+  if (map.getSource("world-context")) map.removeSource("world-context");
+  polygonSourceBuffer.delete("world-context");
+}
+
+/** Feature property → string, or null (never the literal "undefined"). */
+function propStr(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v);
+  return s && s !== "undefined" && s !== "null" ? s : null;
+}
+
+/** GeoJSON→vector-tile round-trips sometimes stringify booleans. */
+function propTruthy(v: unknown): boolean {
+  return v === true || v === 1 || v === "true" || v === "1";
+}
+
+/**
+ * Gray underlay of every country except the one being browsed. Keeps world
+ * geography visible when the active choropleth is only that country's regions.
+ * Not in HIT_LAYERS — clicks pass through to regions / empty → reset.
+ */
+async function setWorldContextLayer(
+  map: MaplibreMap,
+  focusedCountryCode: string,
+  isCurrent?: () => boolean,
+) {
+  let geo: GeoJSON.FeatureCollection;
+  try {
+    geo = await loadWorldCountryCollection();
+  } catch (err) {
+    console.error("[maplibre] failed to load world context boundaries", err);
+    return;
+  }
+  if (isCurrent && !isCurrent()) return;
+  const focused = focusedCountryCode.toUpperCase();
+  for (const f of geo.features) {
+    const num = String(f.id ?? "").padStart(3, "0");
+    const cfg = getCountryByNumeric(num);
+    f.properties = {
+      ...f.properties,
+      isoNumeric: num,
+      countryCode: cfg?.code ?? "",
+    };
+  }
+  whenStyleReady(map, () => {
+    if (isCurrent && !isCurrent()) return;
+    // Default tile buffer — buffer 0 left hairline seams across Canada/Mexico.
+    upsertPolygonSource(map, "world-context", geo, {
+      buffer: 128,
+      layerIds: ["world-context-fill", "world-context-line"],
+    });
+
+    // Omit the focused country so the regions choropleth owns that area.
+    const notFocused: unknown = ["!=", ["get", "countryCode"], focused];
+
+    if (!map.getLayer("world-context-fill")) {
+      map.addLayer({
+        id: "world-context-fill",
+        type: "fill",
+        source: "world-context",
+        filter: notFocused as never,
+        paint: {
+          "fill-color": COUNTRY_DIMMED_FILL,
+          "fill-opacity": streetFadeOut(0) as never,
+        },
+      });
+    } else {
+      map.setFilter("world-context-fill", notFocused as never);
+    }
+    if (!map.getLayer("world-context-line")) {
+      map.addLayer({
+        id: "world-context-line",
+        type: "line",
+        source: "world-context",
+        filter: notFocused as never,
+        paint: {
+          "line-color": STATE_STROKE,
+          "line-width": 0.35,
+          "line-opacity": streetFadeOut(0.25) as never,
+        },
+      });
+    } else {
+      map.setFilter("world-context-line", notFocused as never);
+    }
+    enforceLayerOrder(map);
+  });
+}
+
+async function setWorldLayer(
+  map: MaplibreMap,
+  countries: CountrySummary[],
+  isCurrent?: () => boolean,
+) {
+  let geo: GeoJSON.FeatureCollection;
+  try {
+    geo = await loadWorldCountryCollection();
+  } catch (err) {
+    console.error("[maplibre] failed to load world boundaries", err);
+    return;
+  }
+  // Leaving /world invalidates this — don't overwrite US/CA state polygons.
+  if (isCurrent && !isCurrent()) return;
+  const byNumeric = new Map(countries.map((c) => [String(c.isoNumeric).padStart(3, "0"), c]));
+  for (const f of geo.features) {
+    const num = String(f.id ?? "").padStart(3, "0");
+    const summary = byNumeric.get(num);
+    const cfg = getCountryByNumeric(num);
+    const count = summary?.churchCount ?? 0;
+    // Supported + populated countries drill into their region choropleth (US states,
+    // CA provinces, etc.). Others stay visible but aren't click targets.
+    const clickable = !!cfg && !!summary?.isPopulated;
+    f.properties = {
+      ...f.properties,
+      isoNumeric: num,
+      countryCode: cfg?.code ?? null,
+      clickable,
+      count,
+      fill: getTierForCount(WORLD_COUNT_TIERS, count).color,
+    };
+    if (clickable && cfg?.code) prefetchRegionFeatures(cfg.code);
+  }
+  whenStyleReady(map, () => {
+    if (isCurrent && !isCurrent()) return;
+    // Drop the country underlay / counties so they can't stack over the world
+    // choropleth (async races used to leave both and paint purple slabs).
+    clearWorldContextLayer(map);
+    if (map.getLayer("counties-line")) map.removeLayer("counties-line");
+    if (map.getLayer("counties-fill")) map.removeLayer("counties-fill");
+    if (map.getSource("counties")) map.removeSource("counties");
+
+    // Antimeridian rings are pre-cut in loadWorldCountryCollection. Use a normal
+    // tile buffer so geojson-vt doesn't paint the faint lat/lng seam grid across
+    // land (buffer: 0 caused those hairlines on available and coming-soon countries).
+    upsertPolygonSource(map, "states", geo, {
+      buffer: 128,
+      layerIds: ["states-fill", "states-line"],
+    });
+    if (!map.getLayer("states-fill")) {
+      map.addLayer({
+        id: "states-fill",
+        type: "fill",
+        source: "states",
+        paint: { "fill-color": ["get", "fill"], "fill-opacity": 1 as never },
+      });
+    } else {
+      map.setPaintProperty("states-fill", "fill-color", ["get", "fill"] as never);
+      map.setPaintProperty("states-fill", "fill-opacity", 1 as never);
+    }
+    if (!map.getLayer("states-line")) {
+      map.addLayer({
+        id: "states-line",
+        type: "line",
+        source: "states",
+        paint: { "line-color": STATE_STROKE, "line-width": 0.4, "line-opacity": 0.5 as never },
+      });
+    } else {
+      map.setPaintProperty("states-line", "line-width", 0.4);
+      map.setPaintProperty("states-line", "line-opacity", 0.5 as never);
+    }
+    enforceLayerOrder(map);
+  });
+}
+
+async function setStatesLayer(
+  map: MaplibreMap,
+  states: StateInfo[],
+  countryCode: string,
+  focusedState: string | null = null,
+  /** Skip applying if a newer choropleth update has started. */
+  isCurrent?: () => boolean,
+) {
   let geo: GeoJSON.FeatureCollection;
   try {
     geo = await loadRegionFeatures(countryCode);
@@ -486,22 +938,24 @@ async function setStatesLayer(map: MaplibreMap, states: StateInfo[], countryCode
     console.error("[maplibre] failed to load region boundaries", err);
     return;
   }
+  if (isCurrent && !isCurrent()) return;
 
+  const tiers = getCountry(countryCode)?.countTiers ?? WORLD_COUNT_TIERS;
   const countByAbbrev = new Map(states.map((s) => [s.abbrev, s.churchCount]));
   for (const f of geo.features) {
     const abbrev = f.properties?.abbrev as string | undefined;
     const count = abbrev ? countByAbbrev.get(abbrev) ?? 0 : 0;
-    // No church data yet → keep the flat brand purple so the map still reads as
-    // branded; otherwise color by the same tier scale as the SVG map.
-    f.properties = { ...f.properties, abbrev, count, fill: states.length ? getStateTier(count).color : STATE_FILL };
+    f.properties = { ...f.properties, abbrev, count, fill: states.length ? getTierForCount(tiers, count).color : STATE_FILL };
   }
 
   whenStyleReady(map, () => {
+    if (isCurrent && !isCurrent()) return;
     // Concurrent calls can both reach here before either adds the source, so
     // guard the source and each layer independently.
-    const src = map.getSource("states") as GeoJSONSource | undefined;
-    if (src) src.setData(geo);
-    else map.addSource("states", { type: "geojson", data: geo });
+    upsertPolygonSource(map, "states", geo, {
+      buffer: 128,
+      layerIds: ["states-fill", "states-line"],
+    });
 
     if (!map.getLayer("states-fill")) {
       map.addLayer({
@@ -509,8 +963,15 @@ async function setStatesLayer(map: MaplibreMap, states: StateInfo[], countryCode
         type: "fill",
         source: "states",
         // Recedes entirely at church-level zoom so the streets show through.
-        paint: { "fill-color": ["get", "fill"], "fill-opacity": streetFadeOut(0) as never },
+        paint: {
+          "fill-color": statesFillExpression(focusedState, null) as never,
+          "fill-opacity": streetFadeOut(0) as never,
+        },
       });
+    } else {
+      // World view used a constant opacity / fill; restore country choropleth paint.
+      map.setPaintProperty("states-fill", "fill-opacity", streetFadeOut(0) as never);
+      applyStatePaint(map, focusedState, null);
     }
     if (!map.getLayer("states-line")) {
       map.addLayer({
@@ -520,10 +981,15 @@ async function setStatesLayer(map: MaplibreMap, states: StateInfo[], countryCode
         // Borders stay as faint context once the streets take over.
         paint: {
           "line-color": STATE_STROKE,
-          "line-width": 0.5,
-          "line-opacity": streetFadeOut(0.35) as never,
+          "line-width": 0.75,
+          "line-opacity": streetFadeOut(0.55) as never,
         },
       });
+    } else {
+      // Coming from world (thinner country outlines) — restore region separators.
+      map.setPaintProperty("states-line", "line-color", STATE_STROKE);
+      map.setPaintProperty("states-line", "line-width", 0.75);
+      map.setPaintProperty("states-line", "line-opacity", streetFadeOut(0.55) as never);
     }
     enforceLayerOrder(map);
   });
@@ -535,6 +1001,15 @@ async function setStatesLayer(map: MaplibreMap, states: StateInfo[], countryCode
  */
 function statesFillExpression(focusedState: string | null, hoveredState: string | null) {
   if (focusedState) {
+    // Sibling hover: lift a dimmed neighbor so it reads as a click target.
+    if (hoveredState && hoveredState !== focusedState) {
+      return [
+        "case",
+        ["==", ["get", "abbrev"], focusedState], STATE_FOCUSED_FILL,
+        ["==", ["get", "abbrev"], hoveredState], STATE_HOVER_FILL,
+        STATE_DIMMED_FILL,
+      ];
+    }
     return ["case", ["==", ["get", "abbrev"], focusedState], STATE_FOCUSED_FILL, STATE_DIMMED_FILL];
   }
   if (hoveredState) {
@@ -544,17 +1019,22 @@ function statesFillExpression(focusedState: string | null, hoveredState: string 
 }
 
 /**
- * County fill: hover and focus both highlight (as in CountyGeographies),
- * otherwise use the per-capita color precomputed onto each feature.
+ * County fill: focused county highlights; siblings dim (same cue as state focus).
+ * Hover still highlights when no county is focused, or over a dim sibling.
  */
 function countiesFillExpression(hoveredCounty: string | null, focusedCounty: string | null) {
-  const base: unknown = ["get", "fill"];
-  const cases: unknown[] = ["case"];
-  if (focusedCounty) cases.push(["==", ["get", "fips"], focusedCounty], COUNTY_HOVER_FILL);
-  if (hoveredCounty) cases.push(["==", ["get", "fips"], hoveredCounty], COUNTY_HOVER_FILL);
-  if (cases.length === 1) return base;
-  cases.push(base);
-  return cases;
+  if (focusedCounty) {
+    const cases: unknown[] = ["case", ["==", ["get", "fips"], focusedCounty], COUNTY_HOVER_FILL];
+    if (hoveredCounty && hoveredCounty !== focusedCounty) {
+      cases.push(["==", ["get", "fips"], hoveredCounty], STATE_HOVER_FILL);
+    }
+    cases.push(COUNTY_DIMMED_FILL);
+    return cases;
+  }
+  if (hoveredCounty) {
+    return ["case", ["==", ["get", "fips"], hoveredCounty], COUNTY_HOVER_FILL, ["get", "fill"]];
+  }
+  return ["get", "fill"];
 }
 
 function applyStatePaint(map: MaplibreMap, focusedState: string | null, hoveredState: string | null) {
@@ -576,10 +1056,8 @@ function applyCountyPaint(map: MaplibreMap, hoveredCounty: string | null, focuse
 }
 
 /**
- * Show county polygons for the focused state (the app only renders counties in
- * state view). Counties come from the us-atlas counties TopoJSON, filtered by
- * the state's 2-digit FIPS prefix — the same rule CountyGeographies uses.
- * Per-capita choropleth shading follows once church-per-county stats are wired.
+ * Show admin-2 polygons for the focused region (US counties / CA census
+ * divisions). Source and filter come from CountryConfig.hasAdmin2.
  */
 async function setCountyLayer(
   map: MaplibreMap,
@@ -587,6 +1065,7 @@ async function setCountyLayer(
   countyStats: CountyStats | null,
   hoveredCounty: string | null,
   focusedCounty: string | null,
+  countryCode: string = DEFAULT_COUNTRY_CODE,
 ) {
   const clear = () => {
     whenStyleReady(map, () => {
@@ -596,36 +1075,30 @@ async function setCountyLayer(
     });
   };
 
-  const stateFips = focusedState ? STATE_TO_FIPS[focusedState] : undefined;
-  if (!stateFips) return clear();
+  const cfg = getCountry(countryCode);
+  if (!focusedState || !cfg?.hasAdmin2) return clear();
 
   let geo: GeoJSON.FeatureCollection;
   try {
-    const topo = await fetchTopo(COUNTIES_GEO_URL);
-    const all = feature(topo, topo.objects.counties) as GeoJSON.FeatureCollection;
-    const sorted = countyStats?.sortedByPerCapita ?? [];
-    geo = {
-      type: "FeatureCollection",
-      features: all.features
-        .filter((f) => String(f.id).padStart(5, "0").slice(0, 2) === stateFips)
-        .map((f) => {
-          // Surface the 5-digit FIPS so hover/click can identify the county,
-          // and precompute its per-capita color for data-driven styling.
-          const fips = String(f.id).padStart(5, "0");
-          const data = countyStats?.byFips[fips];
-          const fill = data ? getCountyPerCapitaColor(data.perCapita, sorted) : COUNTY_FILL;
-          return { ...f, properties: { ...f.properties, fips, fill } };
-        }),
-    };
+    const all = await loadAdmin2Features(countryCode);
+    geo = admin2CollectionForRegion(
+      countryCode,
+      focusedState,
+      all,
+      countyStats,
+      COUNTY_FILL,
+      getCountyPerCapitaColor,
+    );
+    if (!geo.features.length) return clear();
   } catch (err) {
-    console.error("[maplibre] failed to load county boundaries", err);
+    console.error("[maplibre] failed to load admin-2 boundaries", err);
     return;
   }
 
   whenStyleReady(map, () => {
     const src = map.getSource("counties") as GeoJSONSource | undefined;
     if (src) src.setData(geo);
-    else map.addSource("counties", { type: "geojson", data: geo });
+    else map.addSource("counties", { type: "geojson", data: geo, buffer: 128 });
 
     if (!map.getLayer("counties-fill")) {
       map.addLayer({
@@ -668,6 +1141,12 @@ function churchPaint(selectedChurchId: string | null) {
   // purple with a white ring, matching the old ChurchDots active marker.
   const isSelected = ["==", ["get", "id"], selectedChurchId ?? "__no_selection__"];
   const radius = ["get", "radius"];
+  // Region/county framing sits around zoom 5–8; the old 0.35–0.7 scale made
+  // attendance dots into pinpricks on Ontario-sized views. Floor + higher mid
+  // multipliers keep the initial region view readable without ballooning at
+  // church-level zoom.
+  const unselected = (factor: number, minPx: number) =>
+    ["max", minPx, ["*", radius, factor]] as unknown[];
   return {
     // One zoom interpolation with the selection branch inside each stop —
     // MapLibre permits only a single zoom-based interpolate per expression, so
@@ -679,14 +1158,15 @@ function churchPaint(selectedChurchId: string | null) {
     // church-view zoom, covering the building it is pointing at.
     "circle-radius": [
       "interpolate", ["linear"], ["zoom"],
-      3, ["case", isSelected, 6, ["*", radius, 0.35]],
-      6, ["case", isSelected, 7, ["*", radius, 0.7]],
-      10, ["case", isSelected, 9, ["*", radius, 1.4]],
+      3, ["case", isSelected, 6, unselected(0.45, 2.5)],
+      5, ["case", isSelected, 7, unselected(1.1, 3.5)],
+      7, ["case", isSelected, 8, unselected(1.35, 4)],
+      10, ["case", isSelected, 9, unselected(1.55, 4.5)],
       14, ["case", isSelected, 11, ["*", radius, 2.2]],
       16, ["case", isSelected, 12, ["*", radius, 2.2]],
     ],
     "circle-color": ["case", isSelected, ACTIVE_PIN_FILL, ["get", "color"]],
-    "circle-opacity": ["case", isSelected, 1, 0.8],
+    "circle-opacity": ["case", isSelected, 1, 0.85],
     "circle-stroke-width": ["case", isSelected, 2, 0],
     "circle-stroke-color": "#FFFFFF",
   };
@@ -744,6 +1224,8 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   center = US_DEFAULT_CENTER,
   zoom = US_DEFAULT_ZOOM,
   countryCode = DEFAULT_COUNTRY_CODE,
+  viewLevel = "country",
+  countries = [],
   states,
   focusedState = null,
   cameraState,
@@ -757,6 +1239,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   rightPadding = 0,
   onMoveEnd,
   onStateClick,
+  onCountryClick,
   onStateHover,
   onCountyClick,
   onCountyHover,
@@ -794,11 +1277,25 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   const targetStateRef = useRef<string | null>(null);
   const countryCodeRef = useRef(countryCode);
   countryCodeRef.current = countryCode;
+  const viewLevelRef = useRef(viewLevel);
+  viewLevelRef.current = viewLevel;
+  /** Previous viewLevel — used to clear stale region polys only on enter-world. */
+  const prevViewLevelRef = useRef(viewLevel);
+  /** Bumps on each choropleth effect so in-flight world clears can't wipe provinces. */
+  const choroplethEpochRef = useRef(0);
   const targetCountyRef = useRef<string | null>(null);
+  /**
+   * Admin-2 id we've actually finished framing. Step-out compares the viewport
+   * against countyBoundsRef only when this matches — otherwise a province-sized
+   * view vs a newly-set tiny CD bbox immediately "exceeds" and jumps out.
+   */
+  const framedCountyRef = useRef<string | null>(null);
   /** Set before each camera move we initiate, so moveend can tell them apart. */
   const programmaticMoveRef = useRef(false);
   /** Min-zoom floor for the region being flown to, applied once it settles. */
   const pendingMinZoomRef = useRef<number | null>(null);
+  /** Country-view framing zoom — pinch below this − delta steps out to /world. */
+  const countryFrameZoomRef = useRef<number | null>(null);
   // Memoized: rebuilding this on every render meant re-creating a Map of tens
   // of thousands of entries for something as routine as a hover.
   const churchById = useMemo(
@@ -812,22 +1309,28 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   const selectedChurchIdRef = useRef<string | null>(selectedChurchId);
   selectedChurchIdRef.current = selectedChurchId;
   const handlersRef = useRef({
-    onStateClick, onStateHover, onCountyClick, onCountyHover,
+    onStateClick, onCountryClick, onStateHover, onCountyClick, onCountyHover,
     onChurchClick, onChurchHover, onResetView, onMoveEnd, onZoomedOutPastRegion,
   });
   handlersRef.current = {
-    onStateClick, onStateHover, onCountyClick, onCountyHover,
+    onStateClick, onCountryClick, onStateHover, onCountyClick, onCountyHover,
     onChurchClick, onChurchHover, onResetView, onMoveEnd, onZoomedOutPastRegion,
   };
 
   // Initialize the map once.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+    // Start already framed for /world so we don't flash continental US → fly.
+    const startCenter = viewLevel === "world" ? WORLD_CENTER : center;
+    const startZoom = viewLevel === "world" ? WORLD_ZOOM : zoom;
     const map = new MaplibreMap({
       container: containerRef.current,
       style: BASEMAP_STYLE,
-      center,
-      zoom,
+      center: startCenter,
+      zoom: startZoom,
+      // World-atlas countries (and Alaska) cross ±180°. With copies on, MapLibre
+      // paints ghost slabs across the ocean — the “messed up world view”.
+      renderWorldCopies: false,
       // No on-map attribution control — the basemap credit is shown in the
       // summary panel's data-source footer alongside OSM, ARDA and Census, so
       // it stays visible (OSM's ODbL and CARTO's terms require it) without a
@@ -860,16 +1363,28 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
         pendingMinZoomRef.current = null;
       }
 
+      if (wasProgrammatic) {
+        // Camera settled on the target admin-2 — step-out may use its bounds now.
+        framedCountyRef.current = targetCountyRef.current;
+      }
+
       if (!wasProgrammatic && !selectedChurchIdRef.current) {
         // Compare against what the camera actually framed, not what the UI has
         // caught up to — they differ while a state is still loading.
-        const region = targetCountyRef.current
-          ? countyBoundsRef.current
-          : targetStateRef.current
-            ? boundsForState(targetStateRef.current, countryCodeRef.current)
-            : null;
-        if (region && viewportExceedsRegion(view, region, ZOOM_OUT_FACTOR)) {
-          handlersRef.current.onZoomedOutPastRegion?.();
+        if (targetCountyRef.current || targetStateRef.current) {
+          const countyId = targetCountyRef.current;
+          const region = countyId
+            ? (framedCountyRef.current === countyId ? countyBoundsRef.current : null)
+            : boundsForState(targetStateRef.current!, countryCodeRef.current);
+          if (region && viewportExceedsRegion(view, region, ZOOM_OUT_FACTOR)) {
+            handlersRef.current.onZoomedOutPastRegion?.();
+          }
+        } else if (viewLevelRef.current === "country") {
+          // Zoom-delta step-out: keeps working when the country bbox is huge (US).
+          const framed = countryFrameZoomRef.current;
+          if (framed != null && map.getZoom() < framed - COUNTRY_ZOOM_OUT_DELTA) {
+            handlersRef.current.onZoomedOutPastRegion?.();
+          }
         }
       }
 
@@ -904,15 +1419,27 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
         if (found) return h.onChurchClick?.(found);
       }
       const county = topmost(feats, "counties-fill");
-      if (county) return h.onCountyClick?.(String(county.properties?.fips));
+      if (county) {
+        const admin2Id = propStr(county.properties?.fips) ?? propStr(county.properties?.id);
+        if (admin2Id) return h.onCountyClick?.(admin2Id);
+        // Fall through if the feature has no id — don't navigate to "undefined".
+      }
 
       const state = topmost(feats, "states-fill");
-      const abbrev = state ? String(state.properties?.abbrev) : null;
-      if (!abbrev) return h.onResetView?.(); // clicked empty canvas
-      // In state view, clicking a different state resets; clicking the focused
-      // one does nothing (matches StateGeographies' click rules).
+      // World view: click a populated country → open its regions (same as a church dot).
+      if (viewLevelRef.current === "world") {
+        const countryCodeHit = propStr(state?.properties?.countryCode);
+        if (countryCodeHit && propTruthy(state?.properties?.clickable)) {
+          h.onCountryClick?.(countryCodeHit);
+        }
+        return;
+      }
+      const abbrev = propStr(state?.properties?.abbrev);
+      if (!abbrev) return h.onResetView?.(); // clicked empty canvas / ocean
+      // Region view: a neighboring state/province jumps straight there; clicking
+      // the focused region is a no-op. Empty canvas still steps back out.
       if (focusedStateRef.current) {
-        if (abbrev !== focusedStateRef.current) h.onResetView?.();
+        if (abbrev !== focusedStateRef.current) h.onStateClick?.(abbrev);
         return;
       }
       h.onStateClick?.(abbrev);
@@ -941,7 +1468,12 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       const county = topmost(feats, "counties-fill");
       const state = topmost(feats, "states-fill");
 
-      map.getCanvas().style.cursor = church || county || state ? "pointer" : "";
+      const worldClickable =
+        viewLevelRef.current === "world" && state && propTruthy(state.properties?.clickable);
+      map.getCanvas().style.cursor =
+        church || county || (viewLevelRef.current === "world" ? worldClickable : state)
+          ? "pointer"
+          : "";
 
       // Church hover
       const churchObj = church
@@ -957,12 +1489,22 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
         h.onCountyHover?.(fips);
       }
 
-      // State hover (only meaningful in the national view)
-      const abbrev = state && !church && !county ? String(state.properties?.abbrev) : null;
-      if (abbrev !== hoveredStateRef.current) {
-        hoveredStateRef.current = abbrev;
-        applyStatePaint(map, focusedStateRef.current, abbrev);
-        h.onStateHover?.(abbrev);
+      // Region/country hover. World features use countryCode; admin1 uses abbrev.
+      // Never String(undefined) — that becomes the literal label "undefined".
+      const hoverId =
+        state && !church && !county
+          ? viewLevelRef.current === "world"
+            ? propStr(state.properties?.countryCode)
+            : propStr(state.properties?.abbrev)
+          : null;
+      if (hoverId !== hoveredStateRef.current) {
+        hoveredStateRef.current = hoverId;
+        if (viewLevelRef.current !== "world") {
+          applyStatePaint(map, focusedStateRef.current, hoverId);
+        } else if (hoverId && state && propTruthy(state.properties?.clickable)) {
+          prefetchRegionFeatures(hoverId);
+        }
+        h.onStateHover?.(hoverId);
       }
     };
 
@@ -1102,26 +1644,76 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
         return;
       }
       if (targetCounty) {
-        const bounds = await boundsForCounty(targetCounty);
-        // The target may have changed while the TopoJSON was in flight.
+        // Invalidate until this county is framed — avoids province viewport vs
+        // tiny CD bounds triggering an immediate step-out.
+        if (framedCountyRef.current !== targetCounty) {
+          framedCountyRef.current = null;
+          countyBoundsRef.current = null;
+        }
+        const bounds = await boundsForCounty(targetCounty, countryCode);
+        // The target may have changed while admin-2 geo was in flight.
         if (cancelled) return;
         countyBoundsRef.current = bounds;
         if (bounds) return fit(bounds);
+      } else {
+        framedCountyRef.current = null;
+        countyBoundsRef.current = null;
       }
       if (targetState) {
         const bounds = boundsForState(targetState, countryCode);
         if (bounds) return fit(bounds);
       }
+      if (viewLevel === "world") {
+        countryFrameZoomRef.current = null;
+        programmaticMoveRef.current = true;
+        map.setMinZoom(0);
+        pendingMinZoomRef.current = 0.8;
+        const c = map.getCenter();
+        const alreadyFramed =
+          Math.abs(map.getZoom() - WORLD_ZOOM) < 0.08 &&
+          Math.abs(c.lng - WORLD_CENTER[0]) < 2 &&
+          Math.abs(c.lat - WORLD_CENTER[1]) < 2;
+        if (alreadyFramed) {
+          // Constructed on /world (or settled) — skip flyTo to avoid a flicker.
+          map.setMinZoom(0.8);
+          pendingMinZoomRef.current = null;
+          return;
+        }
+        map.flyTo({
+          center: WORLD_CENTER,
+          zoom: WORLD_ZOOM,
+          padding: paddingRef.current,
+          duration: transitionMs,
+          essential: true,
+        });
+        return;
+      }
       // Whole-country view. Non-US countries fit their own extent; the US keeps
       // its tuned center/zoom so the familiar framing is unchanged.
+      // Floor sits below the country→world trigger so pinch-out can leave.
       if (countryCode !== "US") {
         const cb = boundsForCountry(countryCode);
-        if (cb) return fit(cb);
+        if (cb) {
+          programmaticMoveRef.current = true;
+          map.setMinZoom(0);
+          const target = map.cameraForBounds(cb, { padding: paddingRef.current });
+          const frameZoom = target?.zoom ?? map.getZoom();
+          countryFrameZoomRef.current = frameZoom;
+          pendingMinZoomRef.current = Math.max(
+            0.5,
+            frameZoom - COUNTRY_ZOOM_OUT_DELTA - COUNTRY_ZOOM_OUT_FLOOR_EXTRA,
+          );
+          map.fitBounds(cb, { padding: paddingRef.current, duration: transitionMs });
+          return;
+        }
       }
-      // The floor stops the map being pulled out to the whole globe.
+      countryFrameZoomRef.current = US_DEFAULT_ZOOM;
       programmaticMoveRef.current = true;
       map.setMinZoom(0);
-      pendingMinZoomRef.current = US_DEFAULT_ZOOM - ZOOM_OUT_ALLOWANCE;
+      pendingMinZoomRef.current = Math.max(
+        0.5,
+        US_DEFAULT_ZOOM - COUNTRY_ZOOM_OUT_DELTA - COUNTRY_ZOOM_OUT_FLOOR_EXTRA,
+      );
       map.flyTo({
         center: US_DEFAULT_CENTER,
         zoom: US_DEFAULT_ZOOM,
@@ -1137,14 +1729,61 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     };
     // fitToFocusedState is config, not a trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedChurchId, selectedLng, selectedLat, targetCounty, targetState, countryCode]);
+  }, [selectedChurchId, selectedLng, selectedLat, targetCounty, targetState, countryCode, viewLevel]);
 
-  // Build/recolor the state choropleth when church counts arrive or change.
+  // Build/recolor the choropleth when church counts arrive or the view level changes.
+  // Non-world views keep a gray world underlay so neighboring countries frame focus.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    void setStatesLayer(map, states ?? [], countryCode);
-  }, [states, countryCode]);
+    const epoch = ++choroplethEpochRef.current;
+    const isCurrent = () => choroplethEpochRef.current === epoch;
+    const prevLevel = prevViewLevelRef.current;
+    const enteredWorld = viewLevel === "world" && prevLevel !== "world";
+    const leftWorld = viewLevel !== "world" && prevLevel === "world";
+    prevViewLevelRef.current = viewLevel;
+    if (viewLevel === "world") {
+      // Only when leaving country/region: wipe leftover polys so they don't sit
+      // at world zoom while countries-110m loads. Don't clear on every recolor.
+      if (enteredWorld) {
+        whenStyleReady(map, () => {
+          if (!isCurrent()) return;
+          const src = map.getSource("states") as GeoJSONSource | undefined;
+          if (src) src.setData({ type: "FeatureCollection", features: [] });
+          clearWorldContextLayer(map);
+          if (map.getLayer("counties-line")) map.removeLayer("counties-line");
+          if (map.getLayer("counties-fill")) map.removeLayer("counties-fill");
+          if (map.getSource("counties")) map.removeSource("counties");
+        });
+      }
+      void setWorldLayer(map, countries ?? [], isCurrent);
+    } else {
+      // Clear solid world fills immediately, but never remove layers here —
+      // a delayed remove used to race setStatesLayer and wipe provinces after
+      // they painted (Canada looked like one blob until counts re-fetched).
+      if (leftWorld) {
+        whenStyleReady(map, () => {
+          if (!isCurrent()) return;
+          if (polygonSourceBuffer.get("states") !== 0) return;
+          const src = map.getSource("states") as GeoJSONSource | undefined;
+          if (src) src.setData({ type: "FeatureCollection", features: [] });
+        });
+      }
+      // Warm admin-1 before paint; hover prefetch may already have it cached.
+      prefetchRegionFeatures(countryCode);
+      void setWorldContextLayer(map, countryCode, isCurrent);
+      // focusedState paint is re-applied in the focus effect; pass it here so a
+      // late setData after a region click doesn't flash tier colors over dim.
+      void setStatesLayer(
+        map,
+        states ?? [],
+        countryCode,
+        focusedState ?? null,
+        isCurrent,
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- focusedState paint is owned below
+  }, [states, countries, countryCode, viewLevel]);
 
   // Focus: show the focused state's counties and dim the other states,
   // matching the SVG map's state view. (Camera is owned by the effect below.)
@@ -1152,9 +1791,16 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     const map = mapRef.current;
     if (!map) return;
     applyStatePaint(map, focusedState, hoveredStateRef.current);
-    void setCountyLayer(map, focusedState, countyStats, hoveredCountyRef.current, focusedCounty);
+    void setCountyLayer(
+      map,
+      focusedState,
+      countyStats,
+      hoveredCountyRef.current,
+      focusedCounty,
+      countryCode,
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedState]);
+  }, [focusedState, countryCode]);
 
   // Rebuild the church source only when the churches themselves change.
   useEffect(() => {
@@ -1177,10 +1823,17 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    void setCountyLayer(map, focusedState, countyStats, hoveredCountyRef.current, focusedCounty);
+    void setCountyLayer(
+      map,
+      focusedState,
+      countyStats,
+      hoveredCountyRef.current,
+      focusedCounty,
+      countryCode,
+    );
     // focusedState changes are handled by the focus effect above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [countyStats, focusedCounty]);
+  }, [countyStats, focusedCounty, countryCode]);
 
   return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
 });

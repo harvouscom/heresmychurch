@@ -1,106 +1,228 @@
 import { useLocation, useNavigate } from "react-router";
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useEffect } from "react";
 import { ChurchMap } from "./ChurchMap";
+import { DEFAULT_COUNTRY_CODE, isSupportedCountry } from "../config/countries";
+import {
+  churchMapPath,
+  countryPath,
+  countyPath,
+  isAdmin2Id,
+  regionPath,
+} from "../lib/map-paths";
+import { getCountry } from "../config/countries";
 
 /**
  * Thin routing wrapper — parses URL params and passes navigation
- * callbacks down to ChurchMap. This keeps all React Router logic
- * in one place so ChurchMap doesn't need to import router hooks directly.
- * Canonical: /state/MO/16692500 (church), /state/MO/16692500?county=06037 (church + county).
- * Legacy: /state/MO (state), /state/MO/county/06037 (county view), /state/MO/church/legacy-id,
- * /state/MO/county/06037/16692500 (church in county path — still supported).
+ * callbacks down to ChurchMap.
+ *
+ * Hierarchy: /world → /:CC → /:CC/:region → church
+ * Legacy: /state/:abbrev and /country/:cc redirect into /:CC/...
  */
 export function ChurchMapPage() {
   const location = useLocation();
   const nav = useNavigate();
 
+  const detectedCountry = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const meta = document.querySelector('meta[name="x-user-country"]');
+    const cc = meta?.getAttribute("content")?.toUpperCase() ?? null;
+    return cc && isSupportedCountry(cc) ? cc : null;
+  }, []);
+
+  // Canonicalize legacy + bare `/` URLs into /:CC/...
+  useEffect(() => {
+    const parts = location.pathname.split("/").filter(Boolean);
+    const search = location.search;
+
+    if (parts[0] === "state" && parts[1]) {
+      const region = parts[1].toUpperCase();
+      const rest = parts.slice(2).join("/");
+      nav(`/US/${region}${rest ? `/${rest}` : ""}${search}`, { replace: true });
+      return;
+    }
+    if (parts[0] === "country" && parts[1]) {
+      const cc = parts[1].toUpperCase();
+      const region = parts[2] ? parts[2].toUpperCase() : null;
+      const rest = parts.slice(3).join("/");
+      nav(
+        `/${cc}${region ? `/${region}` : ""}${rest ? `/${rest}` : ""}${search}`,
+        { replace: true },
+      );
+      return;
+    }
+    if (parts.length === 0) {
+      // Geo → that country; otherwise world is the default home.
+      nav(
+        detectedCountry
+          ? `${countryPath(detectedCountry)}${search}`
+          : `/world${search}`,
+        { replace: true },
+      );
+      return;
+    }
+    // /us/tx → /US/TX (keep church shortId casing)
+    if (isSupportedCountry(parts[0])) {
+      const cc = parts[0].toUpperCase();
+      const region = parts[1] ? parts[1].toUpperCase() : null;
+      const rest = parts.slice(2).join("/");
+      const desired = `/${cc}${region ? `/${region}` : ""}${rest ? `/${rest}` : ""}`;
+      if (location.pathname !== desired) {
+        nav(`${desired}${search}`, { replace: true });
+      }
+    }
+  }, [location.pathname, location.search, detectedCountry, nav]);
+
   const routeParams = useMemo(() => {
     const parts = location.pathname.split("/").filter(Boolean);
-    // /country/:cc[/:region] is the country-scoped form; /state/:abbrev is the
-    // US alias. Both resolve to a country code plus an optional region, so
-    // everything downstream stays on one shape.
-    const isCountryPath = parts[0] === "country" && !!parts[1];
-    const countryCode = isCountryPath ? parts[1].toUpperCase() : "US";
-    const stateAbbrev = isCountryPath
-      ? (parts[2] ? parts[2].toUpperCase() : null)
-      : parts[0] === "state" && parts[1]
-        ? parts[1].toUpperCase()
-        : null;
-    const segment1 = isCountryPath ? undefined : parts[2];
-    const segment2 = parts[3];
-    const segment3 = parts[4];
-    const segment4 = parts[5];
-    const isCountyPath = segment1 === "county" && /^\d{5}$/.test(segment2 ?? "");
-    const routeCountyFips = isCountyPath ? segment2! : null;
-    // Church segment: either after county (parts[4]) or at parts[2] when no county
+    const isWorld = parts[0] === "world";
+    const isLegacyCountry = parts[0] === "country" && !!parts[1];
+    const isLegacyState = parts[0] === "state" && !!parts[1];
+    const isCcRoot = !!parts[0] && isSupportedCountry(parts[0]);
+
+    let viewLevel: "world" | "country" | "region" = "country";
+    let countryCode = DEFAULT_COUNTRY_CODE;
+    let stateAbbrev: string | null = null;
+    /** First path index after country (+ region when present) — church/county segments. */
+    let restIdx = 0;
+
+    if (isWorld) {
+      viewLevel = "world";
+      countryCode = DEFAULT_COUNTRY_CODE;
+    } else if (isLegacyCountry) {
+      // /country/CA/PE/...
+      countryCode = parts[1].toUpperCase();
+      stateAbbrev = parts[2] ? parts[2].toUpperCase() : null;
+      viewLevel = stateAbbrev ? "region" : "country";
+      restIdx = stateAbbrev ? 3 : 2;
+    } else if (isLegacyState) {
+      // /state/TX/...
+      countryCode = "US";
+      stateAbbrev = parts[1].toUpperCase();
+      viewLevel = "region";
+      restIdx = 2;
+    } else if (isCcRoot) {
+      // /CA or /US/TX/...
+      countryCode = parts[0].toUpperCase();
+      stateAbbrev = parts[1] ? parts[1].toUpperCase() : null;
+      viewLevel = stateAbbrev ? "region" : "country";
+      restIdx = stateAbbrev ? 2 : 1;
+    } else {
+      // Bare `/` (briefly, before redirect) or unknown — geo country, else world.
+      if (detectedCountry) {
+        countryCode = detectedCountry;
+        viewLevel = "country";
+      } else {
+        viewLevel = "world";
+        countryCode = DEFAULT_COUNTRY_CODE;
+      }
+      restIdx = 0;
+    }
+
+    const s1 = parts[restIdx] ?? null;
+    const s2 = parts[restIdx + 1] ?? null;
+    const s3 = parts[restIdx + 2] ?? null;
+    const s4 = parts[restIdx + 3] ?? null;
+
+    const isCountyPath = s1 === "county" && isAdmin2Id(countryCode, s2);
+    const routeCountyFips = isCountyPath ? s2! : null;
     const legacyChurchId = isCountyPath
-      ? (segment3 === "church" && segment4 ? decodeURIComponent(segment4) : null)
-      : segment1 === "church" && segment2
-        ? decodeURIComponent(segment2)
+      ? s3 === "church" && s4 ? decodeURIComponent(s4) : null
+      : s1 === "church" && s2
+        ? decodeURIComponent(s2)
         : null;
     const churchShortId = isCountyPath
-      ? (segment3 && segment3 !== "church" ? segment3 : null)
+      ? s3 && s3 !== "church" ? s3 : null
       : routeCountyFips
         ? null
-        : segment1 && segment1 !== "church"
-          ? segment1
+        : s1 && s1 !== "church"
+          ? s1
           : null;
+
     const searchParams = new URLSearchParams(location.search);
     const openReviewModalFromQuery = searchParams.get("review") === "true";
-    const showVerifiedDots = searchParams.get("verified") === "true" || searchParams.get("verified") === "1";
+    const showVerifiedDots =
+      searchParams.get("verified") === "true" || searchParams.get("verified") === "1";
     const moderatorKey = searchParams.get("key") || null;
-    // County from path (legacy) or from query param (canonical)
     const queryCounty = searchParams.get("county");
     const routeCountyFipsResolved =
-      routeCountyFips ?? (queryCounty && /^\d{5}$/.test(queryCounty) ? queryCounty : null);
-    return { countryCode, stateAbbrev, routeCountyFips: routeCountyFipsResolved, churchShortId, legacyChurchId, openReviewModalFromQuery, showVerifiedDots, moderatorKey };
-  }, [location.pathname, location.search]);
+      routeCountyFips
+      ?? (queryCounty && isAdmin2Id(countryCode, queryCounty) ? queryCounty : null);
 
-  // location.search already includes the leading "?" (or is ""), so append as-is to avoid "??"
+    return {
+      viewLevel,
+      countryCode,
+      stateAbbrev,
+      routeCountyFips: routeCountyFipsResolved,
+      churchShortId,
+      legacyChurchId,
+      openReviewModalFromQuery,
+      showVerifiedDots,
+      moderatorKey,
+    };
+  }, [location.pathname, location.search, detectedCountry]);
+
+  const qs = location.search;
+
+  const navigateToWorld = useCallback(() => nav(`/world${qs}`), [nav, qs]);
+
+  const navigateToCountry = useCallback(
+    (cc: string) => nav(`${countryPath(cc)}${qs}`),
+    [nav, qs],
+  );
+
   const navigateToState = useCallback(
     (abbrev: string) =>
-      nav(
-        routeParams.countryCode === "US"
-          ? `/state/${abbrev}${location.search}`
-          : `/country/${routeParams.countryCode}/${abbrev}${location.search}`,
-      ),
-    [nav, location.search, routeParams.countryCode]
+      nav(`${regionPath(routeParams.countryCode, abbrev)}${qs}`),
+    [nav, qs, routeParams.countryCode],
   );
+
   const navigateToStateWithReview = useCallback(
     (abbrev: string) => {
       const params = new URLSearchParams(location.search);
       params.set("review", "true");
-      nav(`/state/${abbrev}?${params.toString()}`);
+      nav(`${regionPath(routeParams.countryCode, abbrev)}?${params.toString()}`);
     },
-    [nav, location.search]
+    [nav, location.search, routeParams.countryCode],
   );
+
   const navigateToChurch = useCallback(
-    (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean; countyFips?: string }) => {
-      const path = `/state/${stateAbbrev}/${churchShortId}`;
+    (
+      stateAbbrev: string,
+      churchShortId: string,
+      options?: { replace?: boolean; countyFips?: string; countryCode?: string },
+    ) => {
+      const cc = (options?.countryCode ?? routeParams.countryCode).toUpperCase();
+      const path = churchMapPath(cc, stateAbbrev, churchShortId);
       const params = new URLSearchParams(location.search);
       if (options?.countyFips) params.set("county", options.countyFips);
+      else params.delete("county");
       const search = params.toString() ? `?${params.toString()}` : "";
       nav(path + search, options ?? {});
     },
-    [nav, location.search]
+    [nav, location.search, routeParams.countryCode],
   );
-  const navigateToNational = useCallback(
-    () => nav(`/${location.search}`),
-    [nav, location.search]
-  );
+
+  /** Zoom-out from a country goes to world; legacy name kept for call sites. */
+  const navigateToNational = useCallback(() => nav(`/world${qs}`), [nav, qs]);
+
   const navigateToCounty = useCallback(
-    (stateAbbrev: string, countyFips: string) =>
-      nav(`/state/${stateAbbrev}/county/${countyFips}${location.search}`),
-    [nav, location.search]
+    (stateAbbrev: string, countyFips: string) => {
+      const cc = routeParams.countryCode;
+      if (!getCountry(cc)?.hasAdmin2) return;
+      if (!isAdmin2Id(cc, countyFips)) return;
+      nav(`${countyPath(cc, stateAbbrev, countyFips)}${qs}`);
+    },
+    [nav, qs, routeParams.countryCode],
   );
+
   const navigateToStateOnly = useCallback(
     (stateAbbrev: string) => {
       const params = new URLSearchParams(location.search);
       params.delete("county");
       const search = params.toString() ? `?${params.toString()}` : "";
-      nav(`/state/${stateAbbrev}${search}`);
+      nav(`${regionPath(routeParams.countryCode, stateAbbrev)}${search}`);
     },
-    [nav, location.search]
+    [nav, location.search, routeParams.countryCode],
   );
 
   const clearReviewQueryParam = useCallback(() => {
@@ -121,7 +243,10 @@ export function ChurchMapPage() {
 
   return (
     <ChurchMap
+      viewLevel={routeParams.viewLevel}
       countryCode={routeParams.countryCode}
+      navigateToWorld={navigateToWorld}
+      navigateToCountry={navigateToCountry}
       routeStateAbbrev={routeParams.stateAbbrev}
       routeCountyFips={routeParams.routeCountyFips}
       routeChurchShortId={routeParams.churchShortId}

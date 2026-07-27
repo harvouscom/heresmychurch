@@ -107,9 +107,12 @@ function isAddressMeaningful(
 
 /**
  * Returns a fallback location string when a church has no complete address/city,
- * e.g. "Somewhere in Polk County, Iowa" when `countyName` is resolved from coordinates.
- * Without a county name, uses the state only: "Somewhere in Iowa".
+ * e.g. "Somewhere in Polk, Iowa" when `countyName` is resolved from coordinates.
+ * Without a county name, uses the region only: "Somewhere in Iowa".
  * Returns null if city is present (caller should use city as fallback) or state is unknown.
+ *
+ * Pass `regionName` for intl regions (or any non-US display name) so labels are not
+ * limited to US `STATE_NAMES` / 2-letter abbrevs.
  */
 export function getFallbackLocation(
   church: {
@@ -118,18 +121,21 @@ export function getFallbackLocation(
     state: string;
     city?: string;
   },
-  countyName?: string | null
+  countyName?: string | null,
+  regionName?: string | null
 ): string | null {
   if (church.city?.trim()) return null;
-  const stateAbbrev = (church.state || "").trim().toUpperCase().slice(0, 2);
+  const stateAbbrev = (church.state || "").trim().toUpperCase();
   if (!stateAbbrev) return null;
-  const stateName = STATE_NAMES[stateAbbrev] || stateAbbrev;
+  const resolvedName =
+    (regionName ?? "").trim() ||
+    STATE_NAMES[stateAbbrev] ||
+    stateAbbrev;
   const cn = (countyName ?? "").trim();
   if (cn) {
-    const countyPart = /\bcounty\b/i.test(cn) ? cn : `${cn} County`;
-    return `Somewhere in ${countyPart}, ${stateName}`;
+    return `Somewhere in ${cn}, ${resolvedName}`;
   }
-  return `Somewhere in ${stateName}`;
+  return `Somewhere in ${resolvedName}`;
 }
 
 const SOMEWHERE_IN_PREFIX = /^Somewhere in /i;
@@ -147,10 +153,11 @@ export function getLocationContextForWebSearch(
     city?: string;
     address?: string;
   },
-  countyName?: string | null
+  countyName?: string | null,
+  regionName?: string | null
 ): string {
   const city = (church.city || "").trim();
-  const stateAbbrev = (church.state || "").trim().toUpperCase().slice(0, 2);
+  const stateAbbrev = (church.state || "").trim().toUpperCase();
   if (city) {
     return stateAbbrev ? `${city} ${stateAbbrev}` : city;
   }
@@ -158,7 +165,7 @@ export function getLocationContextForWebSearch(
     const a = (church.address || "").trim();
     return stateAbbrev ? `${a} ${stateAbbrev}` : a;
   }
-  const fallback = getFallbackLocation(church, countyName);
+  const fallback = getFallbackLocation(church, countyName, regionName);
   if (fallback) {
     return fallback.replace(SOMEWHERE_IN_PREFIX, "").trim();
   }
@@ -267,7 +274,9 @@ export const DENOMINATION_GROUPS: { label: string; matches: string[] }[] = [
   { label: "Methodist", matches: ["Methodist", "Wesleyan"] },
   { label: "Lutheran", matches: ["Lutheran"] },
   { label: "Presbyterian", matches: ["Presbyterian"] },
-  { label: "Episcopal", matches: ["Episcopal", "Anglican"] },
+  { label: "Episcopal", matches: ["Episcopal", "Anglican", "Church of England", "Church of Ireland"] },
+  { label: "Church of Scotland", matches: ["Church of Scotland"] },
+  { label: "United Church of Canada", matches: ["United Church of Canada"] },
   // Pentecostal before "Church of God" so "Church of God in Christ" maps here
   { label: "Pentecostal", matches: ["Pentecostal", "Foursquare", "Full Gospel", "Apostolic", "Church of God in Christ", "COGIC"] },
   { label: "Assemblies of God", matches: ["Assemblies of God", "Assembly of God"] },
@@ -512,6 +521,11 @@ export interface SeasonalReportSpotlight {
   shortId?: string;
 }
 
+/**
+ * Ranking row for admin-1 regions (country reports), US counties (state reports),
+ * or countries (world reports). `abbrev` is region code, FIPS, or ISO country
+ * code depending on report scope.
+ */
 export interface SeasonalReportStateRanking {
   abbrev: string;
   name: string;
@@ -572,11 +586,21 @@ export interface SeasonalReportSummary {
   year: number;
   generatedAt: string;
   totalChurches: number;
+  /** ISO country code, or WORLD for the worldwide rollup */
+  countryCode?: string;
 }
+
+/**
+ * Report geography. Legacy `"national"` / `"state"` are US country / US region.
+ * Prefer `"world"` | `"country"` | `"region"` for new payloads.
+ */
+export type SeasonalReportScope = "world" | "country" | "region" | "national" | "state";
 
 export interface SeasonalReport {
   slug: string;
-  scope?: "national" | "state";
+  scope?: SeasonalReportScope;
+  /** ISO country code, or WORLD for worldwide reports */
+  countryCode?: string;
   stateAbbrev?: string;
   stateName?: string;
   title: string;

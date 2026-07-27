@@ -1,7 +1,7 @@
 
 # Here's My Church
 
-An interactive map of Christian churches in the U.S. — find your church or find a new one. Free, open-source, crowd-sourced, no account needed. **[heresmychurch.com](https://heresmychurch.com)**
+An interactive map of Christian churches worldwide — find your church or find a new one. Free, open-source, crowd-sourced, no account needed. **[heresmychurch.com](https://heresmychurch.com)**
 
 ## The Story
 

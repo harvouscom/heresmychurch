@@ -5,7 +5,7 @@
   publish = "dist"
   command = "pnpm run build"
 
-# Edge function: inject detected US state into HTML for state preselection (uses context.geo)
+# Edge function: inject detected country (+ US state) into HTML for landing (uses context.geo)
 [[edge_functions]]
   function = "geo-inject"
   path = "/*"
@@ -13,7 +13,40 @@
 # Edge function: rewrite HTML meta tags for social crawlers so they get per-page OG images
 [[edge_functions]]
   function = "og-rewrite"
+  path = "/world"
+
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/US"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/US/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/CA"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/CA/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/GB"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/GB/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/IE"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/IE/*"
+
+# Legacy map URLs (still rewritten for bots until caches clear)
+[[edge_functions]]
+  function = "og-rewrite"
   path = "/state/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/country/*"
 
 [[edge_functions]]
   function = "og-rewrite"
@@ -22,3 +55,22 @@
 [[edge_functions]]
   function = "og-rewrite"
   path = "/reports"
+
+# Canonical map paths: /state/* → /US/*, /country/CC/* → /CC/*
+[[redirects]]
+  from = "/state/*"
+  to = "/US/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/country/:code"
+  to = "/:code"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/country/:code/*"
+  to = "/:code/:splat"
+  status = 301
+  force = true

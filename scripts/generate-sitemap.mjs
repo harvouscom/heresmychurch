@@ -11,7 +11,7 @@
  *   HMC_FUNCTIONS_BASE_URL — e.g. https://PROJECT.supabase.co/functions/v1/make-server-283d8046
  *   HMC_SUPABASE_ANON_KEY — Supabase anon key (same as client; public)
  */
-import { writeFileSync } from "fs";
+import { writeFileSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
@@ -50,6 +50,22 @@ const STATE_ABBREVS = [
   "DC",
 ];
 
+/** Non-US countries from generate-admin1 output (keep in sync via regen). */
+function loadIntlCountries() {
+  const src = readFileSync(
+    join(__dirname, "..", "netlify", "edge-functions", "intl-country-meta.generated.ts"),
+    "utf8",
+  );
+  const m = src.match(/INTL_COUNTRY_META[\s\S]*?=\s*(\{[\s\S]*\});?\s*$/);
+  if (!m) throw new Error("Could not parse intl-country-meta.generated.ts");
+  const meta = JSON.parse(m[1]);
+  return Object.fromEntries(
+    Object.entries(meta).map(([cc, v]) => [cc, Object.keys(v.regions || {})]),
+  );
+}
+
+const INTL_COUNTRIES = loadIntlCountries();
+
 function pickLatestSlug(reports) {
   if (!reports.length) return null;
   const sorted = [...reports].sort(
@@ -58,11 +74,12 @@ function pickLatestSlug(reports) {
   return sorted[0]?.slug ?? null;
 }
 
-async function fetchReportList(apiBase, headers) {
+async function fetchReportList(apiBase, headers, country = "US") {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), 20000);
   try {
-    const res = await fetch(`${apiBase}/reports`, { headers, signal: controller.signal });
+    const q = country ? `?country=${encodeURIComponent(country)}` : "";
+    const res = await fetch(`${apiBase}/reports${q}`, { headers, signal: controller.signal });
     if (!res.ok) return [];
     return await res.json();
   } catch {
@@ -85,17 +102,27 @@ async function main() {
 
   const urls = [
     { loc: `${BASE}/`, changefreq: "weekly", priority: "1.0" },
+    { loc: `${BASE}/world`, changefreq: "weekly", priority: "0.9" },
+    { loc: `${BASE}/US`, changefreq: "weekly", priority: "0.95" },
     { loc: `${BASE}/llms.txt`, changefreq: "monthly", priority: "0.3" },
     { loc: `${BASE}/reports`, changefreq: "weekly", priority: "0.85" },
     { loc: `${BASE}/privacy`, changefreq: "yearly", priority: "0.4" },
     ...STATE_ABBREVS.map((abbrev) => ({
-      loc: `${BASE}/state/${abbrev}`,
+      loc: `${BASE}/US/${abbrev}`,
       changefreq: "weekly",
       priority: "0.8",
     })),
+    ...Object.entries(INTL_COUNTRIES).flatMap(([cc, regions]) => [
+      { loc: `${BASE}/${cc}`, changefreq: "weekly", priority: "0.85" },
+      ...regions.map((abbrev) => ({
+        loc: `${BASE}/${cc}/${abbrev}`,
+        changefreq: "weekly",
+        priority: "0.75",
+      })),
+    ]),
   ];
 
-  const reports = await fetchReportList(apiBase, headers);
+  const reports = await fetchReportList(apiBase, headers, "US");
   if (!Array.isArray(reports) || reports.length === 0) {
     console.warn(
       "generate-sitemap: could not load /reports (network or empty). Sitemap will omit report URLs.",
@@ -126,6 +153,31 @@ async function main() {
           priority: "0.7",
         });
       }
+    }
+  }
+
+  // World + country seasonal reports (published slugs only; no non-US region reports yet)
+  const worldReports = await fetchReportList(apiBase, headers, "WORLD");
+  if (Array.isArray(worldReports)) {
+    for (const r of worldReports) {
+      if (!r?.slug) continue;
+      urls.push({
+        loc: `${BASE}/report/WORLD/${encodeURIComponent(r.slug)}`,
+        changefreq: "monthly",
+        priority: "0.88",
+      });
+    }
+  }
+  for (const cc of Object.keys(INTL_COUNTRIES)) {
+    const countryReports = await fetchReportList(apiBase, headers, cc);
+    if (!Array.isArray(countryReports)) continue;
+    for (const r of countryReports) {
+      if (!r?.slug) continue;
+      urls.push({
+        loc: `${BASE}/report/${cc}/${encodeURIComponent(r.slug)}`,
+        changefreq: "monthly",
+        priority: "0.85",
+      });
     }
   }
 

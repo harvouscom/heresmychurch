@@ -1,21 +1,39 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { parsePhoneNumberFromString } from "libphonenumber-js";
+import type { CountryCode } from "libphonenumber-js";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Normalize phone to digits-only (e.g. 5551234567). Strips non-digits; 11-digit US starting with 1 becomes 10 digits. Returns "" if invalid. */
-export function normalizePhone(s: string): string {
-  const digits = (s ?? "").replace(/\D/g, "");
-  if (digits.length === 11 && digits[0] === "1") return digits.slice(1);
-  if (digits.length < 10) return "";
-  return digits;
+/** Normalize phone to E.164 when possible; falls back to digits. */
+export function normalizePhone(s: string, defaultCountry: string = "US"): string {
+  const raw = (s ?? "").trim();
+  if (!raw) return "";
+  const parsed = parsePhoneNumberFromString(raw, defaultCountry.toUpperCase() as CountryCode);
+  if (parsed?.isValid()) return parsed.format("E.164");
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 11 && digits[0] === "1") return `+1${digits.slice(1)}`;
+  if (digits.length === 10 && defaultCountry.toUpperCase() === "US") return `+1${digits}`;
+  if (digits.length >= 10) return `+${digits}`;
+  return "";
 }
 
-/** Format 10-digit US phone for display, e.g. (555) 123-4567. Pass-through if not 10 digits. */
-export function formatPhoneDisplay(phone: string): string {
-  const digits = (phone ?? "").replace(/\D/g, "");
-  if (digits.length !== 10) return phone || "";
-  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+/** Format phone for display using the church's country when known. */
+export function formatPhoneDisplay(phone: string, defaultCountry: string = "US"): string {
+  const raw = (phone ?? "").trim();
+  if (!raw) return "";
+  const parsed = parsePhoneNumberFromString(raw, defaultCountry.toUpperCase() as CountryCode);
+  if (parsed?.isValid()) {
+    return parsed.country === "US" || parsed.country === "CA"
+      ? parsed.formatNational()
+      : parsed.formatInternational();
+  }
+  // Legacy 10-digit US storage
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return raw;
 }

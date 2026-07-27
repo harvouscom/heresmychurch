@@ -33,8 +33,26 @@ The API is already the channel for suggestions, confirmations, and pending churc
 Many church records are partial (e.g. missing address, service times, or denomination). When we document the API and when others consume it:
 
 1. **Responses are partial.** API responses include whatever fields we have. Consumers should treat optional fields as nullable and handle missing data in their UI (e.g. “Address not yet collected” or hiding empty sections).
-2. **Discovering incomplete records.** The existing `churches/review-stats` endpoint returns national and per-state counts: `totalNeedsReview`, `missingAddress`, `missingServiceTimes`, `missingDenomination`. Consumers can use these to find and prioritize which churches to enrich or correct.
-3. **API documentation.** When we publish the API spec, we should clearly list which church fields are optional (e.g. `address`, `website`, `serviceTimes`, `denomination`, `languages`, `ministries`, `pastorName`, `phone`, `email`, `homeCampusId`). We should recommend that consumers use the suggestions, add-church, and confirm endpoints to submit missing or corrected data rather than discarding incomplete records.
+2. **Search `locationLabel`.** `GET …/churches/search` returns a `locationLabel` on each result: meaningful street + city when available, else city + region name, else `Somewhere in {regionName}`. Raw `address` / `city` stay as stored so consumers can still detect incompleteness.
+3. **Discovering incomplete records.** The existing `churches/review-stats` endpoint returns national and per-state counts: `totalNeedsReview`, `missingAddress`, `missingServiceTimes`, `missingDenomination`. Consumers can use these to find and prioritize which churches to enrich or correct.
+4. **API documentation.** When we publish the API spec, we should clearly list which church fields are optional (e.g. `address`, `website`, `serviceTimes`, `denomination`, `languages`, `ministries`, `pastorName`, `phone`, `email`, `homeCampusId`). We should recommend that consumers use the suggestions, add-church, and confirm endpoints to submit missing or corrected data rather than discarding incomplete records.
+
+### Worldwide regions
+
+Read and write endpoints accept any populated HMC region abbrev (US states and international admin-1 codes such as `ON`, `AUNSW`, `CHZH`), not only US states. Coordinates for `POST …/churches/add` must fall within that region’s bounds. Non-US community ids are minted as `community-{CC}-{REGION}-…`.
+
+### Add church: similar-match confirmation
+
+`POST …/churches/add` mirrors the site “are you sure it’s not this one?” flow:
+
+1. Submit name, address, city, `state` (region abbrev), lat/lng, and optional fields.
+2. If near-duplicate candidates exist and the body does **not** include `confirmAdd: true`, the API responds **200** with `{ needsConfirmation: true, similar: [...] }` (not an error). Show those matches to the user.
+3. To proceed anyway, resubmit the same payload with `confirmAdd: true`.
+4. Exact duplicates still return `{ success: true, isDuplicate: true, … }` as before.
+
+### Report out of scope (Trinitarian inclusion)
+
+`POST …/suggestions` accepts `field: "reportOutOfScope"` (value is normalized to `out_of_scope`). Like closed/duplicate reports, it is sensitive: queued for moderator review and removes the church when approved. Use this when a listing is not a Trinitarian Christian church and should not appear on the map.
 
 ## Alternatives
 

@@ -232,23 +232,34 @@ function DenominationFilters({
   toggleDenom: (label: string) => void;
   denomCounts: Record<string, number>;
 }) {
+  // Prefer groups with data in the current view; append any denomCounts keys
+  // not covered by the static groups (e.g. United Church of Canada abroad).
+  const known = new Set(DENOMINATION_GROUPS.map((g) => g.label));
+  const extras = Object.keys(denomCounts)
+    .filter((k) => !known.has(k) && (denomCounts[k] || 0) > 0)
+    .sort((a, b) => (denomCounts[b] || 0) - (denomCounts[a] || 0));
+  const labels = [
+    ...DENOMINATION_GROUPS.map((g) => g.label),
+    ...extras,
+  ];
+
   return (
     <div className="mb-2">
-      {DENOMINATION_GROUPS.map((group) => {
-        const count = denomCounts[group.label] || 0;
+      {labels.map((label) => {
+        const count = denomCounts[label] || 0;
         return (
           <label
-            key={group.label}
+            key={label}
             className="flex items-center justify-between py-1.5 cursor-pointer hover:bg-white/5 px-2 rounded-md"
           >
             <div className="flex items-center gap-2.5">
               <input
                 type="checkbox"
-                checked={activeDenominations.has(group.label)}
-                onChange={() => toggleDenom(group.label)}
+                checked={activeDenominations.has(label)}
+                onChange={() => toggleDenom(label)}
                 className="accent-purple-500 w-3.5 h-3.5"
               />
-              <span className="text-xs text-white/70">{group.label}</span>
+              <span className="text-xs text-white/70">{label}</span>
             </div>
             {count > 0 && (
               <span className="text-xs text-white/30">{count}</span>
@@ -259,8 +270,8 @@ function DenominationFilters({
       <div className="flex gap-2 mt-2 px-2">
         <button
           onClick={() => {
-            DENOMINATION_GROUPS.forEach((g) => {
-              if (!activeDenominations.has(g.label)) toggleDenom(g.label);
+            labels.forEach((label) => {
+              if (!activeDenominations.has(label)) toggleDenom(label);
             });
           }}
           className="text-xs text-purple-300 hover:text-purple-200"
@@ -270,8 +281,8 @@ function DenominationFilters({
         <span className="text-white/20">|</span>
         <button
           onClick={() => {
-            DENOMINATION_GROUPS.forEach((g) => {
-              if (activeDenominations.has(g.label)) toggleDenom(g.label);
+            labels.forEach((label) => {
+              if (activeDenominations.has(label)) toggleDenom(label);
             });
           }}
           className="text-xs text-purple-300 hover:text-purple-200"

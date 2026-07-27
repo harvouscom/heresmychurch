@@ -203,7 +203,7 @@ Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurc
 - Build: `pnpm run build` (Vite → `dist/`).
 - Publish: `dist`.
 - Edge functions:
-  - **geo-inject** — runs on `/*`; injects detected US state into HTML (uses context.geo).
+  - **geo-inject** — runs on `/*`; injects detected country (+ US state) into HTML (uses context.geo). Client lands on that country, or `/world` when geo is missing/unsupported.
   - **og-rewrite** — runs on `/state/*`; for crawler user-agents, rewrites HTML meta (og/twitter) and title to use per-page OG images from the Supabase og-image endpoint.
 
 **Supabase:**

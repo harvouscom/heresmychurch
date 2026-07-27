@@ -11,6 +11,28 @@ import {
 } from "./county-aggregate.ts";
 
 import { INTL_REGIONS } from "./regions-intl.ts";
+import { normalizeServiceTimes } from "./service-times.ts";
+import {
+  regionCountry,
+  churchesKey,
+  getChurches,
+  setChurches,
+  delChurches,
+  getSidx,
+  setSidx,
+  delSidx,
+  getPending,
+  setPending,
+  getCount,
+  setCount,
+  deleteCount,
+  listPopulated,
+  getReviewStatsState,
+  setReviewStatsState,
+  reviewStatsStateKey,
+  isValidRegion,
+  regionFromChurchId,
+} from "./church-keys.ts";
 
 // ── State data ──
 interface SI{a:string;n:string;la:number;lo:number;}
@@ -54,7 +76,10 @@ const RULES:DR[]=[
 ["Methodist",,"\\b(ame|umc)\\b"],
 ["Lutheran",["lutheran","lcms","elca","wels","missouri synod"]],
 ["Presbyterian",["presbyterian","pcusa"]],
-["Episcopal",["episcopal","anglican","acna"]],
+["Episcopal",["episcopal","acna"]],
+["Anglican",["anglican","church of england","church of ireland"]],
+["Church of Scotland",["church of scotland","church_of_scotland"]],
+["United Church of Canada",["united church of canada","united_church_of_canada","ucc"]],
 ["Pentecostal",["pentecostal","foursquare"]],
 ["Pentecostal",["apostolic"],,"latter"],
 ["Pentecostal",,"\\b(church of god of prophecy|full gospel|holiness church|iglesia pentecostal|deliverance (church|temple|center)|united pentecostal)\\b"],
@@ -177,16 +202,33 @@ function calcAreaSqft(geom:{lat:number,lon:number}[]):number{
     area+=xi*yj-xj*yi;
   }
   const sqft=Math.abs(area/2)*10.764;
-  return(sqft>=500&&sqft<=200000)?sqft:0;
+  // 200 sqft (~18 m²) keeps small village chapels common in the UK/IE;
+  // the old 500 sqft floor discarded them.
+  return(sqft>=200&&sqft<=200000)?sqft:0;
 }
 function getElArea(el:any):number{
   if(el.type==="way"&&Array.isArray(el.geometry))return calcAreaSqft(el.geometry);
   if(el.type==="relation"&&Array.isArray(el.members)){
     let total=0;
     for(const m of el.members){if(m.role==="outer"&&Array.isArray(m.geometry))total+=calcAreaSqft(m.geometry);}
-    return(total>=500&&total<=200000)?total:0;
+    return(total>=200&&total<=200000)?total:0;
   }
   return 0;
+}
+
+/** Ruined / disused / abandoned places of worship — common in UK/IE OSM. */
+function isInactiveChurch(t:Record<string,string>):boolean{
+  if(!t)return false;
+  if(t.building==="ruins"||t.historic==="ruins"||t.historic==="church"&&t.disused==="yes")return true;
+  if(t.abandoned==="yes"||t.disused==="yes"||t["disused:amenity"]||t["abandoned:amenity"])return true;
+  if(t["was:amenity"]==="place_of_worship"||t["disused:religion"]||t["abandoned:religion"])return true;
+  if(/^was:|^disused:|^abandoned:/.test(Object.keys(t).join(" "))){
+    // Any disused:*/abandoned:*/was:* amenity tag marking a former church
+    for(const k of Object.keys(t)){
+      if(/^(disused|abandoned|was):/.test(k)&&(t[k]==="place_of_worship"||k.includes("amenity")||k.includes("religion")))return true;
+    }
+  }
+  return false;
 }
 
 // ── Attendance estimation ──
@@ -264,6 +306,23 @@ function bQ(iso:string,bbox?:[number,number,number,number]):string{
   // 5,361 elements. fetchArea splits any area that comes back near it.
   return`[out:json][timeout:90];area["ISO3166-2"="${iso}"]->.searchArea;(node["amenity"="place_of_worship"]["religion"="christian"]${f};way["amenity"="place_of_worship"]["religion"="christian"]${f};relation["amenity"="place_of_worship"]["religion"="christian"]${f};);out geom ${OVP_REQUEST_LIMIT};`;
 }
+/** Bbox-only query when ISO3166-2 areas are missing/stale (e.g. FR-75 → FR-75C). */
+function bboxOnlyQ(bbox:[number,number,number,number]):string{
+  const b=bbox.join(",");
+  return`[out:json][timeout:90];(node["amenity"="place_of_worship"]["religion"="christian"](${b});way["amenity"="place_of_worship"]["religion"="christian"](${b});relation["amenity"="place_of_worship"]["religion"="christian"](${b}););out geom ${OVP_REQUEST_LIMIT};`;
+}
+async function ovpForRegion(st:string,bbox?:[number,number,number,number]):Promise<any[]>{
+  const iso=regionIso(st);
+  const label=bbox?`${st}-cell`:st;
+  let els=await ovpQ(bQ(iso,bbox),label);
+  // Stale ISO tags (Paris FR-75→FR-75C) or missing Overpass areas return [].
+  // Fall back to the cell bbox; parse() still clips to region bounds.
+  if(!els.length&&bbox){
+    console.log(`[${st}] ISO area ${iso} empty — falling back to bbox-only`);
+    els=await ovpQ(bboxOnlyQ(bbox),`${label}-bbox`);
+  }
+  return els;
+}
 function splitB(b:[number,number,number,number]):[number,number,number,number][]{const[s,w,n,e]=b,mL=(s+n)/2,mN=(w+e)/2;return[[s,w,mL,mN],[s,mN,mL,e],[mL,w,n,mN],[mL,mN,n,e]];}
 
 // ── Adaptive area splitting ──
@@ -333,6 +392,21 @@ const DENOM_BY_COUNTRY:Record<string,Record<string,string>>={
   CA:{Episcopal:"Anglican",United:"United Church of Canada"},
   GB:{Episcopal:"Anglican"},
   IE:{Episcopal:"Anglican"},
+  FR:{Episcopal:"Anglican"},
+  DE:{Episcopal:"Anglican"},
+  NL:{Episcopal:"Anglican"},
+  BE:{Episcopal:"Anglican"},
+  ES:{Episcopal:"Anglican"},
+  IT:{Episcopal:"Anglican"},
+  PT:{Episcopal:"Anglican"},
+  AT:{Episcopal:"Anglican"},
+  CH:{Episcopal:"Anglican"},
+  SE:{Episcopal:"Anglican"},
+  NO:{Episcopal:"Anglican"},
+  DK:{Episcopal:"Anglican"},
+  FI:{Episcopal:"Anglican"},
+  PL:{Episcopal:"Anglican"},
+  AU:{Episcopal:"Anglican",United:"Uniting Church in Australia"},
 };
 function localizeDenom(d:string,cc:string):string{return DENOM_BY_COUNTRY[cc]?.[d]??d;}
 
@@ -346,6 +420,7 @@ function parse(els:any[],st:string):any[]{
     if(!lat||!lng)return null;
     if(b){const[s,w,n,e]=b;if(lat<s-0.01||lat>n+0.01||lng<w-0.01||lng>e+0.01)return null;}
     const t=el.tags||{};
+    if(isInactiveChurch(t))return null;
     const denomination=normD(t);
     if(isBlockedDenomination(denomination))return null;
     const sqft=getElArea(el);
@@ -356,7 +431,30 @@ function parse(els:any[],st:string):any[]{
     // country/region are the country-namespaced identity the app is moving to;
     // `state` stays populated for US back-compat while both are in use.
     const reg=INTL_REGIONS[st.toUpperCase()];
-    const obj:any={id:`${st}-${el.id||i}`,name:t.name||t["name:en"]||"Unnamed Church",lat,lng,denomination:localizeDenom(denomination,reg?.cc??"US"),attendance,state:st.toUpperCase(),country:reg?.cc??"US",region:reg?.iso??`US-${st.toUpperCase()}`,city:city(t),address:t["addr:street"]?`${t["addr:housenumber"]||""} ${t["addr:street"]}`.trim():"",website:t.website||t["contact:website"]||""};
+    const cc=reg?.cc??"US";
+    const street=t["addr:street"]?`${t["addr:housenumber"]||""} ${t["addr:street"]}`.trim():"";
+    const postcode=t["addr:postcode"]||t["addr:eircode"]||"";
+    const address=street&&postcode?`${street}, ${postcode}`:street||postcode||"";
+    const phone=t.phone||t["contact:phone"]||t["contact:mobile"]||"";
+    const rawServiceTimes=t.service_times||t["service_times:sunday"]||t.opening_hours||"";
+    // Prefer dedicated service_times tags; opening_hours is often office hours — still normalize when present.
+    const serviceTimes=normalizeServiceTimes(rawServiceTimes);
+    const obj:any={
+      id:cc==="US"?`${st}-${el.id||i}`:`${cc}-${st}-${el.id||i}`,
+      name:t.name||t["name:en"]||"Unnamed Church",
+      lat,lng,
+      denomination:localizeDenom(denomination,cc),
+      attendance,
+      state:st.toUpperCase(),
+      country:cc,
+      region:reg?.iso??`US-${st.toUpperCase()}`,
+      city:city(t),
+      address,
+      website:t.website||t["contact:website"]||"",
+    };
+    if(phone)obj.phone=phone;
+    if(serviceTimes)obj.serviceTimes=serviceTimes;
+    if(postcode)obj.postcode=postcode;
     if(sqft>0)obj.buildingSqft=Math.round(sqft);
     return obj;
   }).filter(Boolean);
@@ -393,13 +491,11 @@ async function fetchCh(st:string):Promise<any[]>{
 function toShortId(id:string,state:string,existingShortId?:string):string{
   if(existingShortId&&/^\d{8}$/.test(existingShortId))return existingShortId;
   const st=state.toUpperCase();
-  const statePrefix=`${st}-`;
-  if(id.startsWith(statePrefix)){
-    const numPart=id.slice(statePrefix.length);
-    if(/^\d+$/.test(numPart)){
-      const s=numPart.length>=8?numPart.slice(0,8):numPart.padStart(8,"0");
-      return s;
-    }
+  // US `TX-123…` or namespaced intl `CA-ON-123…` / `IE-IECO-123…`
+  const m=id.match(new RegExp(`^(?:[A-Z]{2}-)?${st}-(\\d+)$`,"i"));
+  if(m){
+    const numPart=m[1];
+    return numPart.length>=8?numPart.slice(0,8):numPart.padStart(8,"0");
   }
   if(id.startsWith("community-")){
     let h=0;for(let i=0;i<id.length;i++)h=((h<<5)-h+id.charCodeAt(i))|0;
@@ -438,7 +534,7 @@ function addShortIds(ch:any[],st:string):any[]{return ch.map((c:any)=>({...c,sho
 
 // ── Search index (include shortId so search returns unique segment per church) ──
 function buildIdx(ch:any[]){return ch.map((c:any)=>({id:c.id,shortId:c.shortId,n:c.name||"",c:c.city||"",d:c.denomination||"",a:c.attendance||0,ad:c.address||"",la:c.lat||0,lo:c.lng||0,w:c.website||"",st:c.serviceTimes||""}));}
-async function writeIdx(st:string,ch:any[]){await kv.set(`churches:sidx:${st}`,buildIdx(ch));await persistStateReviewStats(st,ch);}
+async function writeIdx(st:string,ch:any[]){await setSidx(st,buildIdx(ch));await persistStateReviewStats(st,ch);}
 
 // Preserve user/community-submitted fields when overwriting cache (populate force, refresh-attendance).
 const USER_FIELDS_TO_PRESERVE=["shortId","homeCampusId","website","serviceTimes","languages","ministries","pastorName","phone","email","lastVerified","buildingSqft"] as const;
@@ -616,13 +712,67 @@ app.get(`${P}/og-image`,async(c)=>{
 app.get(`${P}/churches/states`,async(c)=>{
   try{
     const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
-    if(sc["DC"]){sc["MD"]=(sc["MD"]||0)+sc["DC"];delete sc["DC"];}
-    // Count only the states actually returned. stateCounts now also holds non-US
-    // regions, and summing it made the UI headline ("N churches across 50
-    // states") include Canadian churches that were absent from the list below.
-    const states=US.map(s=>({abbrev:s.a,name:s.n,lat:s.la,lng:s.lo,churchCount:sc[s.a]||0,isPopulated:!!sc[s.a]}));
+    const dc=getCount(sc,"DC","US");if(dc){setCount(sc,"MD",getCount(sc,"MD","US")+dc,"US");deleteCount(sc,"DC","US");}
+    // Count only US states. stateCounts may hold non-US regions under "CA:PE" etc.
+    const states=US.map(s=>{const n=getCount(sc,s.a,"US");return{abbrev:s.a,name:s.n,lat:s.la,lng:s.lo,churchCount:n,isPopulated:!!n};});
     return c.json({states,totalChurches:states.reduce((a,s)=>a+s.churchCount,0),populatedStates:states.filter(s=>s.isPopulated).length});
   }catch(e){return c.json({states:[],totalChurches:0,populatedStates:0,error:`${e}`},500);}
+});
+
+// World choropleth: one row per supported country with church totals.
+app.get(`${P}/churches/countries`,async(c)=>{
+  try{
+    const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
+    const byCc=new Map<string,{churchCount:number;populatedRegions:number;regionCount:number}>();
+    // US from the US table
+    let usCount=0,usPop=0;
+    for(const s of US){const n=getCount(sc,s.a,"US");usCount+=n;if(n)usPop++;}
+    byCc.set("US",{churchCount:usCount,populatedRegions:usPop,regionCount:US.length});
+    // Non-US from INTL_REGIONS
+    for(const r of Object.values(INTL_REGIONS)){
+      const cur=byCc.get(r.cc)||{churchCount:0,populatedRegions:0,regionCount:0};
+      cur.regionCount++;
+      const n=getCount(sc,r.a,r.cc);
+      cur.churchCount+=n;
+      if(n)cur.populatedRegions++;
+      byCc.set(r.cc,cur);
+    }
+    const ISO:Record<string,{name:string;isoNumeric:string}>={
+      US:{name:"United States",isoNumeric:"840"},
+      CA:{name:"Canada",isoNumeric:"124"},
+      GB:{name:"United Kingdom",isoNumeric:"826"},
+      IE:{name:"Ireland",isoNumeric:"372"},
+      FR:{name:"France",isoNumeric:"250"},
+      DE:{name:"Germany",isoNumeric:"276"},
+      NL:{name:"Netherlands",isoNumeric:"528"},
+      BE:{name:"Belgium",isoNumeric:"056"},
+      ES:{name:"Spain",isoNumeric:"724"},
+      IT:{name:"Italy",isoNumeric:"380"},
+      PT:{name:"Portugal",isoNumeric:"620"},
+      AT:{name:"Austria",isoNumeric:"040"},
+      CH:{name:"Switzerland",isoNumeric:"756"},
+      SE:{name:"Sweden",isoNumeric:"752"},
+      NO:{name:"Norway",isoNumeric:"578"},
+      DK:{name:"Denmark",isoNumeric:"208"},
+      FI:{name:"Finland",isoNumeric:"246"},
+      PL:{name:"Poland",isoNumeric:"616"},
+      AU:{name:"Australia",isoNumeric:"036"},
+    };
+    // Ensure registered countries with zero churches still appear (coming soon).
+    for(const code of Object.keys(ISO)){
+      if(!byCc.has(code))byCc.set(code,{churchCount:0,populatedRegions:0,regionCount:code==="US"?US.length:Object.values(INTL_REGIONS).filter(r=>r.cc===code).length});
+    }
+    const countries=[...byCc.entries()].map(([code,v])=>({
+      code,
+      name:ISO[code]?.name||code,
+      isoNumeric:ISO[code]?.isoNumeric||"",
+      churchCount:v.churchCount,
+      isPopulated:v.churchCount>0,
+      regionCount:v.regionCount,
+      populatedRegions:v.populatedRegions,
+    })).sort((a,b)=>a.name.localeCompare(b.name));
+    return c.json({countries,totalChurches:countries.reduce((a,x)=>a+x.churchCount,0)});
+  }catch(e){return c.json({countries:[],totalChurches:0,error:`${e}`},500);}
 });
 
 // Regions of a non-US country, shaped like /churches/states so the map can
@@ -633,12 +783,29 @@ app.get(`${P}/churches/regions/:country`,async(c)=>{
     const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
     const regions=Object.values(INTL_REGIONS)
       .filter(r=>r.cc===cc)
-      .map(r=>({abbrev:r.a,name:r.n,lat:r.la,lng:r.lo,churchCount:sc[r.a]||0,isPopulated:!!sc[r.a]}))
+      .map(r=>{const n=getCount(sc,r.a,cc);return{abbrev:r.a,name:r.n,lat:r.la,lng:r.lo,churchCount:n,isPopulated:!!n};})
       .sort((a,b)=>a.name.localeCompare(b.name));
     if(!regions.length)return c.json({error:`No regions for country ${cc}`,regions:[],totalChurches:0},404);
     return c.json({country:cc,regions,totalChurches:regions.reduce((a,r)=>a+r.churchCount,0),populatedRegions:regions.filter(r=>r.isPopulated).length});
   }catch(e){return c.json({regions:[],totalChurches:0,error:`${e}`},500);}
 });
+
+/** Human-readable place for search results when address/city are incomplete. */
+function searchLocationLabel(r:{address?:string;city?:string;state:string;country?:string}):string{
+  const addr=(r.address||"").trim(),city=(r.city||"").trim(),st=(r.state||"").trim().toUpperCase();
+  const regionName=gS(st)?.n||st;
+  const meaningful=(()=>{
+    if(!addr||addr.length<5)return false;
+    const an=addr.toLowerCase(),cn=city.toLowerCase(),sn=st.toLowerCase();
+    if(cn&&an===cn)return false;
+    const cs=[cn,sn].filter(Boolean).join(", ");
+    if(cs&&an===cs)return false;
+    return true;
+  })();
+  if(meaningful)return city?`${addr}, ${city}`:addr;
+  if(city)return `${city}, ${regionName}`;
+  return regionName?`Somewhere in ${regionName}`:"";
+}
 
 app.get(`${P}/churches/search`,async(c)=>{
   try{
@@ -646,8 +813,11 @@ app.get(`${P}/churches/search`,async(c)=>{
     if(!q||q.length<2)return c.json({results:[],query:rawQ});
     const tokens=q.split(/\s+/).filter(Boolean);
     const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
-    if(sc["DC"]){sc["MD"]=(sc["MD"]||0)+sc["DC"];delete sc["DC"];}
-    const pop=Object.keys(sc);if(!pop.length)return c.json({results:[],query:rawQ});
+    const ccFilter=(c.req.query("country")||"").toUpperCase().trim();
+    let pop=listPopulated(sc).filter(p=>!ccFilter||p.cc===ccFilter).map(p=>p.abbrev);
+    // Fold DC into MD for search, matching historical behavior
+    if(pop.includes("DC")){if(!pop.includes("MD"))pop.push("MD");pop=pop.filter(a=>a!=="DC");}
+    pop=[...new Set(pop)];if(!pop.length)return c.json({results:[],query:rawQ});
 
     let stP=(c.req.query("state")||"").toUpperCase().trim();if(stP==="DC")stP="MD";
     const rawPriority=(c.req.query("priorityStates")||"").trim();
@@ -682,18 +852,19 @@ app.get(`${P}/churches/search`,async(c)=>{
 
     const COLLECT_CAP=priorityStatesParam.length?limit*5:500;
     const lastPriorityIdx=numPriorityStates>0?numPriorityStates-1:-1;
-    const candidates:Array<{score:number,id:string,shortId:string,name:string,city:string,state:string,denomination:string,attendance:number,lat:number,lng:number,address:string}>=[];
+    const candidates:Array<{score:number,id:string,shortId:string,name:string,city:string,state:string,country:string,denomination:string,attendance:number,lat:number,lng:number,address:string,locationLabel:string}>=[];
     const seen=new Set<string>();
     let idx=0;
     for(const st of exp){
       if(candidates.length>=COLLECT_CAP)break;
       const realSt=st==="DC"?"MD":st;
+      const resultCc=regionCountry(realSt);
       let items:any[]=null;
       try{
-        const idxKey=await kv.get(`churches:sidx:${st}`);
+        const idxKey=await getSidx(st);
         if(Array.isArray(idxKey)&&idxKey.length){items=idxKey;}
         else{
-          const raw=await kv.get(`churches:${st}`);
+          const raw=await getChurches(st);
           if(Array.isArray(raw)&&raw.length)items=raw;
         }
       }catch(_){}
@@ -718,7 +889,8 @@ app.get(`${P}/churches/search`,async(c)=>{
         const k=`${n.toLowerCase().replace(/[^a-z0-9]/g,"")}|${ci.toLowerCase().replace(/[^a-z0-9]/g,"")}|${ad.toLowerCase().replace(/[^a-z0-9]/g,"")}|${realSt}`;
         if(seen.has(k))continue;seen.add(k);
         const sid=(e.shortId&&/^\d{8}$/.test(e.shortId))?e.shortId:toShortId(e.id,realSt,e.shortId);
-        const row={id:e.id,shortId:sid,name:n||"Unknown Church",city:ci,state:realSt,denomination:d||"Unknown",attendance:isIdx?e.a:e.attendance,lat:isIdx?e.la:e.lat,lng:isIdx?e.lo:e.lng,address:ad||""};
+        const row={id:e.id,shortId:sid,name:n||"Unknown Church",city:ci,state:realSt,country:resultCc,denomination:d||"Unknown",attendance:isIdx?e.a:e.attendance,lat:isIdx?e.la:e.lat,lng:isIdx?e.lo:e.lng,address:ad||"",locationLabel:""};
+        row.locationLabel=searchLocationLabel(row);
         candidates.push({score:scoreMatch(scoreQ,n,ci,ad),...row});
       }
       if(lastPriorityIdx>=0&&idx<=lastPriorityIdx&&candidates.length>=limit)break;
@@ -726,7 +898,7 @@ app.get(`${P}/churches/search`,async(c)=>{
     }
     candidates.sort((a,b)=>b.score-a.score||(a.name||"").localeCompare(b.name||""));
     if(priorityStatesParam.length>0){
-      const normSt=(x:string)=>((x||"").trim().toUpperCase().slice(0,2));
+      const normSt=(x:string)=>((x||"").trim().toUpperCase());
       const p0=normSt(priorityStatesParam[0]);
       const pSet=new Set(priorityStatesParam.map(normSt));
       candidates.sort((a,b)=>{
@@ -775,13 +947,9 @@ function mergeCorrectionsIntoChurches(churches:any[],corrections:Record<string,R
   }
 }
 
-// Parse state from church id (e.g. "TX-123" -> "TX", "community-CA-xxx" -> "CA")
+// Parse region abbrev from church id (US: TX-123; intl: CA-PE-123 / IE-IECO-99)
 function stateFromChurchId(id:string):string|null{
-  if(!id||typeof id!=="string")return null;
-  const t=id.trim();
-  if(t.startsWith("community-")){const p=t.split("-");if(p.length>=2)return (p[1]||"").toUpperCase().slice(0,2)||null;return null;}
-  const dash=t.indexOf("-");if(dash>0){const st=t.slice(0,dash).toUpperCase();if(st.length===2)return st;}
-  return null;
+  return regionFromChurchId(id);
 }
 
 // Resolve homeCampus summary when homeCampusId points to another state
@@ -790,8 +958,8 @@ async function resolveHomeCampus(churches:any[],currentState:string):Promise<voi
   for(const ch of churches){
     const hid=(ch as any).homeCampusId;if(!hid||typeof hid!=="string")continue;
     const otherSt=stateFromChurchId(hid);if(!otherSt||otherSt===currentState)continue;
-    if(!stateCounts[otherSt])continue;
-    const otherCh=await kv.get(`churches:${otherSt}`);if(!Array.isArray(otherCh))continue;
+    if(!getCount(stateCounts,otherSt))continue;
+    const otherCh=await getChurches(otherSt);if(!Array.isArray(otherCh))continue;
     const main=otherCh.find((c:any)=>c.id===hid);if(!main){continue;}
     const shortId=toShortId(main.id,main.state||otherSt,main.shortId);
     (ch as any).homeCampus={id:main.id,name:main.name||"Unknown",state:otherSt,shortId};
@@ -822,10 +990,10 @@ function churchNeedsReview(ch:any):{needsReview:boolean;missingAddress:boolean;m
 }
 
 const REVIEW_STATS_CACHE_KEY="churches:review-stats";
-const REVIEW_STATS_STATE_PREFIX="churches:review-stats:";
+const REVIEW_STATS_COUNTRY_CODES=["US","CA","GB","IE","FR","DE","NL","BE","ES","IT","PT","AT","CH","SE","NO","DK","FI","PL","AU"] as const;
 type StateReviewStats={total:number;needsReview:number;missingAddress:number;missingWebsite:number;missingServiceTimes:number;missingDenomination:number};
 const EMPTY_STATE_REVIEW_STATS:StateReviewStats={total:0,needsReview:0,missingAddress:0,missingWebsite:0,missingServiceTimes:0,missingDenomination:0};
-function stateReviewStatsKey(st:string){return `${REVIEW_STATS_STATE_PREFIX}${st}`;}
+
 function reviewStatsForChurches(ch:any[],st:string):StateReviewStats{
   if(!Array.isArray(ch)||!ch.length)return EMPTY_STATE_REVIEW_STATS;
   let need=0,ma=0,mw=0,ms=0,md=0;
@@ -839,41 +1007,80 @@ function reviewStatsForChurches(ch:any[],st:string):StateReviewStats{
   }
   return{total:ch.length,needsReview:need,missingAddress:ma,missingWebsite:mw,missingServiceTimes:ms,missingDenomination:md};
 }
-async function persistStateReviewStats(st:string,ch:any[]):Promise<void>{try{await kv.set(stateReviewStatsKey(st),reviewStatsForChurches(ch,st));}catch(_){}}
-async function invalidateReviewStatsCache():Promise<void>{try{await kv.del(REVIEW_STATS_CACHE_KEY);}catch(_){}}
+async function persistStateReviewStats(st:string,ch:any[],cc="US"):Promise<void>{try{await setReviewStatsState(st,reviewStatsForChurches(ch,st),cc);}catch(_){}}
+async function invalidateReviewStatsCache():Promise<void>{
+  try{
+    await kv.del(REVIEW_STATS_CACHE_KEY);
+    await Promise.all([
+      ...REVIEW_STATS_COUNTRY_CODES.map((cc)=>kv.del(`${REVIEW_STATS_CACHE_KEY}:${cc}`)),
+      kv.del(`${REVIEW_STATS_CACHE_KEY}:WORLD`),
+    ]);
+  }catch(_){}
+}
 function stripReviewStatsCache(cached:any){const{_cachedAt,...clean}=cached;return clean;}
+function reviewStatsCacheKey(cc:string){return `${REVIEW_STATS_CACHE_KEY}:${cc}`;}
 
 function churchesFromSidx(idx:any[],st:string):any[]{return idx.map((c:any)=>({address:c.ad,city:c.c||"",state:st,website:"w" in c?c.w:"",serviceTimes:"st" in c?c.st:"",denomination:c.d}));}
 
-async function computeStateReviewStats(st:string):Promise<StateReviewStats>{
-  const idx=await kv.get(`churches:sidx:${st}`);
+async function computeStateReviewStats(st:string,cc="US"):Promise<StateReviewStats>{
+  const country=String(cc||"US").toUpperCase();
+  const idx=await getSidx(st,country);
   if(Array.isArray(idx)&&idx.length){
     const stats=reviewStatsForChurches(churchesFromSidx(idx,st),st);
-    try{await kv.set(stateReviewStatsKey(st),stats);}catch(_){}
+    try{await setReviewStatsState(st,stats,country);}catch(_){}
     return stats;
   }
-  const ch=await kv.get(`churches:${st}`);
+  const ch=await getChurches(st,country);
   if(!Array.isArray(ch)||!ch.length)return EMPTY_STATE_REVIEW_STATS;
   const stats=reviewStatsForChurches(ch,st);
-  await persistStateReviewStats(st,ch);
+  await persistStateReviewStats(st,ch,country);
   return stats;
 }
 
-async function computeReviewStats():Promise<{states:Record<string,StateReviewStats>;totalChurches:number;totalNeedsReview:number;percentage:number;missingAddress:number;missingWebsite:number;missingServiceTimes:number;missingDenomination:number}>{
+async function computeReviewStats(cc="US"):Promise<{states:Record<string,StateReviewStats>;totalChurches:number;totalNeedsReview:number;percentage:number;missingAddress:number;missingWebsite:number;missingServiceTimes:number;missingDenomination:number}>{
+  const country=String(cc||"US").toUpperCase();
+  // World rollup: one entry per country (keyed by ISO CC) for the world review modal.
+  if(country==="WORLD"||country==="ALL"){
+    const states:Record<string,StateReviewStats>={};
+    let totalChurches=0,totalNeedsReview=0,missingAddress=0,missingWebsite=0,missingServiceTimes=0,missingDenomination=0;
+    for(const code of REVIEW_STATS_COUNTRY_CODES){
+      const r=await computeReviewStats(code);
+      if(!r.totalChurches)continue;
+      states[code]={
+        total:r.totalChurches,
+        needsReview:r.totalNeedsReview,
+        missingAddress:r.missingAddress,
+        missingWebsite:r.missingWebsite,
+        missingServiceTimes:r.missingServiceTimes,
+        missingDenomination:r.missingDenomination,
+      };
+      totalChurches+=r.totalChurches;
+      totalNeedsReview+=r.totalNeedsReview;
+      missingAddress+=r.missingAddress;
+      missingWebsite+=r.missingWebsite;
+      missingServiceTimes+=r.missingServiceTimes;
+      missingDenomination+=r.missingDenomination;
+    }
+    const percentage=totalChurches>0?Math.round((totalNeedsReview/totalChurches)*1000)/10:0;
+    return {states,totalChurches,totalNeedsReview,percentage,missingAddress,missingWebsite,missingServiceTimes,missingDenomination};
+  }
   const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
-  if(sc["DC"]){sc["MD"]=(sc["MD"]||0)+sc["DC"];delete sc["DC"];}
-  const ps=Object.keys(sc).filter(s=>sc[s]>0);
-  if(!ps.length)return {states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingWebsite:0,missingServiceTimes:0,missingDenomination:0};
+  let populated=listPopulated(sc).filter(p=>p.cc===country);
+  if(country==="US"&&populated.some(p=>p.abbrev==="DC")){
+    populated=populated.filter(p=>p.abbrev!=="DC");
+    if(!populated.some(p=>p.abbrev==="MD"))populated.push({cc:"US",abbrev:"MD"});
+  }
+  if(!populated.length)return {states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingWebsite:0,missingServiceTimes:0,missingDenomination:0};
   const states:Record<string,StateReviewStats>={};
   let totalChurches=0,totalNeedsReview=0,missingAddress=0,missingWebsite=0,missingServiceTimes=0,missingDenomination=0;
   const BATCH=20;
-  for(let i=0;i<ps.length;i+=BATCH){
-    const batch=ps.slice(i,i+BATCH);
-    const values=await kv.mget(batch.map(st=>stateReviewStatsKey(st)));
+  for(let i=0;i<populated.length;i+=BATCH){
+    const batch=populated.slice(i,i+BATCH);
+    const values=await kv.mget(batch.map(p=>reviewStatsStateKey(p.cc,p.abbrev)));
     for(let j=0;j<batch.length;j++){
-      const st=batch[j];
+      const st=batch[j].abbrev;
       const cached=values[j];
-      const data=cached&&typeof cached==="object"&&cached.total!=null?(cached as StateReviewStats):await computeStateReviewStats(st);
+      const data=cached&&typeof cached==="object"&&cached.total!=null?(cached as StateReviewStats):await computeStateReviewStats(st,country);
       states[st]=data;
       totalChurches+=data.total;totalNeedsReview+=data.needsReview;missingAddress+=data.missingAddress;missingWebsite+=data.missingWebsite;missingServiceTimes+=data.missingServiceTimes;missingDenomination+=data.missingDenomination;
     }
@@ -885,16 +1092,18 @@ async function computeReviewStats():Promise<{states:Record<string,StateReviewSta
 const REVIEW_STATS_TTL=30*60_000; // 30 minutes
 app.get(`${P}/churches/review-stats`,async(c)=>{
   try{
-    const cached=await kv.get(REVIEW_STATS_CACHE_KEY);
+    const cc=String(c.req.query("country")||"US").toUpperCase();
+    const cacheKey=reviewStatsCacheKey(cc);
+    const cached=await kv.get(cacheKey);
     const hasCache=cached&&typeof cached==="object"&&cached.states&&cached.totalChurches!=null;
     const fresh=hasCache&&cached._cachedAt&&Date.now()-cached._cachedAt<REVIEW_STATS_TTL;
     if(fresh)return c.json(stripReviewStatsCache(cached));
     if(hasCache){
-      void computeReviewStats().then(async(result)=>{try{await kv.set(REVIEW_STATS_CACHE_KEY,{...result,_cachedAt:Date.now()});}catch(_){}}).catch(()=>{});
+      void computeReviewStats(cc).then(async(result)=>{try{await kv.set(cacheKey,{...result,_cachedAt:Date.now()});}catch(_){}}).catch(()=>{});
       return c.json(stripReviewStatsCache(cached));
     }
-    const result=await computeReviewStats();
-    try{await kv.set(REVIEW_STATS_CACHE_KEY,{...result,_cachedAt:Date.now()});}catch(_){}
+    const result=await computeReviewStats(cc);
+    try{await kv.set(cacheKey,{...result,_cachedAt:Date.now()});}catch(_){}
     return c.json(result);
   }catch(e){return c.json({states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingWebsite:0,missingServiceTimes:0,missingDenomination:0,error:`${e}`},500);}
 });
@@ -940,7 +1149,7 @@ app.get(`${P}/special-report/easter-2026`,async(c)=>{
 
     const meta=await getMeta();
     const sc:Record<string,number>={...(meta?.stateCounts||{})};
-    const states=Object.keys(sc).filter((st)=>/^[A-Z]{2}$/.test(st)&&sc[st]>0);
+    const states=listPopulated(sc).filter(p=>p.cc==="US").map(p=>p.abbrev);
     const generatedAt=new Date().toISOString();
     const title="Easter 2026: Churches with service times";
 
@@ -951,7 +1160,7 @@ app.get(`${P}/special-report/easter-2026`,async(c)=>{
     const BATCH=10;
     for(let i=0;i<states.length;i+=BATCH){
       const batch=states.slice(i,i+BATCH);
-      const keys=batch.map((st)=>`churches:${st}`);
+      const keys=batch.map((st)=>churchesKey(regionCountry(st),st));
       const values=await kv.mget(keys);
       for(let j=0;j<batch.length;j++){
         const st=batch[j];
@@ -1003,7 +1212,7 @@ app.get(`${P}/churches/:state/church/:shortId`,async(c)=>{
   try{
     const st=c.req.param("state").toUpperCase(),segment=(c.req.param("shortId")||"").trim();
     if(!segment||!gS(st))return c.json({error:"Invalid state or shortId"},400);
-    let ch=await kv.get(`churches:${st}`);
+    let ch=await getChurches(st);
     if(!ch||!Array.isArray(ch)||!ch.length)return c.json({church:null,error:"No data for state"},404);
     const corrections=await getApprovedCorrectionsForState(st);
     mergeCorrectionsIntoChurches(ch,corrections);
@@ -1024,9 +1233,9 @@ app.get(`${P}/churches/:state`,async(c)=>{
   try{
     const st=c.req.param("state").toUpperCase(),info=gS(st);
     if(!info)return c.json({error:`Unknown state: ${st}`},400);
-    let ch=await kv.get(`churches:${st}`);
+    let ch=await getChurches(st);
     if(!ch||!Array.isArray(ch)||!ch.length)return c.json({churches:[],state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},fromCache:false,message:`No data for ${info.n}. POST /churches/populate/${st} to fetch.`});
-    if(st==="MD"){try{const dc=await kv.get("churches:DC");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));for(const x of dc)if(!ids.has(x.id))ch.push({...x,state:"MD"});}}catch(_){}}
+    if(st==="MD"){try{const dc=await getChurches("DC","US");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));for(const x of dc)if(!ids.has(x.id))ch.push({...x,state:"MD"});}}catch(_){}}
     const corrections=await getApprovedCorrectionsForState(st);
     mergeCorrectionsIntoChurches(ch,corrections);
     const withShort=addShortIdsUnique(ch,st);
@@ -1058,7 +1267,7 @@ async function finalizePopulate(st:string,ch:any[],ex:any,force:boolean){
   const ardaEnriched=isUS?enrichARDA(ch):0;
   if(isUS)applyStateScaling(ch,st);
   // Preserve community-submitted churches from pending store
-  const pending=await kv.get(`pending-churches:${st}`);
+  const pending=await getPending(st);
   let communityPreserved=0;
   if(pending&&Array.isArray(pending.churches)){
     const osmIds=new Set(ch.map((x:any)=>x.id));
@@ -1075,9 +1284,9 @@ async function finalizePopulate(st:string,ch:any[],ex:any,force:boolean){
   }
   if(force&&Array.isArray(ex)&&ex.length)mergeUserFieldsFromExisting(ex,ch);
   const chWithShort=addShortIdsUnique(ch,st);
-  await kv.set(`churches:${st}`,chWithShort);await writeIdx(st,chWithShort);
+  await setChurches(st,chWithShort);await writeIdx(st,chWithShort);
   void recordChurchAudit({state:st,action:"state_populated",old_value:Array.isArray(ex)?{churchCount:ex.length}:undefined,new_value:{churchCount:ch.length},source:"populate",actor_type:"system"});
-  const meta=(await getMeta())||{stateCounts:{}};meta.stateCounts[st]=ch.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();
+  const meta=(await getMeta())||{stateCounts:{}};meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,ch.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();
   await invalidateReviewStatsCache();
   return{count:ch.length,communityPreserved,ardaEnriched};
 }
@@ -1109,7 +1318,7 @@ app.post(`${P}/churches/populate-cell/:state`,async(c)=>{
     if(!bbox)return c.json({error:"bbox required as s,w,n,e"},400);
     if(c.req.query("reset")==="true")await kv.set(STAGE(st),[]);
 
-    const els=await ovpQ(bQ(regionIso(st),bbox),`${st}-cell`);
+    const els=await ovpForRegion(st,bbox);
     // Report truncation rather than acting on it: the caller owns the splitting
     // decision, so one cell is always exactly one Overpass query.
     const truncated=els.length>=OVP_TRUNCATION_SUSPECT;
@@ -1131,7 +1340,7 @@ app.post(`${P}/churches/populate-finalize/:state`,async(c)=>{
     if(!info)return c.json({error:`Unknown state: ${st}`},400);
     const staged=await kv.get(STAGE(st));
     if(!Array.isArray(staged)||!staged.length)return c.json({error:`No staged churches for ${st}. Run populate-cell first.`},400);
-    const ex=await kv.get(`churches:${st}`);
+    const ex=await getChurches(st);
     const r=await finalizePopulate(st,staged,ex,true);
     await kv.del(STAGE(st));
     return c.json({message:`Populated ${r.count} churches for ${info.n}`,count:r.count,communityPreserved:r.communityPreserved,ardaEnriched:r.ardaEnriched});
@@ -1143,7 +1352,7 @@ app.post(`${P}/churches/populate/:state`,async(c)=>{
     const st=c.req.param("state").toUpperCase(),info=gS(st);
     if(!info)return c.json({error:`Unknown state: ${st}`},400);
     const force=c.req.query("force")==="true";
-    const ex=await kv.get(`churches:${st}`);
+    const ex=await getChurches(st);
     if(!force&&Array.isArray(ex)&&ex.length)return c.json({message:`${info.n} already has ${ex.length} churches.`,count:ex.length,alreadyCached:true});
     console.log(`Populating ${info.n}${force?" (force)":""}...`);
     const ch=await fetchCh(st);
@@ -1154,19 +1363,19 @@ app.post(`${P}/churches/populate/:state`,async(c)=>{
 
 app.get(`${P}/churches/denominations/all`,async(c)=>{
   try{
-    const meta=await getMeta();const ps=Object.keys(meta?.stateCounts||{});
+    const meta=await getMeta();const ps=listPopulated(meta?.stateCounts||{});
     if(!ps.length)return c.json({denominations:[]});
     const dc:Record<string,number>={};
-    for(const s of ps){const ch=await kv.get(`churches:${s}`);if(Array.isArray(ch))for(const x of ch){dc[x.denomination||"Unknown"]=(dc[x.denomination||"Unknown"]||0)+1;}}
+    for(const{cc,abbrev:s}of ps){const ch=await getChurches(s,cc);if(Array.isArray(ch))for(const x of ch){dc[x.denomination||"Unknown"]=(dc[x.denomination||"Unknown"]||0)+1;}}
     return c.json({denominations:Object.entries(dc).sort((a,b)=>b[1]-a[1]).map(([name,count])=>({name,count}))});
   }catch(e){return c.json({denominations:[],error:`${e}`},500);}
 });
 
 app.post(`${P}/churches/search/rebuild-index`,async(c)=>{
   try{
-    const meta=await getMeta();const ps=Object.keys(meta?.stateCounts||{});
+    const meta=await getMeta();const ps=listPopulated(meta?.stateCounts||{});
     if(!ps.length)return c.json({message:"No states populated.",rebuilt:0});
-    let n=0;for(const s of ps){const ch=await kv.get(`churches:${s}`);if(Array.isArray(ch)&&ch.length){await writeIdx(s,ch);n++;}}
+    let n=0;for(const{cc,abbrev:s}of ps){const ch=await getChurches(s,cc);if(Array.isArray(ch)&&ch.length){await writeIdx(s,ch);n++;}}
     await invalidateReviewStatsCache();
     return c.json({message:`Rebuilt indexes for ${n} states`,rebuilt:n});
   }catch(e){return c.json({error:`${e}`},500);}
@@ -1175,20 +1384,20 @@ app.post(`${P}/churches/search/rebuild-index`,async(c)=>{
 app.post(`${P}/admin/refresh-attendance`,async(c)=>{
   try{
     const stateParam=(c.req.query("state")||"").toUpperCase().trim();
-    const meta=await getMeta();const populated=Object.keys(meta?.stateCounts||{});
+    const meta=await getMeta();const populated=listPopulated(meta?.stateCounts||{});
     if(!populated.length)return c.json({message:"No states populated. Use POST /churches/populate/:state first.",refreshed:0});
-    const states=stateParam&&populated.includes(stateParam)?[stateParam]:populated;
+    const states=stateParam?populated.filter(p=>p.abbrev===stateParam):populated;
     let refreshed=0;
-    for(const st of states){
+    for(const{cc,abbrev:st}of states){
       const info=gS(st);if(!info)continue;
       try{
         const ch=await fetchCh(st);enrichARDA(ch);applyStateScaling(ch,st);
-        const existing=await kv.get(`churches:${st}`);
+        const existing=await getChurches(st);
         if(Array.isArray(existing)&&existing.length)mergeUserFieldsFromExisting(existing,ch);
         const chWithShort=addShortIdsUnique(ch,st);
-        await kv.set(`churches:${st}`,chWithShort);await writeIdx(st,chWithShort);
+        await setChurches(st,chWithShort);await writeIdx(st,chWithShort);
         void recordChurchAudit({state:st,action:"state_refreshed",old_value:Array.isArray(existing)?{churchCount:existing.length}:undefined,new_value:{churchCount:chWithShort.length},source:"refresh",actor_type:"system"});
-        if(meta){meta.stateCounts[st]=ch.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
+        if(meta){meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,ch.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
         refreshed++;
       }catch(e){console.log(`Refresh ${st} error:${e}`);}
       if(states.length>1)await new Promise(r=>setTimeout(r,500));
@@ -1211,8 +1420,8 @@ app.get(`${P}/population`,async(c)=>{
 
 app.post(`${P}/admin/cleanup-dc`,async(c)=>{
   try{
-    let d=0;for(const k of["churches:DC","churches:sidx:DC"]){if(await kv.get(k)){await kv.del(k);d++;}}
-    const meta=await getMeta();if(meta?.stateCounts?.DC){delete meta.stateCounts.DC;await kv.set("churches:meta",meta);invalidateMetaCache();d++;}
+    let d=0;for(const k of["churches:DC","churches:sidx:DC","churches:US:DC","churches:sidx:US:DC"]){if(await kv.get(k)){await kv.del(k);d++;}}
+    const meta=await getMeta();if(meta?.stateCounts){const before=Object.keys(meta.stateCounts).length;deleteCount(meta.stateCounts,"DC","US");if(Object.keys(meta.stateCounts).length!==before){await kv.set("churches:meta",meta);invalidateMetaCache();d++;}}
     if(d>0){void recordChurchAudit({state:"DC",action:"dc_removed",new_value:{deleted:d},source:"admin_dc_remove",actor_type:"system"});}
     await invalidateReviewStatsCache();
     return c.json({message:`DC cleanup done. ${d} removed.`,deleted:d});
@@ -1222,19 +1431,18 @@ app.post(`${P}/admin/cleanup-dc`,async(c)=>{
 app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
   try{
     const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
-    const states=Object.keys(sc);
-    if(!states.length)return c.json({message:"No states populated.",cleaned:0});
+    const populated=listPopulated(sc);
+    if(!populated.length)return c.json({message:"No states populated.",cleaned:0});
     let cleanedStates=0,removedTotal=0;
-    for(const st of states){
-      const key=`churches:${st}`;
-      const ch=await kv.get(key);
+    for(const{cc,abbrev:st}of populated){
+      const ch=await getChurches(st,cc);
       if(!Array.isArray(ch)||!ch.length)continue;
       const filtered=ch.filter((x:any)=>!isBlockedDenomination(x.denomination));
       const removed=ch.length-filtered.length;
       if(removed>0){
-        await kv.set(key,filtered);
+        await setChurches(st,filtered,cc);
         await writeIdx(st,filtered);
-        sc[st]=filtered.length;
+        setCount(sc,st,filtered.length,cc);
         removedTotal+=removed;
         cleanedStates++;
         void recordChurchAudit({state:st,action:"cleanup_blocked_denominations",old_value:{churchCount:ch.length},new_value:{churchCount:filtered.length,removed},source:"admin_cleanup",actor_type:"system"});
@@ -1249,15 +1457,14 @@ app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
 app.post(`${P}/admin/migrate-denominations`,async(c)=>{
   try{
     const meta=await getMeta();
-    const allStates=Object.keys(meta?.stateCounts||{});
-    if(!allStates.length)return c.json({message:"No states populated.",updatedStates:0,updatedChurches:0});
+    const allPop=listPopulated(meta?.stateCounts||{});
+    if(!allPop.length)return c.json({message:"No states populated.",updatedStates:0,updatedChurches:0});
     const stateParam=(c.req.query("state")||"").toUpperCase().trim();
-    const states=stateParam&&allStates.includes(stateParam)?[stateParam]:allStates;
+    const populated=stateParam?allPop.filter(p=>p.abbrev===stateParam):allPop;
 
     let updatedStates=0,updatedChurches=0;
-    for(const st of states){
-      const key=`churches:${st}`;
-      const ch=await kv.get(key);
+    for(const{cc,abbrev:st}of populated){
+      const ch=await getChurches(st,cc);
       if(!Array.isArray(ch)||!ch.length)continue;
 
       let changedInState=0;
@@ -1271,7 +1478,7 @@ app.post(`${P}/admin/migrate-denominations`,async(c)=>{
       }
 
       if(changedInState>0){
-        await kv.set(key,ch);
+        await setChurches(st,ch,cc);
         await writeIdx(st,ch);
         updatedStates++;
         updatedChurches+=changedInState;
@@ -1294,30 +1501,28 @@ app.post(`${P}/admin/remove-churches-by-name`,async(c)=>{
     const name=typeof b?.name==="string"?b.name.trim():"";
     if(!name)return c.json({error:"Body must include { name: \"Church Name\" }"},400);
     const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
-    const states=Object.keys(sc);
+    const populated=listPopulated(sc);
     let removedMain=0,removedPending=0;
     const norm=(s:string)=>s.trim().toLowerCase();
     const target=norm(name);
-    for(const st of states){
-      const key=`churches:${st}`;
-      const ch=await kv.get(key);
+    for(const{cc,abbrev:st}of populated){
+      const ch=await getChurches(st,cc);
       if(Array.isArray(ch)&&ch.length){
         const filtered=ch.filter((x:any)=>norm((x.name||"").trim())!==target);
         const r=ch.length-filtered.length;
         if(r>0){
-          await kv.set(key,filtered);
+          await setChurches(st,filtered,cc);
           await writeIdx(st,filtered);
-          sc[st]=filtered.length;
+          setCount(sc,st,filtered.length,cc);
           removedMain+=r;
         }
       }
-      const pendingKey=`pending-churches:${st}`;
-      const store=await kv.get(pendingKey);
+      const store=await getPending(st,cc);
       if(store&&Array.isArray(store.churches)&&store.churches.length){
         const before=store.churches.length;
         store.churches=store.churches.filter((pc:any)=>norm((pc.name||"").trim())!==target);
         const removedP=before-store.churches.length;
-        if(removedP>0){await kv.set(pendingKey,store);removedPending+=removedP;}
+        if(removedP>0){await setPending(st,store,cc);removedPending+=removedP;}
       }
     }
     if(meta){meta.stateCounts=sc;await kv.set("churches:meta",meta);invalidateMetaCache();}
@@ -1332,7 +1537,8 @@ const THR=1;
 const ALERT_THR=3;
 const ADD_CHURCH_RATE_LIMIT=5;
 const ADD_CHURCH_WINDOW_MS=15*60*1000;
-const SENSITIVE_FIELDS=["name","website","address","reportClosed","reportDuplicate","homeCampusId"];
+const SENSITIVE_FIELDS=["name","website","address","reportClosed","reportDuplicate","reportOutOfScope","homeCampusId"];
+const REMOVAL_REPORT_FIELDS=new Set(["reportClosed","reportDuplicate","reportOutOfScope"]);
 const MODERATOR_KEY=Deno.env.get("MODERATOR_KEY")||"";
 function cip(c:any):string{return c.req.header("x-forwarded-for")?.split(",")[0]?.trim()||c.req.header("x-real-ip")||"unknown";}
 function checkModKey(c:any):boolean{const k=new URL(c.req.url).searchParams.get("key")||c.req.header("x-moderator-key")||"";return!!MODERATOR_KEY&&k===MODERATOR_KEY;}
@@ -1340,13 +1546,23 @@ function getModKey(c:any):string{return new URL(c.req.url).searchParams.get("key
 function inReviewKVKey(modKey:string):string{let h=0;for(let i=0;i<modKey.length;i++)h=((h<<5)-h+modKey.charCodeAt(i))|0;return`moderate:in-review:${Math.abs(h).toString(36)}`;}
 function modKeyHash(modKey:string):string{let h=0;for(let i=0;i<modKey.length;i++)h=((h<<5)-h+modKey.charCodeAt(i))|0;return Math.abs(h).toString(36);}
 const IN_REVIEW_GLOBAL_KEY="moderate:in-review:global";
+/** True if lat/lng fall inside a region's bounds (with small padding). */
+function coordsInRegion(lat:number,lng:number,stateAbbrev:string,padDeg=0.5):boolean{
+  const b=regionBounds(stateAbbrev);
+  if(!b)return false;
+  const[s,w,n,e]=b;
+  return lat>=s-padDeg&&lat<=n+padDeg&&lng>=w-padDeg&&lng<=e+padDeg;
+}
+
 /** Server-side geocoding via Nominatim (OpenStreetMap). Returns null on failure — never throws. */
 async function geocodeAddress(street:string,city:string,stateAbbrev:string):Promise<{lat:number;lng:number}|null>{
-  const s=(street??"").trim(),c=(city??"").trim(),st=(stateAbbrev??"").trim().toUpperCase().slice(0,2);
-  if(!s||!c||!st)return null;
-  const q=`${s}, ${c}, ${st}, USA`;
+  const s=(street??"").trim(),c=(city??"").trim(),st=(stateAbbrev??"").trim().toUpperCase();
+  if(!s||!c||!st||!isValidRegion(st))return null;
+  const cc=regionCountry(st);
+  const regionName=gS(st)?.n||st;
+  const q=cc==="US"?`${s}, ${c}, ${st}, USA`:`${s}, ${c}, ${regionName}`;
   try{
-    const url=`https://nominatim.openstreetmap.org/search?${new URLSearchParams({q,format:"json",limit:"1",countrycodes:"us"})}`;
+    const url=`https://nominatim.openstreetmap.org/search?${new URLSearchParams({q,format:"json",limit:"1",countrycodes:cc.toLowerCase()})}`;
     const res=await fetch(url,{headers:{"User-Agent":"HereIsMyChurch/1.0 (church map app)"}});
     if(!res.ok)return null;
     const data=await res.json();
@@ -1354,9 +1570,48 @@ async function geocodeAddress(street:string,city:string,stateAbbrev:string):Prom
     if(!first||first.lat==null||first.lon==null)return null;
     const lat=parseFloat(first.lat),lng=parseFloat(first.lon);
     if(isNaN(lat)||isNaN(lng))return null;
-    if(lat<18||lat>72||lng<-180||lng>-65)return null;
+    if(!coordsInRegion(lat,lng,st))return null;
     return {lat,lng};
   }catch{return null;}
+}
+
+const SIMILAR_MAX=5;
+const SIMILAR_MAX_KM=1.6;
+function haversineKm(lat1:number,lng1:number,lat2:number,lng2:number):number{
+  const R=6371;
+  const dLat=((lat2-lat1)*Math.PI)/180,dLng=((lng2-lng1)*Math.PI)/180;
+  const a=Math.sin(dLat/2)**2+Math.cos((lat1*Math.PI)/180)*Math.cos((lat2*Math.PI)/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function nameSimilarityAdd(inputName:string,churchName:string):number{
+  const input=inputName.trim().toLowerCase(),church=(churchName||"").trim().toLowerCase();
+  if(!input)return 0;
+  if(church.includes(input))return 1;
+  const toks=input.replace(/[^a-z0-9\s]/g," ").split(/\s+/).filter(Boolean);
+  const set=new Set(church.replace(/[^a-z0-9\s]/g," ").split(/\s+/).filter(Boolean));
+  if(!toks.length)return 0;
+  return toks.filter(t=>set.has(t)).length/toks.length;
+}
+/** Near-duplicate candidates for add-church (mirrors AddChurchForm.findSimilarChurches). */
+function findSimilarChurchesServer(name:string,lat:number,lng:number,city:string,state:string,churches:any[]):any[]{
+  const nameNorm=name.trim().toLowerCase();
+  if(!nameNorm||!Array.isArray(churches)||!churches.length)return [];
+  const cityNorm=city.trim().toLowerCase();
+  const st=state.toUpperCase();
+  return churches
+    .filter((c:any)=>(c.state||"").toUpperCase()===st)
+    .map((church:any)=>{
+      const nScore=nameSimilarityAdd(name,church.name||"");
+      const distKm=church.lat!=null&&church.lng!=null?haversineKm(lat,lng,church.lat,church.lng):Infinity;
+      const near=distKm<=SIMILAR_MAX_KM;
+      const cityMatch=!!cityNorm&&!!church.city&&String(church.city).trim().toLowerCase()===cityNorm;
+      const relevance=nScore*(1+(cityMatch?0.3:0)+(near?0.3:0));
+      return{church,nScore,near,cityMatch,relevance};
+    })
+    .filter(({nScore,near,cityMatch})=>nScore>=0.4&&(near||cityMatch))
+    .sort((a,b)=>b.relevance-a.relevance)
+    .slice(0,SIMILAR_MAX)
+    .map(({church})=>church);
 }
 function normalizePhone(s:string):string{
   const digits=(s??"").replace(/\D/g,"");
@@ -1364,7 +1619,7 @@ function normalizePhone(s:string):string{
   if(digits.length<10)return "";
   return digits;
 }
-const VF=["name","website","address","reportClosed","reportDuplicate","attendance","denomination","serviceTimes","languages","ministries","pastorName","phone","email","homeCampusId"];
+const VF=["name","website","address","reportClosed","reportDuplicate","reportOutOfScope","attendance","denomination","serviceTimes","languages","ministries","pastorName","phone","email","homeCampusId"];
 function consensus(subs:any[]){
   const res:Record<string,any>={};
   for(const f of VF){
@@ -1428,9 +1683,9 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>,a
   const corrections:Record<string,any>={};
   for(const[field,data]of Object.entries(con)){if((data as any).approved&&(data as any).value!==null)corrections[field]=(data as any).value;}
   if(!Object.keys(corrections).length)return {updated:false};
-  const parts=churchId.split("-");const st=parts[0]==="community"?parts[1]:parts[0];
-  if(!st||st.length!==2)return {updated:false};
-  const key=`churches:${st}`;const churches=await kv.get(key);
+  const st=regionFromChurchId(churchId);
+  if(!st||!isValidRegion(st))return {updated:false};
+  const churches=await getChurches(st);
   if(!Array.isArray(churches))return {updated:false};
   const auditEntries:{field:string;oldVal:unknown;newVal:unknown}[]=[];
   const previousValues:Record<string,string>={};
@@ -1470,6 +1725,7 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>,a
           }
         }
         else if(f==="phone"){(ch as any).phone=normalizePhone(String(v))||undefined;}
+        else if(f==="serviceTimes"){(ch as any).serviceTimes=normalizeServiceTimes(String(v))||undefined;}
         else if(f==="homeCampusId"){(ch as any).homeCampusId=(String(v).trim()||undefined);}
         else{(ch as any)[f]=v;}
       }
@@ -1478,7 +1734,7 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>,a
     }
   }
   if(updated){
-    await kv.set(key,churches);
+    await setChurches(st,churches);
     if(auditContext){const opts=auditContext.actorModKey?{hashModKey:auditContext.actorModKey}:auditContext.actorIp?{hashIp:auditContext.actorIp}:undefined;for(const e of auditEntries){await recordChurchAudit({church_id:churchId,church_name:auditChurchName,church_city_state:auditChurchCityState,state:st,action:"field_updated",field:e.field,old_value:e.oldVal,new_value:e.newVal,source:auditContext.source},opts);}}
     await persistStateReviewStats(st,churches);
     await invalidateReviewStatsCache();
@@ -1511,9 +1767,11 @@ app.post(`${P}/suggestions`,async(c)=>{
     let storeValue=String(value).trim();
     if(!storeValue&&field!=="homeCampusId")return c.json({error:"Value is required"},400);
     if(field==="reportClosed"){storeValue="closed";}
+    if(field==="reportOutOfScope"){storeValue="out_of_scope";}
     if(field==="reportDuplicate"){if(!stateFromChurchId(storeValue))return c.json({error:"Invalid church ID format"},400);if(storeValue===churchId)return c.json({error:"Cannot report self as duplicate"},400);}
     if(field==="name"&&storeValue.length<2)return c.json({error:"Church name must be at least 2 characters"},400);
     if(field==="phone"){storeValue=normalizePhone(storeValue);if(!storeValue)return c.json({error:"Invalid phone number"},400);}
+    if(field==="serviceTimes"){storeValue=normalizeServiceTimes(storeValue);if(!storeValue)return c.json({error:"Invalid service times"},400);}
     const k=`suggestions:${churchId}`;const ex=(await kv.get(k))||{churchId,submissions:[]};
     // Ensure churchId is stored in the value for getByPrefix lookups
     if(!ex.churchId)ex.churchId=churchId;
@@ -1690,33 +1948,58 @@ app.post("/alerts/proposals/resolve",alertsProposalsResolveHandler);
 app.post(`${P}/churches/add`,async(c)=>{
   try{
     const ip=cip(c);const b=await c.req.json();
+    const{name,address:addr,city:ci,state,lat,lng,denomination,attendance,website,serviceTimes,languages,ministries,pastorName,phone,email,confirmAdd}=b;
+    if(!name||typeof name!=="string"||name.trim().length<2)return c.json({error:"Name required"},400);
+    const st=String(state||"").toUpperCase().trim();
+    if(!isValidRegion(st)||!gS(st))return c.json({error:"Invalid region"},400);
+    const cc=regionCountry(st);
+    const pLat=parseFloat(lat),pLng=parseFloat(lng);
+    if(isNaN(pLat)||isNaN(pLng)||!coordsInRegion(pLat,pLng,st))return c.json({error:"Valid coordinates required for this region"},400);
+    const att=Math.max(1,Math.min(parseInt(attendance)||50,50000));
+    const rawDenom=(denomination??"").trim();
+    if(rawDenom&&isBlockedDenomination(rawDenom))return c.json({error:"Denomination not supported"},400);
+    const mainChurches=(await getChurches(st))||[];
+    if(!confirmAdd){
+      const similar=findSimilarChurchesServer(name.trim(),pLat,pLng,String(ci||""),st,Array.isArray(mainChurches)?mainChurches:[]);
+      if(similar.length){
+        return c.json({
+          needsConfirmation:true,
+          similar:similar.map((ch:any)=>({
+            id:ch.id,
+            shortId:ch.shortId||toShortId(ch.id,ch.state||st,ch.shortId),
+            name:ch.name,
+            city:ch.city,
+            state:ch.state||st,
+            country:cc,
+            address:ch.address||"",
+            denomination:ch.denomination||"",
+            lat:ch.lat,
+            lng:ch.lng,
+          })),
+        });
+      }
+    }
     const rlKey=`ratelimit:add-church:${ip}`;
     const raw=await kv.get(rlKey);
     const now=Date.now();
     const data=(!raw||(now-(raw.windowStart||0))>ADD_CHURCH_WINDOW_MS)?{count:1,windowStart:now}:{count:(raw.count||0)+1,windowStart:raw.windowStart||now};
     if(data.count>ADD_CHURCH_RATE_LIMIT)return c.json({error:"Too many church submissions. Please try again later."},429);
     await kv.set(rlKey,data);
-    const{name,address:addr,city:ci,state,lat,lng,denomination,attendance,website,serviceTimes,languages,ministries,pastorName,phone,email}=b;
-    if(!name||typeof name!=="string"||name.trim().length<2)return c.json({error:"Name required"},400);
-    const st=String(state).toUpperCase();if(!gS(st))return c.json({error:"Invalid state"},400);
-    const pLat=parseFloat(lat),pLng=parseFloat(lng);
-    if(isNaN(pLat)||isNaN(pLng)||pLat<18||pLat>72||pLng<-180||pLng>-65)return c.json({error:"Valid US coords required"},400);
-    const att=Math.max(1,Math.min(parseInt(attendance)||50,50000));
-    const rawDenom=(denomination??"").trim();
-    if(rawDenom&&isBlockedDenomination(rawDenom))return c.json({error:"Denomination not supported"},400);
-    const id=`community-${st}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-    const mainKey=`churches:${st}`;const mainChurches=(await kv.get(mainKey))||[];
+    const id=cc==="US"
+      ?`community-${st}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`
+      :`community-${cc}-${st}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
     const existingShortIds=new Set((mainChurches as any[]).map((c:any)=>c.shortId||toShortId(c.id,c.state||st)));
     let shortId:string;do{shortId=Math.floor(10000000+Math.random()*90000000).toString();}while(existingShortIds.has(shortId));
-    const k=`pending-churches:${st}`;const store=(await kv.get(k))||{churches:[]};
+    const store=(await getPending(st))||{churches:[]};
     const dup=store.churches.find((ch:any)=>ch.name.trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs(ch.lat-pLat)<0.001&&Math.abs(ch.lng-pLng)<0.001);
-    if(dup){if(!dup.verifications.some((v:any)=>v.ip===ip)){dup.verifications.push({ip,timestamp:Date.now()});if(dup.verifications.length>=THR)dup.approved=true;await kv.set(k,store);}return c.json({success:true,church:dup,isDuplicate:true});}
+    if(dup){if(!dup.verifications.some((v:any)=>v.ip===ip)){dup.verifications.push({ip,timestamp:Date.now()});if(dup.verifications.length>=THR)dup.approved=true;await setPending(st,store);}return c.json({success:true,church:dup,isDuplicate:true});}
     const mainDup=Array.isArray(mainChurches)&&(mainChurches as any[]).find((ch:any)=>(ch.name||"").trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs((ch.lat||0)-pLat)<0.001&&Math.abs((ch.lng||0)-pLng)<0.001);
     if(mainDup){return c.json({success:true,isDuplicate:true,existingChurch:{id:mainDup.id,shortId:mainDup.shortId,name:mainDup.name,city:mainDup.city,state:mainDup.state||st}});}
-    const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:(serviceTimes||"").trim()||undefined,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:normalizePhone(phone||"")||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
-    store.churches.push(nc);await kv.set(k,store);
-    const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,state:st,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
-    if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);await invalidateReviewStatsCache();await queueChurch(churchForMain);void recordChurchAudit({church_id:id,church_name:nc.name,church_city_state:[nc.city,st].filter(Boolean).join(", "),state:st,action:"church_added",new_value:{name:nc.name,city:nc.city,state:st,denomination:nc.denomination},source:"community_add"},{hashIp:ip});}
+    const normalizedSvc=normalizeServiceTimes(serviceTimes)||undefined;
+    const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,country:cc,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:normalizedSvc,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:normalizePhone(phone||"")||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
+    store.churches.push(nc);await setPending(st,store);
+    const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,state:st,country:cc,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
+    if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await setChurches(st,mainChurches);await writeIdx(st,mainChurches);await invalidateReviewStatsCache();await queueChurch(churchForMain);void recordChurchAudit({church_id:id,church_name:nc.name,church_city_state:[nc.city,st].filter(Boolean).join(", "),state:st,action:"church_added",new_value:{name:nc.name,city:nc.city,state:st,denomination:nc.denomination},source:"community_add"},{hashIp:ip});}
     return c.json({success:true,church:nc});
   }catch(e){return c.json({error:`${e}`},500);}
 });
@@ -1724,7 +2007,7 @@ app.post(`${P}/churches/add`,async(c)=>{
 app.get(`${P}/churches/pending/:state`,async(c)=>{
   try{
     const st=c.req.param("state").toUpperCase(),ip=cip(c);
-    const store=(await kv.get(`pending-churches:${st}`))||{churches:[]};
+    const store=(await getPending(st))||{churches:[]};
     const churches=Array.isArray(store.churches)?store.churches:[];
     return c.json({state:st,churches:churches.map((ch:any)=>({id:ch.id,name:ch.name,address:ch.address,city:ch.city,state:ch.state,lat:ch.lat,lng:ch.lng,denomination:ch.denomination,attendance:ch.attendance,website:ch.website,approved:ch.approved,verificationCount:Array.isArray(ch.verifications)?ch.verifications.length:0,needed:THR,myVerification:Array.isArray(ch.verifications)&&ch.verifications.some((v:any)=>v.ip===ip),submittedAt:ch.submittedAt}))});
   }catch(e){return c.json({state:c.req.param("state")?.toUpperCase()||"",churches:[],error:`${e}`},500);}
@@ -1734,13 +2017,13 @@ app.post(`${P}/churches/verify/:pendingId`,async(c)=>{
   try{
     const ip=cip(c),pid=c.req.param("pendingId");
     const parts=pid.split("-");if(parts.length<3||parts[0]!=="community")return c.json({error:"Invalid ID"},400);
-    const k=`pending-churches:${parts[1]}`;const store=(await kv.get(k))||{churches:[]};
+    const store=(await getPending(parts[1]))||{churches:[]};
     const churches=Array.isArray(store.churches)?store.churches:[];
     const ch=churches.find((x:any)=>x.id===pid);if(!ch)return c.json({error:"Not found"},404);
     if(!Array.isArray(ch.verifications))ch.verifications=[];
     if(ch.verifications.some((v:any)=>v.ip===ip))return c.json({success:true,alreadyVerified:true});
     ch.verifications.push({ip,timestamp:Date.now()});if(ch.verifications.length>=THR)ch.approved=true;
-    await kv.set(k,store);
+    await setPending(parts[1],store);
     return c.json({success:true,church:{...ch,verificationCount:ch.verifications.length,needed:THR,myVerification:true}});
   }catch(e){return c.json({error:`${e}`},500);}
 });
@@ -1750,14 +2033,14 @@ app.post(`${P}/churches/verify/:pendingId`,async(c)=>{
 app.post(`${P}/churches/confirm/:churchId`,async(c)=>{
   try{
     const ip=cip(c);const churchId=c.req.param("churchId");
-    const parts=churchId.split("-");const st=parts[0]==="community"?parts[1]:parts[0];
-    if(!st||st.length!==2)return c.json({error:"Invalid church ID"},400);
+    const st=regionFromChurchId(churchId);
+    if(!st||!isValidRegion(st))return c.json({error:"Invalid church ID"},400);
     const confirmKey=`confirms:${churchId}`;const existing=(await kv.get(confirmKey))||{confirmations:[]};
     const day=Date.now()-86400000;
     if(existing.confirmations.find((conf:any)=>conf.ip===ip&&conf.timestamp>day))return c.json({success:true,alreadyConfirmed:true});
     existing.confirmations.push({ip,timestamp:Date.now()});await kv.set(confirmKey,existing);
-    const key=`churches:${st}`;const churches=await kv.get(key);
-    if(Array.isArray(churches)){const ch=churches.find((x:any)=>x.id===churchId);if(ch){ch.lastVerified=Date.now();await kv.set(key,churches);void recordChurchAudit({church_id:churchId,church_name:ch.name,church_city_state:[ch.city,ch.state].filter(Boolean).join(", "),state:st,action:"church_confirmed",source:"confirm"},{hashIp:ip});}}
+    const churches=await getChurches(st);
+    if(Array.isArray(churches)){const ch=churches.find((x:any)=>x.id===churchId);if(ch){ch.lastVerified=Date.now();await setChurches(st,churches);void recordChurchAudit({church_id:churchId,church_name:ch.name,church_city_state:[ch.city,ch.state].filter(Boolean).join(", "),state:st,action:"church_confirmed",source:"confirm"},{hashIp:ip});}}
     const stats=(await kv.get("community:stats"))||{totalCorrections:0,churchesImproved:[],totalConfirmations:0,corrections:[]};
     stats.totalConfirmations=(stats.totalConfirmations||0)+1;stats.lastUpdated=Date.now();await kv.set("community:stats",stats);
     return c.json({success:true,totalConfirmations:existing.confirmations.length});
@@ -1791,7 +2074,7 @@ app.get(`${P}/community/stats`,async(c)=>{
     const stats=(await kv.get("community:stats"))||{totalCorrections:0,churchesImproved:[],totalConfirmations:0,corrections:[],lastUpdated:null};
     const corrections=Array.isArray(stats.corrections)?stats.corrections:[];
     const improved=Array.isArray(stats.churchesImproved)?stats.churchesImproved:[];
-    if(state&&state.length===2){
+    if(state&&isValidRegion(state)){
       const prefix1=state+"-";const prefix2="community-"+state+"-";
       const match=(id: string)=>{const u=String(id||"").toUpperCase();return u.startsWith(prefix1)||u.startsWith(prefix2.toUpperCase());};
       const stateCorrections=corrections.filter((h: any)=>h&&match(String(h.churchId||"")));
@@ -1898,7 +2181,7 @@ app.get(`${P}/monthly-stats`,async(c)=>{
     const sb=supabaseMonthly();
     let q=sb.from(MONTHLY_SNAPSHOTS_TABLE).select("*").order("month",{ascending:false});
     if(month){const m=month.match(/^(\d{4})-(\d{2})$/);if(m)q=q.eq("month",m[0]+"-01");}
-    if(state&&state.length===2)q=q.eq("state_abbrev",state.toUpperCase());
+    if(state&&isValidRegion(state))q=q.eq("state_abbrev",state.toUpperCase());
     if(from){const m=from.match(/^(\d{4})-(\d{2})$/);if(m)q=q.gte("month",m[0]+"-01");}
     if(to){const m=to.match(/^(\d{4})-(\d{2})$/);if(m)q=q.lte("month",m[0]+"-01");}
     const {data,error}=await q.limit(500);
@@ -1930,23 +2213,24 @@ const moderatePendingHandler=async(c:any)=>{
         for(const f of SENSITIVE_FIELDS){
           const d=con[f] as any;
           if(d&&d.votes>0&&d.value!==null){
-            const parts=entry.churchId.split("-");const st=parts[0]==="community"?parts[1]:parts[0];
-            if(st&&st.length===2)statesNeeded.add(st);
+            const st=regionFromChurchId(entry.churchId);
+            if(st&&isValidRegion(st))statesNeeded.add(st);
           }
         }
       }
     }
-    const churchKeys=[...statesNeeded].map(st=>`churches:${st}`);
+    const regionList=[...statesNeeded];
+    const churchKeys=regionList.map(st=>churchesKey(regionCountry(st),st));
     const churchesByState=new Map<string,any[]>();
     for(let i=0;i<churchKeys.length;i+=MODERATE_BATCH){
       const batch=churchKeys.slice(i,i+MODERATE_BATCH);
+      const regionBatch=regionList.slice(i,i+MODERATE_BATCH);
       const values=await kv.mget(batch);
       for(let j=0;j<batch.length;j++){
-        const st=batch[j].replace("churches:","");
-        if(Array.isArray(values[j]))churchesByState.set(st,values[j]);
+        if(Array.isArray(values[j]))churchesByState.set(regionBatch[j],values[j]);
       }
     }
-    // SENSITIVE_FIELDS includes name, website, address, reportClosed, reportDuplicate, homeCampusId. Entries are only skipped when proposed matches current (per valuesMatchForReview).
+    // SENSITIVE_FIELDS includes name, website, address, reportClosed, reportDuplicate, reportOutOfScope, homeCampusId. Entries are only skipped when proposed matches current (per valuesMatchForReview).
     if(Array.isArray(allSuggestions)){
       for(const entry of allSuggestions){
         if(!entry||!Array.isArray(entry.submissions)||!entry.churchId)continue;
@@ -1954,10 +2238,10 @@ const moderatePendingHandler=async(c:any)=>{
         for(const f of SENSITIVE_FIELDS){
           const d=con[f] as any;
           if(d&&d.votes>0&&d.value!==null){
-            const parts=entry.churchId.split("-");const st=parts[0]==="community"?parts[1]:parts[0];
+            const st=regionFromChurchId(entry.churchId);
             let currentValue:string|null=null;
             let ch:any=null;
-            if(st&&st.length===2){
+            if(st&&isValidRegion(st)){
               const churches=churchesByState.get(st);
               if(Array.isArray(churches)){ch=churches.find((x:any)=>x.id===entry.churchId);if(ch){if(f==="address")currentValue=[ch.address,ch.city,ch.state].filter(Boolean).join(", ");else if(f==="name")currentValue=String(ch.name??"");else if(f==="website")currentValue=String(ch.website??"");else currentValue=String(ch[f]||"");}}
             }
@@ -1977,7 +2261,7 @@ const moderatePendingHandler=async(c:any)=>{
     const pendingChurches:any[]=[];
     for(let i=0;i<US_STATES_LIST.length;i+=MODERATE_BATCH){
       const batch=US_STATES_LIST.slice(i,i+MODERATE_BATCH);
-      const pendingKeys=batch.map(st=>`pending-churches:${st}`);
+      const pendingKeys=batch.map(st=>`pending-churches:${regionCountry(st)}:${st}`);
       const pendingValues=await kv.mget(pendingKeys);
       for(let j=0;j<batch.length;j++){
         const store=pendingValues[j];
@@ -2059,61 +2343,31 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
         }catch{}
       }
     }
-    if(field==="reportClosed"){
-      const parts=churchId.split("-");const st=parts[0]==="community"?parts[1]:parts[0];
-      if(!st||st.length!==2)return c.json({error:"Invalid church ID"},400);
+    if(REMOVAL_REPORT_FIELDS.has(field)){
+      const st=regionFromChurchId(churchId);
+      if(!st||!isValidRegion(st))return c.json({error:"Invalid church ID"},400);
       let auditChurchName:string|null=null;let auditChurchCityState:string|null=null;
-      const mainKey=`churches:${st}`;const mainChurches=await kv.get(mainKey);
+      const mainChurches=await getChurches(st);
       if(Array.isArray(mainChurches)){
         const ch=mainChurches.find((x:any)=>x.id===churchId);
         if(ch){auditChurchName=ch.name||null;auditChurchCityState=[ch.city,ch.state].filter(Boolean).join(", ")||null;}
         const filtered=mainChurches.filter((x:any)=>x.id!==churchId);
         if(filtered.length!==mainChurches.length){
-          await kv.set(mainKey,filtered);
+          await setChurches(st,filtered);
           await writeIdx(st,filtered);
-          const meta=await getMeta();if(meta){meta.stateCounts=meta.stateCounts||{};meta.stateCounts[st]=filtered.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
+          const meta=await getMeta();if(meta){meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,filtered.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
         }
       }
-      const pendingKey=`pending-churches:${st}`;const store=await kv.get(pendingKey);
+      const store=await getPending(st);
       if(store&&Array.isArray(store.churches)&&store.churches.length){
         const pendingCh=store.churches.find((x:any)=>x.id===churchId);
         if(pendingCh&&!auditChurchName){auditChurchName=pendingCh.name||null;auditChurchCityState=[pendingCh.city,pendingCh.state].filter(Boolean).join(", ")||null;}
         const before=store.churches.length;
         store.churches=store.churches.filter((x:any)=>x.id!==churchId);
-        if(store.churches.length!==before)await kv.set(pendingKey,store);
+        if(store.churches.length!==before)await setPending(st,store);
       }
       await invalidateReviewStatsCache();
-      if(st){void recordChurchAudit({church_id:churchId,church_name:auditChurchName,church_city_state:auditChurchCityState,state:st,action:"church_removed",field:"reportClosed",new_value:valueToApply,source:"moderate_approve"},{hashModKey:getModKey(c)});}
-      ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
-      await kv.set(k,ex);
-      const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);
-      return c.json({success:true,applied:true,churchId,field,value:valueToApply});
-    }
-    if(field==="reportDuplicate"){
-      const parts=churchId.split("-");const st=parts[0]==="community"?parts[1]:parts[0];
-      if(!st||st.length!==2)return c.json({error:"Invalid church ID"},400);
-      let auditChurchName:string|null=null;let auditChurchCityState:string|null=null;
-      const mainKey=`churches:${st}`;const mainChurches=await kv.get(mainKey);
-      if(Array.isArray(mainChurches)){
-        const ch=mainChurches.find((x:any)=>x.id===churchId);
-        if(ch){auditChurchName=ch.name||null;auditChurchCityState=[ch.city,ch.state].filter(Boolean).join(", ")||null;}
-        const filtered=mainChurches.filter((x:any)=>x.id!==churchId);
-        if(filtered.length!==mainChurches.length){
-          await kv.set(mainKey,filtered);
-          await writeIdx(st,filtered);
-          const meta=await getMeta();if(meta){meta.stateCounts=meta.stateCounts||{};meta.stateCounts[st]=filtered.length;meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
-        }
-      }
-      const pendingKey=`pending-churches:${st}`;const store=await kv.get(pendingKey);
-      if(store&&Array.isArray(store.churches)&&store.churches.length){
-        const pendingCh=store.churches.find((x:any)=>x.id===churchId);
-        if(pendingCh&&!auditChurchName){auditChurchName=pendingCh.name||null;auditChurchCityState=[pendingCh.city,pendingCh.state].filter(Boolean).join(", ")||null;}
-        const before=store.churches.length;
-        store.churches=store.churches.filter((x:any)=>x.id!==churchId);
-        if(store.churches.length!==before)await kv.set(pendingKey,store);
-      }
-      await invalidateReviewStatsCache();
-      if(st){void recordChurchAudit({church_id:churchId,church_name:auditChurchName,church_city_state:auditChurchCityState,state:st,action:"church_removed",field:"reportDuplicate",new_value:valueToApply,source:"moderate_approve"},{hashModKey:getModKey(c)});}
+      if(st){void recordChurchAudit({church_id:churchId,church_name:auditChurchName,church_city_state:auditChurchCityState,state:st,action:"church_removed",field,new_value:valueToApply,source:"moderate_approve"},{hashModKey:getModKey(c)});}
       ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
       await kv.set(k,ex);
       const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);
@@ -2144,7 +2398,7 @@ const moderateRejectSuggestionHandler=async(c:any)=>{
     ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
     await kv.set(k,ex);
     const stRej=churchId.split("-")[0]==="community"?churchId.split("-")[1]:churchId.split("-")[0];
-    if(stRej&&stRej.length===2){void recordChurchAudit({church_id:churchId,state:stRej,action:"suggestion_rejected",field,new_value:rejectedVal,source:"moderate_reject"},{hashModKey:getModKey(c)});}
+    if(stRej&&isValidRegion(stRej)){void recordChurchAudit({church_id:churchId,state:stRej,action:"suggestion_rejected",field,new_value:rejectedVal,source:"moderate_reject"},{hashModKey:getModKey(c)});}
     const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);
     return c.json({success:true,churchId,field,rejected:true});
   }catch(e){return c.json({error:`${e}`},500);}
@@ -2158,17 +2412,17 @@ const moderateApproveChurchHandler=async(c:any)=>{
     const{churchId}=await c.req.json();
     if(!churchId)return c.json({error:"Missing churchId"},400);
     const parts=churchId.split("-");if(parts.length<3||parts[0]!=="community")return c.json({error:"Invalid community church ID"},400);
-    const st=parts[1];const k=`pending-churches:${st}`;const store=await kv.get(k);
+    const st=parts[1];const store=await getPending(st);
     if(!store||!Array.isArray(store.churches))return c.json({error:"Not found"},404);
     const ch=store.churches.find((x:any)=>x.id===churchId);
     if(!ch)return c.json({error:"Church not found"},404);
-    ch.approved=true;await kv.set(k,store);
-    const mainKey=`churches:${st}`;const mainChurches=(await kv.get(mainKey))||[];
+    ch.approved=true;await setPending(st,store);
+    const mainChurches=(await getChurches(st))||[];
     if(Array.isArray(mainChurches)){
       const exists=mainChurches.some((mc:any)=>mc.id===churchId);
       if(!exists){
         mainChurches.push({id:ch.id,shortId:ch.shortId,name:ch.name,address:ch.address,city:ch.city,state:st,lat:ch.lat,lng:ch.lng,denomination:ch.denomination,attendance:ch.attendance,website:ch.website,serviceTimes:ch.serviceTimes,languages:ch.languages,ministries:ch.ministries,pastorName:ch.pastorName,phone:ch.phone,email:ch.email,lastVerified:Date.now()});
-        await kv.set(mainKey,mainChurches);await writeIdx(st,mainChurches);
+        await setChurches(st,mainChurches);await writeIdx(st,mainChurches);
         void recordChurchAudit({church_id:churchId,church_name:ch.name,church_city_state:[ch.city,ch.state].filter(Boolean).join(", "),state:st,action:"church_approved",new_value:{name:ch.name,city:ch.city,state:st},source:"moderate_approve"},{hashModKey:getModKey(c)});
       }
     }
@@ -2185,10 +2439,10 @@ const moderateRejectChurchHandler=async(c:any)=>{
     const{churchId}=await c.req.json();
     if(!churchId)return c.json({error:"Missing churchId"},400);
     const parts=churchId.split("-");if(parts.length<3||parts[0]!=="community")return c.json({error:"Invalid community church ID"},400);
-    const st=parts[1];const k=`pending-churches:${st}`;const store=await kv.get(k);
+    const st=parts[1];const store=await getPending(st);
     if(!store||!Array.isArray(store.churches))return c.json({error:"Not found"},404);
     store.churches=store.churches.filter((x:any)=>x.id!==churchId);
-    await kv.set(k,store);
+    await setPending(st,store);
     void recordChurchAudit({church_id:churchId,state:st,action:"church_rejected",source:"moderate_reject"},{hashModKey:getModKey(c)});
     const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"church",churchId);
     return c.json({success:true,churchId,rejected:true});
@@ -2222,7 +2476,7 @@ const moderateRegeocode=async(c:any)=>{
     }
     let updated=0,failed=0,skipped=0,geocodeCalls=0;const details:any[]=[];
     for(const[st,ids]of byState){
-      const key=`churches:${st}`;const churches=await kv.get(key);
+      const churches=await getChurches(st);
       if(!Array.isArray(churches))continue;
       const byId=new Map<string,any>();for(const ch of churches)if(ch.id)byId.set(ch.id,ch);
       let stateChanged=false;
@@ -2242,7 +2496,7 @@ const moderateRegeocode=async(c:any)=>{
           }else{skipped++;}
         }else{failed++;}
       }
-      if(stateChanged){await kv.set(key,churches);await writeIdx(st,churches);}
+      if(stateChanged){await setChurches(st,churches);await writeIdx(st,churches);}
     }
     return c.json({success:true,suggestionsScanned:allSuggestions.length,addressCorrections:churchIds.length,statesChecked:[...byState.keys()],updated,failed,skipped,geocodeCalls,details});
   }catch(e){return c.json({error:`${e}`},500);}
@@ -2314,7 +2568,7 @@ app.get(`${P}/audit/recent`,async(c)=>{
 app.get(`${P}/audit/state/:state`,async(c)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
-    const st=(c.req.param("state")||"").toUpperCase();if(!st||st.length!==2)return c.json({error:"Invalid state"},400);
+    const st=(c.req.param("state")||"").toUpperCase();if(!st||!isValidRegion(st))return c.json({error:"Invalid state"},400);
     const limit=Math.min(500,Math.max(1,parseInt(c.req.query("limit")||"200")||200));
     const entries=await queryAuditByState(st,limit);
     return c.json({state:st,entries});
@@ -2384,8 +2638,8 @@ app.post(`${P}/churches/react/:churchId`, async (c) => {
 app.get(`${P}/churches/reactions/bulk`, async (c) => {
   try {
     const st = c.req.query("state")?.toUpperCase();
-    if (!st || st.length !== 2) return c.json({ error: "Missing or invalid state" }, 400);
-    const churches = await kv.get(`churches:${st}`);
+    if (!st || !isValidRegion(st)) return c.json({ error: "Missing or invalid state" }, 400);
+    const churches = await getChurches(st);
     if (!Array.isArray(churches) || churches.length === 0) return c.json({ state: st, counts: {} });
     const keys = churches.map((ch: any) => `reactions:${ch.id}`);
     const BATCH = 200;
@@ -2492,7 +2746,7 @@ function churchTweet(ch:any):string{
   ];
   const st=(ch.state||"").toUpperCase();
   const sid=(ch.shortId&&/^\d{8}$/.test(ch.shortId))?ch.shortId:toShortId(ch.id||"",ch.state||"",ch.shortId);
-  const url=`heresmychurch.com/state/${st.toLowerCase()}/${sid}`;
+  const url=`heresmychurch.com/US/${st.toLowerCase()}/${sid}`;
   const name=(ch.name||"A church").slice(0,80);
   const city=(ch.city||"").slice(0,40)||"a city";
   return pickTemplate(templates,ch.id||name)(name,city,st,url).slice(0,280);
@@ -2613,7 +2867,7 @@ async function generateFunFact():Promise<{text:string;category:string}|null>{
     // Category 3: Denomination breakdown (pick a random populated state)
     if(stateEntries.length>0){
       const[randomSt]=stateEntries[Math.floor(Math.random()*stateEntries.length)];
-      const churches=await kv.get(`churches:${randomSt}`);
+      const churches=await getChurches(randomSt);
       if(Array.isArray(churches)&&churches.length>20){
         const denomCounts:Record<string,number>={};
         for(const ch of churches){const d=(ch.denomination||"Unknown").trim();denomCounts[d]=(denomCounts[d]||0)+1;}
@@ -2632,7 +2886,7 @@ async function generateFunFact():Promise<{text:string;category:string}|null>{
       const allDenoms:Record<string,number>={};
       // Sample up to 10 states for performance
       const sample=stateEntries.sort(()=>Math.random()-0.5).slice(0,10);
-      const keys=sample.map(([st])=>`churches:${st}`);
+      const keys=sample.map(([st])=>churchesKey(regionCountry(st),st));
       const vals=await kv.mget(keys);
       for(const churches of vals){
         if(!Array.isArray(churches))continue;
@@ -2660,7 +2914,7 @@ async function generateFunFact():Promise<{text:string;category:string}|null>{
     // Category 7: Attendance patterns (sample a state)
     if(stateEntries.length>0){
       const[randomSt]=stateEntries[Math.floor(Math.random()*stateEntries.length)];
-      const churches=await kv.get(`churches:${randomSt}`);
+      const churches=await getChurches(randomSt);
       if(Array.isArray(churches)&&churches.length>20){
         const atts=churches.map((ch:any)=>ch.attendance||0).filter((a:number)=>a>0);
         if(atts.length>10){
@@ -2745,7 +2999,7 @@ async function checkMilestonesInner(reached:{national:number[];states:Record<str
   const populated=Object.entries(sc).filter(([_,c])=>c>50);
   const sample=populated.sort(()=>Math.random()-0.5).slice(0,5);
   for(const[st]of sample){
-    const churches=await kv.get(`churches:${st}`);
+    const churches=await getChurches(st);
     if(!Array.isArray(churches)||churches.length<50)continue;
     let needsReview=0;
     for(const ch of churches){const r=churchNeedsReview(ch);if(r.needsReview)needsReview++;}
@@ -2893,7 +3147,7 @@ const SPOTLIGHT_LAST_VERIFIED_MS=SPOTLIGHT_LAST_VERIFIED_DAYS*24*60*60*1000;
 function churchSpotlightTweet(ch:any):string{
   const st=(ch.state||"").toUpperCase();
   const sid=(ch.shortId&&/^\d{8}$/.test(ch.shortId))?ch.shortId:toShortId(ch.id||"",ch.state||"",ch.shortId);
-  const url=`heresmychurch.com/state/${st.toLowerCase()}/${sid}`;
+  const url=`heresmychurch.com/US/${st.toLowerCase()}/${sid}`;
   const name=(ch.name||"A church").slice(0,80);
   const city=(ch.city||"").slice(0,40)||"a city";
   const templates=[
@@ -2921,14 +3175,14 @@ async function runWeekendSunday():Promise<{posted:boolean;type?:string;text?:str
   try{
     if(!Deno.env.get("TWITTER_API_KEY"))return{posted:false,error:"No Twitter credentials"};
     const meta=await getMeta();const sc:Record<string,number>=meta?.stateCounts||{};
-    const stateKeys=Object.keys(sc).filter(st=>st!=="DC"&&(sc[st]||0)>20);
+    const stateKeys=listPopulated(sc).filter(p=>p.cc==="US"&&p.abbrev!=="DC"&&getCount(sc,p.abbrev,"US")>20).map(p=>p.abbrev);
     if(!stateKeys.length)return{posted:false,error:"No states with churches"};
     const lastSpotlightId=await kv.get("twitter:last-spotlight-church-id") as string|undefined;
     const now=Date.now();
     const eligible:any[]=[];
     const shuffled=stateKeys.sort(()=>Math.random()-0.5).slice(0,10);
     for(const st of shuffled){
-      const churches=await kv.get(`churches:${st}`);
+      const churches=await getChurches(st);
       if(!Array.isArray(churches))continue;
       for(const ch of churches){
         if(ch.id===lastSpotlightId)continue;
@@ -3116,9 +3370,9 @@ app.post(`${P}/migrate/apply-pending`,async(c)=>{
     // 2. Merge all pending churches into main data
     const states=["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"];
     for(const st of states){
-      const store=await kv.get(`pending-churches:${st}`);
+      const store=await getPending(st);
       if(!store||!Array.isArray(store.churches)||!store.churches.length)continue;
-      const mainKey=`churches:${st}`;const mainChurches=(await kv.get(mainKey))||[];
+      const mainChurches=(await getChurches(st))||[];
       if(!Array.isArray(mainChurches))continue;
       let added=false;
       for(const pc of store.churches){
@@ -3129,8 +3383,8 @@ app.post(`${P}/migrate/apply-pending`,async(c)=>{
         mainChurches.push({id:pc.id,shortId:pc.shortId||toShortId(pc.id,st),name:pc.name,address:pc.address,city:pc.city,state:st,lat:pc.lat,lng:pc.lng,denomination:pc.denomination,attendance:pc.attendance,website:pc.website,serviceTimes:pc.serviceTimes,languages:pc.languages,ministries:pc.ministries,pastorName:pc.pastorName,phone:pc.phone,email:pc.email,lastVerified:Date.now()});
         churchesMerged++;added=true;
       }
-      if(added){const unique=addShortIdsUnique(mainChurches,st);await kv.set(mainKey,unique);await writeIdx(st,unique);}
-      await kv.set(`pending-churches:${st}`,store);
+      if(added){const unique=addShortIdsUnique(mainChurches,st);await setChurches(st,unique);await writeIdx(st,unique);}
+      await setPending(st,store);
     }
     return c.json({success:true,correctionsApplied,churchesMerged});
   }catch(e){return c.json({error:`${e}`},500);}
@@ -3158,6 +3412,36 @@ function detectLanguages(ch:any):string[]{
 }
 
 const STATE_NAMES_MAP:Record<string,string>={AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",CO:"Colorado",CT:"Connecticut",DE:"Delaware",FL:"Florida",GA:"Georgia",HI:"Hawaii",ID:"Idaho",IL:"Illinois",IN:"Indiana",IA:"Iowa",KS:"Kansas",KY:"Kentucky",LA:"Louisiana",ME:"Maine",MD:"Maryland",MA:"Massachusetts",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",MT:"Montana",NE:"Nebraska",NV:"Nevada",NH:"New Hampshire",NJ:"New Jersey",NM:"New Mexico",NY:"New York",NC:"North Carolina",ND:"North Dakota",OH:"Ohio",OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",RI:"Rhode Island",SC:"South Carolina",SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VT:"Vermont",VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming"};
+const COUNTRY_NAMES_MAP:Record<string,string>={
+  US:"United States",CA:"Canada",GB:"United Kingdom",IE:"Ireland",FR:"France",DE:"Germany",
+  NL:"Netherlands",BE:"Belgium",ES:"Spain",IT:"Italy",PT:"Portugal",AT:"Austria",CH:"Switzerland",
+  SE:"Sweden",NO:"Norway",DK:"Denmark",FI:"Finland",PL:"Poland",AU:"Australia",WORLD:"Worldwide",
+};
+function regionDisplayName(abbrev:string):string{
+  const k=(abbrev||"").toUpperCase();
+  return STATE_NAMES_MAP[k]||INTL_REGIONS[k]?.n||gS(k)?.n||k;
+}
+function countryDisplayName(cc:string):string{
+  const k=(cc||"").toUpperCase();
+  return COUNTRY_NAMES_MAP[k]||k;
+}
+function isReportCountryCode(cc:string):boolean{
+  const k=(cc||"").toUpperCase();
+  if(k==="WORLD")return true;
+  return (REVIEW_STATS_COUNTRY_CODES as readonly string[]).includes(k);
+}
+/** KV key for country/world reports. US national also keeps legacy `report:{slug}`. */
+function countryReportCacheKey(cc:string,slug:string):string{
+  const k=cc.toUpperCase();
+  if(k==="WORLD")return `report:WORLD:${slug}`;
+  if(k==="US")return `report:${slug}`;
+  return `report:${k}:${slug}`;
+}
+type ReportComputeScope=
+  |{type:"national"}
+  |{type:"state";stateAbbrev:string}
+  |{type:"country";countryCode:string}
+  |{type:"world"};
 
 // Denomination grouping (same logic as frontend)
 const DENOM_GROUPS:[string,string[]][]=[
@@ -3284,14 +3568,233 @@ function buildStatePeerComparison(sc:Record<string,number>,stateAbbrev:string):{
   };
 }
 
-async function computeSeasonalReport(slug:string,scope:{type:"national"}|{type:"state";stateAbbrev:string}={type:"national"}):Promise<any>{
+/** World reports merge cached country reports so we never load every church worldwide into one worker. */
+async function computeWorldReportFromCountryCaches(slug:string):Promise<any>{
   const meta=await getMeta();
   const sc:Record<string,number>={...(meta?.stateCounts||{})};
-  if(sc["DC"]){sc["MD"]=(sc["MD"]||0)+sc["DC"];delete sc["DC"];}
-  const stateScopeAbbrev=scope.type==="state"?scope.stateAbbrev.toUpperCase():null;
-  const populatedStates=stateScopeAbbrev
-    ? (sc[stateScopeAbbrev]>0?[stateScopeAbbrev]:[])
-    : Object.keys(sc).filter(s=>sc[s]>0);
+  const populatedCc=new Set(listPopulated(sc).map(p=>p.cc));
+  const codes=(REVIEW_STATS_COUNTRY_CODES as readonly string[]).filter(cc=>populatedCc.has(cc));
+  const keys=codes.map(cc=>countryReportCacheKey(cc,slug));
+  const vals=await kv.mget(keys);
+  const countryReports:{cc:string;report:any}[]=[];
+  for(let i=0;i<codes.length;i++){
+    const cc=codes[i];
+    let report=vals[i];
+    if(!(report&&typeof report==="object"&&report.slug)){
+      if(cc==="US"){
+        // Full US recompute often hits worker memory limits; reuse the latest cached national report.
+        const fallbacks=[`report:${slug}`,`report:US:${slug}`,`report:launch-2026`,`report:US:launch-2026`];
+        const fb=await kv.mget(fallbacks);
+        report=fb.find((v:any)=>v&&typeof v==="object"&&v.slug);
+      }else{
+        const prev=previousSlugFor(slug);
+        if(prev){
+          const prevRep=await kv.get(countryReportCacheKey(cc,prev));
+          if(prevRep&&typeof prevRep==="object"&&prevRep.slug)report=prevRep;
+        }
+        if(!(report&&typeof report==="object"&&report.slug)){
+          try{
+            report=await computeSeasonalReport(slug,{type:"country",countryCode:cc});
+            try{await kv.set(countryReportCacheKey(cc,slug),report);}catch(_){}
+          }catch(_e){report=null;}
+        }
+      }
+    }
+    if(report&&typeof report==="object"&&report.slug)countryReports.push({cc,report});
+  }
+  if(!countryReports.length)throw new Error("No country reports available to build world report");
+
+  let totalChurches=0,totalAttendance=0,totalNeedsReview=0,totalMissingAddr=0,totalMissingSvc=0,totalMissingDenom=0;
+  let nWebsite=0,nPhone=0,nContact=0,nHasSvc=0,nCampus=0,nWithMinistries=0,nFootprint=0,nVerified90=0,nVerified365=0;
+  let totalCorrections=0,improvedTotal=0,totalBilingual=0,populationRepresented=0;
+  const denomCounts:Record<string,number>={};
+  const langCounts:Record<string,number>={};
+  const ministryCounts:Record<string,number>={};
+  const dominantByState:Record<string,{denomination:string;count:number;pct:number}>={};
+  const byStateBreakdown:Record<string,{top:{denomination:string;count:number;pct:number}[];least:{denomination:string;count:number;pct:number}|null}>={};
+  const stateRankings:any[]=[];
+  const dataQualityStates:any[]=[];
+  const topBilingualStates:any[]=[];
+  const largest:any[]=[];
+  const smallest:any[]=[];
+  const attendanceSamples:number[]=[];
+
+  for(const{cc,report}of countryReports){
+    const bp=report.bigPicture||{};
+    const dq=report.dataQuality||{};
+    const dv=report.diversity||{};
+    const dn=report.denominations||{};
+    const gd=report.geoDensity||{};
+    const comm=report.community||{};
+    const tc=bp.totalChurches||0;
+    totalChurches+=tc;
+    totalAttendance+=(bp.totalAttendanceEstimate||0);
+    populationRepresented+=(bp.populationRepresented||0);
+    totalNeedsReview+=(dq.totalNeedsReview||Math.round((dq.pctNeedsReview||0)/100*tc));
+    totalCorrections+=(comm.totalCorrections||0);
+    improvedTotal+=(comm.churchesImproved||0);
+    totalBilingual+=(dv.bilingualChurches||0);
+    // Reconstruct absolute field counts from percentages when needed
+    const abs=(pct:number|undefined)=>Math.round(((pct||0)/100)*tc);
+    nWebsite+=abs(dq.pctWithWebsite);
+    nPhone+=abs(dq.pctWithPhone);
+    nContact+=abs(dq.pctWithContactPath);
+    nHasSvc+=abs(dq.pctWithServiceTimes);
+    nCampus+=(dq.campusCount||abs(dq.campusPct));
+    nWithMinistries+=abs(dq.pctWithMinistries);
+    nFootprint+=abs(dq.pctWithBuildingFootprint);
+    nVerified90+=abs(dq.pctVerifiedLast90Days);
+    nVerified365+=abs(dq.pctVerifiedLast365Days);
+    for(const f of(dq.missingByField||[])){
+      const field=String(f.field||"");
+      if(field==="Address")totalMissingAddr+=(f.count||0);
+      else if(field==="Service Times")totalMissingSvc+=(f.count||0);
+      else if(field==="Denomination")totalMissingDenom+=(f.count||0);
+    }
+    for(const d of(dn.national||[]))denomCounts[d.name]=(denomCounts[d.name]||0)+(d.count||0);
+    for(const l of(dv.languageDistribution||[]))langCounts[l.language]=(langCounts[l.language]||0)+(l.count||0);
+    for(const m of(dq.topMinistries||[]))ministryCounts[m.name]=(ministryCounts[m.name]||0)+(m.count||0);
+    const topDenom=(dn.national||[]).find((d:any)=>d.name!=="Unspecified")||(dn.national||[])[0];
+    if(topDenom){
+      dominantByState[cc]={denomination:topDenom.name,count:topDenom.count,pct:topDenom.pct};
+      const filtered=(dn.national||[]).filter((d:any)=>d.name!=="Unspecified"&&d.count>0);
+      byStateBreakdown[cc]={
+        top:filtered.slice(0,2).map((d:any)=>({denomination:d.name,count:d.count,pct:d.pct})),
+        least:filtered.length>=2?{denomination:filtered[filtered.length-1].name,count:filtered[filtered.length-1].count,pct:filtered[filtered.length-1].pct}:null,
+      };
+    }
+    const nat=gd.national||{};
+    const per10k=typeof nat.churchesPer10k==="number"?nat.churchesPer10k:0;
+    stateRankings.push({
+      abbrev:cc,name:countryDisplayName(cc),churchCount:tc,churchesPer10k:per10k,
+      pctComplete:tc>0?Math.round(((tc-(dq.totalNeedsReview||Math.round((dq.pctNeedsReview||0)/100*tc)))/tc)*1000)/10:0,
+      corrections:comm.totalCorrections||0,
+    });
+    dataQualityStates.push({
+      abbrev:cc,name:countryDisplayName(cc),total:tc,
+      needsReview:dq.totalNeedsReview||Math.round((dq.pctNeedsReview||0)/100*tc),
+      pct:dq.pctNeedsReview||0,
+    });
+    if(dv.bilingualPct!=null){
+      topBilingualStates.push({abbrev:cc,name:countryDisplayName(cc),pct:dv.bilingualPct,count:dv.bilingualChurches||0});
+    }
+    for(const s of(report.spotlights?.largest||[]))largest.push(s);
+    for(const s of(report.spotlights?.smallest||[]))smallest.push(s);
+    if(dq.attendanceMedian>0)attendanceSamples.push(dq.attendanceMedian);
+  }
+
+  stateRankings.sort((a,b)=>b.churchCount-a.churchCount);
+  dataQualityStates.sort((a,b)=>a.pct-b.pct);
+  topBilingualStates.sort((a,b)=>b.pct-a.pct);
+  largest.sort((a,b)=>(b.attendance||0)-(a.attendance||0));
+  smallest.sort((a,b)=>(a.attendance||0)-(b.attendance||0));
+  const denomNational=Object.entries(denomCounts).map(([name,count])=>({name,count,pct:totalChurches>0?Math.round(count/totalChurches*1000)/10:0})).sort((a,b)=>b.count-a.count);
+  const langDist=Object.entries(langCounts).map(([language,count])=>({language,count})).sort((a,b)=>b.count-a.count);
+  const topMinistries=Object.entries(ministryCounts).map(([name,count])=>({name,count,pct:nWithMinistries>0?Math.round(count/nWithMinistries*1000)/10:0})).sort((a,b)=>b.count-a.count).slice(0,18);
+  const pctNeedsReview=totalChurches>0?Math.round(totalNeedsReview/totalChurches*1000)/10:0;
+  const pct=(n:number)=>{
+    if(totalChurches<=0)return 0;
+    const raw=n/totalChurches*100;
+    if(n>0&&raw<0.1)return 0.1;
+    if(n<totalChurches&&raw>99.9)return 99.9;
+    return Math.round(raw*10)/10;
+  };
+  const parts=slug.split("-");
+  const season=parts[0] as "launch"|"spring"|"summer"|"fall"|"winter";
+  const year=parseInt(parts[1],10);
+  const seasonLabel=seasonTitle(season,year);
+  const attendanceMedian=attendanceSamples.length?Math.round(attendanceSamples.reduce((s,v)=>s+v,0)/attendanceSamples.length):0;
+
+  return{
+    slug,
+    scope:"world",
+    countryCode:"WORLD",
+    title:`Worldwide ${seasonLabel}`,
+    subtitle:"The State of Churches Worldwide",
+    season,
+    year,
+    generatedAt:new Date().toISOString(),
+    bigPicture:{
+      totalChurches,
+      statesPopulated:countryReports.length,
+      totalAttendanceEstimate:totalAttendance,
+      populationRepresented,
+      populationRepresentedMillions:Math.round(populationRepresented/1e5)/10,
+    },
+    community:{
+      totalCorrections,
+      churchesImproved:improvedTotal,
+      correctionsPerThousandChurches:totalChurches>0?Math.round(totalCorrections/totalChurches*1000*100)/100:0,
+    },
+    dataQuality:{
+      pctNeedsReview,totalNeedsReview,
+      missingByField:[
+        {field:"Address",count:totalMissingAddr,pct:pct(totalMissingAddr)},
+        {field:"Website",count:Math.max(0,totalChurches-nWebsite),pct:pct(Math.max(0,totalChurches-nWebsite))},
+        {field:"Service Times",count:totalMissingSvc,pct:pct(totalMissingSvc)},
+        {field:"Denomination",count:totalMissingDenom,pct:pct(totalMissingDenom)},
+      ],
+      stateBreakdown:dataQualityStates,
+      pctWithWebsite:pct(nWebsite),
+      pctWithPhone:pct(nPhone),
+      pctWithContactPath:pct(nContact),
+      pctWithServiceTimes:pct(nHasSvc),
+      campusCount:nCampus,
+      campusPct:pct(nCampus),
+      pctWithMinistries:pct(nWithMinistries),
+      topMinistries,
+      pctVerifiedLast90Days:pct(nVerified90),
+      pctVerifiedLast365Days:pct(nVerified365),
+      pctWithBuildingFootprint:pct(nFootprint),
+      attendanceMedian,
+      attendanceP25:attendanceMedian,
+      attendanceP75:attendanceMedian,
+    },
+    geoDensity:{
+      national:{peoplePer:totalChurches>0&&populationRepresented>0?Math.round(populationRepresented/totalChurches):0,churchesPer10k:totalChurches>0&&populationRepresented>0?Math.round(totalChurches/populationRepresented*10000*100)/100:0},
+      mostChurched:stateRankings.filter(s=>s.churchesPer10k>0).sort((a,b)=>b.churchesPer10k-a.churchesPer10k).slice(0,10).map(s=>({abbrev:s.abbrev,name:s.name,churchesPer10k:s.churchesPer10k,peoplePer:s.churchesPer10k>0?Math.round(10000/s.churchesPer10k):0})),
+      leastChurched:stateRankings.filter(s=>s.churchesPer10k>0).sort((a,b)=>a.churchesPer10k-b.churchesPer10k).slice(0,10).map(s=>({abbrev:s.abbrev,name:s.name,churchesPer10k:s.churchesPer10k,peoplePer:s.churchesPer10k>0?Math.round(10000/s.churchesPer10k):0})),
+      stateMetrics:Object.fromEntries(stateRankings.map(s=>[s.abbrev,{churches:s.churchCount,population:0,churchesPer10k:s.churchesPer10k,peoplePer:s.churchesPer10k>0?Math.round(10000/s.churchesPer10k):0}])),
+    },
+    denominations:{
+      national:denomNational,
+      dominantByState,
+      byStateBreakdown,
+      regionalPatterns:[],
+    },
+    diversity:{
+      bilingualChurches:totalBilingual,
+      bilingualPct:totalChurches>0?Math.round(totalBilingual/totalChurches*1000)/10:0,
+      languageDistribution:langDist,
+      topBilingualStates:topBilingualStates.slice(0,10),
+    },
+    spotlights:{largest:largest.slice(0,10),smallest:smallest.slice(0,10)},
+    stateRankings,
+  };
+}
+
+async function computeSeasonalReport(slug:string,scope:ReportComputeScope={type:"national"}):Promise<any>{
+  if(scope.type==="world")return computeWorldReportFromCountryCaches(slug);
+  const meta=await getMeta();
+  const sc:Record<string,number>={...(meta?.stateCounts||{})};
+  const isWorld=false;
+  const isStateScope=scope.type==="state";
+  const stateScopeAbbrev=isStateScope?scope.stateAbbrev.toUpperCase():null;
+  let reportCountryCode:string|null=null;
+  let populatedStates:string[]=[];
+  if(isStateScope){
+    reportCountryCode="US";
+    populatedStates=getCount(sc,stateScopeAbbrev!,"US")>0?[stateScopeAbbrev!]:[];
+  }else{
+    const cc=scope.type==="country"?scope.countryCode.toUpperCase():"US";
+    reportCountryCode=cc;
+    if(cc==="US"){
+      populatedStates=listPopulated(sc).filter(p=>p.cc==="US").map(p=>p.abbrev).filter(a=>a!=="DC");
+      if(listPopulated(sc).some(p=>p.cc==="US"&&p.abbrev==="DC")&&!populatedStates.includes("MD"))populatedStates.push("MD");
+    }else{
+      populatedStates=listPopulated(sc).filter(p=>p.cc===cc).map(p=>p.abbrev);
+    }
+  }
 
   // Aggregate data in a single pass over all churches
   let totalChurches=0,totalAttendance=0;
@@ -3329,7 +3832,7 @@ async function computeSeasonalReport(slug:string,scope:{type:"national"}|{type:"
   const BATCH=10;
   for(let i=0;i<populatedStates.length;i+=BATCH){
     const batch=populatedStates.slice(i,i+BATCH);
-    const keys=batch.map(st=>`churches:${st}`);
+    const keys=batch.map(st=>churchesKey(regionCountry(st),st));
     const values=await kv.mget(keys);
     for(let j=0;j<batch.length;j++){
       const st=batch[j];
@@ -3476,14 +3979,14 @@ async function computeSeasonalReport(slug:string,scope:{type:"national"}|{type:"
     const per10k=pop>0&&cnt>0?(cnt/pop)*10000:0;
     const peoplePer=pop>0&&cnt>0?Math.round(pop/cnt):0;
     stateMetrics[st]={churches:cnt,population:pop,churchesPer10k:Math.round(per10k*100)/100,peoplePer};
-    if(pop>0&&cnt>0)densityList.push({abbrev:st,name:STATE_NAMES_MAP[st]||st,churchesPer10k:Math.round(per10k*100)/100,peoplePer});
+    if(pop>0&&cnt>0)densityList.push({abbrev:st,name:regionDisplayName(st),churchesPer10k:Math.round(per10k*100)/100,peoplePer});
   }
   densityList.sort((a,b)=>b.churchesPer10k-a.churchesPer10k);
 
   // Data quality state breakdown
   const dataQualityStates=populatedStates.map(st=>{
     const sr=stateReview[st]||{total:0,needsReview:0};
-    return {abbrev:st,name:STATE_NAMES_MAP[st]||st,total:sr.total,needsReview:sr.needsReview,pct:sr.total>0?Math.round((sr.needsReview/sr.total)*1000)/10:0};
+    return {abbrev:st,name:regionDisplayName(st),total:sr.total,needsReview:sr.needsReview,pct:sr.total>0?Math.round((sr.needsReview/sr.total)*1000)/10:0};
   }).sort((a,b)=>a.pct-b.pct);
 
   // Language distribution
@@ -3493,7 +3996,7 @@ async function computeSeasonalReport(slug:string,scope:{type:"national"}|{type:"
   // Top bilingual states
   const topBilingualStates=populatedStates
     .filter(st=>bilingualByState[st]&&bilingualByState[st].total>10)
-    .map(st=>{const v=bilingualByState[st];return{abbrev:st,name:STATE_NAMES_MAP[st]||st,pct:Math.round(v.bilingual/v.total*1000)/10,count:v.bilingual};})
+    .map(st=>{const v=bilingualByState[st];return{abbrev:st,name:regionDisplayName(st),pct:Math.round(v.bilingual/v.total*1000)/10,count:v.bilingual};})
     .sort((a,b)=>b.pct-a.pct).slice(0,10);
 
   // Community stats
@@ -3524,12 +4027,12 @@ async function computeSeasonalReport(slug:string,scope:{type:"national"}|{type:"
     populationRepresented+=statePopulation(st);
   }
 
-  // State rankings
-  const stateRankings=populatedStates.map(st=>{
+  // State / region rankings (rolled up to countries for world scope below)
+  let stateRankings=populatedStates.map(st=>{
     const sr=stateReview[st]||{total:0,needsReview:0};
     const dm=stateMetrics[st]||{churchesPer10k:0};
     const comm=commByState[st]||{totalCorrections:0};
-    return{abbrev:st,name:STATE_NAMES_MAP[st]||st,churchCount:stateChurchCounts[st]||0,churchesPer10k:dm.churchesPer10k||0,pctComplete:sr.total>0?Math.round(((sr.total-sr.needsReview)/sr.total)*1000)/10:0,corrections:comm.totalCorrections};
+    return{abbrev:st,name:regionDisplayName(st),churchCount:stateChurchCounts[st]||0,churchesPer10k:dm.churchesPer10k||0,pctComplete:sr.total>0?Math.round(((sr.total-sr.needsReview)/sr.total)*1000)/10:0,corrections:comm.totalCorrections};
   }).sort((a,b)=>b.churchCount-a.churchCount);
 
   // County-level rollups (state-scoped report only)
@@ -3623,20 +4126,114 @@ async function computeSeasonalReport(slug:string,scope:{type:"national"}|{type:"
   const season=parts[0] as "launch"|"spring"|"summer"|"fall"|"winter";
   const year=parseInt(parts[1],10);
 
-  const scopeTitle=scope.type==="state"
-    ? `${STATE_NAMES_MAP[stateScopeAbbrev || ""] || stateScopeAbbrev} ${seasonTitle(season,year)}`
-    : seasonTitle(season,year);
-  const scopeSubtitle=scope.type==="state"
-    ? `The State of Churches in ${STATE_NAMES_MAP[stateScopeAbbrev || ""] || stateScopeAbbrev}`
-    : "The State of Churches in America";
+  // World scope: roll admin-1 aggregates up to countries for rankings / breakdowns
+  let outDominantByState=dominantByState;
+  let outByStateBreakdown=byStateBreakdown;
+  let outDataQualityStates=dataQualityStates;
+  let outTopBilingualStates=topBilingualStates;
+  let outDensityList=densityList;
+  let outStateMetrics=stateMetrics;
+  let outRegionalPatterns=regionalPatterns;
+  let unitsPopulated=populatedStates.length;
+  if(isWorld){
+    type CcAgg={abbrev:string;name:string;churchCount:number;reviewedOk:number;total:number;corrections:number;population:number;needsReview:number;bilingual:number;denoms:Record<string,number>};
+    const byCc=new Map<string,CcAgg>();
+    for(const st of populatedStates){
+      const cc=regionCountry(st);
+      let cur=byCc.get(cc);
+      if(!cur){
+        cur={abbrev:cc,name:countryDisplayName(cc),churchCount:0,reviewedOk:0,total:0,corrections:0,population:0,needsReview:0,bilingual:0,denoms:{}};
+        byCc.set(cc,cur);
+      }
+      const sr=stateReview[st]||{total:0,needsReview:0};
+      cur.churchCount+=(stateChurchCounts[st]||0);
+      cur.total+=sr.total;
+      cur.needsReview+=sr.needsReview;
+      cur.reviewedOk+=(sr.total-sr.needsReview);
+      cur.corrections+=(commByState[st]?.totalCorrections||0);
+      cur.population+=statePopulation(st);
+      cur.bilingual+=(bilingualByState[st]?.bilingual||0);
+      for(const[d,n]of Object.entries(denomByState[st]||{}))cur.denoms[d]=(cur.denoms[d]||0)+n;
+    }
+    const countries=[...byCc.values()].filter(c=>c.churchCount>0);
+    unitsPopulated=countries.length;
+    stateRankings=countries.map(c=>{
+      const per10k=c.population>0&&c.churchCount>0?Math.round(c.churchCount/c.population*10000*100)/100:0;
+      return{abbrev:c.abbrev,name:c.name,churchCount:c.churchCount,churchesPer10k:per10k,pctComplete:c.total>0?Math.round(c.reviewedOk/c.total*1000)/10:0,corrections:c.corrections};
+    }).sort((a,b)=>b.churchCount-a.churchCount);
+    outDominantByState={};
+    outByStateBreakdown={};
+    outStateMetrics={};
+    outDensityList=[];
+    for(const c of countries){
+      const entries=Object.entries(c.denoms).sort((a,b)=>b[1]-a[1]);
+      if(entries.length){
+        const top=entries[0];
+        outDominantByState[c.abbrev]={denomination:top[0],count:top[1],pct:Math.round(top[1]/c.churchCount*1000)/10};
+        const filtered=entries.filter(([name,count])=>name!=="Unspecified"&&count>0);
+        const topTwo=filtered.slice(0,2).map(([denomination,count])=>({denomination,count,pct:Math.round(count/c.churchCount*1000)/10}));
+        const least=filtered.length>=2?(()=>{const x=filtered[filtered.length-1];return{denomination:x[0],count:x[1],pct:Math.round(x[1]/c.churchCount*1000)/10};})():null;
+        outByStateBreakdown[c.abbrev]={top:topTwo,least};
+      }
+      const per10k=c.population>0&&c.churchCount>0?(c.churchCount/c.population)*10000:0;
+      const peoplePer=c.population>0&&c.churchCount>0?Math.round(c.population/c.churchCount):0;
+      outStateMetrics[c.abbrev]={churches:c.churchCount,population:c.population,churchesPer10k:Math.round(per10k*100)/100,peoplePer};
+      if(c.population>0&&c.churchCount>0)outDensityList.push({abbrev:c.abbrev,name:c.name,churchesPer10k:Math.round(per10k*100)/100,peoplePer});
+    }
+    outDensityList.sort((a,b)=>b.churchesPer10k-a.churchesPer10k);
+    outDataQualityStates=countries.map(c=>({
+      abbrev:c.abbrev,name:c.name,total:c.total,needsReview:c.needsReview,
+      pct:c.total>0?Math.round(c.needsReview/c.total*1000)/10:0,
+    })).sort((a,b)=>a.pct-b.pct);
+    outTopBilingualStates=countries
+      .filter(c=>c.total>10)
+      .map(c=>({abbrev:c.abbrev,name:c.name,pct:c.total>0?Math.round(c.bilingual/c.total*1000)/10:0,count:c.bilingual}))
+      .sort((a,b)=>b.pct-a.pct).slice(0,10);
+    // Regional patterns against country shares
+    outRegionalPatterns=[];
+    for(const d of denomNational){
+      if(d.name==="Unspecified")continue;
+      const natPct=d.pct;if(natPct<1)continue;
+      const strong:string[]=[];let maxRegPct=0;
+      for(const c of countries){
+        if(c.churchCount<20)continue;
+        const stCount=c.denoms[d.name]||0;
+        const stPct=stCount/c.churchCount*100;
+        if(stPct>natPct*2){strong.push(c.abbrev);if(stPct>maxRegPct)maxRegPct=stPct;}
+      }
+      if(strong.length>0&&strong.length<=15)outRegionalPatterns.push({denomination:d.name,strongStates:strong.slice(0,8),nationalPct:natPct,regionalPct:Math.round(maxRegPct*10)/10});
+    }
+    outRegionalPatterns.sort((a,b)=>(b.regionalPct/b.nationalPct)-(a.regionalPct/a.nationalPct));
+  }
 
+  const seasonLabel=seasonTitle(season,year);
+  let scopeTitle:string;
+  let scopeSubtitle:string;
+  if(isStateScope){
+    const sn=regionDisplayName(stateScopeAbbrev||"");
+    scopeTitle=`${sn} ${seasonLabel}`;
+    scopeSubtitle=`The State of Churches in ${sn}`;
+  }else if(isWorld){
+    scopeTitle=`Worldwide ${seasonLabel}`;
+    scopeSubtitle="The State of Churches Worldwide";
+  }else if(reportCountryCode==="US"){
+    scopeTitle=seasonLabel;
+    scopeSubtitle="The State of Churches in America";
+  }else{
+    const cn=countryDisplayName(reportCountryCode||"");
+    scopeTitle=`${cn} ${seasonLabel}`;
+    scopeSubtitle=`The State of Churches in ${cn}`;
+  }
+
+  const reportScopeField=isWorld?"world":isStateScope?"state":(reportCountryCode==="US"&&scope.type==="national"?"national":"country");
   const statePeerComparison=stateScopeAbbrev?buildStatePeerComparison(sc,stateScopeAbbrev):undefined;
 
   return{
     slug,
-    scope:scope.type,
-    stateAbbrev:stateScopeAbbrev || undefined,
-    stateName:stateScopeAbbrev ? (STATE_NAMES_MAP[stateScopeAbbrev] || stateScopeAbbrev) : undefined,
+    scope:reportScopeField,
+    countryCode:isWorld?"WORLD":(reportCountryCode||"US"),
+    stateAbbrev:stateScopeAbbrev||undefined,
+    stateName:stateScopeAbbrev?regionDisplayName(stateScopeAbbrev):undefined,
     title:scopeTitle,
     subtitle:scopeSubtitle,
     season,
@@ -3644,7 +4241,7 @@ async function computeSeasonalReport(slug:string,scope:{type:"national"}|{type:"
     generatedAt:new Date().toISOString(),
     bigPicture:{
       totalChurches,
-      statesPopulated:populatedStates.length,
+      statesPopulated:unitsPopulated,
       totalAttendanceEstimate:totalAttendance,
       populationRepresented,
       populationRepresentedMillions:Math.round(populationRepresented/1e5)/10,
@@ -3662,7 +4259,7 @@ async function computeSeasonalReport(slug:string,scope:{type:"national"}|{type:"
         {field:"Service Times",count:totalMissingSvc,pct:pct(totalMissingSvc)},
         {field:"Denomination",count:totalMissingDenom,pct:pct(totalMissingDenom)},
       ],
-      stateBreakdown:stateScopeAbbrev?[]:dataQualityStates,
+      stateBreakdown:stateScopeAbbrev?[]:outDataQualityStates,
       ...(countyBreakdown?{countyBreakdown}:{}),
       pctWithWebsite:pct(nWebsite),
       pctWithPhone:pct(nPhone),
@@ -3681,26 +4278,26 @@ async function computeSeasonalReport(slug:string,scope:{type:"national"}|{type:"
     },
     geoDensity:{
       national:{peoplePer:totalChurches>0&&totalPop>0?Math.round(totalPop/totalChurches):0,churchesPer10k:totalChurches>0&&totalPop>0?Math.round(totalChurches/totalPop*10000*100)/100:0},
-      mostChurched:stateScopeAbbrev?(countyDensityList||[]).slice(0,10):densityList.slice(0,10),
+      mostChurched:stateScopeAbbrev?(countyDensityList||[]).slice(0,10):outDensityList.slice(0,10),
       leastChurched:stateScopeAbbrev
         ?((countyDensityList&&countyDensityList.length?[...countyDensityList].reverse().slice(0,10):[]))
-        :([...densityList].reverse().slice(0,10)),
-      stateMetrics:stateScopeAbbrev?{}:stateMetrics,
+        :([...outDensityList].reverse().slice(0,10)),
+      stateMetrics:stateScopeAbbrev?{}:outStateMetrics,
       ...(countyMetrics?{countyMetrics}:{}),
     },
     denominations:{
       national:denomNational,
-      dominantByState:stateScopeAbbrev?{}:dominantByState,
-      byStateBreakdown:stateScopeAbbrev?{}:byStateBreakdown,
+      dominantByState:stateScopeAbbrev?{}:outDominantByState,
+      byStateBreakdown:stateScopeAbbrev?{}:outByStateBreakdown,
       ...(dominantByCounty?{dominantByCounty}:{}),
       ...(byCountyBreakdown?{byCountyBreakdown}:{}),
-      regionalPatterns:stateScopeAbbrev?[]:regionalPatterns.slice(0,8),
+      regionalPatterns:stateScopeAbbrev?[]:outRegionalPatterns.slice(0,8),
     },
     diversity:{
       bilingualChurches:totalBilingual,
       bilingualPct:totalChurches>0?Math.round(totalBilingual/totalChurches*1000)/10:0,
       languageDistribution:langDist,
-      topBilingualStates:stateScopeAbbrev?[]:topBilingualStates,
+      topBilingualStates:stateScopeAbbrev?[]:outTopBilingualStates,
       ...(topBilingualCounties?{topBilingualCounties}:{}),
     },
     spotlights:{largest:largest.slice(0,10),smallest:smallest.slice(0,10)},
@@ -3917,18 +4514,28 @@ function computeChanges(current:any,previous:any):any{
   };
 }
 
-// ── GET /reports — list all available reports ──
+// ── GET /reports — list cached reports (?country=US|CA|WORLD, default US) ──
 app.get(`${P}/reports`,async(c)=>{
   try{
+    const country=((c.req.query("country")||"US")+"").toUpperCase();
+    if(country!=="US"&&!isReportCountryCode(country))return c.json([]);
     const slugs=allReportSlugs();
     const list:any[]=[];
-    const keys=slugs.map(s=>`report:${s.slug}`);
-    const vals=await kv.mget(keys);
+    const keys=slugs.map(s=>countryReportCacheKey(country,s.slug));
+    // US also accepts report:US:{slug} as an alternate write key
+    const usAltKeys=country==="US"?slugs.map(s=>`report:US:${s.slug}`):[];
+    const vals=await kv.mget(country==="US"?[...keys,...usAltKeys]:keys);
     for(let i=0;i<slugs.length;i++){
       const{slug,season,year}=slugs[i];
-      const cached=vals[i];
+      const cached=vals[i]||(country==="US"?vals[i+slugs.length]:null);
       if(cached&&typeof cached==="object"&&cached.slug){
-        list.push({slug,title:cached.title||seasonTitle(season,year),season,year,generatedAt:cached.generatedAt,totalChurches:cached.bigPicture?.totalChurches||0});
+        list.push({
+          slug,
+          title:cached.title||(country==="US"?seasonTitle(season,year):`${countryDisplayName(country)} ${seasonTitle(season,year)}`),
+          season,year,generatedAt:cached.generatedAt,
+          totalChurches:cached.bigPicture?.totalChurches||0,
+          countryCode:country,
+        });
       }
     }
     return c.json(list);
@@ -3950,48 +4557,19 @@ app.get(`${P}/reports/state/:stateAbbrev`,async(c)=>{
       const base=i*4;
       const cached=allVals.slice(base,base+4).find((v:any)=>v&&typeof v==="object"&&v.slug);
       if(cached){
-        list.push({slug,title:cached.title||`${STATE_NAMES_MAP[stateAbbrev]||stateAbbrev} ${seasonTitle(season,year)}`,season,year,generatedAt:cached.generatedAt,totalChurches:cached.bigPicture?.totalChurches||0});
+        list.push({slug,title:cached.title||`${regionDisplayName(stateAbbrev)} ${seasonTitle(season,year)}`,season,year,generatedAt:cached.generatedAt,totalChurches:cached.bigPicture?.totalChurches||0,countryCode:"US"});
       }
     }
     return c.json(list);
   }catch(_e){return c.json([]);}
 });
 
-app.get(`${P}/report/:slug`,async(c)=>{
-  try{
-    const slug=c.req.param("slug");
-    if(!slug||!/^[a-z]+-\d{4}$/.test(slug))return c.json({error:"Invalid report slug"},400);
-    const forceRefresh=(c.req.query("refresh")==="true"||c.req.query("fresh")==="true");
-    // Check cache
-    const cacheKey=`report:${slug}`;
-    if(!forceRefresh){
-      const cached=await kv.get(cacheKey);
-      if(cached&&typeof cached==="object"&&cached.slug)return c.json(cached);
-    }
-    // Validate slug is a known report
-    const known=allReportSlugs();
-    if(!known.find(r=>r.slug===slug))return c.json({error:"Report not found"},404);
-    // Compute fresh report
-    const report=await computeSeasonalReport(slug);
-    // Add comparison to previous report if available
-    const prevSlug=previousSlugFor(slug);
-    if(prevSlug){
-      const prevReport=await kv.get(`report:${prevSlug}`);
-      if(prevReport&&typeof prevReport==="object"&&prevReport.slug){
-        report.previousSlug=prevSlug;
-        report.changes=computeChanges(report,prevReport);
-      }
-    }
-    try{await kv.set(cacheKey,report);}catch(_){}
-    return c.json(report);
-  }catch(e){return c.json({error:`${e}`},500);}
-});
-
+// US state reports (must stay before /report/:country/:slug so "state" is not a country)
 app.get(`${P}/report/state/:stateAbbrev/:slug`,async(c)=>{
   try{
     const stateAbbrev=(c.req.param("stateAbbrev")||"").toUpperCase();
     const slug=c.req.param("slug");
-    if(!/^[A-Z]{2}$/.test(stateAbbrev))return c.json({error:"Invalid state"},400);
+    if(!isValidRegion(stateAbbrev))return c.json({error:"Invalid state"},400);
     if(!slug||!/^[a-z]+-\d{4}$/.test(slug))return c.json({error:"Invalid report slug"},400);
     const forceRefresh=(c.req.query("refresh")==="true"||c.req.query("fresh")==="true");
     const cacheKey=`report:state:v4:${stateAbbrev}:${slug}`;
@@ -4013,6 +4591,84 @@ app.get(`${P}/report/state/:stateAbbrev/:slug`,async(c)=>{
       }
     }
     try{await kv.set(cacheKey,report);}catch(_){}
+    return c.json(report);
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
+// Country / WORLD reports — /report/CA/spring-2026, /report/WORLD/spring-2026
+app.get(`${P}/report/:country/:slug`,async(c)=>{
+  try{
+    const country=(c.req.param("country")||"").toUpperCase();
+    const slug=c.req.param("slug");
+    if(!isReportCountryCode(country))return c.json({error:"Invalid country"},400);
+    if(!slug||!/^[a-z]+-\d{4}$/.test(slug))return c.json({error:"Invalid report slug"},400);
+    // US national keeps the legacy single-segment URL; redirect clients that hit /report/US/:slug
+    if(country==="US"){
+      // Serve same payload as /report/:slug
+    }
+    const forceRefresh=(c.req.query("refresh")==="true"||c.req.query("fresh")==="true");
+    const cacheKey=countryReportCacheKey(country,slug);
+    if(!forceRefresh){
+      const cached=await kv.get(cacheKey);
+      if(cached&&typeof cached==="object"&&cached.slug)return c.json(cached);
+      if(country==="US"){
+        const alt=await kv.get(`report:US:${slug}`);
+        if(alt&&typeof alt==="object"&&alt.slug)return c.json(alt);
+      }
+    }
+    const known=allReportSlugs();
+    if(!known.find(r=>r.slug===slug))return c.json({error:"Report not found"},404);
+    const computeScope:ReportComputeScope=country==="WORLD"
+      ?{type:"world"}
+      :country==="US"
+        ?{type:"national"}
+        :{type:"country",countryCode:country};
+    const report=await computeSeasonalReport(slug,computeScope);
+    const prevSlug=previousSlugFor(slug);
+    if(prevSlug){
+      const prevKeys=[countryReportCacheKey(country,prevSlug)];
+      if(country==="US")prevKeys.push(`report:US:${prevSlug}`);
+      const prevVals=await kv.mget(prevKeys);
+      const prevReport=prevVals.find((v:any)=>v&&typeof v==="object"&&v.slug);
+      if(prevReport){
+        report.previousSlug=prevSlug;
+        report.changes=computeChanges(report,prevReport);
+      }
+    }
+    try{
+      await kv.set(cacheKey,report);
+      if(country==="US")await kv.set(`report:US:${slug}`,report);
+    }catch(_){}
+    return c.json(report);
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
+// Legacy US national — /report/launch-2026
+app.get(`${P}/report/:slug`,async(c)=>{
+  try{
+    const slug=c.req.param("slug");
+    if(!slug||!/^[a-z]+-\d{4}$/.test(slug))return c.json({error:"Invalid report slug"},400);
+    const forceRefresh=(c.req.query("refresh")==="true"||c.req.query("fresh")==="true");
+    const cacheKey=`report:${slug}`;
+    if(!forceRefresh){
+      const cached=await kv.get(cacheKey);
+      if(cached&&typeof cached==="object"&&cached.slug)return c.json(cached);
+    }
+    const known=allReportSlugs();
+    if(!known.find(r=>r.slug===slug))return c.json({error:"Report not found"},404);
+    const report=await computeSeasonalReport(slug,{type:"national"});
+    const prevSlug=previousSlugFor(slug);
+    if(prevSlug){
+      const prevReport=await kv.get(`report:${prevSlug}`);
+      if(prevReport&&typeof prevReport==="object"&&prevReport.slug){
+        report.previousSlug=prevSlug;
+        report.changes=computeChanges(report,prevReport);
+      }
+    }
+    try{
+      await kv.set(cacheKey,report);
+      await kv.set(`report:US:${slug}`,report);
+    }catch(_){}
     return c.json(report);
   }catch(e){return c.json({error:`${e}`},500);}
 });

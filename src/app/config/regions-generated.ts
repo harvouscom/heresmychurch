@@ -284,9 +284,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
     }
   },
   "IE": {
-    "CE": {
+    "IECE": {
       "code": "IE-CE",
-      "abbrev": "CE",
+      "abbrev": "IECE",
       "name": "Clare",
       "bounds": [
         52.56,
@@ -295,9 +295,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -8.28
       ]
     },
-    "CN": {
+    "IECN": {
       "code": "IE-CN",
-      "abbrev": "CN",
+      "abbrev": "IECN",
       "name": "Cavan",
       "bounds": [
         53.77,
@@ -306,9 +306,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -6.75
       ]
     },
-    "CO": {
+    "IECO": {
       "code": "IE-CO",
-      "abbrev": "CO",
+      "abbrev": "IECO",
       "name": "Cork",
       "bounds": [
         51.45,
@@ -317,9 +317,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -7.85
       ]
     },
-    "CW": {
+    "IECW": {
       "code": "IE-CW",
-      "abbrev": "CW",
+      "abbrev": "IECW",
       "name": "Carlow",
       "bounds": [
         52.47,
@@ -328,9 +328,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -6.5
       ]
     },
-    "D": {
+    "IED": {
       "code": "IE-D",
-      "abbrev": "D",
+      "abbrev": "IED",
       "name": "Dublin",
       "bounds": [
         53.18,
@@ -339,9 +339,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -6.05
       ]
     },
-    "DL": {
+    "IEDL": {
       "code": "IE-DL",
-      "abbrev": "DL",
+      "abbrev": "IEDL",
       "name": "Donegal",
       "bounds": [
         54.46,
@@ -350,9 +350,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -6.94
       ]
     },
-    "G": {
+    "IEG": {
       "code": "IE-G",
-      "abbrev": "G",
+      "abbrev": "IEG",
       "name": "Galway",
       "bounds": [
         52.97,
@@ -361,9 +361,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -7.97
       ]
     },
-    "KE": {
+    "IEKE": {
       "code": "IE-KE",
-      "abbrev": "KE",
+      "abbrev": "IEKE",
       "name": "Kildare",
       "bounds": [
         52.86,
@@ -372,9 +372,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -6.46
       ]
     },
-    "KK": {
+    "IEKK": {
       "code": "IE-KK",
-      "abbrev": "KK",
+      "abbrev": "IEKK",
       "name": "Kilkenny",
       "bounds": [
         52.25,
@@ -383,9 +383,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -6.92
       ]
     },
-    "KY": {
+    "IEKY": {
       "code": "IE-KY",
-      "abbrev": "KY",
+      "abbrev": "IEKY",
       "name": "Kerry",
       "bounds": [
         51.69,
@@ -394,9 +394,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -9.12
       ]
     },
-    "LD": {
+    "IELD": {
       "code": "IE-LD",
-      "abbrev": "LD",
+      "abbrev": "IELD",
       "name": "Longford",
       "bounds": [
         53.52,
@@ -405,9 +405,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -7.37
       ]
     },
-    "LH": {
+    "IELH": {
       "code": "IE-LH",
-      "abbrev": "LH",
+      "abbrev": "IELH",
       "name": "Louth",
       "bounds": [
         53.72,
@@ -416,9 +416,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -6.11
       ]
     },
-    "LK": {
+    "IELK": {
       "code": "IE-LK",
-      "abbrev": "LK",
+      "abbrev": "IELK",
       "name": "Limerick",
       "bounds": [
         52.28,
@@ -427,9 +427,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -8.16
       ]
     },
-    "LM": {
+    "IELM": {
       "code": "IE-LM",
-      "abbrev": "LM",
+      "abbrev": "IELM",
       "name": "Leitrim",
       "bounds": [
         53.81,
@@ -438,9 +438,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -7.58
       ]
     },
-    "LS": {
+    "IELS": {
       "code": "IE-LS",
-      "abbrev": "LS",
+      "abbrev": "IELS",
       "name": "Laoighis",
       "bounds": [
         52.78,
@@ -449,9 +449,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -6.93
       ]
     },
-    "MH": {
+    "IEMH": {
       "code": "IE-MH",
-      "abbrev": "MH",
+      "abbrev": "IEMH",
       "name": "Meath",
       "bounds": [
         53.38,
@@ -460,9 +460,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -6.2
       ]
     },
-    "MN": {
+    "IEMN": {
       "code": "IE-MN",
-      "abbrev": "MN",
+      "abbrev": "IEMN",
       "name": "Monaghan",
       "bounds": [
         53.91,
@@ -471,9 +471,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -6.55
       ]
     },
-    "MO": {
+    "IEMO": {
       "code": "IE-MO",
-      "abbrev": "MO",
+      "abbrev": "IEMO",
       "name": "Mayo",
       "bounds": [
         53.48,
@@ -482,9 +482,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -8.58
       ]
     },
-    "OY": {
+    "IEOY": {
       "code": "IE-OY",
-      "abbrev": "OY",
+      "abbrev": "IEOY",
       "name": "Offaly",
       "bounds": [
         52.85,
@@ -493,9 +493,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -6.99
       ]
     },
-    "RN": {
+    "IERN": {
       "code": "IE-RN",
-      "abbrev": "RN",
+      "abbrev": "IERN",
       "name": "Roscommon",
       "bounds": [
         53.28,
@@ -504,9 +504,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -7.88
       ]
     },
-    "SO": {
+    "IESO": {
       "code": "IE-SO",
-      "abbrev": "SO",
+      "abbrev": "IESO",
       "name": "Sligo",
       "bounds": [
         53.91,
@@ -515,9 +515,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -8.16
       ]
     },
-    "TA": {
+    "IETA": {
       "code": "IE-TA",
-      "abbrev": "TA",
+      "abbrev": "IETA",
       "name": "North Tipperary",
       "bounds": [
         52.21,
@@ -526,9 +526,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -7.36
       ]
     },
-    "WD": {
+    "IEWD": {
       "code": "IE-WD",
-      "abbrev": "WD",
+      "abbrev": "IEWD",
       "name": "Waterford",
       "bounds": [
         51.94,
@@ -537,9 +537,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -6.96
       ]
     },
-    "WH": {
+    "IEWH": {
       "code": "IE-WH",
-      "abbrev": "WH",
+      "abbrev": "IEWH",
       "name": "Westmeath",
       "bounds": [
         53.32,
@@ -548,9 +548,9 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -6.95
       ]
     },
-    "WW": {
+    "IEWW": {
       "code": "IE-WW",
-      "abbrev": "WW",
+      "abbrev": "IEWW",
       "name": "Wicklow",
       "bounds": [
         52.68,
@@ -559,15 +559,4885 @@ export const GENERATED_REGIONS: Record<string, Record<string, RegionConfig>> = {
         -5.99
       ]
     },
-    "WX": {
+    "IEWX": {
       "code": "IE-WX",
-      "abbrev": "WX",
+      "abbrev": "IEWX",
       "name": "Wexford",
       "bounds": [
         52.12,
         -7.02,
         52.79,
         -6.15
+      ]
+    }
+  },
+  "FR": {
+    "FR01": {
+      "code": "FR-01",
+      "abbrev": "FR01",
+      "name": "Ain",
+      "bounds": [
+        45.64,
+        4.75,
+        46.51,
+        6.14
+      ]
+    },
+    "FR02": {
+      "code": "FR-02",
+      "abbrev": "FR02",
+      "name": "Aisne",
+      "bounds": [
+        48.85,
+        2.96,
+        50.06,
+        4.25
+      ]
+    },
+    "FR03": {
+      "code": "FR-03",
+      "abbrev": "FR03",
+      "name": "Allier",
+      "bounds": [
+        45.96,
+        2.25,
+        46.79,
+        4
+      ]
+    },
+    "FR04": {
+      "code": "FR-04",
+      "abbrev": "FR04",
+      "name": "Alpes-de-Haute-Provence",
+      "bounds": [
+        43.67,
+        5.5,
+        44.66,
+        6.95
+      ]
+    },
+    "FR05": {
+      "code": "FR-05",
+      "abbrev": "FR05",
+      "name": "Hautes-Alpes",
+      "bounds": [
+        44.19,
+        5.43,
+        45.12,
+        7.06
+      ]
+    },
+    "FR06": {
+      "code": "FR-06",
+      "abbrev": "FR06",
+      "name": "Alpes-Maritimes",
+      "bounds": [
+        43.48,
+        6.64,
+        44.35,
+        7.69
+      ]
+    },
+    "FR07": {
+      "code": "FR-07",
+      "abbrev": "FR07",
+      "name": "Ardèche",
+      "bounds": [
+        44.28,
+        3.87,
+        45.37,
+        4.89
+      ]
+    },
+    "FR08": {
+      "code": "FR-08",
+      "abbrev": "FR08",
+      "name": "Ardennes",
+      "bounds": [
+        49.24,
+        4.03,
+        50.16,
+        5.39
+      ]
+    },
+    "FR09": {
+      "code": "FR-09",
+      "abbrev": "FR09",
+      "name": "Ariège",
+      "bounds": [
+        42.57,
+        0.83,
+        43.31,
+        2.17
+      ]
+    },
+    "FR10": {
+      "code": "FR-10",
+      "abbrev": "FR10",
+      "name": "Aube",
+      "bounds": [
+        47.92,
+        3.39,
+        48.71,
+        4.86
+      ]
+    },
+    "FR11": {
+      "code": "FR-11",
+      "abbrev": "FR11",
+      "name": "Aude",
+      "bounds": [
+        42.65,
+        1.7,
+        43.44,
+        3.24
+      ]
+    },
+    "FR12": {
+      "code": "FR-12",
+      "abbrev": "FR12",
+      "name": "Aveyron",
+      "bounds": [
+        43.69,
+        1.83,
+        44.94,
+        3.45
+      ]
+    },
+    "FR13": {
+      "code": "FR-13",
+      "abbrev": "FR13",
+      "name": "Bouches-du-Rhône",
+      "bounds": [
+        43.16,
+        4.21,
+        43.93,
+        5.81
+      ]
+    },
+    "FR14": {
+      "code": "FR-14",
+      "abbrev": "FR14",
+      "name": "Calvados",
+      "bounds": [
+        48.75,
+        -1.15,
+        49.43,
+        0.43
+      ]
+    },
+    "FR15": {
+      "code": "FR-15",
+      "abbrev": "FR15",
+      "name": "Cantal",
+      "bounds": [
+        44.62,
+        2.06,
+        45.48,
+        3.37
+      ]
+    },
+    "FR16": {
+      "code": "FR-16",
+      "abbrev": "FR16",
+      "name": "Charente",
+      "bounds": [
+        45.19,
+        -0.46,
+        46.14,
+        0.92
+      ]
+    },
+    "FR17": {
+      "code": "FR-17",
+      "abbrev": "FR17",
+      "name": "Charente-Maritime",
+      "bounds": [
+        45.1,
+        -1.56,
+        46.36,
+        0
+      ]
+    },
+    "FR18": {
+      "code": "FR-18",
+      "abbrev": "FR18",
+      "name": "Cher",
+      "bounds": [
+        46.42,
+        1.77,
+        47.62,
+        3.08
+      ]
+    },
+    "FR19": {
+      "code": "FR-19",
+      "abbrev": "FR19",
+      "name": "Corrèze",
+      "bounds": [
+        44.93,
+        1.24,
+        45.76,
+        2.53
+      ]
+    },
+    "FR21": {
+      "code": "FR-21",
+      "abbrev": "FR21",
+      "name": "Côte-d'Or",
+      "bounds": [
+        46.9,
+        4.06,
+        48.02,
+        5.52
+      ]
+    },
+    "FR22": {
+      "code": "FR-22",
+      "abbrev": "FR22",
+      "name": "Côtes-d'Armor",
+      "bounds": [
+        48.03,
+        -3.64,
+        48.88,
+        -1.91
+      ]
+    },
+    "FR23": {
+      "code": "FR-23",
+      "abbrev": "FR23",
+      "name": "Creuse",
+      "bounds": [
+        45.67,
+        1.39,
+        46.45,
+        2.6
+      ]
+    },
+    "FR24": {
+      "code": "FR-24",
+      "abbrev": "FR24",
+      "name": "Dordogne",
+      "bounds": [
+        44.57,
+        -0.03,
+        45.71,
+        1.46
+      ]
+    },
+    "FR25": {
+      "code": "FR-25",
+      "abbrev": "FR25",
+      "name": "Doubs",
+      "bounds": [
+        46.56,
+        5.7,
+        47.56,
+        7.04
+      ]
+    },
+    "FR26": {
+      "code": "FR-26",
+      "abbrev": "FR26",
+      "name": "Drôme",
+      "bounds": [
+        44.12,
+        4.66,
+        45.34,
+        5.83
+      ]
+    },
+    "FR27": {
+      "code": "FR-27",
+      "abbrev": "FR27",
+      "name": "Eure",
+      "bounds": [
+        48.67,
+        0.29,
+        49.49,
+        1.78
+      ]
+    },
+    "FR28": {
+      "code": "FR-28",
+      "abbrev": "FR28",
+      "name": "Eure-et-Loir",
+      "bounds": [
+        47.95,
+        0.78,
+        48.94,
+        2
+      ]
+    },
+    "FR29": {
+      "code": "FR-29",
+      "abbrev": "FR29",
+      "name": "Finistère",
+      "bounds": [
+        47.77,
+        -5.13,
+        48.73,
+        -3.39
+      ]
+    },
+    "FR2A": {
+      "code": "FR-2A",
+      "abbrev": "FR2A",
+      "name": "Corse-du-Sud",
+      "bounds": [
+        41.37,
+        8.55,
+        42.39,
+        9.4
+      ]
+    },
+    "FR2B": {
+      "code": "FR-2B",
+      "abbrev": "FR2B",
+      "name": "Haute-Corse",
+      "bounds": [
+        41.83,
+        8.57,
+        43.02,
+        9.56
+      ]
+    },
+    "FR30": {
+      "code": "FR-30",
+      "abbrev": "FR30",
+      "name": "Gard",
+      "bounds": [
+        43.46,
+        3.29,
+        44.46,
+        4.85
+      ]
+    },
+    "FR31": {
+      "code": "FR-31",
+      "abbrev": "FR31",
+      "name": "Haute-Garonne",
+      "bounds": [
+        42.68,
+        0.44,
+        43.92,
+        2.05
+      ]
+    },
+    "FR32": {
+      "code": "FR-32",
+      "abbrev": "FR32",
+      "name": "Gers",
+      "bounds": [
+        43.31,
+        -0.27,
+        44.07,
+        1.19
+      ]
+    },
+    "FR33": {
+      "code": "FR-33",
+      "abbrev": "FR33",
+      "name": "Gironde",
+      "bounds": [
+        44.2,
+        -1.26,
+        45.57,
+        0.32
+      ]
+    },
+    "FR34": {
+      "code": "FR-34",
+      "abbrev": "FR34",
+      "name": "Hérault",
+      "bounds": [
+        43.22,
+        2.56,
+        43.97,
+        4.18
+      ]
+    },
+    "FR35": {
+      "code": "FR-35",
+      "abbrev": "FR35",
+      "name": "Ille-et-Vilaine",
+      "bounds": [
+        47.63,
+        -2.29,
+        48.71,
+        -1.04
+      ]
+    },
+    "FR36": {
+      "code": "FR-36",
+      "abbrev": "FR36",
+      "name": "Indre",
+      "bounds": [
+        46.35,
+        0.88,
+        47.29,
+        2.19
+      ]
+    },
+    "FR37": {
+      "code": "FR-37",
+      "abbrev": "FR37",
+      "name": "Indre-et-Loire",
+      "bounds": [
+        46.74,
+        0.07,
+        47.71,
+        1.36
+      ]
+    },
+    "FR38": {
+      "code": "FR-38",
+      "abbrev": "FR38",
+      "name": "Isère",
+      "bounds": [
+        44.71,
+        4.76,
+        45.88,
+        6.37
+      ]
+    },
+    "FR39": {
+      "code": "FR-39",
+      "abbrev": "FR39",
+      "name": "Jura",
+      "bounds": [
+        46.26,
+        5.25,
+        47.29,
+        6.21
+      ]
+    },
+    "FR40": {
+      "code": "FR-40",
+      "abbrev": "FR40",
+      "name": "Landes",
+      "bounds": [
+        43.49,
+        -1.51,
+        44.53,
+        0.14
+      ]
+    },
+    "FR41": {
+      "code": "FR-41",
+      "abbrev": "FR41",
+      "name": "Loir-et-Cher",
+      "bounds": [
+        47.19,
+        0.6,
+        48.13,
+        2.26
+      ]
+    },
+    "FR42": {
+      "code": "FR-42",
+      "abbrev": "FR42",
+      "name": "Loire",
+      "bounds": [
+        45.24,
+        3.67,
+        46.28,
+        4.77
+      ]
+    },
+    "FR43": {
+      "code": "FR-43",
+      "abbrev": "FR43",
+      "name": "Haute-Loire",
+      "bounds": [
+        44.75,
+        3.1,
+        45.42,
+        4.48
+      ]
+    },
+    "FR44": {
+      "code": "FR-44",
+      "abbrev": "FR44",
+      "name": "Loire-Atlantique",
+      "bounds": [
+        46.86,
+        -2.56,
+        47.83,
+        -0.92
+      ]
+    },
+    "FR45": {
+      "code": "FR-45",
+      "abbrev": "FR45",
+      "name": "Loiret",
+      "bounds": [
+        47.49,
+        1.52,
+        48.34,
+        3.12
+      ]
+    },
+    "FR46": {
+      "code": "FR-46",
+      "abbrev": "FR46",
+      "name": "Lot",
+      "bounds": [
+        44.22,
+        1,
+        45.05,
+        2.21
+      ]
+    },
+    "FR47": {
+      "code": "FR-47",
+      "abbrev": "FR47",
+      "name": "Lot-et-Garonne",
+      "bounds": [
+        43.97,
+        -0.14,
+        44.76,
+        1.08
+      ]
+    },
+    "FR48": {
+      "code": "FR-48",
+      "abbrev": "FR48",
+      "name": "Lozère",
+      "bounds": [
+        44.11,
+        2.98,
+        44.96,
+        3.99
+      ]
+    },
+    "FR49": {
+      "code": "FR-49",
+      "abbrev": "FR49",
+      "name": "Maine-et-Loire",
+      "bounds": [
+        46.99,
+        -1.34,
+        47.81,
+        0.24
+      ]
+    },
+    "FR50": {
+      "code": "FR-50",
+      "abbrev": "FR50",
+      "name": "Manche",
+      "bounds": [
+        48.46,
+        -1.95,
+        49.73,
+        -0.74
+      ]
+    },
+    "FR51": {
+      "code": "FR-51",
+      "abbrev": "FR51",
+      "name": "Marne",
+      "bounds": [
+        48.53,
+        3.39,
+        49.41,
+        5.03
+      ]
+    },
+    "FR52": {
+      "code": "FR-52",
+      "abbrev": "FR52",
+      "name": "Haute-Marne",
+      "bounds": [
+        47.59,
+        4.64,
+        48.69,
+        5.9
+      ]
+    },
+    "FR53": {
+      "code": "FR-53",
+      "abbrev": "FR53",
+      "name": "Mayenne",
+      "bounds": [
+        47.74,
+        -1.24,
+        48.56,
+        -0.05
+      ]
+    },
+    "FR54": {
+      "code": "FR-54",
+      "abbrev": "FR54",
+      "name": "Meurthe-et-Moselle",
+      "bounds": [
+        48.36,
+        5.46,
+        49.55,
+        7.09
+      ]
+    },
+    "FR55": {
+      "code": "FR-55",
+      "abbrev": "FR55",
+      "name": "Meuse",
+      "bounds": [
+        48.41,
+        4.91,
+        49.61,
+        5.85
+      ]
+    },
+    "FR56": {
+      "code": "FR-56",
+      "abbrev": "FR56",
+      "name": "Morbihan",
+      "bounds": [
+        47.3,
+        -3.73,
+        48.21,
+        -2.05
+      ]
+    },
+    "FR57": {
+      "code": "FR-57",
+      "abbrev": "FR57",
+      "name": "Moselle",
+      "bounds": [
+        48.52,
+        5.92,
+        49.5,
+        7.64
+      ]
+    },
+    "FR58": {
+      "code": "FR-58",
+      "abbrev": "FR58",
+      "name": "Nièvre",
+      "bounds": [
+        46.65,
+        2.86,
+        47.58,
+        4.22
+      ]
+    },
+    "FR59": {
+      "code": "FR-59",
+      "abbrev": "FR59",
+      "name": "Nord",
+      "bounds": [
+        49.97,
+        2.06,
+        51.09,
+        4.21
+      ]
+    },
+    "FR60": {
+      "code": "FR-60",
+      "abbrev": "FR60",
+      "name": "Oise",
+      "bounds": [
+        49.07,
+        1.68,
+        49.77,
+        3.17
+      ]
+    },
+    "FR61": {
+      "code": "FR-61",
+      "abbrev": "FR61",
+      "name": "Orne",
+      "bounds": [
+        48.18,
+        -0.86,
+        48.97,
+        0.98
+      ]
+    },
+    "FR62": {
+      "code": "FR-62",
+      "abbrev": "FR62",
+      "name": "Pas-de-Calais",
+      "bounds": [
+        50.02,
+        1.56,
+        51.01,
+        3.17
+      ]
+    },
+    "FR63": {
+      "code": "FR-63",
+      "abbrev": "FR63",
+      "name": "Puy-de-Dôme",
+      "bounds": [
+        45.29,
+        2.4,
+        46.26,
+        3.97
+      ]
+    },
+    "FR64": {
+      "code": "FR-64",
+      "abbrev": "FR64",
+      "name": "Pyrénées-Atlantiques",
+      "bounds": [
+        42.77,
+        -1.8,
+        43.59,
+        0.02
+      ]
+    },
+    "FR65": {
+      "code": "FR-65",
+      "abbrev": "FR65",
+      "name": "Hautes-Pyrénées",
+      "bounds": [
+        42.67,
+        -0.32,
+        43.61,
+        0.64
+      ]
+    },
+    "FR66": {
+      "code": "FR-66",
+      "abbrev": "FR66",
+      "name": "Pyrénées-Orientales",
+      "bounds": [
+        42.33,
+        1.71,
+        42.91,
+        3.18
+      ]
+    },
+    "FR67": {
+      "code": "FR-67",
+      "abbrev": "FR67",
+      "name": "Bas-Rhin",
+      "bounds": [
+        48.12,
+        6.98,
+        49.07,
+        8.2
+      ]
+    },
+    "FR68": {
+      "code": "FR-68",
+      "abbrev": "FR68",
+      "name": "Haute-Rhin",
+      "bounds": [
+        47.42,
+        6.87,
+        48.3,
+        7.62
+      ]
+    },
+    "FR69": {
+      "code": "FR-69",
+      "abbrev": "FR69",
+      "name": "Rhône",
+      "bounds": [
+        45.44,
+        4.25,
+        46.3,
+        5.16
+      ]
+    },
+    "FR70": {
+      "code": "FR-70",
+      "abbrev": "FR70",
+      "name": "Haute-Saône",
+      "bounds": [
+        47.26,
+        5.37,
+        48.01,
+        6.84
+      ]
+    },
+    "FR71": {
+      "code": "FR-71",
+      "abbrev": "FR71",
+      "name": "Saône-et-Loire",
+      "bounds": [
+        46.17,
+        3.62,
+        47.16,
+        5.46
+      ]
+    },
+    "FR72": {
+      "code": "FR-72",
+      "abbrev": "FR72",
+      "name": "Sarthe",
+      "bounds": [
+        47.58,
+        -0.44,
+        48.47,
+        0.91
+      ]
+    },
+    "FR73": {
+      "code": "FR-73",
+      "abbrev": "FR73",
+      "name": "Savoie",
+      "bounds": [
+        45.05,
+        5.6,
+        45.94,
+        7.16
+      ]
+    },
+    "FR74": {
+      "code": "FR-74",
+      "abbrev": "FR74",
+      "name": "Haute-Savoie",
+      "bounds": [
+        45.68,
+        5.82,
+        46.46,
+        7.02
+      ]
+    },
+    "FR75": {
+      "code": "FR-75",
+      "abbrev": "FR75",
+      "name": "Paris",
+      "bounds": [
+        48.82,
+        2.23,
+        48.9,
+        2.47
+      ]
+    },
+    "FR76": {
+      "code": "FR-76",
+      "abbrev": "FR76",
+      "name": "Seine-Maritime",
+      "bounds": [
+        49.26,
+        0.08,
+        50.07,
+        1.77
+      ]
+    },
+    "FR77": {
+      "code": "FR-77",
+      "abbrev": "FR77",
+      "name": "Seien-et-Marne",
+      "bounds": [
+        48.12,
+        2.39,
+        49.11,
+        3.54
+      ]
+    },
+    "FR78": {
+      "code": "FR-78",
+      "abbrev": "FR78",
+      "name": "Yvelines",
+      "bounds": [
+        48.44,
+        1.44,
+        49.08,
+        2.23
+      ]
+    },
+    "FR79": {
+      "code": "FR-79",
+      "abbrev": "FR79",
+      "name": "Deux-Sèvres",
+      "bounds": [
+        45.97,
+        -0.95,
+        47.1,
+        0.2
+      ]
+    },
+    "FR80": {
+      "code": "FR-80",
+      "abbrev": "FR80",
+      "name": "Somme",
+      "bounds": [
+        49.58,
+        1.37,
+        50.38,
+        3.19
+      ]
+    },
+    "FR81": {
+      "code": "FR-81",
+      "abbrev": "FR81",
+      "name": "Tarn",
+      "bounds": [
+        43.38,
+        1.55,
+        44.19,
+        2.93
+      ]
+    },
+    "FR82": {
+      "code": "FR-82",
+      "abbrev": "FR82",
+      "name": "Tarn-et-Garonne",
+      "bounds": [
+        43.77,
+        0.74,
+        44.39,
+        1.98
+      ]
+    },
+    "FR83": {
+      "code": "FR-83",
+      "abbrev": "FR83",
+      "name": "Var",
+      "bounds": [
+        42.99,
+        5.67,
+        43.81,
+        6.93
+      ]
+    },
+    "FR84": {
+      "code": "FR-84",
+      "abbrev": "FR84",
+      "name": "Vaucluse",
+      "bounds": [
+        43.67,
+        4.66,
+        44.43,
+        5.75
+      ]
+    },
+    "FR85": {
+      "code": "FR-85",
+      "abbrev": "FR85",
+      "name": "Vendée",
+      "bounds": [
+        46.28,
+        -2.38,
+        47.08,
+        -0.56
+      ]
+    },
+    "FR86": {
+      "code": "FR-86",
+      "abbrev": "FR86",
+      "name": "Vienne",
+      "bounds": [
+        46.05,
+        -0.11,
+        47.16,
+        1.19
+      ]
+    },
+    "FR87": {
+      "code": "FR-87",
+      "abbrev": "FR87",
+      "name": "Haute-Vienne",
+      "bounds": [
+        45.45,
+        0.64,
+        46.4,
+        1.91
+      ]
+    },
+    "FR88": {
+      "code": "FR-88",
+      "abbrev": "FR88",
+      "name": "Vosges",
+      "bounds": [
+        47.82,
+        5.42,
+        48.52,
+        7.21
+      ]
+    },
+    "FR89": {
+      "code": "FR-89",
+      "abbrev": "FR89",
+      "name": "Yonne",
+      "bounds": [
+        47.31,
+        2.83,
+        48.41,
+        4.34
+      ]
+    },
+    "FR90": {
+      "code": "FR-90",
+      "abbrev": "FR90",
+      "name": "Territoire de Belfort",
+      "bounds": [
+        47.43,
+        6.76,
+        47.82,
+        7.15
+      ]
+    },
+    "FR91": {
+      "code": "FR-91",
+      "abbrev": "FR91",
+      "name": "Essonne",
+      "bounds": [
+        48.28,
+        1.92,
+        48.78,
+        2.58
+      ]
+    },
+    "FR92": {
+      "code": "FR-92",
+      "abbrev": "FR92",
+      "name": "Hauts-de-Seine",
+      "bounds": [
+        48.73,
+        2.15,
+        48.96,
+        2.33
+      ]
+    },
+    "FR93": {
+      "code": "FR-93",
+      "abbrev": "FR93",
+      "name": "Seine-Saint-Denis",
+      "bounds": [
+        48.81,
+        2.27,
+        49.01,
+        2.59
+      ]
+    },
+    "FR94": {
+      "code": "FR-94",
+      "abbrev": "FR94",
+      "name": "Val-de-Marne",
+      "bounds": [
+        48.69,
+        2.32,
+        48.86,
+        2.6
+      ]
+    },
+    "FR95": {
+      "code": "FR-95",
+      "abbrev": "FR95",
+      "name": "Val-d'Oise",
+      "bounds": [
+        48.88,
+        1.62,
+        49.23,
+        2.58
+      ]
+    }
+  },
+  "DE": {
+    "DEBB": {
+      "code": "DE-BB",
+      "abbrev": "DEBB",
+      "name": "Brandenburg",
+      "bounds": [
+        51.35,
+        11.27,
+        53.54,
+        14.76
+      ]
+    },
+    "DEBE": {
+      "code": "DE-BE",
+      "abbrev": "DEBE",
+      "name": "Berlin",
+      "bounds": [
+        52.34,
+        13.09,
+        52.66,
+        13.75
+      ]
+    },
+    "DEBW": {
+      "code": "DE-BW",
+      "abbrev": "DEBW",
+      "name": "Baden-Württemberg",
+      "bounds": [
+        47.53,
+        7.51,
+        49.8,
+        10.5
+      ]
+    },
+    "DEBY": {
+      "code": "DE-BY",
+      "abbrev": "DEBY",
+      "name": "Bayern",
+      "bounds": [
+        47.27,
+        8.98,
+        50.56,
+        13.82
+      ]
+    },
+    "DEHB": {
+      "code": "DE-HB",
+      "abbrev": "DEHB",
+      "name": "Bremen",
+      "bounds": [
+        53.02,
+        8.5,
+        53.62,
+        8.99
+      ]
+    },
+    "DEHE": {
+      "code": "DE-HE",
+      "abbrev": "DEHE",
+      "name": "Hessen",
+      "bounds": [
+        49.4,
+        7.77,
+        51.66,
+        10.23
+      ]
+    },
+    "DEHH": {
+      "code": "DE-HH",
+      "abbrev": "DEHH",
+      "name": "Hamburg",
+      "bounds": [
+        53.4,
+        9.74,
+        53.73,
+        10.33
+      ]
+    },
+    "DEMV": {
+      "code": "DE-MV",
+      "abbrev": "DEMV",
+      "name": "Mecklenburg-Vorpommern",
+      "bounds": [
+        53.11,
+        10.6,
+        54.69,
+        14.39
+      ]
+    },
+    "DENI": {
+      "code": "DE-NI",
+      "abbrev": "DENI",
+      "name": "Niedersachsen",
+      "bounds": [
+        51.29,
+        6.66,
+        53.89,
+        11.58
+      ]
+    },
+    "DENW": {
+      "code": "DE-NW",
+      "abbrev": "DENW",
+      "name": "Nordrhein-Westfalen",
+      "bounds": [
+        50.32,
+        5.85,
+        52.52,
+        9.46
+      ]
+    },
+    "DERP": {
+      "code": "DE-RP",
+      "abbrev": "DERP",
+      "name": "Rheinland-Pfalz",
+      "bounds": [
+        48.96,
+        6.1,
+        50.93,
+        8.5
+      ]
+    },
+    "DESH": {
+      "code": "DE-SH",
+      "abbrev": "DESH",
+      "name": "Schleswig-Holstein",
+      "bounds": [
+        53.36,
+        7.88,
+        55.07,
+        11.31
+      ]
+    },
+    "DESL": {
+      "code": "DE-SL",
+      "abbrev": "DESL",
+      "name": "Saarland",
+      "bounds": [
+        49.11,
+        6.34,
+        49.63,
+        7.39
+      ]
+    },
+    "DESN": {
+      "code": "DE-SN",
+      "abbrev": "DESN",
+      "name": "Sachsen",
+      "bounds": [
+        50.16,
+        11.9,
+        51.67,
+        15.02
+      ]
+    },
+    "DEST": {
+      "code": "DE-ST",
+      "abbrev": "DEST",
+      "name": "Sachsen-Anhalt",
+      "bounds": [
+        50.93,
+        10.57,
+        53.05,
+        13.24
+      ]
+    },
+    "DETH": {
+      "code": "DE-TH",
+      "abbrev": "DETH",
+      "name": "Thüringen",
+      "bounds": [
+        50.21,
+        9.88,
+        51.64,
+        12.65
+      ]
+    }
+  },
+  "NL": {
+    "NLDR": {
+      "code": "NL-DR",
+      "abbrev": "NLDR",
+      "name": "Drenthe",
+      "bounds": [
+        52.61,
+        6.13,
+        53.2,
+        7.07
+      ]
+    },
+    "NLFL": {
+      "code": "NL-FL",
+      "abbrev": "NLFL",
+      "name": "Flevoland",
+      "bounds": [
+        52.26,
+        5.1,
+        52.84,
+        6.02
+      ]
+    },
+    "NLFR": {
+      "code": "NL-FR",
+      "abbrev": "NLFR",
+      "name": "Friesland",
+      "bounds": [
+        52.79,
+        4.88,
+        53.51,
+        6.43
+      ]
+    },
+    "NLGE": {
+      "code": "NL-GE",
+      "abbrev": "NLGE",
+      "name": "Gelderland",
+      "bounds": [
+        51.73,
+        5,
+        52.52,
+        6.81
+      ]
+    },
+    "NLGR": {
+      "code": "NL-GR",
+      "abbrev": "NLGR",
+      "name": "Groningen",
+      "bounds": [
+        52.84,
+        6.17,
+        53.56,
+        7.2
+      ]
+    },
+    "NLLI": {
+      "code": "NL-LI",
+      "abbrev": "NLLI",
+      "name": "Limburg",
+      "bounds": [
+        50.75,
+        5.55,
+        51.78,
+        6.21
+      ]
+    },
+    "NLNB": {
+      "code": "NL-NB",
+      "abbrev": "NLNB",
+      "name": "Noord-Brabant",
+      "bounds": [
+        51.22,
+        4.19,
+        51.84,
+        6.05
+      ]
+    },
+    "NLNH": {
+      "code": "NL-NH",
+      "abbrev": "NLNH",
+      "name": "Noord-Holland",
+      "bounds": [
+        52.17,
+        4.5,
+        53.19,
+        5.37
+      ]
+    },
+    "NLOV": {
+      "code": "NL-OV",
+      "abbrev": "NLOV",
+      "name": "Overijssel",
+      "bounds": [
+        52.11,
+        5.79,
+        52.85,
+        7.05
+      ]
+    },
+    "NLUT": {
+      "code": "NL-UT",
+      "abbrev": "NLUT",
+      "name": "Utrecht",
+      "bounds": [
+        51.94,
+        4.77,
+        52.29,
+        5.62
+      ]
+    },
+    "NLZE": {
+      "code": "NL-ZE",
+      "abbrev": "NLZE",
+      "name": "Zeeland",
+      "bounds": [
+        51.21,
+        3.35,
+        51.75,
+        4.28
+      ]
+    },
+    "NLZH": {
+      "code": "NL-ZH",
+      "abbrev": "NLZH",
+      "name": "Zuid-Holland",
+      "bounds": [
+        51.64,
+        3.86,
+        52.34,
+        5.18
+      ]
+    }
+  },
+  "BE": {
+    "BEBRU": {
+      "code": "BE-BRU",
+      "abbrev": "BEBRU",
+      "name": "Brussels",
+      "bounds": [
+        50.76,
+        4.25,
+        50.91,
+        4.48
+      ]
+    },
+    "BEVAN": {
+      "code": "BE-VAN",
+      "abbrev": "BEVAN",
+      "name": "Antwerp",
+      "bounds": [
+        50.99,
+        4.18,
+        51.5,
+        5.26
+      ]
+    },
+    "BEVBR": {
+      "code": "BE-VBR",
+      "abbrev": "BEVBR",
+      "name": "Flemish Brabant",
+      "bounds": [
+        50.69,
+        3.89,
+        51.05,
+        5.19
+      ]
+    },
+    "BEVLI": {
+      "code": "BE-VLI",
+      "abbrev": "BEVLI",
+      "name": "Limburg",
+      "bounds": [
+        50.7,
+        4.98,
+        51.29,
+        5.91
+      ]
+    },
+    "BEVOV": {
+      "code": "BE-VOV",
+      "abbrev": "BEVOV",
+      "name": "East Flanders",
+      "bounds": [
+        50.72,
+        3.33,
+        51.37,
+        4.33
+      ]
+    },
+    "BEVWV": {
+      "code": "BE-VWV",
+      "abbrev": "BEVWV",
+      "name": "West Flanders",
+      "bounds": [
+        50.7,
+        2.52,
+        51.38,
+        3.52
+      ]
+    },
+    "BEWBR": {
+      "code": "BE-WBR",
+      "abbrev": "BEWBR",
+      "name": "Walloon Brabant",
+      "bounds": [
+        50.53,
+        4.09,
+        50.81,
+        5.02
+      ]
+    },
+    "BEWHT": {
+      "code": "BE-WHT",
+      "abbrev": "BEWHT",
+      "name": "Hainaut",
+      "bounds": [
+        49.93,
+        2.84,
+        50.81,
+        4.62
+      ]
+    },
+    "BEWLG": {
+      "code": "BE-WLG",
+      "abbrev": "BEWLG",
+      "name": "Liege",
+      "bounds": [
+        50.12,
+        4.98,
+        50.81,
+        6.37
+      ]
+    },
+    "BEWLX": {
+      "code": "BE-WLX",
+      "abbrev": "BEWLX",
+      "name": "Luxembourg",
+      "bounds": [
+        49.5,
+        4.97,
+        50.43,
+        6.03
+      ]
+    },
+    "BEWNA": {
+      "code": "BE-WNA",
+      "abbrev": "BEWNA",
+      "name": "Namur",
+      "bounds": [
+        49.78,
+        4.29,
+        50.65,
+        5.4
+      ]
+    }
+  },
+  "ES": {
+    "ESA": {
+      "code": "ES-A",
+      "abbrev": "ESA",
+      "name": "Alicante",
+      "bounds": [
+        37.84,
+        -1.08,
+        38.88,
+        0.23
+      ]
+    },
+    "ESAB": {
+      "code": "ES-AB",
+      "abbrev": "ESAB",
+      "name": "Albacete",
+      "bounds": [
+        38.02,
+        -2.88,
+        39.42,
+        -0.9
+      ]
+    },
+    "ESAL": {
+      "code": "ES-AL",
+      "abbrev": "ESAL",
+      "name": "Almería",
+      "bounds": [
+        36.68,
+        -3.14,
+        37.92,
+        -1.64
+      ]
+    },
+    "ESAV": {
+      "code": "ES-AV",
+      "abbrev": "ESAV",
+      "name": "Ávila",
+      "bounds": [
+        40.09,
+        -5.73,
+        41.16,
+        -4.16
+      ]
+    },
+    "ESB": {
+      "code": "ES-B",
+      "abbrev": "ESB",
+      "name": "Barcelona",
+      "bounds": [
+        41.19,
+        1.37,
+        42.32,
+        2.78
+      ]
+    },
+    "ESBA": {
+      "code": "ES-BA",
+      "abbrev": "ESBA",
+      "name": "Badajoz",
+      "bounds": [
+        37.94,
+        -7.36,
+        39.45,
+        -4.66
+      ]
+    },
+    "ESBI": {
+      "code": "ES-BI",
+      "abbrev": "ESBI",
+      "name": "Bizkaia",
+      "bounds": [
+        43.02,
+        -3.44,
+        43.45,
+        -2.41
+      ]
+    },
+    "ESBU": {
+      "code": "ES-BU",
+      "abbrev": "ESBU",
+      "name": "Burgos",
+      "bounds": [
+        41.46,
+        -4.33,
+        43.2,
+        -2.51
+      ]
+    },
+    "ESC": {
+      "code": "ES-C",
+      "abbrev": "ESC",
+      "name": "La Coruña",
+      "bounds": [
+        42.53,
+        -9.29,
+        43.79,
+        -7.67
+      ]
+    },
+    "ESCA": {
+      "code": "ES-CA",
+      "abbrev": "ESCA",
+      "name": "Cádiz",
+      "bounds": [
+        36.01,
+        -6.44,
+        37.05,
+        -5.08
+      ]
+    },
+    "ESCC": {
+      "code": "ES-CC",
+      "abbrev": "ESCC",
+      "name": "Cáceres",
+      "bounds": [
+        39.03,
+        -7.56,
+        40.48,
+        -4.94
+      ]
+    },
+    "ESCE": {
+      "code": "ES-CE",
+      "abbrev": "ESCE",
+      "name": "Ceuta",
+      "bounds": [
+        35.85,
+        -5.4,
+        35.93,
+        -5.28
+      ]
+    },
+    "ESCO": {
+      "code": "ES-CO",
+      "abbrev": "ESCO",
+      "name": "Córdoba",
+      "bounds": [
+        37.19,
+        -5.58,
+        38.73,
+        -4
+      ]
+    },
+    "ESCR": {
+      "code": "ES-CR",
+      "abbrev": "ESCR",
+      "name": "Ciudad Real",
+      "bounds": [
+        38.35,
+        -5.04,
+        39.58,
+        -2.64
+      ]
+    },
+    "ESCS": {
+      "code": "ES-CS",
+      "abbrev": "ESCS",
+      "name": "Castellón",
+      "bounds": [
+        39.72,
+        -0.84,
+        40.78,
+        0.52
+      ]
+    },
+    "ESCU": {
+      "code": "ES-CU",
+      "abbrev": "ESCU",
+      "name": "Cuenca",
+      "bounds": [
+        39.23,
+        -3.17,
+        40.66,
+        -1.15
+      ]
+    },
+    "ESGC": {
+      "code": "ES-GC",
+      "abbrev": "ESGC",
+      "name": "Las Palmas",
+      "bounds": [
+        27.73,
+        -15.82,
+        29.29,
+        -13.42
+      ]
+    },
+    "ESGI": {
+      "code": "ES-GI",
+      "abbrev": "ESGI",
+      "name": "Gerona",
+      "bounds": [
+        41.65,
+        1.71,
+        42.49,
+        3.32
+      ]
+    },
+    "ESGR": {
+      "code": "ES-GR",
+      "abbrev": "ESGR",
+      "name": "Granada",
+      "bounds": [
+        36.7,
+        -4.32,
+        38.08,
+        -2.21
+      ]
+    },
+    "ESGU": {
+      "code": "ES-GU",
+      "abbrev": "ESGU",
+      "name": "Guadalajara",
+      "bounds": [
+        40.16,
+        -3.55,
+        41.32,
+        -1.54
+      ]
+    },
+    "ESH": {
+      "code": "ES-H",
+      "abbrev": "ESH",
+      "name": "Huelva",
+      "bounds": [
+        36.81,
+        -7.53,
+        38.21,
+        -6.12
+      ]
+    },
+    "ESHU": {
+      "code": "ES-HU",
+      "abbrev": "ESHU",
+      "name": "Huesca",
+      "bounds": [
+        41.35,
+        -0.92,
+        42.92,
+        0.77
+      ]
+    },
+    "ESJ": {
+      "code": "ES-J",
+      "abbrev": "ESJ",
+      "name": "Jaén",
+      "bounds": [
+        37.38,
+        -4.28,
+        38.53,
+        -2.43
+      ]
+    },
+    "ESL": {
+      "code": "ES-L",
+      "abbrev": "ESL",
+      "name": "Lérida",
+      "bounds": [
+        41.23,
+        0.32,
+        42.85,
+        1.84
+      ]
+    },
+    "ESLE": {
+      "code": "ES-LE",
+      "abbrev": "ESLE",
+      "name": "León",
+      "bounds": [
+        42.03,
+        -7.07,
+        43.24,
+        -4.73
+      ]
+    },
+    "ESLO": {
+      "code": "ES-LO",
+      "abbrev": "ESLO",
+      "name": "La Rioja",
+      "bounds": [
+        41.92,
+        -3.12,
+        42.64,
+        -1.69
+      ]
+    },
+    "ESLU": {
+      "code": "ES-LU",
+      "abbrev": "ESLU",
+      "name": "Lugo",
+      "bounds": [
+        42.33,
+        -8,
+        43.75,
+        -6.83
+      ]
+    },
+    "ESM": {
+      "code": "ES-M",
+      "abbrev": "ESM",
+      "name": "Madrid",
+      "bounds": [
+        39.89,
+        -4.57,
+        41.16,
+        -3.06
+      ]
+    },
+    "ESMA": {
+      "code": "ES-MA",
+      "abbrev": "ESMA",
+      "name": "Málaga",
+      "bounds": [
+        36.3,
+        -5.61,
+        37.28,
+        -3.77
+      ]
+    },
+    "ESML": {
+      "code": "ES-ML",
+      "abbrev": "ESML",
+      "name": "Melilla",
+      "bounds": [
+        35.27,
+        -2.97,
+        35.33,
+        -2.91
+      ]
+    },
+    "ESMU": {
+      "code": "ES-MU",
+      "abbrev": "ESMU",
+      "name": "Murcia",
+      "bounds": [
+        37.38,
+        -2.34,
+        38.75,
+        -0.7
+      ]
+    },
+    "ESNA": {
+      "code": "ES-NA",
+      "abbrev": "ESNA",
+      "name": "Navarra",
+      "bounds": [
+        41.91,
+        -2.49,
+        43.3,
+        -0.74
+      ]
+    },
+    "ESO": {
+      "code": "ES-O",
+      "abbrev": "ESO",
+      "name": "Asturias",
+      "bounds": [
+        42.89,
+        -7.17,
+        43.66,
+        -4.51
+      ]
+    },
+    "ESOR": {
+      "code": "ES-OR",
+      "abbrev": "ESOR",
+      "name": "Orense",
+      "bounds": [
+        41.81,
+        -8.34,
+        42.58,
+        -6.74
+      ]
+    },
+    "ESP": {
+      "code": "ES-P",
+      "abbrev": "ESP",
+      "name": "Palencia",
+      "bounds": [
+        41.76,
+        -5.03,
+        43.05,
+        -3.89
+      ]
+    },
+    "ESPM": {
+      "code": "ES-PM",
+      "abbrev": "ESPM",
+      "name": "Baleares",
+      "bounds": [
+        38.64,
+        1.21,
+        40.08,
+        4.34
+      ]
+    },
+    "ESPO": {
+      "code": "ES-PO",
+      "abbrev": "ESPO",
+      "name": "Pontevedra",
+      "bounds": [
+        41.89,
+        -8.94,
+        42.85,
+        -7.87
+      ]
+    },
+    "ESS": {
+      "code": "ES-S",
+      "abbrev": "ESS",
+      "name": "Cantabria",
+      "bounds": [
+        42.76,
+        -4.84,
+        43.52,
+        -3.15
+      ]
+    },
+    "ESSA": {
+      "code": "ES-SA",
+      "abbrev": "ESSA",
+      "name": "Salamanca",
+      "bounds": [
+        40.24,
+        -6.94,
+        41.3,
+        -5.1
+      ]
+    },
+    "ESSE": {
+      "code": "ES-SE",
+      "abbrev": "ESSE",
+      "name": "Sevilla",
+      "bounds": [
+        36.84,
+        -6.53,
+        38.19,
+        -4.65
+      ]
+    },
+    "ESSG": {
+      "code": "ES-SG",
+      "abbrev": "ESSG",
+      "name": "Segovia",
+      "bounds": [
+        40.63,
+        -4.71,
+        41.58,
+        -3.2
+      ]
+    },
+    "ESSO": {
+      "code": "ES-SO",
+      "abbrev": "ESSO",
+      "name": "Soria",
+      "bounds": [
+        41.06,
+        -3.54,
+        42.14,
+        -1.79
+      ]
+    },
+    "ESSS": {
+      "code": "ES-SS",
+      "abbrev": "ESSS",
+      "name": "Gipuzkoa",
+      "bounds": [
+        42.9,
+        -2.6,
+        43.4,
+        -1.75
+      ]
+    },
+    "EST": {
+      "code": "ES-T",
+      "abbrev": "EST",
+      "name": "Tarragona",
+      "bounds": [
+        40.53,
+        0.17,
+        41.58,
+        1.63
+      ]
+    },
+    "ESTE": {
+      "code": "ES-TE",
+      "abbrev": "ESTE",
+      "name": "Teruel",
+      "bounds": [
+        39.85,
+        -1.81,
+        41.35,
+        0.29
+      ]
+    },
+    "ESTF": {
+      "code": "ES-TF",
+      "abbrev": "ESTF",
+      "name": "Santa Cruz de Tenerife",
+      "bounds": [
+        27.64,
+        -18.17,
+        28.86,
+        -16.12
+      ]
+    },
+    "ESTO": {
+      "code": "ES-TO",
+      "abbrev": "ESTO",
+      "name": "Toledo",
+      "bounds": [
+        39.26,
+        -5.39,
+        40.31,
+        -2.91
+      ]
+    },
+    "ESV": {
+      "code": "ES-V",
+      "abbrev": "ESV",
+      "name": "Valencia",
+      "bounds": [
+        38.69,
+        -1.52,
+        40.2,
+        -0.03
+      ]
+    },
+    "ESVA": {
+      "code": "ES-VA",
+      "abbrev": "ESVA",
+      "name": "Valladolid",
+      "bounds": [
+        41.1,
+        -5.52,
+        42.31,
+        -3.98
+      ]
+    },
+    "ESVI": {
+      "code": "ES-VI",
+      "abbrev": "ESVI",
+      "name": "Álava",
+      "bounds": [
+        42.5,
+        -3.28,
+        43.21,
+        -2.24
+      ]
+    },
+    "ESZ": {
+      "code": "ES-Z",
+      "abbrev": "ESZ",
+      "name": "Zaragoza",
+      "bounds": [
+        40.94,
+        -2.17,
+        42.74,
+        0.38
+      ]
+    },
+    "ESZA": {
+      "code": "ES-ZA",
+      "abbrev": "ESZA",
+      "name": "Zamora",
+      "bounds": [
+        41.12,
+        -7.03,
+        42.25,
+        -5.23
+      ]
+    }
+  },
+  "IT": {
+    "ITAG": {
+      "code": "IT-AG",
+      "abbrev": "ITAG",
+      "name": "Agrigento",
+      "bounds": [
+        35.49,
+        12.53,
+        37.74,
+        14.04
+      ]
+    },
+    "ITAL": {
+      "code": "IT-AL",
+      "abbrev": "ITAL",
+      "name": "Alessandria",
+      "bounds": [
+        44.48,
+        8.11,
+        45.2,
+        9.21
+      ]
+    },
+    "ITAN": {
+      "code": "IT-AN",
+      "abbrev": "ITAN",
+      "name": "Ancona",
+      "bounds": [
+        43.21,
+        12.75,
+        43.75,
+        13.65
+      ]
+    },
+    "ITAO": {
+      "code": "IT-AO",
+      "abbrev": "ITAO",
+      "name": "Aoste",
+      "bounds": [
+        45.47,
+        6.78,
+        45.98,
+        7.92
+      ]
+    },
+    "ITAP": {
+      "code": "IT-AP",
+      "abbrev": "ITAP",
+      "name": "Ascoli Piceno",
+      "bounds": [
+        42.69,
+        13.19,
+        43.08,
+        13.91
+      ]
+    },
+    "ITAQ": {
+      "code": "IT-AQ",
+      "abbrev": "ITAQ",
+      "name": "L'Aquila",
+      "bounds": [
+        41.69,
+        13.01,
+        42.6,
+        14.23
+      ]
+    },
+    "ITAR": {
+      "code": "IT-AR",
+      "abbrev": "ITAR",
+      "name": "Arezzo",
+      "bounds": [
+        43.16,
+        11.4,
+        43.88,
+        12.36
+      ]
+    },
+    "ITAT": {
+      "code": "IT-AT",
+      "abbrev": "ITAT",
+      "name": "Asti",
+      "bounds": [
+        44.52,
+        7.89,
+        45.13,
+        8.5
+      ]
+    },
+    "ITAV": {
+      "code": "IT-AV",
+      "abbrev": "ITAV",
+      "name": "Avellino",
+      "bounds": [
+        40.71,
+        14.57,
+        41.29,
+        15.58
+      ]
+    },
+    "ITBA": {
+      "code": "IT-BA",
+      "abbrev": "ITBA",
+      "name": "Bari",
+      "bounds": [
+        40.69,
+        16.2,
+        41.24,
+        17.4
+      ]
+    },
+    "ITBG": {
+      "code": "IT-BG",
+      "abbrev": "ITBG",
+      "name": "Bergamo",
+      "bounds": [
+        45.42,
+        9.45,
+        46.09,
+        10.26
+      ]
+    },
+    "ITBI": {
+      "code": "IT-BI",
+      "abbrev": "ITBI",
+      "name": "Biella",
+      "bounds": [
+        45.38,
+        7.88,
+        45.76,
+        8.29
+      ]
+    },
+    "ITBL": {
+      "code": "IT-BL",
+      "abbrev": "ITBL",
+      "name": "Belluno",
+      "bounds": [
+        45.88,
+        11.68,
+        46.68,
+        12.76
+      ]
+    },
+    "ITBN": {
+      "code": "IT-BN",
+      "abbrev": "ITBN",
+      "name": "Benevento",
+      "bounds": [
+        40.97,
+        14.36,
+        41.48,
+        15.14
+      ]
+    },
+    "ITBO": {
+      "code": "IT-BO",
+      "abbrev": "ITBO",
+      "name": "Bologna",
+      "bounds": [
+        44.07,
+        10.81,
+        44.8,
+        11.82
+      ]
+    },
+    "ITBR": {
+      "code": "IT-BR",
+      "abbrev": "ITBR",
+      "name": "Brindisi",
+      "bounds": [
+        40.38,
+        17.32,
+        40.89,
+        18.1
+      ]
+    },
+    "ITBS": {
+      "code": "IT-BS",
+      "abbrev": "ITBS",
+      "name": "Brescia",
+      "bounds": [
+        45.2,
+        9.86,
+        46.35,
+        10.84
+      ]
+    },
+    "ITBT": {
+      "code": "IT-BT",
+      "abbrev": "ITBT",
+      "name": "Barletta-Andria Trani",
+      "bounds": [
+        40.9,
+        15.86,
+        41.45,
+        16.54
+      ]
+    },
+    "ITBZ": {
+      "code": "IT-BZ",
+      "abbrev": "ITBZ",
+      "name": "Bozen",
+      "bounds": [
+        46.22,
+        10.37,
+        47.09,
+        12.47
+      ]
+    },
+    "ITCA": {
+      "code": "IT-CA",
+      "abbrev": "ITCA",
+      "name": "Cagliari",
+      "bounds": [
+        38.86,
+        8.6,
+        39.92,
+        9.65
+      ]
+    },
+    "ITCB": {
+      "code": "IT-CB",
+      "abbrev": "ITCB",
+      "name": "Campobasso",
+      "bounds": [
+        41.37,
+        14.38,
+        42.08,
+        15.16
+      ]
+    },
+    "ITCE": {
+      "code": "IT-CE",
+      "abbrev": "ITCE",
+      "name": "Caserta",
+      "bounds": [
+        40.94,
+        13.74,
+        41.5,
+        14.53
+      ]
+    },
+    "ITCH": {
+      "code": "IT-CH",
+      "abbrev": "ITCH",
+      "name": "Chieti",
+      "bounds": [
+        41.77,
+        14.07,
+        42.45,
+        14.76
+      ]
+    },
+    "ITCI": {
+      "code": "IT-CI",
+      "abbrev": "ITCI",
+      "name": "Carbonia-Iglesias",
+      "bounds": [
+        38.95,
+        8.22,
+        39.48,
+        8.85
+      ]
+    },
+    "ITCL": {
+      "code": "IT-CL",
+      "abbrev": "ITCL",
+      "name": "Caltanissetta",
+      "bounds": [
+        37,
+        13.64,
+        37.73,
+        14.47
+      ]
+    },
+    "ITCN": {
+      "code": "IT-CN",
+      "abbrev": "ITCN",
+      "name": "Cuneo",
+      "bounds": [
+        44.09,
+        6.84,
+        44.86,
+        8.27
+      ]
+    },
+    "ITCO": {
+      "code": "IT-CO",
+      "abbrev": "ITCO",
+      "name": "Como",
+      "bounds": [
+        45.65,
+        8.9,
+        46.24,
+        9.44
+      ]
+    },
+    "ITCR": {
+      "code": "IT-CR",
+      "abbrev": "ITCR",
+      "name": "Cremona",
+      "bounds": [
+        44.92,
+        9.46,
+        45.51,
+        10.57
+      ]
+    },
+    "ITCS": {
+      "code": "IT-CS",
+      "abbrev": "ITCS",
+      "name": "Cosenza",
+      "bounds": [
+        39.05,
+        15.75,
+        40.14,
+        17.02
+      ]
+    },
+    "ITCT": {
+      "code": "IT-CT",
+      "abbrev": "ITCT",
+      "name": "Catania",
+      "bounds": [
+        37.05,
+        14.35,
+        37.96,
+        15.26
+      ]
+    },
+    "ITCZ": {
+      "code": "IT-CZ",
+      "abbrev": "ITCZ",
+      "name": "Catanzaro",
+      "bounds": [
+        38.47,
+        16.1,
+        39.19,
+        16.9
+      ]
+    },
+    "ITEN": {
+      "code": "IT-EN",
+      "abbrev": "ITEN",
+      "name": "Enna",
+      "bounds": [
+        37.29,
+        14.07,
+        37.88,
+        14.84
+      ]
+    },
+    "ITFC": {
+      "code": "IT-FC",
+      "abbrev": "ITFC",
+      "name": "Forlì-Cesena",
+      "bounds": [
+        43.75,
+        11.65,
+        44.33,
+        12.46
+      ]
+    },
+    "ITFE": {
+      "code": "IT-FE",
+      "abbrev": "ITFE",
+      "name": "Ferrara",
+      "bounds": [
+        44.55,
+        11.23,
+        44.99,
+        12.39
+      ]
+    },
+    "ITFG": {
+      "code": "IT-FG",
+      "abbrev": "ITFG",
+      "name": "Foggia",
+      "bounds": [
+        41.06,
+        14.93,
+        41.94,
+        16.19
+      ]
+    },
+    "ITFI": {
+      "code": "IT-FI",
+      "abbrev": "ITFI",
+      "name": "Firenze",
+      "bounds": [
+        43.45,
+        10.71,
+        44.23,
+        11.75
+      ]
+    },
+    "ITFM": {
+      "code": "IT-FM",
+      "abbrev": "ITFM",
+      "name": "Fermo",
+      "bounds": [
+        42.89,
+        13.22,
+        43.29,
+        13.85
+      ]
+    },
+    "ITFR": {
+      "code": "IT-FR",
+      "abbrev": "ITFR",
+      "name": "Frosinone",
+      "bounds": [
+        41.31,
+        13,
+        41.95,
+        14.01
+      ]
+    },
+    "ITGE": {
+      "code": "IT-GE",
+      "abbrev": "ITGE",
+      "name": "Genova",
+      "bounds": [
+        44.22,
+        8.56,
+        44.68,
+        9.57
+      ]
+    },
+    "ITGO": {
+      "code": "IT-GO",
+      "abbrev": "ITGO",
+      "name": "Gorizia",
+      "bounds": [
+        45.68,
+        13.38,
+        46.01,
+        13.62
+      ]
+    },
+    "ITGR": {
+      "code": "IT-GR",
+      "abbrev": "ITGR",
+      "name": "Grosseto",
+      "bounds": [
+        42.32,
+        10.71,
+        43.19,
+        11.81
+      ]
+    },
+    "ITIM": {
+      "code": "IT-IM",
+      "abbrev": "ITIM",
+      "name": "Imperia",
+      "bounds": [
+        43.78,
+        7.48,
+        44.14,
+        8.13
+      ]
+    },
+    "ITIS": {
+      "code": "IT-IS",
+      "abbrev": "ITIS",
+      "name": "Isernia",
+      "bounds": [
+        41.39,
+        13.95,
+        41.91,
+        14.52
+      ]
+    },
+    "ITKR": {
+      "code": "IT-KR",
+      "abbrev": "ITKR",
+      "name": "Crotene",
+      "bounds": [
+        38.9,
+        16.61,
+        39.48,
+        17.21
+      ]
+    },
+    "ITLC": {
+      "code": "IT-LC",
+      "abbrev": "ITLC",
+      "name": "Lecco",
+      "bounds": [
+        45.65,
+        9.25,
+        46.16,
+        9.54
+      ]
+    },
+    "ITLE": {
+      "code": "IT-LE",
+      "abbrev": "ITLE",
+      "name": "Lecce",
+      "bounds": [
+        39.8,
+        17.76,
+        40.52,
+        18.52
+      ]
+    },
+    "ITLI": {
+      "code": "IT-LI",
+      "abbrev": "ITLI",
+      "name": "Livorno",
+      "bounds": [
+        42.32,
+        9.78,
+        43.64,
+        10.79
+      ]
+    },
+    "ITLO": {
+      "code": "IT-LO",
+      "abbrev": "ITLO",
+      "name": "Lodi",
+      "bounds": [
+        45.07,
+        9.31,
+        45.47,
+        9.9
+      ]
+    },
+    "ITLT": {
+      "code": "IT-LT",
+      "abbrev": "ITLT",
+      "name": "Latina",
+      "bounds": [
+        40.79,
+        12.56,
+        41.71,
+        13.87
+      ]
+    },
+    "ITLU": {
+      "code": "IT-LU",
+      "abbrev": "ITLU",
+      "name": "Lucca",
+      "bounds": [
+        43.76,
+        10.14,
+        44.28,
+        10.74
+      ]
+    },
+    "ITMB": {
+      "code": "IT-MB",
+      "abbrev": "ITMB",
+      "name": "Monza e Brianza",
+      "bounds": [
+        45.54,
+        9.05,
+        45.74,
+        9.5
+      ]
+    },
+    "ITMC": {
+      "code": "IT-MC",
+      "abbrev": "ITMC",
+      "name": "Macerata",
+      "bounds": [
+        42.82,
+        12.83,
+        43.48,
+        13.75
+      ]
+    },
+    "ITME": {
+      "code": "IT-ME",
+      "abbrev": "ITME",
+      "name": "Messina",
+      "bounds": [
+        37.8,
+        14.18,
+        38.81,
+        15.65
+      ]
+    },
+    "ITMI": {
+      "code": "IT-MI",
+      "abbrev": "ITMI",
+      "name": "Milano",
+      "bounds": [
+        45.27,
+        8.71,
+        45.65,
+        9.53
+      ]
+    },
+    "ITMN": {
+      "code": "IT-MN",
+      "abbrev": "ITMN",
+      "name": "Mantova",
+      "bounds": [
+        44.91,
+        10.32,
+        45.42,
+        11.42
+      ]
+    },
+    "ITMO": {
+      "code": "IT-MO",
+      "abbrev": "ITMO",
+      "name": "Modena",
+      "bounds": [
+        44.11,
+        10.47,
+        44.96,
+        11.37
+      ]
+    },
+    "ITMS": {
+      "code": "IT-MS",
+      "abbrev": "ITMS",
+      "name": "Massa-Carrara",
+      "bounds": [
+        43.98,
+        9.69,
+        44.48,
+        10.25
+      ]
+    },
+    "ITMT": {
+      "code": "IT-MT",
+      "abbrev": "ITMT",
+      "name": "Matera",
+      "bounds": [
+        40.06,
+        15.94,
+        40.84,
+        16.86
+      ]
+    },
+    "ITNA": {
+      "code": "IT-NA",
+      "abbrev": "ITNA",
+      "name": "Napoli",
+      "bounds": [
+        40.57,
+        13.85,
+        41.02,
+        14.67
+      ]
+    },
+    "ITNO": {
+      "code": "IT-NO",
+      "abbrev": "ITNO",
+      "name": "Novara",
+      "bounds": [
+        45.3,
+        8.31,
+        45.87,
+        8.83
+      ]
+    },
+    "ITNU": {
+      "code": "IT-NU",
+      "abbrev": "ITNU",
+      "name": "Nuoro",
+      "bounds": [
+        39.83,
+        8.61,
+        40.7,
+        9.83
+      ]
+    },
+    "ITOG": {
+      "code": "IT-OG",
+      "abbrev": "ITOG",
+      "name": "Ogliastra",
+      "bounds": [
+        39.55,
+        9.27,
+        40.22,
+        9.73
+      ]
+    },
+    "ITOR": {
+      "code": "IT-OR",
+      "abbrev": "ITOR",
+      "name": "Oristrano",
+      "bounds": [
+        39.63,
+        8.38,
+        40.42,
+        9.16
+      ]
+    },
+    "ITOT": {
+      "code": "IT-OT",
+      "abbrev": "ITOT",
+      "name": "Olbia-Tempio",
+      "bounds": [
+        40.54,
+        8.81,
+        41.26,
+        9.75
+      ]
+    },
+    "ITPA": {
+      "code": "IT-PA",
+      "abbrev": "ITPA",
+      "name": "Palermo",
+      "bounds": [
+        37.54,
+        12.94,
+        38.72,
+        14.29
+      ]
+    },
+    "ITPC": {
+      "code": "IT-PC",
+      "abbrev": "ITPC",
+      "name": "Piacenza",
+      "bounds": [
+        44.55,
+        9.2,
+        45.14,
+        10.07
+      ]
+    },
+    "ITPD": {
+      "code": "IT-PD",
+      "abbrev": "ITPD",
+      "name": "Padova",
+      "bounds": [
+        45.1,
+        11.4,
+        45.69,
+        12.2
+      ]
+    },
+    "ITPE": {
+      "code": "IT-PE",
+      "abbrev": "ITPE",
+      "name": "Pescara",
+      "bounds": [
+        42.08,
+        13.77,
+        42.55,
+        14.26
+      ]
+    },
+    "ITPG": {
+      "code": "IT-PG",
+      "abbrev": "ITPG",
+      "name": "Perugia",
+      "bounds": [
+        42.6,
+        11.92,
+        43.63,
+        13.26
+      ]
+    },
+    "ITPI": {
+      "code": "IT-PI",
+      "abbrev": "ITPI",
+      "name": "Pisa",
+      "bounds": [
+        43.11,
+        10.26,
+        43.82,
+        11.01
+      ]
+    },
+    "ITPN": {
+      "code": "IT-PN",
+      "abbrev": "ITPN",
+      "name": "Pordenone",
+      "bounds": [
+        45.8,
+        12.34,
+        46.4,
+        12.98
+      ]
+    },
+    "ITPO": {
+      "code": "IT-PO",
+      "abbrev": "ITPO",
+      "name": "Prato",
+      "bounds": [
+        43.76,
+        10.96,
+        44.11,
+        11.21
+      ]
+    },
+    "ITPR": {
+      "code": "IT-PR",
+      "abbrev": "ITPR",
+      "name": "Parma",
+      "bounds": [
+        44.34,
+        9.44,
+        45.05,
+        10.5
+      ]
+    },
+    "ITPT": {
+      "code": "IT-PT",
+      "abbrev": "ITPT",
+      "name": "Pistoia",
+      "bounds": [
+        43.8,
+        10.61,
+        44.16,
+        11.06
+      ]
+    },
+    "ITPU": {
+      "code": "IT-PU",
+      "abbrev": "ITPU",
+      "name": "Pesaro e Urbino",
+      "bounds": [
+        43.43,
+        12.19,
+        43.97,
+        13.18
+      ]
+    },
+    "ITPV": {
+      "code": "IT-PV",
+      "abbrev": "ITPV",
+      "name": "Pavia",
+      "bounds": [
+        44.68,
+        8.5,
+        45.41,
+        9.55
+      ]
+    },
+    "ITPZ": {
+      "code": "IT-PZ",
+      "abbrev": "ITPZ",
+      "name": "Potenza",
+      "bounds": [
+        39.9,
+        15.34,
+        41.14,
+        16.4
+      ]
+    },
+    "ITRA": {
+      "code": "IT-RA",
+      "abbrev": "ITRA",
+      "name": "Ravenna",
+      "bounds": [
+        44.12,
+        11.53,
+        44.63,
+        12.39
+      ]
+    },
+    "ITRC": {
+      "code": "IT-RC",
+      "abbrev": "ITRC",
+      "name": "Reggio Calabria",
+      "bounds": [
+        37.92,
+        15.62,
+        38.57,
+        16.57
+      ]
+    },
+    "ITRE": {
+      "code": "IT-RE",
+      "abbrev": "ITRE",
+      "name": "Reggio Emilia",
+      "bounds": [
+        44.22,
+        10.14,
+        44.99,
+        10.89
+      ]
+    },
+    "ITRG": {
+      "code": "IT-RG",
+      "abbrev": "ITRG",
+      "name": "Ragusa",
+      "bounds": [
+        36.69,
+        14.33,
+        37.14,
+        15
+      ]
+    },
+    "ITRI": {
+      "code": "IT-RI",
+      "abbrev": "ITRI",
+      "name": "Rieti",
+      "bounds": [
+        42.1,
+        12.45,
+        42.74,
+        13.39
+      ]
+    },
+    "ITRM": {
+      "code": "IT-RM",
+      "abbrev": "ITRM",
+      "name": "Roma",
+      "bounds": [
+        41.42,
+        11.74,
+        42.3,
+        13.3
+      ]
+    },
+    "ITRN": {
+      "code": "IT-RN",
+      "abbrev": "ITRN",
+      "name": "Rimini",
+      "bounds": [
+        43.74,
+        12.1,
+        44.17,
+        12.75
+      ]
+    },
+    "ITRO": {
+      "code": "IT-RO",
+      "abbrev": "ITRO",
+      "name": "Rovigo",
+      "bounds": [
+        44.79,
+        11.19,
+        45.16,
+        12.53
+      ]
+    },
+    "ITSA": {
+      "code": "IT-SA",
+      "abbrev": "ITSA",
+      "name": "Salerno",
+      "bounds": [
+        39.99,
+        14.47,
+        40.85,
+        15.79
+      ]
+    },
+    "ITSI": {
+      "code": "IT-SI",
+      "abbrev": "ITSI",
+      "name": "Siena",
+      "bounds": [
+        42.8,
+        10.91,
+        43.55,
+        11.98
+      ]
+    },
+    "ITSO": {
+      "code": "IT-SO",
+      "abbrev": "ITSO",
+      "name": "Sondrio",
+      "bounds": [
+        46.01,
+        9.22,
+        46.63,
+        10.64
+      ]
+    },
+    "ITSP": {
+      "code": "IT-SP",
+      "abbrev": "ITSP",
+      "name": "La Spezia",
+      "bounds": [
+        44.04,
+        9.47,
+        44.43,
+        10.06
+      ]
+    },
+    "ITSR": {
+      "code": "IT-SR",
+      "abbrev": "ITSR",
+      "name": "Siracusa",
+      "bounds": [
+        36.65,
+        14.78,
+        37.41,
+        15.33
+      ]
+    },
+    "ITSS": {
+      "code": "IT-SS",
+      "abbrev": "ITSS",
+      "name": "Sassari",
+      "bounds": [
+        40.31,
+        8.13,
+        41.13,
+        9.28
+      ]
+    },
+    "ITSV": {
+      "code": "IT-SV",
+      "abbrev": "ITSV",
+      "name": "Savona",
+      "bounds": [
+        43.94,
+        7.98,
+        44.53,
+        8.67
+      ]
+    },
+    "ITTA": {
+      "code": "IT-TA",
+      "abbrev": "ITTA",
+      "name": "Taranto",
+      "bounds": [
+        40.29,
+        16.7,
+        40.76,
+        17.8
+      ]
+    },
+    "ITTE": {
+      "code": "IT-TE",
+      "abbrev": "ITTE",
+      "name": "Teramo",
+      "bounds": [
+        42.42,
+        13.34,
+        42.9,
+        14.15
+      ]
+    },
+    "ITTN": {
+      "code": "IT-TN",
+      "abbrev": "ITTN",
+      "name": "Trento",
+      "bounds": [
+        45.68,
+        10.46,
+        46.53,
+        11.97
+      ]
+    },
+    "ITTO": {
+      "code": "IT-TO",
+      "abbrev": "ITTO",
+      "name": "Turin",
+      "bounds": [
+        44.71,
+        6.6,
+        45.6,
+        8.15
+      ]
+    },
+    "ITTP": {
+      "code": "IT-TP",
+      "abbrev": "ITTP",
+      "name": "Trapani",
+      "bounds": [
+        36.74,
+        11.92,
+        38.19,
+        13.09
+      ]
+    },
+    "ITTR": {
+      "code": "IT-TR",
+      "abbrev": "ITTR",
+      "name": "Terni",
+      "bounds": [
+        42.37,
+        11.89,
+        42.94,
+        12.9
+      ]
+    },
+    "ITTS": {
+      "code": "IT-TS",
+      "abbrev": "ITTS",
+      "name": "Trieste",
+      "bounds": [
+        45.58,
+        13.58,
+        45.81,
+        13.89
+      ]
+    },
+    "ITTV": {
+      "code": "IT-TV",
+      "abbrev": "ITTV",
+      "name": "Treviso",
+      "bounds": [
+        45.53,
+        11.74,
+        46.08,
+        12.67
+      ]
+    },
+    "ITUD": {
+      "code": "IT-UD",
+      "abbrev": "ITUD",
+      "name": "Udine",
+      "bounds": [
+        45.65,
+        12.5,
+        46.64,
+        13.7
+      ]
+    },
+    "ITVA": {
+      "code": "IT-VA",
+      "abbrev": "ITVA",
+      "name": "Varese",
+      "bounds": [
+        45.56,
+        8.57,
+        46.11,
+        9.06
+      ]
+    },
+    "ITVB": {
+      "code": "IT-VB",
+      "abbrev": "ITVB",
+      "name": "Verbano-Cusio-Ossola",
+      "bounds": [
+        45.77,
+        7.85,
+        46.45,
+        8.73
+      ]
+    },
+    "ITVC": {
+      "code": "IT-VC",
+      "abbrev": "ITVC",
+      "name": "Vercelli",
+      "bounds": [
+        45.16,
+        7.85,
+        45.95,
+        8.56
+      ]
+    },
+    "ITVE": {
+      "code": "IT-VE",
+      "abbrev": "ITVE",
+      "name": "Venezia",
+      "bounds": [
+        45.06,
+        11.96,
+        45.86,
+        13.1
+      ]
+    },
+    "ITVI": {
+      "code": "IT-VI",
+      "abbrev": "ITVI",
+      "name": "Vicenza",
+      "bounds": [
+        45.24,
+        11.13,
+        46.02,
+        11.83
+      ]
+    },
+    "ITVR": {
+      "code": "IT-VR",
+      "abbrev": "ITVR",
+      "name": "Verona",
+      "bounds": [
+        45.05,
+        10.64,
+        45.83,
+        11.49
+      ]
+    },
+    "ITVS": {
+      "code": "IT-VS",
+      "abbrev": "ITVS",
+      "name": "Medio Campidano",
+      "bounds": [
+        39.37,
+        8.39,
+        39.79,
+        9.07
+      ]
+    },
+    "ITVT": {
+      "code": "IT-VT",
+      "abbrev": "ITVT",
+      "name": "Viterbo",
+      "bounds": [
+        42.15,
+        11.45,
+        42.85,
+        12.52
+      ]
+    },
+    "ITVV": {
+      "code": "IT-VV",
+      "abbrev": "ITVV",
+      "name": "Vibo Valentia",
+      "bounds": [
+        38.43,
+        15.83,
+        38.83,
+        16.43
+      ]
+    }
+  },
+  "PT": {
+    "PT01": {
+      "code": "PT-01",
+      "abbrev": "PT01",
+      "name": "Aveiro",
+      "bounds": [
+        40.29,
+        -8.79,
+        41.08,
+        -8.09
+      ]
+    },
+    "PT02": {
+      "code": "PT-02",
+      "abbrev": "PT02",
+      "name": "Beja",
+      "bounds": [
+        37.33,
+        -8.83,
+        38.33,
+        -6.95
+      ]
+    },
+    "PT03": {
+      "code": "PT-03",
+      "abbrev": "PT03",
+      "name": "Braga",
+      "bounds": [
+        41.33,
+        -8.82,
+        41.82,
+        -7.81
+      ]
+    },
+    "PT04": {
+      "code": "PT-04",
+      "abbrev": "PT04",
+      "name": "Bragança",
+      "bounds": [
+        41.05,
+        -7.43,
+        41.99,
+        -6.21
+      ]
+    },
+    "PT05": {
+      "code": "PT-05",
+      "abbrev": "PT05",
+      "name": "Castelo Branco",
+      "bounds": [
+        39.56,
+        -8.28,
+        40.41,
+        -6.88
+      ]
+    },
+    "PT06": {
+      "code": "PT-06",
+      "abbrev": "PT06",
+      "name": "Coimbra",
+      "bounds": [
+        39.92,
+        -8.91,
+        40.52,
+        -7.74
+      ]
+    },
+    "PT07": {
+      "code": "PT-07",
+      "abbrev": "PT07",
+      "name": "Évora",
+      "bounds": [
+        38.18,
+        -8.65,
+        39.03,
+        -7.12
+      ]
+    },
+    "PT08": {
+      "code": "PT-08",
+      "abbrev": "PT08",
+      "name": "Faro",
+      "bounds": [
+        36.97,
+        -9,
+        37.53,
+        -7.4
+      ]
+    },
+    "PT09": {
+      "code": "PT-09",
+      "abbrev": "PT09",
+      "name": "Guarda",
+      "bounds": [
+        40.23,
+        -7.84,
+        41.19,
+        -6.79
+      ]
+    },
+    "PT10": {
+      "code": "PT-10",
+      "abbrev": "PT10",
+      "name": "Leiria",
+      "bounds": [
+        39.22,
+        -9.41,
+        40.09,
+        -8.11
+      ]
+    },
+    "PT11": {
+      "code": "PT-11",
+      "abbrev": "PT11",
+      "name": "Lisboa",
+      "bounds": [
+        38.67,
+        -9.5,
+        39.32,
+        -8.79
+      ]
+    },
+    "PT12": {
+      "code": "PT-12",
+      "abbrev": "PT12",
+      "name": "Portalegre",
+      "bounds": [
+        38.77,
+        -8.33,
+        39.68,
+        -6.97
+      ]
+    },
+    "PT13": {
+      "code": "PT-13",
+      "abbrev": "PT13",
+      "name": "Porto",
+      "bounds": [
+        41.01,
+        -8.79,
+        41.47,
+        -7.88
+      ]
+    },
+    "PT14": {
+      "code": "PT-14",
+      "abbrev": "PT14",
+      "name": "Santarém",
+      "bounds": [
+        38.73,
+        -9,
+        39.84,
+        -7.8
+      ]
+    },
+    "PT15": {
+      "code": "PT-15",
+      "abbrev": "PT15",
+      "name": "Setúbal",
+      "bounds": [
+        37.75,
+        -9.25,
+        38.84,
+        -8.13
+      ]
+    },
+    "PT16": {
+      "code": "PT-16",
+      "abbrev": "PT16",
+      "name": "Viana do Castelo",
+      "bounds": [
+        41.62,
+        -8.88,
+        42.15,
+        -8.1
+      ]
+    },
+    "PT17": {
+      "code": "PT-17",
+      "abbrev": "PT17",
+      "name": "Vila Real",
+      "bounds": [
+        41.15,
+        -8.12,
+        41.91,
+        -7.17
+      ]
+    },
+    "PT18": {
+      "code": "PT-18",
+      "abbrev": "PT18",
+      "name": "Viseu",
+      "bounds": [
+        40.32,
+        -8.35,
+        41.22,
+        -7.3
+      ]
+    },
+    "PT20": {
+      "code": "PT-20",
+      "abbrev": "PT20",
+      "name": "Azores",
+      "bounds": [
+        36.93,
+        -31.28,
+        39.73,
+        -25.01
+      ]
+    },
+    "PT30": {
+      "code": "PT-30",
+      "abbrev": "PT30",
+      "name": "Madeira",
+      "bounds": [
+        30.03,
+        -17.25,
+        33.11,
+        -15.85
+      ]
+    }
+  },
+  "AT": {
+    "AT1": {
+      "code": "AT-1",
+      "abbrev": "AT1",
+      "name": "Burgenland",
+      "bounds": [
+        46.84,
+        16,
+        48.11,
+        17.15
+      ]
+    },
+    "AT2": {
+      "code": "AT-2",
+      "abbrev": "AT2",
+      "name": "Kärnten",
+      "bounds": [
+        46.38,
+        12.63,
+        47.14,
+        15.11
+      ]
+    },
+    "AT3": {
+      "code": "AT-3",
+      "abbrev": "AT3",
+      "name": "Niederösterreich",
+      "bounds": [
+        47.44,
+        14.43,
+        49.01,
+        17.06
+      ]
+    },
+    "AT4": {
+      "code": "AT-4",
+      "abbrev": "AT4",
+      "name": "Oberösterreich",
+      "bounds": [
+        47.47,
+        12.74,
+        48.77,
+        14.98
+      ]
+    },
+    "AT5": {
+      "code": "AT-5",
+      "abbrev": "AT5",
+      "name": "Salzburg",
+      "bounds": [
+        46.95,
+        12.08,
+        48.03,
+        13.94
+      ]
+    },
+    "AT6": {
+      "code": "AT-6",
+      "abbrev": "AT6",
+      "name": "Steiermark",
+      "bounds": [
+        46.61,
+        13.57,
+        47.83,
+        16.15
+      ]
+    },
+    "AT7": {
+      "code": "AT-7",
+      "abbrev": "AT7",
+      "name": "Tirol",
+      "bounds": [
+        46.65,
+        10.08,
+        47.73,
+        12.95
+      ]
+    },
+    "AT8": {
+      "code": "AT-8",
+      "abbrev": "AT8",
+      "name": "Vorarlberg",
+      "bounds": [
+        46.85,
+        9.52,
+        47.59,
+        10.21
+      ]
+    },
+    "AT9": {
+      "code": "AT-9",
+      "abbrev": "AT9",
+      "name": "Wien",
+      "bounds": [
+        48.14,
+        16.19,
+        48.33,
+        16.57
+      ]
+    }
+  },
+  "CH": {
+    "CHAG": {
+      "code": "CH-AG",
+      "abbrev": "CHAG",
+      "name": "Aargau",
+      "bounds": [
+        47.14,
+        7.73,
+        47.62,
+        8.45
+      ]
+    },
+    "CHAI": {
+      "code": "CH-AI",
+      "abbrev": "CHAI",
+      "name": "Appenzell Innerrhoden",
+      "bounds": [
+        47.24,
+        9.3,
+        47.45,
+        9.61
+      ]
+    },
+    "CHAR": {
+      "code": "CH-AR",
+      "abbrev": "CHAR",
+      "name": "Appenzell Ausserrhoden",
+      "bounds": [
+        47.25,
+        9.19,
+        47.47,
+        9.61
+      ]
+    },
+    "CHBE": {
+      "code": "CH-BE",
+      "abbrev": "CHBE",
+      "name": "Bern",
+      "bounds": [
+        46.33,
+        6.85,
+        47.34,
+        8.45
+      ]
+    },
+    "CHBL": {
+      "code": "CH-BL",
+      "abbrev": "CHBL",
+      "name": "Basel-Landschaft",
+      "bounds": [
+        47.34,
+        7.34,
+        47.56,
+        7.95
+      ]
+    },
+    "CHBS": {
+      "code": "CH-BS",
+      "abbrev": "CHBS",
+      "name": "Basel-Stadt",
+      "bounds": [
+        47.53,
+        7.52,
+        47.6,
+        7.66
+      ]
+    },
+    "CHFR": {
+      "code": "CH-FR",
+      "abbrev": "CHFR",
+      "name": "Fribourg",
+      "bounds": [
+        46.44,
+        6.76,
+        47,
+        7.38
+      ]
+    },
+    "CHGE": {
+      "code": "CH-GE",
+      "abbrev": "CHGE",
+      "name": "Genève",
+      "bounds": [
+        46.13,
+        5.95,
+        46.33,
+        6.28
+      ]
+    },
+    "CHGL": {
+      "code": "CH-GL",
+      "abbrev": "CHGL",
+      "name": "Glarus",
+      "bounds": [
+        46.8,
+        8.87,
+        47.17,
+        9.24
+      ]
+    },
+    "CHGR": {
+      "code": "CH-GR",
+      "abbrev": "CHGR",
+      "name": "Graubünden",
+      "bounds": [
+        46.17,
+        8.65,
+        47.06,
+        10.47
+      ]
+    },
+    "CHJU": {
+      "code": "CH-JU",
+      "abbrev": "CHJU",
+      "name": "Jura",
+      "bounds": [
+        47.15,
+        6.84,
+        47.5,
+        7.56
+      ]
+    },
+    "CHLU": {
+      "code": "CH-LU",
+      "abbrev": "CHLU",
+      "name": "Lucerne",
+      "bounds": [
+        46.78,
+        7.84,
+        47.28,
+        8.51
+      ]
+    },
+    "CHNE": {
+      "code": "CH-NE",
+      "abbrev": "CHNE",
+      "name": "Neuchâtel",
+      "bounds": [
+        46.85,
+        6.43,
+        47.17,
+        7.09
+      ]
+    },
+    "CHNW": {
+      "code": "CH-NW",
+      "abbrev": "CHNW",
+      "name": "Nidwalden",
+      "bounds": [
+        46.78,
+        8.22,
+        47.01,
+        8.56
+      ]
+    },
+    "CHOW": {
+      "code": "CH-OW",
+      "abbrev": "CHOW",
+      "name": "Obwalden",
+      "bounds": [
+        46.76,
+        8.04,
+        46.98,
+        8.5
+      ]
+    },
+    "CHSG": {
+      "code": "CH-SG",
+      "abbrev": "CHSG",
+      "name": "Sankt Gallen",
+      "bounds": [
+        46.88,
+        8.78,
+        47.54,
+        9.65
+      ]
+    },
+    "CHSH": {
+      "code": "CH-SH",
+      "abbrev": "CHSH",
+      "name": "Schaffhausen",
+      "bounds": [
+        47.56,
+        8.39,
+        47.8,
+        8.86
+      ]
+    },
+    "CHSO": {
+      "code": "CH-SO",
+      "abbrev": "CHSO",
+      "name": "Solothurn",
+      "bounds": [
+        47.08,
+        7.35,
+        47.5,
+        8.03
+      ]
+    },
+    "CHSZ": {
+      "code": "CH-SZ",
+      "abbrev": "CHSZ",
+      "name": "Schwyz",
+      "bounds": [
+        46.89,
+        8.39,
+        47.22,
+        8.99
+      ]
+    },
+    "CHTG": {
+      "code": "CH-TG",
+      "abbrev": "CHTG",
+      "name": "Thurgau",
+      "bounds": [
+        47.38,
+        8.74,
+        47.68,
+        9.55
+      ]
+    },
+    "CHTI": {
+      "code": "CH-TI",
+      "abbrev": "CHTI",
+      "name": "Ticino",
+      "bounds": [
+        45.82,
+        8.38,
+        46.63,
+        9.16
+      ]
+    },
+    "CHUR": {
+      "code": "CH-UR",
+      "abbrev": "CHUR",
+      "name": "Uri",
+      "bounds": [
+        46.53,
+        8.4,
+        46.99,
+        8.95
+      ]
+    },
+    "CHVD": {
+      "code": "CH-VD",
+      "abbrev": "CHVD",
+      "name": "Vaud",
+      "bounds": [
+        46.19,
+        6.05,
+        46.99,
+        7.25
+      ]
+    },
+    "CHVS": {
+      "code": "CH-VS",
+      "abbrev": "CHVS",
+      "name": "Valais",
+      "bounds": [
+        45.88,
+        6.75,
+        46.66,
+        8.48
+      ]
+    },
+    "CHZG": {
+      "code": "CH-ZG",
+      "abbrev": "CHZG",
+      "name": "Zug",
+      "bounds": [
+        47.09,
+        8.39,
+        47.25,
+        8.7
+      ]
+    },
+    "CHZH": {
+      "code": "CH-ZH",
+      "abbrev": "CHZH",
+      "name": "Zürich",
+      "bounds": [
+        47.16,
+        8.35,
+        47.7,
+        8.97
+      ]
+    }
+  },
+  "SE": {
+    "SEAB": {
+      "code": "SE-AB",
+      "abbrev": "SEAB",
+      "name": "Stockholm",
+      "bounds": [
+        58.86,
+        17.28,
+        60.22,
+        19.09
+      ]
+    },
+    "SEAC": {
+      "code": "SE-AC",
+      "abbrev": "SEAC",
+      "name": "Västerbotten",
+      "bounds": [
+        63.41,
+        14.33,
+        66.35,
+        21.61
+      ]
+    },
+    "SEBD": {
+      "code": "SE-BD",
+      "abbrev": "SEBD",
+      "name": "Norrbotten",
+      "bounds": [
+        65.07,
+        15.43,
+        69.04,
+        24.16
+      ]
+    },
+    "SEC": {
+      "code": "SE-C",
+      "abbrev": "SEC",
+      "name": "Uppsala",
+      "bounds": [
+        59.39,
+        16.79,
+        60.65,
+        18.6
+      ]
+    },
+    "SED": {
+      "code": "SE-D",
+      "abbrev": "SED",
+      "name": "Södermanland",
+      "bounds": [
+        58.63,
+        15.64,
+        59.53,
+        17.63
+      ]
+    },
+    "SEE": {
+      "code": "SE-E",
+      "abbrev": "SEE",
+      "name": "Östergötland",
+      "bounds": [
+        57.71,
+        14.43,
+        59.01,
+        16.94
+      ]
+    },
+    "SEF": {
+      "code": "SE-F",
+      "abbrev": "SEF",
+      "name": "Jönköping",
+      "bounds": [
+        56.89,
+        13.09,
+        58.22,
+        15.67
+      ]
+    },
+    "SEG": {
+      "code": "SE-G",
+      "abbrev": "SEG",
+      "name": "Kronoberg",
+      "bounds": [
+        56.38,
+        13.31,
+        57.24,
+        15.85
+      ]
+    },
+    "SEH": {
+      "code": "SE-H",
+      "abbrev": "SEH",
+      "name": "Kalmar",
+      "bounds": [
+        56.22,
+        15.36,
+        58.13,
+        17.12
+      ]
+    },
+    "SEI": {
+      "code": "SE-I",
+      "abbrev": "SEI",
+      "name": "Gotland",
+      "bounds": [
+        56.91,
+        18.1,
+        58.4,
+        19.34
+      ]
+    },
+    "SEK": {
+      "code": "SE-K",
+      "abbrev": "SEK",
+      "name": "Blekinge",
+      "bounds": [
+        56,
+        14.41,
+        56.51,
+        16.07
+      ]
+    },
+    "SEM": {
+      "code": "SE-M",
+      "abbrev": "SEM",
+      "name": "Skåne",
+      "bounds": [
+        55.34,
+        12.45,
+        56.54,
+        14.59
+      ]
+    },
+    "SEN": {
+      "code": "SE-N",
+      "abbrev": "SEN",
+      "name": "Halland",
+      "bounds": [
+        56.34,
+        11.9,
+        57.62,
+        13.7
+      ]
+    },
+    "SEO": {
+      "code": "SE-O",
+      "abbrev": "SEO",
+      "name": "Västra Götaland",
+      "bounds": [
+        57.16,
+        11.11,
+        59.25,
+        14.81
+      ]
+    },
+    "SES": {
+      "code": "SE-S",
+      "abbrev": "SES",
+      "name": "Värmland",
+      "bounds": [
+        58.74,
+        11.67,
+        61.06,
+        14.48
+      ]
+    },
+    "SET": {
+      "code": "SE-T",
+      "abbrev": "SET",
+      "name": "Orebro",
+      "bounds": [
+        58.65,
+        14.31,
+        60.12,
+        15.81
+      ]
+    },
+    "SEU": {
+      "code": "SE-U",
+      "abbrev": "SEU",
+      "name": "Västmanland",
+      "bounds": [
+        59.21,
+        15.45,
+        60.31,
+        17.39
+      ]
+    },
+    "SEW": {
+      "code": "SE-W",
+      "abbrev": "SEW",
+      "name": "Dalarna",
+      "bounds": [
+        59.88,
+        12.16,
+        62.27,
+        16.72
+      ]
+    },
+    "SEX": {
+      "code": "SE-X",
+      "abbrev": "SEX",
+      "name": "Gävleborg",
+      "bounds": [
+        60.21,
+        14.48,
+        62.36,
+        17.52
+      ]
+    },
+    "SEY": {
+      "code": "SE-Y",
+      "abbrev": "SEY",
+      "name": "Västernorrland",
+      "bounds": [
+        62.15,
+        14.82,
+        64.02,
+        19.32
+      ]
+    },
+    "SEZ": {
+      "code": "SE-Z",
+      "abbrev": "SEZ",
+      "name": "Jämtland",
+      "bounds": [
+        61.58,
+        11.99,
+        65.11,
+        16.97
+      ]
+    }
+  },
+  "NO": {
+    "NO01": {
+      "code": "NO-01",
+      "abbrev": "NO01",
+      "name": "Østfold",
+      "bounds": [
+        58.88,
+        10.59,
+        59.81,
+        11.9
+      ]
+    },
+    "NO02": {
+      "code": "NO-02",
+      "abbrev": "NO02",
+      "name": "Akershus",
+      "bounds": [
+        59.48,
+        10.56,
+        60.62,
+        11.88
+      ]
+    },
+    "NO03": {
+      "code": "NO-03",
+      "abbrev": "NO03",
+      "name": "Oslo",
+      "bounds": [
+        59.8,
+        10.35,
+        60.15,
+        10.93
+      ]
+    },
+    "NO04": {
+      "code": "NO-04",
+      "abbrev": "NO04",
+      "name": "Hedmark",
+      "bounds": [
+        59.88,
+        9.66,
+        62.71,
+        12.89
+      ]
+    },
+    "NO05": {
+      "code": "NO-05",
+      "abbrev": "NO05",
+      "name": "Oppland",
+      "bounds": [
+        60.15,
+        7.33,
+        62.39,
+        11.16
+      ]
+    },
+    "NO06": {
+      "code": "NO-06",
+      "abbrev": "NO06",
+      "name": "Buskerud",
+      "bounds": [
+        59.43,
+        7.47,
+        61.12,
+        10.62
+      ]
+    },
+    "NO07": {
+      "code": "NO-07",
+      "abbrev": "NO07",
+      "name": "Vestfold",
+      "bounds": [
+        58.96,
+        9.77,
+        59.7,
+        10.51
+      ]
+    },
+    "NO08": {
+      "code": "NO-08",
+      "abbrev": "NO08",
+      "name": "Telemark",
+      "bounds": [
+        58.78,
+        7.09,
+        60.2,
+        9.88
+      ]
+    },
+    "NO09": {
+      "code": "NO-09",
+      "abbrev": "NO09",
+      "name": "Aust-Agder",
+      "bounds": [
+        58.16,
+        6.82,
+        59.69,
+        9.39
+      ]
+    },
+    "NO10": {
+      "code": "NO-10",
+      "abbrev": "NO10",
+      "name": "Vest-Agder",
+      "bounds": [
+        57.99,
+        6.4,
+        59.21,
+        8.23
+      ]
+    },
+    "NO11": {
+      "code": "NO-11",
+      "abbrev": "NO11",
+      "name": "Rogaland",
+      "bounds": [
+        58.27,
+        5.16,
+        59.86,
+        7.24
+      ]
+    },
+    "NO12": {
+      "code": "NO-12",
+      "abbrev": "NO12",
+      "name": "Hordaland",
+      "bounds": [
+        59.48,
+        4.78,
+        61.03,
+        7.68
+      ]
+    },
+    "NO14": {
+      "code": "NO-14",
+      "abbrev": "NO14",
+      "name": "Sogn og Fjordane",
+      "bounds": [
+        60.7,
+        4.64,
+        62.21,
+        8.31
+      ]
+    },
+    "NO15": {
+      "code": "NO-15",
+      "abbrev": "NO15",
+      "name": "Møre og Romsdal",
+      "bounds": [
+        61.96,
+        5.39,
+        63.47,
+        9.58
+      ]
+    },
+    "NO16": {
+      "code": "NO-16",
+      "abbrev": "NO16",
+      "name": "Sør-Trøndelag",
+      "bounds": [
+        62.27,
+        8.27,
+        64.43,
+        12.28
+      ]
+    },
+    "NO17": {
+      "code": "NO-17",
+      "abbrev": "NO17",
+      "name": "Nord-Trøndelag",
+      "bounds": [
+        63.2,
+        10.16,
+        65.13,
+        14.33
+      ]
+    },
+    "NO18": {
+      "code": "NO-18",
+      "abbrev": "NO18",
+      "name": "Nordland",
+      "bounds": [
+        64.95,
+        -9.12,
+        71.18,
+        18.19
+      ]
+    },
+    "NO19": {
+      "code": "NO-19",
+      "abbrev": "NO19",
+      "name": "Troms",
+      "bounds": [
+        68.35,
+        15.64,
+        70.29,
+        22.93
+      ]
+    },
+    "NO20": {
+      "code": "NO-20",
+      "abbrev": "NO20",
+      "name": "Finnmark",
+      "bounds": [
+        68.55,
+        21.23,
+        71.17,
+        31.08
+      ]
+    },
+    "NO21": {
+      "code": "NO-21",
+      "abbrev": "NO21",
+      "name": "Svalbard",
+      "bounds": [
+        74.35,
+        10.48,
+        80.77,
+        33.64
+      ]
+    }
+  },
+  "DK": {
+    "DK81": {
+      "code": "DK-81",
+      "abbrev": "DK81",
+      "name": "Nordjylland",
+      "bounds": [
+        56.56,
+        8.24,
+        57.75,
+        11.2
+      ]
+    },
+    "DK82": {
+      "code": "DK-82",
+      "abbrev": "DK82",
+      "name": "Midtjylland",
+      "bounds": [
+        55.67,
+        8.1,
+        56.81,
+        11.65
+      ]
+    },
+    "DK83": {
+      "code": "DK-83",
+      "abbrev": "DK83",
+      "name": "Syddanmark",
+      "bounds": [
+        54.74,
+        8.09,
+        55.94,
+        10.96
+      ]
+    },
+    "DK84": {
+      "code": "DK-84",
+      "abbrev": "DK84",
+      "name": "Hovedstaden",
+      "bounds": [
+        54.99,
+        11.84,
+        56.13,
+        15.15
+      ]
+    },
+    "DK85": {
+      "code": "DK-85",
+      "abbrev": "DK85",
+      "name": "Sjaælland",
+      "bounds": [
+        54.57,
+        10.88,
+        56,
+        12.55
+      ]
+    }
+  },
+  "FI": {
+    "FI02": {
+      "code": "FI-02",
+      "abbrev": "FI02",
+      "name": "South Karelia",
+      "bounds": [
+        60.66,
+        26.97,
+        61.85,
+        30.15
+      ]
+    },
+    "FI03": {
+      "code": "FI-03",
+      "abbrev": "FI03",
+      "name": "Southern Ostrobothnia",
+      "bounds": [
+        61.99,
+        21.53,
+        63.49,
+        24.58
+      ]
+    },
+    "FI04": {
+      "code": "FI-04",
+      "abbrev": "FI04",
+      "name": "Southern Savonia",
+      "bounds": [
+        61.15,
+        26.24,
+        62.65,
+        29.69
+      ]
+    },
+    "FI05": {
+      "code": "FI-05",
+      "abbrev": "FI05",
+      "name": "Kainuu",
+      "bounds": [
+        63.68,
+        26.3,
+        65.52,
+        30.59
+      ]
+    },
+    "FI06": {
+      "code": "FI-06",
+      "abbrev": "FI06",
+      "name": "Tavastia Proper",
+      "bounds": [
+        60.55,
+        23.14,
+        61.32,
+        25.29
+      ]
+    },
+    "FI07": {
+      "code": "FI-07",
+      "abbrev": "FI07",
+      "name": "Central Ostrobothnia",
+      "bounds": [
+        63.12,
+        22.99,
+        64.17,
+        25.03
+      ]
+    },
+    "FI08": {
+      "code": "FI-08",
+      "abbrev": "FI08",
+      "name": "Central Finland",
+      "bounds": [
+        61.45,
+        24.02,
+        63.6,
+        26.77
+      ]
+    },
+    "FI09": {
+      "code": "FI-09",
+      "abbrev": "FI09",
+      "name": "Kymenlaakso",
+      "bounds": [
+        60.38,
+        26.04,
+        61.29,
+        28
+      ]
+    },
+    "FI10": {
+      "code": "FI-10",
+      "abbrev": "FI10",
+      "name": "Lapland",
+      "bounds": [
+        65.59,
+        20.62,
+        70.08,
+        30.01
+      ]
+    },
+    "FI11": {
+      "code": "FI-11",
+      "abbrev": "FI11",
+      "name": "Pirkanmaa",
+      "bounds": [
+        60.95,
+        22.55,
+        62.49,
+        25
+      ]
+    },
+    "FI12": {
+      "code": "FI-12",
+      "abbrev": "FI12",
+      "name": "Ostrobothnia",
+      "bounds": [
+        61.94,
+        21.07,
+        63.8,
+        23.73
+      ]
+    },
+    "FI13": {
+      "code": "FI-13",
+      "abbrev": "FI13",
+      "name": "North Karelia",
+      "bounds": [
+        61.72,
+        28.36,
+        63.88,
+        31.57
+      ]
+    },
+    "FI14": {
+      "code": "FI-14",
+      "abbrev": "FI14",
+      "name": "Northern Ostrobothnia",
+      "bounds": [
+        63.43,
+        23.71,
+        66.48,
+        30.12
+      ]
+    },
+    "FI15": {
+      "code": "FI-15",
+      "abbrev": "FI15",
+      "name": "Northern Savonia",
+      "bounds": [
+        62.26,
+        26.05,
+        64.03,
+        29.09
+      ]
+    },
+    "FI16": {
+      "code": "FI-16",
+      "abbrev": "FI16",
+      "name": "Päijät-Häme",
+      "bounds": [
+        60.69,
+        24.86,
+        61.8,
+        26.52
+      ]
+    },
+    "FI17": {
+      "code": "FI-17",
+      "abbrev": "FI17",
+      "name": "Satakunta",
+      "bounds": [
+        60.89,
+        21.32,
+        62.3,
+        23
+      ]
+    },
+    "FI18": {
+      "code": "FI-18",
+      "abbrev": "FI18",
+      "name": "Uusimaa",
+      "bounds": [
+        59.81,
+        22.89,
+        60.83,
+        26.55
+      ]
+    },
+    "FI19": {
+      "code": "FI-19",
+      "abbrev": "FI19",
+      "name": "Finland Proper",
+      "bounds": [
+        59.85,
+        21.19,
+        61.09,
+        23.91
+      ]
+    }
+  },
+  "PL": {
+    "PLDS": {
+      "code": "PL-DS",
+      "abbrev": "PLDS",
+      "name": "Lower Silesian",
+      "bounds": [
+        50.09,
+        14.81,
+        51.77,
+        17.72
+      ]
+    },
+    "PLKP": {
+      "code": "PL-KP",
+      "abbrev": "PLKP",
+      "name": "Kuyavian-Pomeranian",
+      "bounds": [
+        52.28,
+        17.3,
+        53.7,
+        19.75
+      ]
+    },
+    "PLLB": {
+      "code": "PL-LB",
+      "abbrev": "PLLB",
+      "name": "Lubusz",
+      "bounds": [
+        51.4,
+        14.54,
+        53.11,
+        16.37
+      ]
+    },
+    "PLLD": {
+      "code": "PL-LD",
+      "abbrev": "PLLD",
+      "name": "Łódź",
+      "bounds": [
+        50.8,
+        18.05,
+        52.33,
+        20.67
+      ]
+    },
+    "PLLU": {
+      "code": "PL-LU",
+      "abbrev": "PLLU",
+      "name": "Lublin",
+      "bounds": [
+        50.31,
+        21.65,
+        52.3,
+        24.14
+      ]
+    },
+    "PLMA": {
+      "code": "PL-MA",
+      "abbrev": "PLMA",
+      "name": "Lesser Poland",
+      "bounds": [
+        49.17,
+        19.11,
+        50.48,
+        21.51
+      ]
+    },
+    "PLMZ": {
+      "code": "PL-MZ",
+      "abbrev": "PLMZ",
+      "name": "Masovian",
+      "bounds": [
+        51.01,
+        19.3,
+        53.44,
+        23.09
+      ]
+    },
+    "PLOP": {
+      "code": "PL-OP",
+      "abbrev": "PLOP",
+      "name": "Opole",
+      "bounds": [
+        49.97,
+        16.94,
+        51.15,
+        18.66
+      ]
+    },
+    "PLPD": {
+      "code": "PL-PD",
+      "abbrev": "PLPD",
+      "name": "Podlachian",
+      "bounds": [
+        52.28,
+        21.52,
+        54.4,
+        23.92
+      ]
+    },
+    "PLPK": {
+      "code": "PL-PK",
+      "abbrev": "PLPK",
+      "name": "Subcarpathian",
+      "bounds": [
+        48.99,
+        21.21,
+        50.83,
+        23.66
+      ]
+    },
+    "PLPM": {
+      "code": "PL-PM",
+      "abbrev": "PLPM",
+      "name": "Pomeranian",
+      "bounds": [
+        53.43,
+        16.79,
+        54.84,
+        19.76
+      ]
+    },
+    "PLSK": {
+      "code": "PL-SK",
+      "abbrev": "PLSK",
+      "name": "Świętokrzyskie",
+      "bounds": [
+        50.17,
+        19.74,
+        51.29,
+        21.85
+      ]
+    },
+    "PLSL": {
+      "code": "PL-SL",
+      "abbrev": "PLSL",
+      "name": "Silesian",
+      "bounds": [
+        49.39,
+        18.02,
+        51.04,
+        19.97
+      ]
+    },
+    "PLWN": {
+      "code": "PL-WN",
+      "abbrev": "PLWN",
+      "name": "Warmian-Masurian",
+      "bounds": [
+        53.09,
+        19.13,
+        54.43,
+        22.81
+      ]
+    },
+    "PLWP": {
+      "code": "PL-WP",
+      "abbrev": "PLWP",
+      "name": "Greater Poland",
+      "bounds": [
+        51.07,
+        15.83,
+        53.6,
+        19.08
+      ]
+    },
+    "PLZP": {
+      "code": "PL-ZP",
+      "abbrev": "PLZP",
+      "name": "West Pomeranian",
+      "bounds": [
+        52.6,
+        14.12,
+        54.58,
+        17.06
+      ]
+    }
+  },
+  "AU": {
+    "AUACT": {
+      "code": "AU-ACT",
+      "abbrev": "AUACT",
+      "name": "Australian Capital Territory",
+      "bounds": [
+        -35.91,
+        148.77,
+        -35.15,
+        149.4
+      ]
+    },
+    "AUNSW": {
+      "code": "AU-NSW",
+      "abbrev": "AUNSW",
+      "name": "New South Wales",
+      "bounds": [
+        -37.5,
+        141,
+        -28.14,
+        153.62
+      ]
+    },
+    "AUNT": {
+      "code": "AU-NT",
+      "abbrev": "AUNT",
+      "name": "Northern Territory",
+      "bounds": [
+        -26,
+        129,
+        -10.97,
+        138
+      ]
+    },
+    "AUQLD": {
+      "code": "AU-QLD",
+      "abbrev": "AUQLD",
+      "name": "Queensland",
+      "bounds": [
+        -29.14,
+        138,
+        -10.05,
+        153.54
+      ]
+    },
+    "AUSA": {
+      "code": "AU-SA",
+      "abbrev": "AUSA",
+      "name": "South Australia",
+      "bounds": [
+        -38.07,
+        129,
+        -26,
+        141.03
+      ]
+    },
+    "AUTAS": {
+      "code": "AU-TAS",
+      "abbrev": "AUTAS",
+      "name": "Tasmania",
+      "bounds": [
+        -43.62,
+        143.84,
+        -39.58,
+        148.47
+      ]
+    },
+    "AUVIC": {
+      "code": "AU-VIC",
+      "abbrev": "AUVIC",
+      "name": "Victoria",
+      "bounds": [
+        -39.15,
+        140.97,
+        -34.01,
+        149.94
+      ]
+    },
+    "AUWA": {
+      "code": "AU-WA",
+      "abbrev": "AUWA",
+      "name": "Western Australia",
+      "bounds": [
+        -35.1,
+        112.91,
+        -13.74,
+        129
       ]
     }
   }
