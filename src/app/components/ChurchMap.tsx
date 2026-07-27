@@ -1680,6 +1680,7 @@ function MapArea({
             pinned={d.previewStatePinned}
             unpopulatedLabel={isWorld ? "Coming soon" : "Click to explore"}
             viewLabel={isWorld ? "View country" : isIntl ? "View region" : "View state"}
+            countryCode={isWorld ? "WORLD" : countryCode}
             onViewState={
               d.previewStatePinned
                 ? () => {

@@ -8,6 +8,7 @@ import { getSizeCategory, getFallbackLocation, churchNeedsReview } from "./churc
 import type { Church } from "./church-data";
 import { formatFullAddress } from "./AddressInput";
 import { WAITING_SAYINGS } from "./map-constants";
+import { PlaceFlag } from "./PlaceFlag";
 
 // --- Loading Overlay ---
 export function LoadingOverlay({
@@ -149,6 +150,7 @@ export function StateTooltip({
   pinned = false,
   unpopulatedLabel = "Click to explore",
   viewLabel = "View state",
+  countryCode = "US",
   onViewState,
   onClose,
 }: {
@@ -160,6 +162,8 @@ export function StateTooltip({
   pinned?: boolean;
   unpopulatedLabel?: string;
   viewLabel?: string;
+  /** Viewing context: US | WORLD | FR | … — drives flag resolution */
+  countryCode?: string;
   onViewState?: () => void;
   onClose?: () => void;
 }) {
@@ -185,7 +189,8 @@ export function StateTooltip({
           style={{ backgroundColor: "rgba(30, 16, 64, 0.9)" }}
         />
       )}
-      <div className="text-sm font-semibold text-white">
+      <div className="flex items-center gap-2 text-sm font-semibold text-white">
+        <PlaceFlag abbrev={hoveredState} countryCode={countryCode} size="sm" />
         {title}
       </div>
       <div className="text-xs text-purple-300 mt-0.5">

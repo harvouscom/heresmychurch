@@ -538,12 +538,17 @@ function NationalSummaryContent({
   const regionLabel = regionNoun.many;
   const regionOne = regionNoun.one;
   const isWorld = countryCode === "WORLD";
+  const unitTotal = stats.populated + stats.unpopulated;
+  const coveragePct =
+    unitTotal > 0 ? Math.round((stats.populated / unitTotal) * 1000) / 10 : null;
   const fullLoadedLabel =
     countryCode === "US" && allStatesLoaded
       ? "50 states"
-      : isWorld
-        ? `${stats.populated} ${stats.populated === 1 ? regionOne : regionLabel}`
-        : `${stats.populated} ${regionLabel}`;
+      : isWorld && unitTotal > 0 && coveragePct != null
+        ? `${stats.populated.toLocaleString()} of ${unitTotal.toLocaleString()} ${
+            unitTotal === 1 ? regionOne : regionLabel
+          } (${coveragePct}%)`
+        : `${stats.populated} ${stats.populated === 1 ? regionOne : regionLabel}`;
   return (
     <>
       <p className="text-white/70 text-xs leading-relaxed">

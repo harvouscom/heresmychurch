@@ -64,17 +64,63 @@ Fuzzy autocomplete over one state’s search index (same scoring as site search)
       "name": "Grace Community Church",
       "city": "Austin",
       "state": "TX",
+      "country": "US",
       "address": "123 Main St",
       "denomination": "Non-denominational",
       "lat": 30.27,
-      "lng": -97.74
+      "lng": -97.74,
+      "lastVerified": 1722000000000
     }
   ],
   "query": "Grace"
 }
 ```
 
+Lean refs always include `id`, `shortId`, `name`, `city`, `state`, `country`, `lat`, `lng`. Optional: `address`, `denomination`, `lastVerified` (ms epoch; present on by-id / state+shortId resolve when stored; may be omitted from search-index hits).
+
 `Cache-Control: private, max-age=30`
+
+#### `GET /v1/churches/by-id/:id`
+
+Resolve by full HMC `id` (e.g. `TX-123456` or `community-TX-…`). Prefer storing this id in Harvous as `hmcChurchId`.
+
+**Response:** same lean `{ "church": … }` envelope.
+
+`Cache-Control: private, max-age=60`
+
+#### `GET /v1/churches/changes`
+
+Pollable change feed for partners that denormalize church snapshots (name / city / state / country). Backed by `church_audit_log`; chronological, watermark-friendly.
+
+| Query | Required | Notes |
+|-------|----------|--------|
+| `since` | **yes** | ISO-8601 or ms epoch. Exclusive lower bound on `created_at`. Max lookback **30 days**. |
+| `limit` | no | Default 100, max 500 |
+
+**Included actions:** `field_updated`, `church_removed`, `church_added` (skips confirm / reject / populate noise).
+
+**Response:**
+
+```json
+{
+  "changes": [
+    {
+      "churchId": "TX-123456",
+      "action": "field_updated",
+      "field": "name",
+      "at": "2026-07-27T19:00:00.000Z"
+    }
+  ],
+  "nextSince": "2026-07-27T19:00:00.000Z",
+  "hasMore": false
+}
+```
+
+- Rows are chronological; unique by `churchId` on the consumer before re-fetching.
+- `nextSince` is the last row’s `at`, or echoes `since` when the page is empty — store as your sync watermark.
+- When `hasMore` is true, poll again with `since=nextSince` until false.
+
+`Cache-Control: private, max-age=15`
 
 #### `GET /v1/churches/:state/:shortId`
 
@@ -83,12 +129,6 @@ Resolve a picked result by state + 8-digit `shortId` (or full id / numeric segme
 **Response:** `{ "church": { …lean ref… } }` or `404` `{ "church": null, "error": "…" }`
 
 `Cache-Control: private, max-age=60`
-
-#### `GET /v1/churches/by-id/:id`
-
-Resolve by full HMC `id` (e.g. `TX-123456` or `community-TX-…`). Prefer storing this id in Harvous as `hmcChurchId`.
-
-**Response:** same lean `{ "church": … }` envelope.
 
 ### Writes (same review rules as the site)
 
@@ -162,6 +202,7 @@ Create a server-only helper (e.g. `server/utils/hmc-client.ts`) that:
    - `searchChurches({ q, state, limit })`
    - `getChurchById(id)`
    - `getChurchByShortId(state, shortId)`
+   - `getChurchChanges({ since, limit })`
    - `suggestChurchField(id, field, value)`
    - `getChurchSuggestions(id)`
    - `confirmChurch(id)`
@@ -203,6 +244,7 @@ Add authenticated Harvous routes that call the HMC client (Clerk session require
 |---------------|------------|
 | `GET /api/hmc/churches/search` | `GET /v1/churches/search` |
 | `GET /api/hmc/churches/:id` | `GET /v1/churches/by-id/:id` |
+| `GET /api/hmc/churches/changes` | `GET /v1/churches/changes` |
 | `POST /api/hmc/churches/:id/suggestions` | `POST /v1/churches/:id/suggestions` |
 | `GET /api/hmc/churches/:id/suggestions` | `GET /v1/churches/:id/suggestions` |
 | `POST /api/hmc/churches/:id/confirm` | `POST /v1/churches/:id/confirm` |
@@ -241,6 +283,22 @@ When the user affirms their church info is current:
 2. Ignore `alreadyConfirmed: true` (once per 24h per partner actor).
 3. This only updates HMC `lastVerified`; it does not change fields.
 
+#### Step 7b — Keeping denormalized copies fresh
+
+Harvous (and other partners) store `hmcChurchId` plus denormalized display fields. Those snapshots do **not** auto-update when HMC applies a correction. Use the change feed:
+
+1. Persist a watermark (e.g. `hmcSyncCursor`) — start from “now − a few minutes” on first run (within the 30-day lookback).
+2. Periodically (cron) or on admin / profile load paths that need accuracy:
+   - `GET /v1/churches/changes?since=<hmcSyncCursor>`
+   - While `hasMore`, continue with `since=nextSince`
+   - Save `nextSince` as the new cursor when the page is drained
+3. For each distinct `churchId` in the page:
+   - If `action === "church_removed"`: clear or flag linked user/org snapshots
+   - Else: `GET /v1/churches/by-id/:id` and overwrite denormalized `churchName` / city / state / country (and optional `lastVerified`)
+4. Optional cheap check without the feed: compare stored `lastVerified` to the by-id lean ref before rewriting.
+
+Outbound webhooks remain deferred; this poll feed is the v1 integrity path.
+
 #### Step 8 — Church org registration (later)
 
 When a church creates a Clerk org on Harvous:
@@ -253,10 +311,11 @@ When a church creates a Clerk org on Harvous:
 
 - [ ] Search “Grace” + `TX` returns ranked lean results under 1s typically
 - [ ] Pick persists `hmcChurchId`; reload profile still shows the same church
-- [ ] `GET` by-id returns the same id/name/city/state
+- [ ] `GET` by-id returns the same id/name/city/state/`country` (and `lastVerified` when set)
 - [ ] Non-sensitive suggest (e.g. `pastorName`) returns `applied: true`; by-id reflects after refresh
 - [ ] Sensitive suggest (e.g. `name`) returns `needsModeration: true`; by-id name unchanged until mod approve
 - [ ] Confirm returns success; second confirm within 24h returns `alreadyConfirmed`
+- [ ] `GET /v1/churches/changes?since=` returns watermarked events; after a field apply, the churchId appears
 - [ ] Browser network tab never shows `x-partner-key` or `HMC_PARTNER_API_KEY`
 
 ### Deferred (not in v1)
@@ -264,7 +323,7 @@ When a church creates a Clerk org on Harvous:
 - National unconstrained partner search
 - Compact index dump / client-side fuzzy
 - Partner add-new-church / bulk import
-- Webhook when moderator approves a partner suggestion
+- Outbound webhook when moderator approves a partner suggestion (use `GET /v1/churches/changes` for v1 freshness)
 - Public OpenAPI docs for third parties
 
 ---

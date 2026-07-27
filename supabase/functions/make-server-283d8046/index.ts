@@ -2,7 +2,7 @@ import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
-import { recordChurchAudit, queryAuditRecent, queryAuditByState, queryAuditByChurch } from "./audit.ts";
+import { recordChurchAudit, queryAuditRecent, queryAuditByState, queryAuditByChurch, queryAuditChangesSince } from "./audit.ts";
 import { POP } from "./state-populations.ts";
 import {
   countyPopulation,
@@ -40,6 +40,7 @@ import {
   reviewStatsStateKey,
   isValidRegion,
   regionFromChurchId,
+  parseMetaCountKey,
 } from "./church-keys.ts";
 
 // ── State data ──
@@ -702,10 +703,12 @@ type LeanChurchRef={
   name:string;
   city:string;
   state:string;
+  country?:string;
   address?:string;
   denomination?:string;
   lat:number;
   lng:number;
+  lastVerified?:number;
 };
 
 function toLeanChurchRef(e:any,st:string,isIdx:boolean):LeanChurchRef{
@@ -726,6 +729,9 @@ function toLeanChurchRef(e:any,st:string,isIdx:boolean):LeanChurchRef{
   };
   if(ad)ref.address=ad;
   if(d)ref.denomination=d;
+  const cc=(!isIdx&&typeof e.country==="string"&&e.country)?String(e.country).toUpperCase():regionCountry(realSt);
+  if(cc)ref.country=cc;
+  if(!isIdx&&typeof e.lastVerified==="number")ref.lastVerified=e.lastVerified;
   return ref;
 }
 
@@ -738,13 +744,14 @@ function normalizePartnerState(raw:string):string{
 async function loadStateSearchItems(st:string):Promise<{items:any[];isIdx:boolean}|null>{
   const realSt=normalizePartnerState(st);
   try{
-    const idxKey=await kv.get(`churches:sidx:${realSt}`);
+    // Prefer namespaced dual-read helpers (churches:sidx:US:TX → legacy churches:sidx:TX).
+    const idxKey=await getSidx(realSt);
     if(Array.isArray(idxKey)&&idxKey.length)return{items:idxKey,isIdx:true};
     // DC folded into MD for API; also try DC key if MD empty
     if(realSt==="MD"){
-      const dcIdx=await kv.get("churches:sidx:DC");
+      const dcIdx=await getSidx("DC","US");
       if(Array.isArray(dcIdx)&&dcIdx.length){
-        const mdRaw=await kv.get("churches:MD");
+        const mdRaw=await getChurches("MD","US");
         const md=Array.isArray(mdRaw)?mdRaw:[];
         if(md.length){
           const withShort=addShortIdsUnique(md,"MD");
@@ -752,10 +759,10 @@ async function loadStateSearchItems(st:string):Promise<{items:any[];isIdx:boolea
         }
       }
     }
-    const raw=await kv.get(`churches:${realSt}`);
+    const raw=await getChurches(realSt);
     if(Array.isArray(raw)&&raw.length)return{items:raw,isIdx:false};
     if(realSt==="MD"){
-      const dc=await kv.get("churches:DC");
+      const dc=await getChurches("DC","US");
       if(Array.isArray(dc)&&dc.length)return{items:dc.map((x:any)=>({...x,state:"MD"})),isIdx:false};
     }
   }catch(_){}
@@ -774,12 +781,12 @@ async function searchChurchesInState(qRaw:string,st:string,limit:number):Promise
   if(realSt==="MD"&&isIdx){
     // Merge DC index entries into MD search when using sidx
     try{
-      const dcIdx=await kv.get("churches:sidx:DC");
+      const dcIdx=await getSidx("DC","US");
       if(Array.isArray(dcIdx)&&dcIdx.length)items=items.concat(dcIdx);
     }catch(_){}
   }else if(realSt==="MD"&&!isIdx){
     try{
-      const dc=await kv.get("churches:DC");
+      const dc=await getChurches("DC","US");
       if(Array.isArray(dc)&&dc.length){
         const ids=new Set(items.map((c:any)=>c.id));
         for(const x of dc)if(!ids.has(x.id))items.push({...x,state:"MD"});
@@ -1132,6 +1139,48 @@ app.get(`${P}/v1/churches/by-id/:id`,async(c)=>{
   }catch(e){return c.json({church:null,error:`${e}`},500);}
 });
 
+/** Max lookback for partner change feed (protects edge + audit table). */
+const PARTNER_CHANGES_MAX_LOOKBACK_MS=30*24*60*60*1000;
+
+function parsePartnerSince(raw:string):{ok:true;iso:string}|{ok:false;error:string}{
+  const s=(raw||"").trim();
+  if(!s)return{ok:false,error:"since is required (ISO-8601 or ms epoch)"};
+  let ms:number;
+  if(/^\d+$/.test(s))ms=Number(s);
+  else{
+    ms=Date.parse(s);
+    if(Number.isNaN(ms))return{ok:false,error:"since must be ISO-8601 or ms epoch"};
+  }
+  if(!Number.isFinite(ms)||ms<0)return{ok:false,error:"since must be a valid timestamp"};
+  const now=Date.now();
+  if(ms>now+60_000)return{ok:false,error:"since cannot be in the future"};
+  if(now-ms>PARTNER_CHANGES_MAX_LOOKBACK_MS){
+    return{ok:false,error:"since cannot be older than 30 days"};
+  }
+  return{ok:true,iso:new Date(ms).toISOString()};
+}
+
+// Literal "changes" before /:state/:shortId so it is not parsed as a state.
+app.get(`${P}/v1/churches/changes`,async(c)=>{
+  try{
+    const sinceRaw=c.req.query("since")||"";
+    const parsed=parsePartnerSince(sinceRaw);
+    if(!parsed.ok)return c.json({error:parsed.error,changes:[],nextSince:null,hasMore:false},400);
+    const limit=Math.min(Math.max(1,parseInt(c.req.query("limit")||"100")||100),500);
+    const rows=await queryAuditChangesSince(parsed.iso,limit);
+    const changes=rows.map((r)=>({
+      churchId:r.church_id as string,
+      action:r.action,
+      ...(r.field?{field:r.field}:{}),
+      at:r.created_at,
+    }));
+    const nextSince=changes.length?changes[changes.length-1].at:parsed.iso;
+    const hasMore=rows.length>=limit;
+    c.header("Cache-Control","private, max-age=15");
+    return c.json({changes,nextSince,hasMore});
+  }catch(e){return c.json({error:`${e}`,changes:[],nextSince:null,hasMore:false},500);}
+});
+
 const PARTNER_ACTOR_KEY="partner:harvous";
 
 // Suggest/confirm before /:state/:shortId so literal "suggestions"/"confirm" are not parsed as shortId.
@@ -1264,11 +1313,11 @@ function stateFromChurchId(id:string):string|null{
 async function findChurchLeanByStateShortId(st:string,segment:string):Promise<LeanChurchRef|null>{
   const realSt=normalizePartnerState(st);
   if(!segment||!gS(realSt))return null;
-  let ch=await kv.get(`churches:${realSt}`);
+  let ch=await getChurches(realSt);
   if(!ch||!Array.isArray(ch)||!ch.length){
-    if(realSt==="MD"){const dc=await kv.get("churches:DC");if(Array.isArray(dc)&&dc.length)ch=dc.map((x:any)=>({...x,state:"MD"}));}
+    if(realSt==="MD"){const dc=await getChurches("DC","US");if(Array.isArray(dc)&&dc.length)ch=dc.map((x:any)=>({...x,state:"MD"}));}
   }else if(realSt==="MD"){
-    try{const dc=await kv.get("churches:DC");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));for(const x of dc)if(!ids.has(x.id))ch.push({...x,state:"MD"});}}catch(_){}
+    try{const dc=await getChurches("DC","US");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));for(const x of dc)if(!ids.has(x.id))ch.push({...x,state:"MD"});}}catch(_){}
   }
   if(!ch||!Array.isArray(ch)||!ch.length)return null;
   // Partner resolve reads KV only (no suggestion overlay). Sensitive consensus must not appear until moderator apply.
@@ -1289,10 +1338,10 @@ async function findChurchLeanById(id:string):Promise<LeanChurchRef|null>{
   const parsed=stateFromChurchId(decoded);
   const st=parsed?normalizePartnerState(parsed):null;
   if(st&&gS(st)){
-    let ch=await kv.get(`churches:${st}`);
+    let ch=await getChurches(st);
     if(st==="MD"){
       if(!Array.isArray(ch))ch=[];
-      try{const dc=await kv.get("churches:DC");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));for(const x of dc)if(!ids.has(x.id))ch.push({...x,state:"MD"});}}catch(_){}
+      try{const dc=await getChurches("DC","US");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));for(const x of dc)if(!ids.has(x.id))ch.push({...x,state:"MD"});}}catch(_){}
     }
     if(Array.isArray(ch)&&ch.length){
       const withShort=addShortIdsUnique(ch,st);
@@ -1304,9 +1353,10 @@ async function findChurchLeanById(id:string):Promise<LeanChurchRef|null>{
   const meta=await getMeta();
   const sc:Record<string,number>={...(meta?.stateCounts||{})};
   for(const s of Object.keys(sc)){
-    const realSt=normalizePartnerState(s);
+    const parsedKey=parseMetaCountKey(s);
+    const realSt=normalizePartnerState(parsedKey.abbrev);
     if(st&&realSt!==st)continue;
-    const ch=await kv.get(`churches:${realSt}`);
+    const ch=await getChurches(realSt,parsedKey.cc);
     if(!Array.isArray(ch)||!ch.length)continue;
     if(!ch.some((c:any)=>c.id===decoded))continue;
     const withShort=addShortIdsUnique(ch,realSt);

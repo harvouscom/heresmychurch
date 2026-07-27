@@ -392,16 +392,35 @@ export function computeWorldSummary(
     });
   }
 
-  // Region coverage across all supported countries.
+  // While any admin-1 region is still empty, surface coverage progress.
+  // Once every region is mapped, swap in a durable worldwide trivia fact.
   const regionTotal = countries.reduce((sum, c) => sum + (c.regionCount || 0), 0);
   const regionPopulated = countries.reduce((sum, c) => sum + (c.populatedRegions || 0), 0);
-  if (regionTotal > 0) {
+  if (regionTotal > 0 && regionPopulated < regionTotal) {
     facts.push({
       icon: "globe",
       label: "Regions mapped",
       primary: `${regionPopulated.toLocaleString()} of ${regionTotal.toLocaleString()}`,
       secondary: `${populated.length} of ${countries.length} countries`,
     });
+  } else if (totalChurches > 0) {
+    // Continental Europe + UK/IE in the product today (no Russia/Balkans yet).
+    const EUROPE_CODES = new Set([
+      "AT", "BE", "CH", "DE", "DK", "ES", "FI", "FR", "GB", "IE",
+      "IT", "NL", "NO", "PL", "PT", "SE",
+    ]);
+    const europeCount = populated
+      .filter((c) => EUROPE_CODES.has(c.code.toUpperCase()))
+      .reduce((sum, c) => sum + (c.churchCount || 0), 0);
+    if (europeCount > 0) {
+      const pct = Math.round((europeCount / totalChurches) * 1000) / 10;
+      facts.push({
+        icon: "globe",
+        label: "Europe's lead",
+        primary: europeCount.toLocaleString(),
+        secondary: `${pct}% of churches worldwide`,
+      });
+    }
   }
 
   // Review completeness from world rollup (states keyed by ISO CC).

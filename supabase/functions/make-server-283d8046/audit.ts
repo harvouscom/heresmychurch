@@ -125,3 +125,37 @@ export async function queryAuditByChurch(churchId: string, limit = 100): Promise
   if (error) throw new Error(error.message);
   return (data ?? []) as AuditLogRow[];
 }
+
+/** Actions that affect partner denormalized snapshots (name/location/existence). */
+export const PARTNER_CHANGE_ACTIONS = [
+  "field_updated",
+  "church_removed",
+  "church_added",
+] as const;
+
+export type PartnerChangeAction = (typeof PARTNER_CHANGE_ACTIONS)[number];
+
+const CHANGES_DEFAULT_LIMIT = 100;
+const CHANGES_MAX_LIMIT = 500;
+
+/**
+ * Chronological partner change feed: rows with created_at strictly after `sinceIso`,
+ * filtered to snapshot-relevant actions. Ascending for watermark-friendly pagination.
+ */
+export async function queryAuditChangesSince(
+  sinceIso: string,
+  limit = CHANGES_DEFAULT_LIMIT
+): Promise<AuditLogRow[]> {
+  const n = Math.min(Math.max(1, limit), CHANGES_MAX_LIMIT);
+  const { data, error } = await getClient()
+    .from("church_audit_log")
+    .select("*")
+    .gt("created_at", sinceIso)
+    .in("action", [...PARTNER_CHANGE_ACTIONS])
+    .not("church_id", "is", null)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(n);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as AuditLogRow[];
+}
