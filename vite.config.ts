@@ -32,9 +32,9 @@ export default defineConfig({
   assetsInclude: ['**/*.svg', '**/*.csv'],
 
   optimizeDeps: {
-    // maplibre-gl manages its own web worker; letting Vite/esbuild pre-bundle it
-    // breaks main-thread↔worker communication (GeoJSON/vector sources hang with
-    // no error). Exclude it so it is served as native ESM with the worker intact.
+    // Keep maplibre out of the dep optimizer so it doesn't look for a sibling
+    // worker under .vite/deps/. Worker URL is set explicitly in MapLibreCanvas
+    // via `maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url`.
     exclude: ['maplibre-gl'],
   },
 

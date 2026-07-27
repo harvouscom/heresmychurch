@@ -18,12 +18,19 @@
 import { memo, useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import {
   Map as MaplibreMap,
+  setWorkerUrl,
   type GeoJSONSource,
   type MapMouseEvent,
   type Point,
   type StyleSpecification,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+// MapLibre v6 + Vite: worker must be an explicit same-origin URL. Without this,
+// Vite's dep optimizer looks for maplibre-gl-worker.mjs under .vite/deps and the
+// map stays blank.
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
+
+setWorkerUrl(maplibreWorkerUrl);
 import { feature } from "topojson-client";
 import {
   GEO_URL,
