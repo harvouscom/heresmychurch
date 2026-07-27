@@ -61,6 +61,11 @@ import {
   planarBoundsForFeature,
 } from "./admin2";
 
+/** Stable defaults — inline `= []` in the props destructure is a new array every call. */
+const EMPTY_COUNTRIES: CountrySummary[] = [];
+const EMPTY_STATES: StateInfo[] = [];
+const EMPTY_CHURCHES: Church[] = [];
+
 /** Per-admin-2 church counts and per-capita rates, keyed by id (FIPS / CDUID). */
 export type CountyStats = {
   byFips: Record<
@@ -1232,12 +1237,12 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   zoom = US_DEFAULT_ZOOM,
   countryCode = DEFAULT_COUNTRY_CODE,
   viewLevel = "country",
-  countries = [],
-  states,
+  countries = EMPTY_COUNTRIES,
+  states = EMPTY_STATES,
   focusedState = null,
   cameraState,
   cameraCounty,
-  churches,
+  churches = EMPTY_CHURCHES,
   selectedChurchId = null,
   countyStats = null,
   focusedCounty = null,
@@ -1537,12 +1542,21 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
 
     // The map can be constructed before its container has a measured size
     // (MapLibre then falls back to a 400×300 canvas that never grows). A
-    // ResizeObserver keeps the canvas matched to the container.
-    const ro = new ResizeObserver(() => map.resize());
+    // ResizeObserver keeps the canvas matched to the container. Coalesce to one
+    // resize per frame — continuous window drags otherwise flood moveend + React.
+    let resizeRaf = 0;
+    const ro = new ResizeObserver(() => {
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
+        map.resize();
+      });
+    });
     ro.observe(containerRef.current);
 
     return () => {
       ro.disconnect();
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
       if (hoverFrame != null) cancelAnimationFrame(hoverFrame);
       map.off("moveend", handleMoveEnd);
       map.remove();

@@ -81,6 +81,24 @@ const HIDE_MAP_UI = false;
  *  church centres in the space the panel leaves visible. */
 const DETAIL_PANEL_WIDTH = 396;
 
+/** Stable empties for /world — a fresh `[]` each render re-runs MapLibre data effects. */
+const EMPTY_STATES: StateInfo[] = [];
+const EMPTY_CHURCHES: Church[] = [];
+
+function mapBoundsEqual(
+  a: [[number, number], [number, number]] | null,
+  b: [[number, number], [number, number]],
+): boolean {
+  if (!a) return false;
+  const eps = 1e-7;
+  return (
+    Math.abs(a[0][0] - b[0][0]) < eps &&
+    Math.abs(a[0][1] - b[0][1]) < eps &&
+    Math.abs(a[1][0] - b[1][0]) < eps &&
+    Math.abs(a[1][1] - b[1][1]) < eps
+  );
+}
+
 /** Sample per-state active counts for testing on localhost (see tooltip + on-map labels). */
 const SAMPLE_ACTIVE_BY_STATE: Record<string, number> = {
   CA: 2, TX: 3, NY: 1, FL: 4, IL: 2, OH: 1, GA: 2, NC: 1, WA: 1,
@@ -1278,9 +1296,29 @@ function MapArea({
   const [mapLibreBounds, setMapLibreBounds] = useState<
     [[number, number], [number, number]] | null
   >(null);
+  const handleMapMoveEnd = useCallback((
+    _center: [number, number],
+    _zoom: number,
+    bounds: [[number, number], [number, number]],
+  ) => {
+    setMapLibreBounds((prev) => (mapBoundsEqual(prev, bounds) ? prev : bounds));
+  }, []);
   const isWorld = viewLevel === "world";
   const isIntl = !isWorld && countryCode !== "US";
   const countryCfg = getCountry(countryCode);
+  const mapStates = isWorld
+    ? EMPTY_STATES
+    : countryCode === "US"
+      ? d.states
+      : intlRegions;
+  const mapChurches = useMemo(() => {
+    if (isWorld) return EMPTY_CHURCHES;
+    if (countryCode === "US") return churchesToShowOnMap;
+    if (selectedChurch && !intlChurches.some((c) => c.id === selectedChurch.id)) {
+      return [...intlChurches, selectedChurch];
+    }
+    return intlChurches;
+  }, [isWorld, countryCode, churchesToShowOnMap, intlChurches, selectedChurch]);
   const isNationalView = !d.focusedState;
   const verifiedCountForView = isNationalView
     ? (verifiedChurches?.length ?? null)
@@ -1548,7 +1586,7 @@ function MapArea({
           See docs/future/mapbox-migration.md. */}
       <MapLibreCanvas
         apiRef={mapLibreApi}
-        onMoveEnd={(_center, _zoom, bounds) => setMapLibreBounds(bounds)}
+        onMoveEnd={handleMapMoveEnd}
         // On mobile the detail panel covers the bottom 55vh, so keep that much
         // clear of the camera and the pin stays visible above it.
         bottomPadding={
@@ -1558,7 +1596,7 @@ function MapArea({
         viewLevel={viewLevel}
         countryCode={countryCode}
         countries={worldCountries}
-        states={viewLevel === "world" ? [] : countryCode === "US" ? d.states : intlRegions}
+        states={mapStates}
         focusedState={
           viewLevel === "world" ? null : countryCode === "US" ? d.focusedState : routeStateAbbrev
         }
@@ -1566,17 +1604,7 @@ function MapArea({
         // church fetch finishes (same moment the header pill leaves loading).
         cameraState={viewLevel === "world" ? null : routeStateAbbrev}
         cameraCounty={viewLevel === "world" ? null : routeCountyFips}
-        churches={
-          viewLevel === "world"
-            ? []
-            : countryCode === "US"
-              ? churchesToShowOnMap
-              : (
-                  selectedChurch && !intlChurches.some((c) => c.id === selectedChurch.id)
-                    ? [...intlChurches, selectedChurch]
-                    : intlChurches
-                )
-        }
+        churches={mapChurches}
         selectedChurchId={viewLevel === "world" ? null : (selectedChurch?.id ?? null)}
         countyStats={mapCountyStats}
         focusedCounty={mapFocusedCounty}
