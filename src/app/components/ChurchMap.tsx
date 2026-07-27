@@ -1872,8 +1872,8 @@ function HeaderPill({
     (showReviewPercentage ?? (!focusedState && !placeLabel)) && !showLoading;
   const countryLabel = placeLabel ?? getCountry(countryCode)?.name ?? countryCode;
   const readyCount = focusedState
-    ? `${filteredCount.toLocaleString()} churches`
-    : `${totalChurches.toLocaleString()} churches`;
+    ? `${filteredCount.toLocaleString()} churches*`
+    : `${totalChurches.toLocaleString()} churches*`;
   return (
     <div className="rounded-full shadow-lg transition-shadow hover:shadow-xl cursor-pointer w-auto max-w-full">
       <div

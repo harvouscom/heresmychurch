@@ -274,6 +274,7 @@ When a church creates a Clerk org on Harvous:
 - Publish OpenAPI and a docs page for third parties.
 - Keep `/v1` stable; evolve behind new versions if needed.
 - Optional per-partner keys and stricter CORS for browser clients.
+- **Paid API (Polar):** per-customer keys and subscriptions — see [polar-api-billing.md](./polar-api-billing.md).
 
 ## Data accuracy
 
