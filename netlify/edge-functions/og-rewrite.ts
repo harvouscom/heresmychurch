@@ -8,7 +8,7 @@
  *   SUPABASE_ANON_KEY - Supabase anon key for API calls
  */
 import type { Context } from "https://edge.netlify.com";
-import { INTL_COUNTRY_META } from "./intl-country-meta.generated.ts";
+import { INTL_COUNTRY_META } from "./lib/intl-country-meta.generated.ts";
 
 /**
  * Fallback when Netlify env vars are unset. Same values as `utils/supabase/info.tsx`

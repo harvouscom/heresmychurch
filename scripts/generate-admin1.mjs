@@ -31,7 +31,7 @@
  *   src/app/config/regions-generated.ts
  *   supabase/functions/make-server-283d8046/regions-intl.ts
  *   scripts/intl-region-bounds.generated.json
- *   netlify/edge-functions/intl-country-meta.generated.ts
+ *   netlify/edge-functions/lib/intl-country-meta.generated.ts
  */
 
 import { writeFile, mkdir } from "fs/promises";
@@ -384,7 +384,7 @@ export const INTL_COUNTRY_META: Record<string, { name: string; regions: Record<s
     2,
   )};
 `;
-  const outMeta = join(__dirname, "..", "netlify", "edge-functions", "intl-country-meta.generated.ts");
+  const outMeta = join(__dirname, "..", "netlify", "edge-functions", "lib", "intl-country-meta.generated.ts");
   await writeFile(outMeta, metaTs);
   console.log(`Wrote ${outMeta}`);
 }

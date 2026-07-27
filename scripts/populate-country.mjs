@@ -31,7 +31,7 @@ if (!/^[A-Z]{2}$/.test(cc)) {
 }
 
 function regionsForCountry(country) {
-  const metaPath = join(__dirname, "..", "netlify", "edge-functions", "intl-country-meta.generated.ts");
+  const metaPath = join(__dirname, "..", "netlify", "edge-functions", "lib", "intl-country-meta.generated.ts");
   const src = readFileSync(metaPath, "utf8");
   const jsonMatch = src.match(/INTL_COUNTRY_META[\s\S]*?=\s*(\{[\s\S]*\});?\s*$/);
   if (!jsonMatch) throw new Error("Could not parse intl-country-meta.generated.ts");

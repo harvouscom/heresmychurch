@@ -53,7 +53,7 @@ const STATE_ABBREVS = [
 /** Non-US countries from generate-admin1 output (keep in sync via regen). */
 function loadIntlCountries() {
   const src = readFileSync(
-    join(__dirname, "..", "netlify", "edge-functions", "intl-country-meta.generated.ts"),
+    join(__dirname, "..", "netlify", "edge-functions", "lib", "intl-country-meta.generated.ts"),
     "utf8",
   );
   const m = src.match(/INTL_COUNTRY_META[\s\S]*?=\s*(\{[\s\S]*\});?\s*$/);
