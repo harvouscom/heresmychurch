@@ -21,6 +21,11 @@ import {
   getCountyZoom,
 } from "./map-constants";
 import { churchMatchesRouteSegment, getChurchUrlSegment } from "./url-utils";
+import {
+  clearNavigationChurchPreload,
+  matchNavigationChurchPreload,
+  setNavigationChurchPreload,
+} from "./church-navigation-preload";
 import { getRegion } from "../config/countries";
 import {
   buildAdmin2Stats,
@@ -843,9 +848,21 @@ export function useChurchMapData({
     }
 
     if (refs.current.focusedState !== routeStateAbbrev) {
-      const preloaded = refs.current.preloadedChurch;
+      const fromRef = refs.current.preloadedChurch;
       refs.current.preloadedChurch = null;
-      if (preloaded && preloaded.state === routeStateAbbrev) {
+      const routeChurchKey = routeChurchShortId ?? routeLegacyChurchId ?? "";
+      const fromNav =
+        routeChurchKey
+          ? matchNavigationChurchPreload(routeChurchKey, routeStateAbbrev, "US")
+          : null;
+      const preloaded =
+        fromRef && fromRef.state === routeStateAbbrev
+          ? fromRef
+          : fromNav && fromNav.state === routeStateAbbrev
+            ? fromNav
+            : null;
+      if (preloaded) {
+        clearNavigationChurchPreload();
         loadFnsRef.current.loadStateDataSilent?.(routeStateAbbrev, preloaded);
       } else if (routeChurchShortId ?? routeLegacyChurchId) {
         loadFnsRef.current.loadStateDataSilentForChurch?.(routeStateAbbrev, routeChurchShortId ?? routeLegacyChurchId ?? "");
@@ -1105,7 +1122,10 @@ export function useChurchMapData({
     setZoom((z) => Math.max(z / 1.5, minZoom));
     setTimeout(() => dd({ type: "SET_ZOOM_TRANSITIONING", value: false }), ZOOM_TRANSITION_MS);
   };
-  const preloadChurch = (church: Church) => { refs.current.preloadedChurch = church; };
+  const preloadChurch = (church: Church) => {
+    refs.current.preloadedChurch = church;
+    setNavigationChurchPreload(church);
+  };
 
   const handleChurchDotClick = (church: Church, e?: { clientX: number; clientY: number }) => {
     ui.setHoveredChurch(null);

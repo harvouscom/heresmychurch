@@ -384,6 +384,12 @@ export function MapSearchBar({
 
   const handleSelectRemote = useCallback(
     (result: SearchResult) => {
+      const resultCountry = (
+        result.country ||
+        countryFilter ||
+        (isWorld ? undefined : countryCode) ||
+        "US"
+      ).toUpperCase();
       // Preload church data so the map can show it instantly without loading overlay
       if (onPreloadChurch && result.lat && result.lng) {
         onPreloadChurch({
@@ -392,6 +398,7 @@ export function MapSearchBar({
           name: result.name,
           city: result.city,
           state: result.state,
+          country: resultCountry,
           lat: result.lat,
           lng: result.lng,
           attendance: result.attendance,
@@ -399,12 +406,6 @@ export function MapSearchBar({
           address: result.address || "",
         });
       }
-      const resultCountry = (
-        result.country ||
-        countryFilter ||
-        (isWorld ? undefined : countryCode) ||
-        "US"
-      ).toUpperCase();
       navigateToChurch(
         result.state,
         getChurchUrlSegment(result, result.state, resultCountry),

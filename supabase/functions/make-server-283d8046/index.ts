@@ -319,17 +319,35 @@ function bboxOnlyQ(bbox:[number,number,number,number]):string{
   const b=bbox.join(",");
   return`[out:json][timeout:90];(node["amenity"="place_of_worship"]["religion"="christian"](${b});way["amenity"="place_of_worship"]["religion"="christian"](${b});relation["amenity"="place_of_worship"]["religion"="christian"](${b}););out geom ${OVP_REQUEST_LIMIT};`;
 }
+/** ISO areas that are too large / shared for area∩bbox cell walks.
+ *  English ITL1 regions all share GB-ENG; resolving that nation area + bbox
+ *  routinely blows past Supabase's 150s wall. parse() still clips to region bounds. */
+const OVP_BBOX_ONLY_ISO=new Set(["GB-ENG"]);
+
 async function ovpForRegion(st:string,bbox?:[number,number,number,number]):Promise<any[]>{
   const iso=regionIso(st);
   const label=bbox?`${st}-cell`:st;
-  let els=await ovpQ(bQ(iso,bbox),label);
-  // Stale ISO tags (Paris FR-75→FR-75C) or missing Overpass areas return [].
-  // Fall back to the cell bbox; parse() still clips to region bounds.
-  if(!els.length&&bbox){
-    console.log(`[${st}] ISO area ${iso} empty — falling back to bbox-only`);
-    els=await ovpQ(bboxOnlyQ(bbox),`${label}-bbox`);
+  if(bbox&&OVP_BBOX_ONLY_ISO.has(iso)){
+    return await ovpQ(bboxOnlyQ(bbox),`${label}-bbox`);
   }
-  return els;
+  try{
+    let els=await ovpQ(bQ(iso,bbox),label);
+    // Stale ISO tags (Paris FR-75→FR-75C) or missing Overpass areas return [].
+    // Fall back to the cell bbox; parse() still clips to region bounds.
+    if(!els.length&&bbox){
+      console.log(`[${st}] ISO area ${iso} empty — falling back to bbox-only`);
+      els=await ovpQ(bboxOnlyQ(bbox),`${label}-bbox`);
+    }
+    return els;
+  }catch(e){
+    // Don't burn the whole 150s wall on ISO retries then die — bbox-only is
+    // usually what succeeds for dense UK/EU cells after an Overpass timeout.
+    if(bbox){
+      console.log(`[${st}] ISO query failed (${e}) — falling back to bbox-only`);
+      return await ovpQ(bboxOnlyQ(bbox),`${label}-bbox`);
+    }
+    throw e;
+  }
 }
 function splitB(b:[number,number,number,number]):[number,number,number,number][]{const[s,w,n,e]=b,mL=(s+n)/2,mN=(w+e)/2;return[[s,w,mL,mN],[s,mN,mL,e],[mL,w,n,mN],[mL,mN,n,e]];}
 
@@ -377,12 +395,24 @@ async function fetchArea(
 
   let els:any[];
   try{
-    els=await ovpQ(bQ(iso,bbox),label);
+    // Shared nation ISOs (GB-ENG) must not go through area∩bbox — same hang as
+    // populate-cell. Prefer bbox-only; parse() clips to the ITL1 region.
+    els=await ovpQ(OVP_BBOX_ONLY_ISO.has(iso)?bboxOnlyQ(bbox):bQ(iso,bbox),label);
   }catch(e){
-    // ovpQ has already exhausted both endpoints and its retries. A smaller area
-    // often succeeds where the whole one timed out, so split before giving up.
-    if(await subdivide(`query failed (${e})`))return;
-    throw e;
+    if(!OVP_BBOX_ONLY_ISO.has(iso)){
+      try{
+        console.log(`[${label}] ISO query failed (${e}) — trying bbox-only before split`);
+        els=await ovpQ(bboxOnlyQ(bbox),`${label}-bbox`);
+      }catch(e2){
+        // ovpQ has already exhausted both endpoints and its retries. A smaller area
+        // often succeeds where the whole one timed out, so split before giving up.
+        if(await subdivide(`query failed (${e2})`))return;
+        throw e2;
+      }
+    }else{
+      if(await subdivide(`query failed (${e})`))return;
+      throw e;
+    }
   }
 
   if(els.length>=OVP_TRUNCATION_SUSPECT){

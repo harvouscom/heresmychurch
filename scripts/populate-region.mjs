@@ -102,12 +102,15 @@ const split = ([s, w, n, e]) => {
 };
 
 async function post(path) {
+  // Edge wall is ~150s; fail the client a bit sooner so retries can kick in
+  // instead of hanging forever when the function idle-times out.
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${ANON_KEY}` },
+    signal: AbortSignal.timeout(145_000),
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || `${res.status}`);
+  if (!res.ok) throw new Error(body.error || body.message || `${res.status}`);
   return body;
 }
 

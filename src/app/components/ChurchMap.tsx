@@ -20,7 +20,13 @@ import { MapControls } from "./MapControls";
 import { HelpModal } from "./HelpModal";
 import { AuditModal } from "./AuditModal";
 import { MapLibreCanvas, type MapLibreHandle } from "./MapLibreCanvas";
-import { fetchRegions, fetchChurches as fetchChurchesApi, fetchCountries, type CountrySummary } from "./api";
+import {
+  fetchRegions,
+  fetchChurches as fetchChurchesApi,
+  fetchChurchByShortId,
+  fetchCountries,
+  type CountrySummary,
+} from "./api";
 import { getCountry, getRegion, resolveRegionByAbbrev } from "../config/countries";
 import { VerificationModal, NationalReviewModal } from "./VerificationModal";
 import { CloseButton } from "./ui/close-button";
@@ -37,6 +43,11 @@ import { useChurchMapData } from "./useChurchMapData";
 import { buildRegionSummaryStats, computeNationalSummary, computeWorldSummary } from "./hooks/useChurchFilters";
 import { findCountyNameForPoint } from "./county-resolve";
 import { churchMatchesRouteSegment, getChurchUrlSegment } from "./url-utils";
+import {
+  clearNavigationChurchPreload,
+  matchNavigationChurchPreload,
+  setNavigationChurchPreload,
+} from "./church-navigation-preload";
 import { getStateZoom, REVIEW_SAYINGS } from "./map-constants";
 import {
   buildAdmin2Stats,
@@ -141,6 +152,8 @@ export function ChurchMap({
   const [intlChurchesLoading, setIntlChurchesLoading] = useState(false);
   const [intlAdmin2Features, setIntlAdmin2Features] = useState<Map<string, Admin2Feature> | null>(null);
   const [intlHoveredAdmin2, setIntlHoveredAdmin2] = useState<string | null>(null);
+  /** Search/deep-link selection for non-US routes — opens the detail panel before the region list loads. */
+  const [intlSelectedChurch, setIntlSelectedChurch] = useState<Church | null>(null);
 
   useEffect(() => {
     if (!isWorld) return;
@@ -225,13 +238,29 @@ export function ChurchMap({
     countryCode === "US" ? d.countyFeatures : intlAdmin2Features;
 
   // Intl church view is URL-driven (useChurchMapData ignores intl route church ids).
+  // Prefer the loaded region list; fall back to search preload (state + module
+  // cache) so the detail panel opens immediately instead of waiting on a full
+  // region fetch — including across /world → country remounts.
   const selectedChurch = useMemo(() => {
     if (isIntl) {
       if (!routeChurchShortId || !routeStateAbbrev) return null;
+      const fromList = intlChurches.find((c) =>
+        churchMatchesRouteSegment(c, routeChurchShortId, routeStateAbbrev, countryCode),
+      );
+      if (fromList) return fromList;
+      if (
+        intlSelectedChurch &&
+        churchMatchesRouteSegment(
+          intlSelectedChurch,
+          routeChurchShortId,
+          routeStateAbbrev,
+          countryCode,
+        )
+      ) {
+        return intlSelectedChurch;
+      }
       return (
-        intlChurches.find((c) =>
-          churchMatchesRouteSegment(c, routeChurchShortId, routeStateAbbrev, countryCode),
-        ) ?? null
+        matchNavigationChurchPreload(routeChurchShortId, routeStateAbbrev, countryCode) ?? null
       );
     }
     return d.selectedChurch;
@@ -240,9 +269,78 @@ export function ChurchMap({
     routeChurchShortId,
     routeStateAbbrev,
     intlChurches,
+    intlSelectedChurch,
     countryCode,
     d.selectedChurch,
   ]);
+
+  const handlePreloadChurch = useCallback(
+    (church: Church) => {
+      setNavigationChurchPreload(church);
+      d.preloadChurch(church);
+      setIntlSelectedChurch(church);
+    },
+    [d.preloadChurch],
+  );
+
+  // Drop intl selection when leaving a church route. Do not clear the module
+  // preload while still on /world — search writes it there before navigate, and
+  // ChurchMap remounts on the country route entry.
+  useEffect(() => {
+    if (!isIntl) {
+      setIntlSelectedChurch(null);
+      return;
+    }
+    if (!routeChurchShortId) {
+      setIntlSelectedChurch(null);
+      clearNavigationChurchPreload();
+    }
+  }, [isIntl, routeChurchShortId]);
+
+  // After remount (world → country route entry), recover search preload so the
+  // detail panel opens immediately; upgrade to the full record when the region
+  // list arrives.
+  useEffect(() => {
+    if (!isIntl || !routeChurchShortId || !routeStateAbbrev) return;
+
+    const fromList = intlChurches.find((c) =>
+      churchMatchesRouteSegment(c, routeChurchShortId, routeStateAbbrev, countryCode),
+    );
+    if (fromList) {
+      setIntlSelectedChurch(fromList);
+      clearNavigationChurchPreload();
+      return;
+    }
+
+    const fromNav = matchNavigationChurchPreload(
+      routeChurchShortId,
+      routeStateAbbrev,
+      countryCode,
+    );
+    if (fromNav) setIntlSelectedChurch(fromNav);
+  }, [isIntl, routeChurchShortId, routeStateAbbrev, countryCode, intlChurches]);
+
+  // Deep links (no search preload): fetch one church in parallel with the region list.
+  useEffect(() => {
+    if (!isIntl || !routeChurchShortId || !routeStateAbbrev) return;
+    if (selectedChurch) return;
+
+    let cancelled = false;
+    fetchChurchByShortId(routeStateAbbrev, routeChurchShortId)
+      .then(({ church }) => {
+        if (cancelled || !church) return;
+        setIntlSelectedChurch(church);
+      })
+      .catch((e) => {
+        console.warn(
+          `[ChurchMap] intl fetchChurchByShortId failed for ${routeStateAbbrev}/${routeChurchShortId}:`,
+          e,
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isIntl, routeChurchShortId, routeStateAbbrev, selectedChurch]);
 
   useEffect(() => {
     if (!isIntl || !selectedChurch) return;
@@ -780,6 +878,7 @@ export function ChurchMap({
         verifiedChurches={verifiedChurches}
         onToggleVerified={() => verifiedDotsEnabled ? exitVerifiedMode() : enableVerifiedMode()}
         churchTooltipCountyName={churchTooltipCountyName}
+        onPreloadChurch={handlePreloadChurch}
       />
 
       {/* Modals (rendered outside map area to reduce nesting depth) */}
@@ -1094,6 +1193,7 @@ function MapArea({
   verifiedChurches,
   onToggleVerified,
   churchTooltipCountyName,
+  onPreloadChurch,
 }: {
   d: ReturnType<typeof useChurchMapData>;
   selectedChurch: Church | null;
@@ -1170,6 +1270,7 @@ function MapArea({
   verifiedChurches: Church[] | null;
   onToggleVerified: () => void;
   churchTooltipCountyName: string | null;
+  onPreloadChurch: (church: Church) => void;
 }) {
   /** Imperative MapLibre controls, so the app's zoom buttons can drive it. */
   const mapLibreApi = useRef<MapLibreHandle | null>(null);
@@ -1773,7 +1874,7 @@ function MapArea({
               countryCode={isWorld ? "WORLD" : countryCode}
               isWorld={isWorld}
               countries={worldCountries}
-              onPreloadChurch={d.preloadChurch}
+              onPreloadChurch={onPreloadChurch}
               collapsed={searchCollapsed}
               onExpand={() => { d.setSearchCollapsed(false); d.setShowFilterPanel(false); d.setShowLegend(false); }}
               onAddChurch={(d.focusedState || routeStateAbbrev) ? () => { d.setShowAddChurchFromSummary(true); } : undefined}
