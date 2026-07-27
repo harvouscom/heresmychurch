@@ -1,8 +1,11 @@
 /**
  * Shared copy for seasonal report FAQs: methodology details also appear in Help.
  * `variant` switches typography for light (report) vs dark (help modal) surfaces.
+ * `geography` scopes US-only Census / 50-states language vs country / world / region.
  */
 export type ReportFaqMethodologyVariant = "report" | "help";
+
+export type ReportFaqGeography = "us" | "country" | "world" | "region" | "all";
 
 const STYLES: Record<
   ReportFaqMethodologyVariant,
@@ -38,22 +41,40 @@ const STYLES: Record<
 
 export function SeasonalReportGenerationFaqBrief({
   variant,
+  geography = "all",
+  placeLabel = "this map",
+  unitNoun = { one: "region", many: "regions" },
 }: {
   variant: ReportFaqMethodologyVariant;
+  geography?: ReportFaqGeography;
+  placeLabel?: string;
+  unitNoun?: { one: string; many: string };
 }) {
   const s = STYLES[variant];
+  const scopeLine =
+    geography === "us"
+      ? "National views cover all 50 states; state views focus on one state."
+      : geography === "world"
+        ? "Worldwide views aggregate every populated country on HMC; country views focus on one country."
+        : geography === "region"
+          ? `This view focuses on one ${unitNoun.one}.`
+          : geography === "country"
+            ? `Country views cover populated ${unitNoun.many} in ${placeLabel}; ${unitNoun.one} views focus on one ${unitNoun.one}.`
+            : "Reports can cover the world, a country, or a single region depending on the page.";
+
+  const populationLine =
+    geography === "us"
+      ? "Population figures come from U.S. Census data for density metrics. Community correction counts reflect approved suggestions merged into the directory, not every submission."
+      : "Population figures are used for density metrics where available. Community correction counts reflect approved suggestions merged into the directory, not every submission.";
+
   return (
     <div className={`${s.briefSpace} leading-relaxed`}>
       <p>
         Each seasonal overview is a snapshot of the same church records that power the map, built when we
-        publish that season. National views cover all 50 states; state views focus on one state. We
-        aggregate counts, attendance, denominations, languages, completeness, spotlights, and rankings in
-        one pass.
+        publish that season. {scopeLine} We aggregate counts, attendance, denominations, languages,
+        completeness, spotlights, and rankings in one pass.
       </p>
-      <p>
-        Population figures come from U.S. Census data for density metrics. Community correction counts
-        reflect approved suggestions merged into the directory, not every submission.
-      </p>
+      <p>{populationLine}</p>
       <p className={s.note}>
         The timestamp on the page is when that snapshot was generated—the live map can change before the
         next publish.
@@ -68,10 +89,19 @@ export function SeasonalReportGenerationFaqBrief({
 
 export function SeasonalReportMethodologyFaqDetails({
   variant,
+  geography = "all",
+  placeLabel = "this map",
+  unitNoun = { one: "region", many: "regions" },
 }: {
   variant: ReportFaqMethodologyVariant;
+  geography?: ReportFaqGeography;
+  placeLabel?: string;
+  unitNoun?: { one: string; many: string };
 }) {
   const s = STYLES[variant];
+  const unitOne = unitNoun.one;
+  const unitMany = unitNoun.many;
+
   return (
     <div className={s.detailsSpace}>
       <p className="leading-relaxed">
@@ -81,30 +111,53 @@ export function SeasonalReportMethodologyFaqDetails({
       <div className="space-y-2">
         <p className={s.sectionTitle}>Geography and scope</p>
         <ul className={s.list}>
-          <li>
-            National views use all 50 states (Alaska and Hawaii included). For rankings and cross-state
-            comparisons we merge D.C.&apos;s church count into Maryland (same as the live map) so we
-            don&apos;t double-count the metro area.
-          </li>
-          <li>
-            State views filter to that state only. County sections need valid latitude and longitude so
-            we can place each church in a county; churches without coordinates still count toward state
-            totals but may be absent from county tables.
-          </li>
+          {geography === "us" || geography === "all" ? (
+            <li>
+              {geography === "all"
+                ? "U.S. national views use all 50 states (Alaska and Hawaii included). For rankings and cross-state comparisons we merge D.C.'s church count into Maryland (same as the live map) so we don't double-count the metro area."
+                : "National views use all 50 states (Alaska and Hawaii included). For rankings and cross-state comparisons we merge D.C.'s church count into Maryland (same as the live map) so we don't double-count the metro area."}
+            </li>
+          ) : null}
+          {geography === "world" || geography === "all" ? (
+            <li>
+              Worldwide views aggregate populated countries on HMC. Rankings compare countries (or
+              regions within a country report).
+            </li>
+          ) : null}
+          {geography === "country" ? (
+            <li>
+              This report covers populated {unitMany} in {placeLabel}. Rankings and density tables use
+              those {unitMany}.
+            </li>
+          ) : null}
+          {geography === "region" || geography === "us" || geography === "all" ? (
+            <li>
+              {geography === "region"
+                ? `This view filters to one ${unitOne}. County or local sections need valid latitude and longitude so we can place each church; churches without coordinates still count toward totals but may be absent from local tables.`
+                : "State views filter to that state only. County sections need valid latitude and longitude so we can place each church in a county; churches without coordinates still count toward state totals but may be absent from county tables."}
+            </li>
+          ) : null}
+          {geography === "country" ? (
+            <li>
+              {unitOne.charAt(0).toUpperCase() + unitOne.slice(1)} views (when published) filter to that{" "}
+              {unitOne} only. Churches without coordinates still count toward totals but may be absent from
+              local breakdowns.
+            </li>
+          ) : null}
         </ul>
       </div>
       <div className="space-y-2">
         <p className={s.sectionTitle}>“Needs review” and completeness scores</p>
         <ul className={s.list}>
           <li>
-            We treat four fields as core: a meaningful street address (not only city/state), a website
+            We treat four fields as core: a meaningful street address (not only city/region), a website
             that looks like a real URL, service times that aren&apos;t empty placeholders (e.g. &quot;see
             website&quot;, &quot;TBD&quot;), and a denomination other than blank / Unknown / Other.
           </li>
           <li>
             A church is flagged <span className={s.em}>needs review</span> when{" "}
             <span className={s.em}>two or more</span> of those are missing. Rankings use{" "}
-            <span className={s.em}>% complete</span> as the share of churches in that state or county that
+            <span className={s.em}>% complete</span> as the share of churches in that {unitOne} that
             are <em>not</em> in that bucket.
           </li>
           <li>
@@ -122,9 +175,9 @@ export function SeasonalReportMethodologyFaqDetails({
             <span className={s.em}>Unspecified</span>.
           </li>
           <li>
-            <span className={s.em}>Regional patterns</span> highlight groups where a state&apos;s share is
-            more than <em>twice</em> the national share; we only consider states with at least 20 churches so
-            small samples don&apos;t dominate.
+            <span className={s.em}>Regional patterns</span> highlight groups where a {unitOne}&apos;s share is
+            more than <em>twice</em> the overall share for this report; we only consider {unitMany} with at
+            least 20 churches so small samples don&apos;t dominate.
           </li>
           <li>
             Language diversity uses structured language tags when present. If a church only lists English, we
@@ -142,9 +195,12 @@ export function SeasonalReportMethodologyFaqDetails({
             75th percentiles using only churches with an attendance value greater than zero.
           </li>
           <li>
-            <span className={s.em}>Churches per 10,000 people</span> is (church count ÷ census population) ×
-            10,000. <span className={s.em}>People per church</span> is population ÷ church count, rounded to a
-            whole number.
+            <span className={s.em}>Churches per 10,000 people</span> is (church count ÷ population) ×
+            10,000 when population is available. <span className={s.em}>People per church</span> is
+            population ÷ church count, rounded to a whole number.
+            {geography === "us" || geography === "all"
+              ? " U.S. density metrics use Census population estimates."
+              : ""}
           </li>
           <li>
             Spotlights pick the ten largest churches by estimated attendance and the ten smallest among
@@ -169,11 +225,13 @@ export function SeasonalReportMethodologyFaqDetails({
             &quot;trending&quot; sections compare this snapshot to the <em>previous published</em> season
             (church counts, share shifts by denomination, quality movers, etc.), not day-to-day edits.
           </li>
-          <li>
-            On state pages, &quot;how we compare&quot; ranks use the same census populations and per-state
-            church totals (with D.C. folded into Maryland). Peer states are neighbors in the sorted lists, not
-            a formal statistical model.
-          </li>
+          {(geography === "us" || geography === "region" || geography === "all") && (
+            <li>
+              On state pages, &quot;how we compare&quot; ranks use the same census populations and per-state
+              church totals (with D.C. folded into Maryland). Peer states are neighbors in the sorted lists, not
+              a formal statistical model.
+            </li>
+          )}
         </ul>
       </div>
     </div>

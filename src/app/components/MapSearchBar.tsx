@@ -5,14 +5,15 @@ import { geoAlbersUsa } from "d3-geo";
 import type { Church, StateInfo } from "./church-data";
 import { getFallbackLocation, formatAddressWithCity } from "./church-data";
 import { searchChurches } from "./api";
-import type { SearchResult } from "./api";
+import type { CountrySummary, SearchResult } from "./api";
 import { getChurchUrlSegment } from "./url-utils";
 import { scoreChurchMatch } from "./search-scoring";
-import { StateFlag } from "./StateFlag";
 import { STATE_NAMES } from "./map-constants";
 import { CloseButton } from "./ui/close-button";
 import { matchQueryToChurch } from "./church-search-match";
 import { findCountyNameForPoint } from "./county-resolve";
+import { getCountry } from "../config/countries";
+import { PlaceFlag } from "./PlaceFlag";
 
 const VIEWPORT_ZOOM_THRESHOLD = 1.5;
 
@@ -21,7 +22,12 @@ interface MapSearchBarProps {
   states: StateInfo[];
   focusedState: string | null;
   focusedStateName: string;
-  navigateToChurch: (stateAbbrev: string, churchShortId: string, options?: { replace?: boolean }) => void;
+  navigateToChurch: (
+    stateAbbrev: string,
+    churchShortId: string,
+    options?: { replace?: boolean; countryCode?: string },
+  ) => void;
+  countryCode?: string;
   onPreloadChurch?: (church: Church) => void;
   collapsed?: boolean;
   onExpand?: () => void;
@@ -31,10 +37,22 @@ interface MapSearchBarProps {
   detectedState?: string | null;
   zoom?: number;
   center?: [number, number];
+  /**
+   * Visible map extent as [[west, south], [east, north]], supplied by the
+   * MapLibre canvas. When present it replaces the geoAlbersUsa projection math
+   * below with a plain lng/lat test — that projection only describes the SVG
+   * map's coordinate space, so it gives wrong answers for any other engine
+   * (and none at all outside the US).
+   */
+  mapBounds?: [[number, number], [number, number]] | null;
   /** When in state view, report search result church IDs so the map can show only those dots. */
   onStateViewSearchResultsChange?: (churchIds: Set<string> | null) => void;
   /** US county features (TopoJSON) for fallback location labels when city is missing. */
   countyFeatures?: Map<string, unknown> | null;
+  /** World choropleth view — show Country filter instead of region filter. */
+  isWorld?: boolean;
+  /** Populated countries for the world-view country filter. */
+  countries?: CountrySummary[];
 }
 
 /** Max results for national (remote) search dropdown */
@@ -59,8 +77,12 @@ export function MapSearchBar({
   detectedState,
   zoom = 1,
   center = [-96, 38],
+  mapBounds = null,
   onStateViewSearchResultsChange,
   countyFeatures = null,
+  countryCode = "US",
+  isWorld = false,
+  countries = [],
 }: MapSearchBarProps) {
   const [query, setQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -70,8 +92,9 @@ export function MapSearchBar({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // State filter for national view
+  // Region filter for country view; country filter for world view
   const [stateFilter, setStateFilter] = useState<string | null>(null);
+  const [countryFilter, setCountryFilter] = useState<string | null>(null);
   const [showStateDropdown, setShowStateDropdown] = useState(false);
   const stateDropdownRef = useRef<HTMLDivElement>(null);
   const detectedStateAppliedRef = useRef(false);
@@ -114,13 +137,19 @@ export function MapSearchBar({
     setRemoteResults([]);
     setRemoteSearched(false);
     setShowStateDropdown(false);
+    setCountryFilter(null);
     // When returning to national view, restore detected state; otherwise clear
-    if (!focusedState && detectedState) {
+    if (!focusedState && !isWorld && detectedState) {
       setStateFilter(detectedState);
     } else {
       setStateFilter(null);
     }
-  }, [focusedState, detectedState]);
+  }, [focusedState, detectedState, isWorld, countryCode]);
+
+  // Leaving world view clears country filter
+  useEffect(() => {
+    if (!isWorld) setCountryFilter(null);
+  }, [isWorld]);
 
   // Blur search when collapsed externally (e.g. clicking map background)
   useEffect(() => {
@@ -136,13 +165,14 @@ export function MapSearchBar({
     setSearchAllMode(false);
   }, [query, zoom]);
 
-  // Apply detected state filter if available
+  // Apply detected state filter if available (country view only)
   useEffect(() => {
+    if (isWorld) return;
     if (detectedState && !detectedStateAppliedRef.current) {
       setStateFilter(detectedState);
       detectedStateAppliedRef.current = true;
     }
-  }, [detectedState]);
+  }, [detectedState, isWorld]);
 
   // Populated states sorted alphabetically for the dropdown
   const populatedStates = useMemo(() => {
@@ -150,6 +180,16 @@ export function MapSearchBar({
       .filter((s) => s.isPopulated)
       .sort((a, b) => (STATE_NAMES[a.abbrev] || a.abbrev).localeCompare(STATE_NAMES[b.abbrev] || b.abbrev));
   }, [states]);
+
+  const populatedCountries = useMemo(() => {
+    return countries
+      .filter((c) => c.isPopulated && c.churchCount > 0)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [countries]);
+
+  const regionNounOne = getCountry(countryCode)?.regionNoun.one ?? "state";
+  const regionNounOneTitle = regionNounOne.charAt(0).toUpperCase() + regionNounOne.slice(1);
+
 
   // Projection matching react-simple-maps (geoAlbersUsa, scale 1000) for viewport filtering
   const projection = useMemo(() => geoAlbersUsa().scale(1000), []);
@@ -181,11 +221,26 @@ export function MapSearchBar({
     return scored.slice(0, MAX_RESULTS_STATE_VIEW).map((s) => s.church);
   }, [query, focusedState, churches]);
 
-  const isViewportSearchMode = zoom > VIEWPORT_ZOOM_THRESHOLD && !!focusedState;
-
-  // Filter to churches in current viewport when zoomed in (same math as ChurchDots viewport culling)
+  // Churches inside the current viewport.
+  //
+  // With real map bounds (MapLibre) this is a direct lng/lat test. Without them
+  // we fall back to the SVG map's projection math: project to Albers space and
+  // compare against a half-extent derived from the 1–500 zoom scale.
   const churchesInView = useMemo(() => {
-    if (!isViewportSearchMode || churches.length === 0) return null;
+    if (!focusedState || churches.length === 0) return null;
+
+    if (mapBounds) {
+      const [[west, south], [east, north]] = mapBounds;
+      const inView = new Set<string>();
+      for (const ch of churches) {
+        if (ch.lng >= west && ch.lng <= east && ch.lat >= south && ch.lat <= north) {
+          inView.add(ch.id);
+        }
+      }
+      return inView;
+    }
+
+    if (zoom <= VIEWPORT_ZOOM_THRESHOLD) return null;
     const centerSvg = projection(center);
     if (!centerSvg) return new Set<string>();
     const halfW = (400 / zoom) * 1.5;
@@ -201,7 +256,18 @@ export function MapSearchBar({
       }
     }
     return inView;
-  }, [isViewportSearchMode, churches, center, zoom, projection]);
+  }, [focusedState, churches, center, zoom, projection, mapBounds]);
+
+  // With bounds we can ask whether the view actually excludes anything, rather
+  // than guessing a zoom cutoff — a fitted state lands at very different
+  // MapLibre zooms (Rhode Island ~9, Texas ~5.5), so an absolute threshold
+  // would behave inconsistently between states.
+  const isViewportSearchMode = mapBounds
+    ? !!focusedState && !!churchesInView && churchesInView.size < churches.length
+    : zoom > VIEWPORT_ZOOM_THRESHOLD && !!focusedState;
+
+  /** Whether the placeholder should say "in view" rather than "in {state}". */
+  const showInViewCopy = mapBounds ? isViewportSearchMode : zoom > VIEWPORT_ZOOM_THRESHOLD;
 
   const localResults = useMemo(() => {
     if (!isViewportSearchMode || searchAllMode || !churchesInView) return localResultsRaw;
@@ -263,8 +329,21 @@ export function MapSearchBar({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const limit = stateFilter ? MAX_RESULTS_STATE_SCOPED : MAX_RESULTS;
-        const data = await searchChurches(q, limit, stateFilter || undefined);
+        const limit = (isWorld ? countryFilter : stateFilter)
+          ? MAX_RESULTS_STATE_SCOPED
+          : MAX_RESULTS;
+        // World: optional country scope. Country view: always scope to that country
+        // (including US — don't accidentally search worldwide from /US).
+        const searchCountry = isWorld
+          ? (countryFilter || undefined)
+          : countryCode;
+        const data = await searchChurches(
+          q,
+          limit,
+          isWorld ? undefined : (stateFilter || undefined),
+          undefined,
+          searchCountry,
+        );
         if (searchVersionRef.current !== version) return;
         setRemoteResults(data.results);
         setRemoteSearched(true);
@@ -283,7 +362,7 @@ export function MapSearchBar({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, focusedState, stateFilter]);
+  }, [query, focusedState, stateFilter, countryFilter, countryCode, isWorld]);
 
   // Reset selected index when results change
   const resultCount = focusedState ? localResults.length : remoteResults.length;
@@ -294,13 +373,13 @@ export function MapSearchBar({
   const handleSelectLocal = useCallback(
     (church: Church) => {
       if (focusedState) {
-        navigateToChurch(focusedState, getChurchUrlSegment(church, focusedState));
+        navigateToChurch(focusedState, getChurchUrlSegment(church, focusedState, countryCode), { countryCode });
       }
       setQuery("");
       setIsFocused(false);
       inputRef.current?.blur();
     },
-    [focusedState, navigateToChurch]
+    [focusedState, navigateToChurch, countryCode],
   );
 
   const handleSelectRemote = useCallback(
@@ -320,12 +399,22 @@ export function MapSearchBar({
           address: result.address || "",
         });
       }
-      navigateToChurch(result.state, getChurchUrlSegment(result, result.state));
+      const resultCountry = (
+        result.country ||
+        countryFilter ||
+        (isWorld ? undefined : countryCode) ||
+        "US"
+      ).toUpperCase();
+      navigateToChurch(
+        result.state,
+        getChurchUrlSegment(result, result.state, resultCountry),
+        { countryCode: resultCountry },
+      );
       setQuery("");
       setIsFocused(false);
       inputRef.current?.blur();
     },
-    [navigateToChurch, onPreloadChurch]
+    [navigateToChurch, onPreloadChurch, countryCode, countryFilter, isWorld],
   );
 
   const handleKeyDown = useCallback(
@@ -354,8 +443,18 @@ export function MapSearchBar({
 
   const showDropdown = isFocused && query.trim().length > 0;
   const isNational = !focusedState;
-  const hasPopulated = states.some((s) => s.isPopulated);
-  const hasMultiplePopulated = populatedStates.length > 1;
+  const hasPopulated = isWorld
+    ? populatedCountries.length > 0
+    : states.some((s) => s.isPopulated);
+  const showPlaceFilter = isNational && (
+    isWorld ? populatedCountries.length > 1 : populatedStates.length > 1
+  );
+  const activePlaceFilter = isWorld ? countryFilter : stateFilter;
+  const placeFilterLabel = isWorld
+    ? (countryFilter
+        ? (populatedCountries.find((c) => c.code === countryFilter)?.name || countryFilter)
+        : "Country")
+    : (stateFilter || regionNounOneTitle);
 
   return (
     <div
@@ -374,50 +473,71 @@ export function MapSearchBar({
         >
           <Search size={17} className="text-purple-400" />
           <span className="text-white text-sm font-medium">
-            {zoom > VIEWPORT_ZOOM_THRESHOLD ? "Search churches in view…" : "Search churches…"}
+            {showInViewCopy ? "Search churches in view…" : "Search churches…"}
           </span>
         </button>
       ) : (
         <>
-      {/* State filter dropdown — rendered above the results */}
-      {showStateDropdown && isNational && hasMultiplePopulated && (
+      {/* Place filter dropdown — country (world) or region (country view) */}
+      {showStateDropdown && showPlaceFilter && (
         <div
           ref={stateDropdownRef}
           className="mb-2 rounded-xl shadow-2xl overflow-hidden max-h-[40vh] overflow-y-auto"
           style={{ backgroundColor: "rgba(30, 16, 64, 0.97)" }}
         >
           <div className="px-3 py-2 text-[10px] font-medium text-white/30 uppercase tracking-wider border-b border-white/5">
-            Filter by state
+            {isWorld ? "Filter by country" : "Filter by " + regionNounOne}
           </div>
           <button
             className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors ${
-              !stateFilter ? "bg-purple-500/20 text-purple-300" : "text-white/70 hover:bg-white/5"
+              !activePlaceFilter ? "bg-purple-500/20 text-purple-300" : "text-white/70 hover:bg-white/5"
             }`}
             onClick={() => {
-              setStateFilter(null);
+              if (isWorld) setCountryFilter(null);
+              else setStateFilter(null);
               setShowStateDropdown(false);
             }}
           >
             <MapPin size={12} className="flex-shrink-0 opacity-50" />
-            All states
+            {isWorld ? "All countries" : "All " + (getCountry(countryCode)?.regionNoun.many ?? "states")}
           </button>
-          {populatedStates.map((s) => (
-            <button
-              key={s.abbrev}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors ${
-                stateFilter === s.abbrev ? "bg-purple-500/20 text-purple-300" : "text-white/70 hover:bg-white/5"
-              }`}
-              onClick={() => {
-                setStateFilter(s.abbrev);
-                setShowStateDropdown(false);
-                inputRef.current?.focus();
-              }}
-            >
-              <StateFlag abbrev={s.abbrev} size="sm" />
-              <span className="w-5 text-[10px] text-white/30 font-mono flex-shrink-0">{s.abbrev}</span>
-              {STATE_NAMES[s.abbrev] || s.abbrev}
-            </button>
-          ))}
+          {isWorld
+            ? populatedCountries.map((c) => (
+                <button
+                  key={c.code}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors ${
+                    countryFilter === c.code ? "bg-purple-500/20 text-purple-300" : "text-white/70 hover:bg-white/5"
+                  }`}
+                  onClick={() => {
+                    setCountryFilter(c.code);
+                    setShowStateDropdown(false);
+                    inputRef.current?.focus();
+                  }}
+                >
+                  <PlaceFlag abbrev={c.code} size="sm" />
+                  <span className="flex-1 min-w-0 truncate">{c.name}</span>
+                  <span className="text-[10px] text-white/30 tabular-nums flex-shrink-0">
+                    {c.churchCount.toLocaleString()}
+                  </span>
+                </button>
+              ))
+            : populatedStates.map((s) => (
+                <button
+                  key={s.abbrev}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors ${
+                    stateFilter === s.abbrev ? "bg-purple-500/20 text-purple-300" : "text-white/70 hover:bg-white/5"
+                  }`}
+                  onClick={() => {
+                    setStateFilter(s.abbrev);
+                    setShowStateDropdown(false);
+                    inputRef.current?.focus();
+                  }}
+                >
+                  <PlaceFlag abbrev={s.abbrev} size="sm" />
+                  <span className="w-5 text-[10px] text-white/30 font-mono flex-shrink-0">{s.abbrev}</span>
+                  <span className="min-w-0 truncate">{STATE_NAMES[s.abbrev] || s.name || s.abbrev}</span>
+                </button>
+              ))}
         </div>
       )}
 
@@ -446,7 +566,6 @@ export function MapSearchBar({
                       }}
                       className="mt-2.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-purple-500/20 text-purple-300 text-xs font-medium hover:bg-purple-500/30 transition-colors"
                     >
-                      {focusedState && <StateFlag abbrev={focusedState} size="sm" />}
                       <MapPin size={12} />
                       Search all of {focusedStateName}
                     </button>
@@ -503,7 +622,6 @@ export function MapSearchBar({
                       }}
                       className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-xs text-purple-300 hover:bg-white/5 border-t border-white/5 transition-colors"
                     >
-                      {focusedState && <StateFlag abbrev={focusedState} size="sm" />}
                       <MapPin size={12} className="flex-shrink-0 opacity-70" />
                       Search all of {focusedStateName}
                     </button>
@@ -539,7 +657,9 @@ export function MapSearchBar({
                 <div className="px-4 py-4 text-center">
                   <p className="text-xs text-white/40">
                     {!hasPopulated
-                      ? "Explore a state first to enable search"
+                      ? (isWorld
+                          ? "Countries are still loading…"
+                          : `Explore a ${regionNounOne} first to enable search`)
                       : <>No churches found for &ldquo;{query}&rdquo;</>}
                   </p>
                   {hasPopulated && (onAddChurch || (stateFilter && onAddChurchForState)) && (
@@ -572,16 +692,31 @@ export function MapSearchBar({
                         <div className="text-sm text-white font-medium truncate">
                           {r.name}
                         </div>
-                        {(r.address || r.city || r.state || getFallbackLocation(r, remoteChurchCountyByKey.get(`${r.state}-${r.id}`))) && (
-                          <div className="text-xs text-white/40 truncate">
-                            {formatAddressWithCity(r.address, r.city) || (STATE_NAMES[r.state] || r.state) || getFallbackLocation(r, remoteChurchCountyByKey.get(`${r.state}-${r.id}`))}
+                        {(r.address || r.city || r.state || r.country || getFallbackLocation(r, remoteChurchCountyByKey.get(`${r.state}-${r.id}`))) && (
+                          <div className="text-xs text-white/40 truncate inline-flex items-center gap-1.5 max-w-full">
+                            {isWorld && r.country ? (
+                              <PlaceFlag abbrev={r.country} size="sm" />
+                            ) : null}
+                            <span className="truncate">
+                              {r.locationLabel
+                                || formatAddressWithCity(r.address, r.city)
+                                || getFallbackLocation(
+                                    r,
+                                    remoteChurchCountyByKey.get(`${r.state}-${r.id}`),
+                                    STATE_NAMES[r.state] || getCountry(r.country)?.regions[r.state]?.name,
+                                  )
+                                || (STATE_NAMES[r.state] || r.state)}
+                              {isWorld && r.country
+                                ? ` · ${getCountry(r.country)?.name || r.country}`
+                                : ""}
+                            </span>
                           </div>
                         )}
                       </div>
                       <ChevronRight size={14} className="text-white/20 flex-shrink-0" />
                     </button>
                   ))}
-                  {remoteResults.length >= (stateFilter ? MAX_RESULTS_STATE_SCOPED : MAX_RESULTS) && (
+                  {remoteResults.length >= (activePlaceFilter ? MAX_RESULTS_STATE_SCOPED : MAX_RESULTS) && (
                     <div className="px-4 py-2 text-xs text-white/30 text-center border-t border-white/5">
                       Keep typing to narrow results…
                     </div>
@@ -620,19 +755,21 @@ export function MapSearchBar({
         }`}
         style={{ backgroundColor: "rgba(30, 16, 64, 0.92)", "--tw-inset-shadow": "inset 0 1px 0 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 0 rgba(0, 0, 0, 0.1)" } as React.CSSProperties}
       >
-        {/* State filter chip — national view only */}
-        {isNational && hasMultiplePopulated && (
+        {/* Place filter chip — country on world view, region on country view */}
+        {showPlaceFilter && (
           <button
             onClick={() => setShowStateDropdown((v) => !v)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 transition-colors ${
-              stateFilter
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 transition-colors max-w-[9.5rem] ${
+              activePlaceFilter
                 ? "bg-purple-500/30 text-purple-200 hover:bg-purple-500/40"
                 : "bg-white/8 text-white/40 hover:bg-white/12 hover:text-white/60"
             }`}
           >
-            {stateFilter && <StateFlag abbrev={stateFilter} size="sm" />}
-            {stateFilter ? stateFilter : "State"}
-            <ChevronDown size={10} className={`transition-transform ${showStateDropdown ? "rotate-180" : ""}`} />
+            {isWorld && countryFilter ? (
+              <PlaceFlag abbrev={countryFilter} size="sm" />
+            ) : null}
+            <span className="truncate">{placeFilterLabel}</span>
+            <ChevronDown size={10} className={`transition-transform flex-shrink-0 ${showStateDropdown ? "rotate-180" : ""}`} />
           </button>
         )}
         <Search size={17} className="text-purple-400 flex-shrink-0" />
@@ -645,12 +782,16 @@ export function MapSearchBar({
           onKeyDown={handleKeyDown}
           placeholder={
             focusedState
-              ? zoom > VIEWPORT_ZOOM_THRESHOLD
+              ? showInViewCopy
                 ? "Search churches in view…"
                 : `Search churches in ${focusedStateName}…`
-              : stateFilter
-              ? `Search in ${STATE_NAMES[stateFilter] || stateFilter}…`
-              : "Find a church…"
+              : isWorld
+                ? (countryFilter
+                    ? `Search in ${populatedCountries.find((c) => c.code === countryFilter)?.name || countryFilter}…`
+                    : "Search worldwide…")
+                : stateFilter
+                  ? `Search in ${STATE_NAMES[stateFilter] || stateFilter}…`
+                  : "Find a church…"
           }
           className="flex-1 bg-transparent text-white text-[15px] placeholder:text-white outline-none min-w-0"
         />
@@ -668,7 +809,7 @@ export function MapSearchBar({
             )}
           </button>
         )}
-        {(query || stateFilter) && (
+        {(query || activePlaceFilter) && (
           <CloseButton
             ariaLabel="Clear search"
             onClick={() => {
@@ -676,6 +817,8 @@ export function MapSearchBar({
                 setQuery("");
                 setResultsDropdownVisible(true);
                 inputRef.current?.focus();
+              } else if (isWorld) {
+                setCountryFilter(null);
               } else {
                 setStateFilter(null);
               }

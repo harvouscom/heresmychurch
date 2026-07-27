@@ -1,5 +1,15 @@
 import { Plus, Clock } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
+import {
+  SERVICE_DAYS,
+  normalizeServiceTimes,
+  parseServiceTimesForDisplay,
+  groupServiceTimesByDay,
+  type ParsedServiceTime,
+} from "../lib/service-times";
+
+export { parseServiceTimesForDisplay, groupServiceTimesByDay, normalizeServiceTimes };
+export type { ParsedServiceTime };
 
 // ── Types ──
 
@@ -20,16 +30,7 @@ interface ServiceTimesInputProps {
 
 // ── Constants ──
 
-const DAYS = [
-  { short: "Sun", full: "Sunday" },
-  { short: "Mon", full: "Monday" },
-  { short: "Tue", full: "Tuesday" },
-  { short: "Wed", full: "Wednesday" },
-  { short: "Thu", full: "Thursday" },
-  { short: "Fri", full: "Friday" },
-  { short: "Sat", full: "Saturday" },
-];
-
+const DAYS = SERVICE_DAYS.map((d) => ({ short: d.short, full: d.full }));
 const HOURS = ["12", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
 const MINUTES = ["00", "15", "30", "45"];
 
@@ -47,18 +48,13 @@ function makeEmpty(): ServiceEntry {
 /** Serialize entries to canonical string */
 function serialize(entries: ServiceEntry[]): string {
   if (entries.length === 0) return "";
-  // Sort: day order, then time, for deterministic output
   const sorted = [...entries].sort((a, b) => {
     const dayOrder = DAYS.findIndex((d) => d.short === a.day) - DAYS.findIndex((d) => d.short === b.day);
     if (dayOrder !== 0) return dayOrder;
-    const aTime = toMinutes(a);
-    const bTime = toMinutes(b);
-    return aTime - bTime;
+    return toMinutes(a) - toMinutes(b);
   });
 
-  return sorted
-    .map((e) => formatEntryStored(e))
-    .join("; ");
+  return sorted.map((e) => formatEntryStored(e)).join("; ");
 }
 
 /** Format a single entry as stored (e.g. "Sun 9:00 AM" or "Sun 9:00 AM (Main Service)") */
@@ -68,29 +64,29 @@ function formatEntryStored(e: ServiceEntry): string {
 }
 
 function toMinutes(e: ServiceEntry): number {
-  let h = parseInt(e.hour);
+  let h = parseInt(e.hour, 10);
   if (e.period === "PM" && h !== 12) h += 12;
   if (e.period === "AM" && h === 12) h = 0;
-  return h * 60 + parseInt(e.minute);
+  return h * 60 + parseInt(e.minute, 10);
 }
 
-/** Parse canonical string back into entries */
+/** Parse canonical / OSM / informal strings into editable entries */
 function parse(value: string): ServiceEntry[] {
   if (!value || !value.trim()) return [];
-  // Split on ";" and parse each entry
-  const parts = value.split(";").map((s) => s.trim()).filter(Boolean);
+
+  const normalized = normalizeServiceTimes(value);
+  const parts = (normalized || value).split(";").map((s) => s.trim()).filter(Boolean);
   const entries: ServiceEntry[] = [];
 
   for (const part of parts) {
-    // Match: Day H:MM AM/PM (optional label)
     const match = part.match(
-      /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+(\d{1,2}):(\d{2})\s+(AM|PM)(?:\s+\((.+)\))?$/i
+      /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+(\d{1,2}):(\d{2})\s+(AM|PM)(?:\s+\((.+)\))?$/i,
     );
     if (match) {
       entries.push({
         id: newId(),
         day: match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase(),
-        hour: match[2],
+        hour: String(parseInt(match[2], 10)), // strip leading zero for select values
         minute: match[3],
         period: match[4].toUpperCase() as "AM" | "PM",
         label: match[5] || "",
@@ -101,11 +97,25 @@ function parse(value: string): ServiceEntry[] {
   return entries;
 }
 
-// Common service time presets
 const PRESETS = [
-  { label: "Sunday AM", entries: [{ day: "Sun", hour: "9", minute: "00", period: "AM" as const }, { day: "Sun", hour: "11", minute: "00", period: "AM" as const }] },
-  { label: "Sunday + Wednesday", entries: [{ day: "Sun", hour: "10", minute: "00", period: "AM" as const }, { day: "Wed", hour: "7", minute: "00", period: "PM" as const }] },
-  { label: "Saturday evening", entries: [{ day: "Sat", hour: "5", minute: "00", period: "PM" as const }] },
+  {
+    label: "Sunday AM",
+    entries: [
+      { day: "Sun", hour: "9", minute: "00", period: "AM" as const },
+      { day: "Sun", hour: "11", minute: "00", period: "AM" as const },
+    ],
+  },
+  {
+    label: "Sunday + Wednesday",
+    entries: [
+      { day: "Sun", hour: "10", minute: "00", period: "AM" as const },
+      { day: "Wed", hour: "7", minute: "00", period: "PM" as const },
+    ],
+  },
+  {
+    label: "Saturday evening",
+    entries: [{ day: "Sat", hour: "5", minute: "00", period: "PM" as const }],
+  },
 ];
 
 // ── Component ──
@@ -113,6 +123,19 @@ const PRESETS = [
 export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInputProps) {
   const [entries, setEntries] = useState<ServiceEntry[]>(() => parse(value));
   const [showPresets, setShowPresets] = useState(false);
+
+  // If parent value changes to a different string we can't reverse from local entries
+  // (e.g. opening suggest-edit on an OSM church), re-hydrate.
+  useEffect(() => {
+    const serialized = serialize(entries);
+    const incoming = normalizeServiceTimes(value) || value.trim();
+    if (incoming && incoming !== serialized) {
+      const next = parse(value);
+      if (next.length) setEntries(next);
+    }
+    // Only react to external value changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
   // Sync serialized output when entries change
   useEffect(() => {
@@ -124,10 +147,12 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
 
   const addEntry = useCallback(() => {
     setEntries((prev) => {
-      // Smart default: if there are existing entries, suggest same day or next common day
       if (prev.length > 0) {
         const lastEntry = prev[prev.length - 1];
-        return [...prev, { ...makeEmpty(), day: lastEntry.day, hour: lastEntry.hour === "9" ? "11" : "9" }];
+        return [
+          ...prev,
+          { ...makeEmpty(), day: lastEntry.day, hour: lastEntry.hour === "9" ? "11" : "9" },
+        ];
       }
       return [...prev, makeEmpty()];
     });
@@ -138,18 +163,16 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
   }, []);
 
   const updateEntry = useCallback((id: string, field: keyof ServiceEntry, val: string) => {
-    setEntries((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, [field]: val } : e))
-    );
+    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: val } : e)));
   }, []);
 
-  const applyPreset = useCallback((preset: typeof PRESETS[number]) => {
+  const applyPreset = useCallback((preset: (typeof PRESETS)[number]) => {
     setEntries(
       preset.entries.map((e) => ({
         id: newId(),
         ...e,
         label: "",
-      }))
+      })),
     );
     setShowPresets(false);
   }, []);
@@ -168,13 +191,11 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
 
   return (
     <div className="space-y-2">
-      {/* Entries */}
-      {entries.map((entry, idx) => (
+      {entries.map((entry) => (
         <div
           key={entry.id}
           className="rounded-lg border border-white/10 bg-white/[0.04] p-2.5 space-y-2"
         >
-          {/* Row 1: Day, time, AM/PM */}
           <div className="flex items-center gap-2 flex-nowrap">
             <select
               value={entry.day}
@@ -243,7 +264,6 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
             </div>
           </div>
 
-          {/* Row 2: Label */}
           <input
             type="text"
             value={entry.label}
@@ -253,14 +273,12 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
             className={`${inputClass} w-full`}
           />
 
-          {/* Stored as — same size as inputs */}
           <div className={`leading-relaxed text-white/60 ${compact ? "text-[10px]" : "text-[11px]"}`}>
             Stored as: <span className="text-white/90 font-mono">{formatEntryStored(entry)}</span>
           </div>
         </div>
       ))}
 
-      {/* Add / Presets / Remove row */}
       <div className="flex items-center gap-2 flex-wrap">
         <button
           type="button"
@@ -318,61 +336,4 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
       </div>
     </div>
   );
-}
-
-// ── Display helper for ChurchDetailPanel ──
-
-interface ParsedServiceTime {
-  day: string;
-  dayFull: string;
-  time: string;
-  label?: string;
-}
-
-export function parseServiceTimesForDisplay(value: string): ParsedServiceTime[] {
-  if (!value) return [];
-  const parts = value.split(";").map((s) => s.trim()).filter(Boolean);
-  const results: ParsedServiceTime[] = [];
-
-  for (const part of parts) {
-    const match = part.match(
-      /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+(\d{1,2}:\d{2}\s+(?:AM|PM))(?:\s+\((.+)\))?$/i
-    );
-    if (match) {
-      const dayInfo = DAYS.find((d) => d.short.toLowerCase() === match[1].toLowerCase());
-      results.push({
-        day: match[1],
-        dayFull: dayInfo?.full || match[1],
-        time: match[2],
-        label: match[3],
-      });
-    } else {
-      // Fallback for non-canonical strings
-      results.push({ day: "?", dayFull: "Unknown", time: part, label: undefined });
-    }
-  }
-
-  return results;
-}
-
-/** Group parsed service times by day for display */
-export function groupServiceTimesByDay(
-  parsed: ParsedServiceTime[]
-): { day: string; dayFull: string; services: { time: string; label?: string }[] }[] {
-  const groups = new Map<string, { dayFull: string; services: { time: string; label?: string }[] }>();
-  const dayOrder = DAYS.map((d) => d.short);
-
-  for (const svc of parsed) {
-    const existing = groups.get(svc.day);
-    if (existing) {
-      existing.services.push({ time: svc.time, label: svc.label });
-    } else {
-      groups.set(svc.day, { dayFull: svc.dayFull, services: [{ time: svc.time, label: svc.label }] });
-    }
-  }
-
-  // Sort by day order
-  return Array.from(groups.entries())
-    .sort((a, b) => dayOrder.indexOf(a[0]) - dayOrder.indexOf(b[0]))
-    .map(([day, data]) => ({ day, ...data }));
 }

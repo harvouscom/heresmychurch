@@ -2,6 +2,7 @@ import { CloseButton } from "./ui/close-button";
 import { sizeCategories } from "./church-data";
 import type { StateInfo } from "./church-data";
 import { STATE_COUNT_TIERS } from "./map-constants";
+import { getCountry, WORLD_COUNT_TIERS, type CountTier } from "../config/countries";
 
 interface MapLegendProps {
   focusedState: string | null;
@@ -13,6 +14,8 @@ interface MapLegendProps {
   states: StateInfo[];
   filteredChurches: { length: number };
   sizeCounts: Record<string, number>;
+  countryCode?: string;
+  viewLevel?: "world" | "country" | "region";
 }
 
 export function MapLegend({
@@ -25,6 +28,8 @@ export function MapLegend({
   states,
   filteredChurches,
   sizeCounts,
+  countryCode = "US",
+  viewLevel = "country",
 }: MapLegendProps) {
   const toggle = () => {
     setShowLegend(!showLegend);
@@ -47,7 +52,11 @@ export function MapLegend({
       </div>
 
       <span className="text-xs font-semibold text-purple-300 uppercase tracking-wider block mb-2">
-        {focusedState ? "Attendance" : "Churches per State"}
+        {focusedState
+          ? "Attendance"
+          : viewLevel === "world"
+            ? "Churches per Country"
+            : (getCountry(countryCode)?.legendHeading ?? "Churches per Region")}
       </span>
       {focusedState ? (
         <AttendanceLegend
@@ -58,6 +67,11 @@ export function MapLegend({
         <StateLegend
           allStatesLoaded={allStatesLoaded}
           states={states}
+          tiers={
+            viewLevel === "world"
+              ? WORLD_COUNT_TIERS
+              : (getCountry(countryCode)?.countTiers ?? STATE_COUNT_TIERS)
+          }
         />
       )}
     </div>
@@ -102,13 +116,15 @@ function AttendanceLegend({
 function StateLegend({
   allStatesLoaded,
   states,
+  tiers,
 }: {
   allStatesLoaded: boolean;
   states: StateInfo[];
+  tiers: CountTier[];
 }) {
   return (
     <>
-      {STATE_COUNT_TIERS.map((tier) => {
+      {tiers.map((tier) => {
         if (tier.min === 0 && tier.max === 0 && allStatesLoaded) return null;
         const count = states.filter((s) => {
           if (tier.min === 0 && tier.max === 0)

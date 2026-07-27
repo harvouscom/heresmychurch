@@ -1,1 +1,7 @@
+# Legacy map URLs → canonical /:CC/...
+/state/*  /US/:splat  301!
+/country/:code  /:code  301!
+/country/:code/*  /:code/:splat  301!
+
+# SPA fallback
 /*    /index.html   200

@@ -33,7 +33,7 @@ flowchart LR
     ComponentState[Component state]
   end
   subgraph consumption [Consumption]
-    MapCanvas[MapCanvas]
+    MapLibreCanvas[MapLibreCanvas]
     FilterPanel[FilterPanel]
     ChurchDetailPanel[ChurchDetailPanel]
     MapSearchBar[MapSearchBar]
@@ -54,7 +54,7 @@ flowchart LR
   DirectFetch --> UseChurchMapData
   SupabaseClient --> ComponentState
   UseChurchMapData --> ChurchMapReducer
-  UseChurchMapData --> MapCanvas
+  UseChurchMapData --> MapLibreCanvas
   ChurchMapReducer --> FilterPanel
   UseChurchMapData --> ChurchDetailPanel
   UseChurchMapData --> MapSearchBar
@@ -73,7 +73,7 @@ flowchart LR
 | **Ingestion** | Edge function [supabase/functions/make-server-283d8046/index.ts](supabase/functions/make-server-283d8046/index.ts): `populateState` fetches from Overpass + Nominatim and writes to KV; add/verify/suggest endpoints write to KV. Reads from [kv_store.tsx](supabase/functions/make-server-283d8046/kv_store.tsx). |
 | **Storage** | KV keys (e.g. `churches:STATE`, `states`). Edge serves via `/churches/:stateAbbrev`, `/churches/states`. |
 | **Transformation** | [api.ts](src/app/components/api.ts) → [useChurchMapData.ts](src/app/components/useChurchMapData.ts): `filterToStatePolygon` (d3-geo) filters raw churches to state polygon; `viewChurches` narrows by county when in county view; [useChurchFilters](src/app/components/hooks/useChurchFilters.ts) → `filteredChurches` (size, denomination, language). |
-| **Consumption** | ChurchMap, MapCanvas, ChurchDots, FilterPanel, ChurchListModal, ChurchDetailPanel, MapSearchBar. |
+| **Consumption** | ChurchMap, MapLibreCanvas, FilterPanel, ChurchListModal, ChurchDetailPanel, MapSearchBar. |
 
 ---
 
@@ -85,7 +85,7 @@ flowchart LR
 | **Ingestion** | `fetch(GEO_URL)` and `fetch(COUNTIES_GEO_URL)` in [useChurchMapData.ts](src/app/components/useChurchMapData.ts) on mount. |
 | **Storage** | Refs: `stateFeatures`, county map; reducer: `countyFeatures`. |
 | **Transformation** | TopoJSON → feature objects (topojson-client); used for polygon containment in `filterToStatePolygon` and county filtering in `viewChurches`. |
-| **Consumption** | MapCanvas (state/county shapes), `filterToStatePolygon`, `viewChurches` (county filter). |
+| **Consumption** | MapLibreCanvas (state/county GeoJSON layers), `filterToStatePolygon`, `viewChurches` (county filter). |
 
 ---
 

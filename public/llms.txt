@@ -1,15 +1,22 @@
 # Here's My Church
 
-> An interactive map of Christian churches in the United States. Find a church or discover a new one. Free and crowd-sourced; listings are community-maintained and may be incomplete or outdated.
+> An interactive map of Christian churches. Find a church or discover a new one. Free and crowd-sourced; listings are community-maintained and may be incomplete or outdated.
 
 ## Site
 
-- [Home — U.S. church map](https://heresmychurch.com/): National overview and map entry point.
+- [Home](https://heresmychurch.com/): Redirects into the visitor's country map when supported (otherwise `/US`).
+- [World map](https://heresmychurch.com/world): Country choropleth; click a supported country to descend.
 
 ## Map and church listings
 
-- [Example: California](https://heresmychurch.com/state/CA): State-level map and church index.
-- Church detail URLs follow `/state/{STATE}/{shortId}` with a two-letter state code and an 8-digit `shortId` from the map. Optional query: `?county={FIPS}` for county context.
+Country-scoped URLs use `/{CC}` and `/{CC}/{region}` (ISO country code, then region abbrev):
+
+- [United States](https://heresmychurch.com/US): Country overview.
+- [California](https://heresmychurch.com/US/CA): State-level map.
+- [Prince Edward Island](https://heresmychurch.com/CA/PE): Canada province example.
+- [Ireland / UK](https://heresmychurch.com/world): Ireland uses collision-safe county codes (e.g. `IECO` for Cork); UK browse regions are ITL1-style slugs (e.g. `NORTHERNIRELAND`).
+- Church detail URLs: `/{CC}/{region}/{shortId}` (e.g. `/US/TX/12345678`). Optional query: `?county={FIPS}` for US county context.
+- Legacy aliases `/state/{ST}` and `/country/{CC}/…` redirect to the canonical `/{CC}/…` form.
 
 ## Reports
 

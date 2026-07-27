@@ -22,7 +22,7 @@ This doc explains how **Here's My Church** is built: what it does, how the front
 
 | Layer | Technology |
 |-------|------------|
-| **Frontend** | Vite + React 18, React Router 7, Tailwind v4, Radix UI, react-simple-maps + d3-geo |
+| **Frontend** | Vite + React 18, React Router 7, Tailwind v4, Radix UI, MapLibre GL + d3-geo |
 | **Backend** | Single Supabase Edge Function (Hono) — `make-server-283d8046`. No Next.js or other API routes. |
 | **Data** | One Supabase table used by the edge function: `kv_store_283d8046` (key/value JSON). Church and state data is served from this KV layer (populated by the server from OSM, Census, etc.). |
 | **Realtime** | Supabase Realtime (presence on `active-users` channel) for “who’s viewing this state.” |
@@ -64,8 +64,7 @@ flowchart TB
   ChurchMap --> useChurchMapData[useChurchMapData]
   useChurchMapData --> useChurchFilters[useChurchFilters]
   useChurchMapData --> useUIState[useUIState]
-  useChurchMapData --> MapCanvas[MapCanvas]
-  MapCanvas --> ChurchDots[ChurchDots]
+  useChurchMapData --> MapLibreCanvas[MapLibreCanvas]
   ChurchMap --> MapSearchBar[MapSearchBar]
   ChurchMap --> ChurchDetailPanel[ChurchDetailPanel]
   ChurchMap --> FilterPanel[FilterPanel]
@@ -139,15 +138,16 @@ All server calls go through [src/app/components/api.ts](src/app/components/api.t
 
 | Component | Role |
 |-----------|------|
-| **MapCanvas** | Renders react-simple-maps (ComposableMap, ZoomableGroup), state/county geography, and **ChurchDots**. Receives `filteredChurches`, `center`, `zoom`, click/hover handlers. |
-| **ChurchDots** | Renders church markers as SVG circles; uses `useMapContext()` for projection; viewport culling when zoomed; event delegation for click/hover. |
+| **MapLibreCanvas** | The map. MapLibre GL on Web Mercator: state/county choropleth and church dots as GeoJSON layers, a street basemap that fades in at church zoom, and one delegated hit-test for click/hover (church > county > state). Owns its own camera — see note below. |
 | **MapSearchBar** | Search input; filters in-memory `churches` by name/city/denom (optional viewport filter). On select, calls `navigateToChurch(stateAbbrev, churchShortId)`. |
 | **FilterPanel** | Size, denomination, language filters; works with **useChurchFilters** output (filtered list and stats). |
 | **ChurchDetailPanel** | Shown when `selectedChurch` is set (from route + reducer). Shows info, service times, suggestions, nearby churches, reactions; uses api for `fetchSuggestions`, `submitSuggestion`, `fetchReactions`, `submitReaction`, `fetchCorrectionHistory`. |
 | **MapOverlays** | Loading overlay, full-screen error, error banner, **StateTooltip**, **ChurchTooltip**, **CountyTooltip**. |
 | **useActiveUsers** | Realtime presence on `active-users`; used for “active viewers” in tooltips/on-map labels. |
 
-Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurchId`) and `selectedChurch` from useChurchMapData; ChurchMap syncs route ↔ reducer and passes `selectedChurchId` into MapCanvas/ChurchDots.
+Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurchId`) and `selectedChurch` from useChurchMapData; ChurchMap syncs route ↔ reducer and passes `selectedChurchId` into MapLibreCanvas.
+
+**Camera ownership:** `d.center`/`d.zoom` are *not* passed to the map. useChurchMapData still holds zoom in the pre-MapLibre 1–500 Albers scale, which is meaningless in Web Mercator (0–22), so MapLibreCanvas derives the view itself from `focusedState`/`focusedCounty`/`selectedChurch` via `fitBounds`. Consequently `d.zoom` never changes: MapControls drives zoom through an imperative `apiRef` and MapSearchBar filters "churches in view" from real map bounds. Converting that zoom model is the remaining follow-up.
 
 ---
 
@@ -187,7 +187,7 @@ Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurc
 
 | Feature | Components / hooks | Notes |
 |---------|--------------------|--------|
-| **Map and navigation** | ChurchMap, MapCanvas, ChurchDots, MapSearchBar, FilterPanel, MapLegend, MapControls | URL-driven state/church selection; filters from useChurchFilters. |
+| **Map and navigation** | ChurchMap, MapLibreCanvas, MapSearchBar, FilterPanel, MapLegend, MapControls | URL-driven state/church selection; filters from useChurchFilters. |
 | **Church detail** | ChurchDetailPanel | Info, service times, suggestions, nearby churches, reactions. |
 | **Add / suggest** | AddChurchForm, SuggestEditForm | Pending churches and verification: VerificationModal, NationalReviewModal. |
 | **Moderation** | ReviewPill | Moderator endpoints; `?key=...` for review view; approve/reject suggestions and churches. |
@@ -203,7 +203,7 @@ Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurc
 - Build: `pnpm run build` (Vite → `dist/`).
 - Publish: `dist`.
 - Edge functions:
-  - **geo-inject** — runs on `/*`; injects detected US state into HTML (uses context.geo).
+  - **geo-inject** — runs on `/*`; injects detected country (+ US state) into HTML (uses context.geo). Client lands on that country, or `/world` when geo is missing/unsupported.
   - **og-rewrite** — runs on `/state/*`; for crawler user-agents, rewrites HTML meta (og/twitter) and title to use per-page OG images from the Supabase og-image endpoint.
 
 **Supabase:**

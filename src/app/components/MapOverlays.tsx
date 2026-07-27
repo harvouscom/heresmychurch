@@ -4,7 +4,6 @@ import { ThreeDotLoader } from "./ThreeDotLoader";
 
 const CONTACT_EMAIL = "hey@heresmychurch.com";
 import { CloseButton } from "./ui/close-button";
-import { StateFlag } from "./StateFlag";
 import { getSizeCategory, getFallbackLocation, churchNeedsReview } from "./church-data";
 import type { Church } from "./church-data";
 import { formatFullAddress } from "./AddressInput";
@@ -148,6 +147,8 @@ export function StateTooltip({
   activeByState = {},
   reviewCount,
   pinned = false,
+  unpopulatedLabel = "Click to explore",
+  viewLabel = "View state",
   onViewState,
   onClose,
 }: {
@@ -157,12 +158,15 @@ export function StateTooltip({
   activeByState?: Record<string, number>;
   reviewCount?: number;
   pinned?: boolean;
+  unpopulatedLabel?: string;
+  viewLabel?: string;
   onViewState?: () => void;
   onClose?: () => void;
 }) {
   const info = states.find((s) => s.abbrev === hoveredState);
   const activeCount = activeByState[hoveredState] ?? 0;
   const interactive = pinned && (onViewState || onClose);
+  const title = info?.name || hoveredState;
   return (
     <div
       className={`fixed z-[60] rounded-xl shadow-xl px-4 py-3 ${interactive ? "" : "pointer-events-none"}`}
@@ -181,14 +185,13 @@ export function StateTooltip({
           style={{ backgroundColor: "rgba(30, 16, 64, 0.9)" }}
         />
       )}
-      <div className="flex items-center gap-2 text-sm font-semibold text-white">
-        <StateFlag abbrev={hoveredState} size="sm" />
-        {info?.name || hoveredState}
+      <div className="text-sm font-semibold text-white">
+        {title}
       </div>
       <div className="text-xs text-purple-300 mt-0.5">
         {info?.isPopulated
           ? `${info.churchCount.toLocaleString()} churches`
-          : "Click to explore"}
+          : unpopulatedLabel}
       </div>
       {activeCount > 0 && (
         <div className="text-xs text-green-400/90 mt-1">
@@ -206,7 +209,7 @@ export function StateTooltip({
           onClick={onViewState}
           className="mt-3 w-full py-2 rounded-lg text-sm font-medium bg-purple-500 hover:bg-purple-600 text-white"
         >
-          View state
+          {viewLabel}
         </button>
       )}
     </div>
@@ -219,6 +222,7 @@ export function CountyTooltip({
   countyStats,
   tooltipPos,
   pinned = false,
+  viewLabel = "View",
   onViewCounty,
   onClose,
 }: {
@@ -226,6 +230,8 @@ export function CountyTooltip({
   countyStats: { byFips: Record<string, { churchCount: number; peoplePer: number; name?: string }> };
   tooltipPos: { x: number; y: number };
   pinned?: boolean;
+  /** CTA copy for pinned mobile preview. */
+  viewLabel?: string;
   onViewCounty?: () => void;
   onClose?: () => void;
 }) {
@@ -264,7 +270,7 @@ export function CountyTooltip({
           onClick={onViewCounty}
           className="mt-3 w-full py-2 rounded-lg text-sm font-medium bg-purple-500 hover:bg-purple-600 text-white"
         >
-          View county
+          {viewLabel}
         </button>
       )}
     </div>

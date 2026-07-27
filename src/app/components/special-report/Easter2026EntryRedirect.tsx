@@ -2,7 +2,7 @@ import { useEffect } from "react";
 
 export function Easter2026EntryRedirect() {
   useEffect(() => {
-    window.location.replace("/?verified=1");
+    window.location.replace("/US?verified=1");
   }, []);
 
   return (

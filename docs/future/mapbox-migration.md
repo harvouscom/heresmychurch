@@ -1,8 +1,40 @@
-# Future: MapLibre + mapcn migration and multi-country support
+# MapLibre migration and multi-country support
 
-This doc covers migrating from react-simple-maps to **MapLibre GL** using **[mapcn](https://www.mapcn.dev/)** for the main map: keeping theme and behavior (transitions, church view), adding street names when zoomed in, and laying groundwork for future countries. **Use MapLibre + mapcn instead of Mapbox — no API key or pricing;** free tiles (e.g. CARTO, OSM) and no usage-based cost. Use this as the single roadmap when you're ready to implement.
-
-**Branch:** Do all migration work on a dedicated branch (e.g. `feature/maplibre-migration` or `feature/mapcn-migration`). Do not implement on `main` until the migration is reviewed and ready to merge.
+> **Status: the MapLibre migration is done** (branch `feature/worldwide-support`).
+> MapLibre GL replaced react-simple-maps as the app's map; `MapCanvas` and
+> `ChurchDots` are deleted. react-simple-maps remains a dependency only for the
+> seasonal-report charts in `report/charts.tsx`, which are fixed US-only and
+> still use `geoAlbersUsa` appropriately.
+>
+> **What shipped**
+>
+> | Area | Outcome |
+> |------|---------|
+> | Engine | MapLibre GL on Web Mercator — plots any coordinate on Earth, where `geoAlbersUsa` returned `null` outside the US and silently dropped every non-US church. This is the change that unblocks worldwide support. |
+> | Theme | Preserved. Cream canvas, purple choropleth by church-count tier, per-capita counties, attendance-sized dots. The street layer is drawn from vector tiles in the same palette rather than a grey stock basemap. |
+> | Street names | Fade in over zoom 9–12 while the choropleth fades out, so national/state stay a data visualization and streets appear only for locating an individual church. |
+> | Zoom model | `getStateZoom()` and the 1–500 Albers scale are gone; `fitBounds(region)` derives zoom from a bounding box and generalizes to any country's regions. |
+> | Interactions | One delegated hit-test with priority church > county > state (per-layer listeners would fire several handlers for one click). |
+> | Viewport search | "Churches in view" uses real map bounds instead of projecting through `geoAlbersUsa`. |
+> | Zoom-out gesture | Steps county → state → national by comparing viewport span to region span, needing no per-region zoom constants. |
+> | Mobile | Pin offset via MapLibre camera padding, replacing `getMobileLatOffset()`. |
+>
+> **Two gotchas worth remembering**
+>
+> 1. `maplibre-gl` must stay in `optimizeDeps.exclude` (see `vite.config.ts`).
+>    Pre-bundling it breaks main-thread↔worker communication and every
+>    GeoJSON/vector source hangs silently, with no error.
+> 2. Layers are added after async fetches, so insertion order is unreliable —
+>    `enforceLayerOrder()` re-asserts the stack, and `whenStyleReady()` polls
+>    rather than waiting on a `styledata` event that may never fire again.
+>
+> **Known follow-up:** `useChurchMapData` still stores zoom in the old 1–500
+> scale. The map ignores it (it owns its camera), and MapControls/MapSearchBar
+> compensate, but converting that state to Web Mercator would remove the
+> workarounds.
+>
+> The section below is the original plan, kept for context. **Future countries**
+> at the end is still the live part.
 
 ---
 

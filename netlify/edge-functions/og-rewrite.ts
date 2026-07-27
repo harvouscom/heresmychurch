@@ -1,12 +1,14 @@
 /**
  * Netlify Edge Function: rewrite HTML meta tags for social crawlers
- * so /state/:abbrev and /state/:abbrev/:shortId get correct og:image, og:title, og:url.
+ * so /:CC, /:CC/:region, and church deep links get correct og:image/title/url.
+ * Legacy /state/* and /country/* paths are still recognized.
  *
  * Required Netlify env vars (for bot requests):
  *   SUPABASE_FUNCTIONS_BASE_URL - e.g. https://PROJECT.supabase.co/functions/v1/make-server-283d8046
  *   SUPABASE_ANON_KEY - Supabase anon key for API calls
  */
 import type { Context } from "https://edge.netlify.com";
+import { INTL_COUNTRY_META } from "./intl-country-meta.generated.ts";
 
 /**
  * Fallback when Netlify env vars are unset. Same values as `utils/supabase/info.tsx`
@@ -66,8 +68,13 @@ const STATE_NAMES: Record<string, string> = {
   WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming", DC: "District of Columbia",
 };
 
+const COUNTRY_META: Record<string, { name: string; regions: Record<string, string> }> = {
+  US: { name: "United States", regions: STATE_NAMES },
+  ...INTL_COUNTRY_META,
+};
+
 const SITE_URL = "https://heresmychurch.com";
-const DEFAULT_DESCRIPTION = "An interactive map of Christian churches in the U.S. Find your church or find a new church. 100% free and crowd-sourced.";
+const DEFAULT_DESCRIPTION = "An interactive map of Christian churches worldwide. Find your church or find a new church. 100% free and crowd-sourced.";
 const REPORT_SECTION_LABELS: Record<string, string> = {
   "big-picture": "The Big Picture",
   trending: "Trending",
@@ -118,25 +125,38 @@ function buildReportSeoArticle(
     title?: string;
     subtitle?: string;
     stateName?: string;
+    countryCode?: string;
     bigPicture?: { totalChurches?: number; statesPopulated?: number };
   },
   pageUrl: string,
   isStateReport: boolean,
   stateAbbrev?: string,
+  countryCode?: string,
 ): string {
   const title = data.title ?? "Seasonal report";
   const subtitle = (data.subtitle ?? "").trim();
   const total = data.bigPicture?.totalChurches ?? 0;
   const statesPopulated = data.bigPicture?.statesPopulated ?? 0;
   const stateName = (data.stateName ?? stateAbbrev ?? "").trim();
+  const cc = String(countryCode || data.countryCode || "US").toUpperCase();
   const heading =
     isStateReport && stateName ? `Churches in ${stateName}: ${title}` : title;
   const totalStr = total.toLocaleString("en-US");
+  const unitLabel =
+    cc === "WORLD" ? "countries" : isStateReport ? "counties" : cc === "US" ? "states" : "regions";
+  const scopeLead =
+    cc === "WORLD"
+      ? "Worldwide"
+      : cc === "US"
+        ? "Nationwide"
+        : subtitle
+          ? "On this map"
+          : "Across this map";
   const lead = isStateReport
     ? `${subtitle ? `${subtitle} ` : ""}This snapshot covers ${totalStr} churches mapped on Here's My Church${
         stateName ? ` in ${stateName}` : ""
       }.`
-    : `${subtitle ? `${subtitle} ` : ""}Nationwide, ${totalStr} churches across ${statesPopulated} states are represented on the map.`;
+    : `${subtitle ? `${subtitle} ` : ""}${scopeLead}, ${totalStr} churches across ${statesPopulated} ${unitLabel} are represented on the map.`;
   return `<article class="hmc-report-seo-summary" style="padding:1.5rem;font-family:system-ui,sans-serif;max-width:42rem;line-height:1.5;color:#1c1917">
 <h1 style="font-size:1.375rem;margin:0 0 0.75rem;line-height:1.25">${escapeHtml(heading)}</h1>
 <p style="margin:0 0 1rem;color:#44403c;font-size:0.9375rem">${escapeHtml(lead)}</p>
@@ -222,87 +242,149 @@ export default async function handler(request: Request, context: Context): Promi
     }
   }
 
-  // Report pages — national (/report/:slug) and state (/report/state/:state/:slug)
+  // Report pages — US national, country/WORLD, and US state
   if (pathParts[0] === "report" && pathParts[1]) {
     const isStateReport = pathParts[1] === "state" && !!pathParts[2] && !!pathParts[3];
     const stateAbbrev = isStateReport ? pathParts[2].toUpperCase() : undefined;
-    const slug = isStateReport ? pathParts[3] : pathParts[1];
-    const sectionId = isStateReport ? pathParts[4] : pathParts[2];
+    const seasonSlugRe = /^[a-z]+-\d{4}$/;
+    const countryParam = !isStateReport ? pathParts[1].toUpperCase() : undefined;
+    const isCountryReport =
+      !isStateReport &&
+      !!countryParam &&
+      (countryParam === "WORLD" || /^[A-Z]{2}$/.test(countryParam)) &&
+      !!pathParts[2] &&
+      seasonSlugRe.test(pathParts[2]);
+    const slug = isStateReport
+      ? pathParts[3]
+      : isCountryReport
+        ? pathParts[2]
+        : pathParts[1];
+    const sectionId = isStateReport
+      ? pathParts[4]
+      : isCountryReport
+        ? pathParts[3]
+        : pathParts[2];
     const sectionLabel = sectionId ? REPORT_SECTION_LABELS[sectionId] : undefined;
     try {
       const apiPath = isStateReport
         ? `${apiBase}/report/state/${encodeURIComponent(stateAbbrev!)}/${slug}`
-        : `${apiBase}/report/${slug}`;
+        : isCountryReport
+          ? `${apiBase}/report/${encodeURIComponent(countryParam!)}/${slug}`
+          : `${apiBase}/report/${slug}`;
       const res = await fetch(apiPath, { headers: supabaseHeaders });
       if (res.ok) {
         const data = await res.json();
         const reportName = data.title ?? "Report";
-        const isNationalLaunch =
+        const cc = String(data.countryCode || (isCountryReport ? countryParam : "US")).toUpperCase();
+        const isUsNational =
           !isStateReport &&
+          cc === "US" &&
           (data.season === "launch" || String(slug).startsWith("launch-"));
         let title = sectionLabel
           ? `${sectionLabel} — ${reportName} — Here's My Church`
           : `${reportName} — Here's My Church`;
-        if (isNationalLaunch) title = `U.S. ${title}`;
+        if (isUsNational) title = `U.S. ${title}`;
+        const unitLabel =
+          cc === "WORLD" ? "countries" : isStateReport ? "counties" : "regions";
         const desc = sectionLabel
           ? `${sectionLabel} — from ${data.title ?? "Report"}.`
           : data.subtitle
-            ? `${data.subtitle} — ${(data.bigPicture?.totalChurches ?? 0).toLocaleString()} churches across ${data.bigPicture?.statesPopulated ?? 0} states.`
+            ? `${data.subtitle} — ${(data.bigPicture?.totalChurches ?? 0).toLocaleString()} churches across ${data.bigPicture?.statesPopulated ?? 0} ${unitLabel}.`
             : DEFAULT_DESCRIPTION;
+        const pageUrl = isStateReport
+          ? (sectionLabel
+              ? `${SITE_URL}/report/state/${stateAbbrev}/${slug}/${sectionId}`
+              : `${SITE_URL}/report/state/${stateAbbrev}/${slug}`)
+          : isCountryReport && cc !== "US"
+            ? (sectionLabel
+                ? `${SITE_URL}/report/${cc}/${slug}/${sectionId}`
+                : `${SITE_URL}/report/${cc}/${slug}`)
+            : (sectionLabel
+                ? `${SITE_URL}/report/${slug}/${sectionId}`
+                : `${SITE_URL}/report/${slug}`);
         meta = {
           title,
           description: desc,
           image: `${SITE_URL}/og-report.png`,
-          url: sectionLabel
-            ? (isStateReport
-                ? `${SITE_URL}/report/state/${stateAbbrev}/${slug}/${sectionId}`
-                : `${SITE_URL}/report/${slug}/${sectionId}`)
-            : (isStateReport
-                ? `${SITE_URL}/report/state/${stateAbbrev}/${slug}`
-                : `${SITE_URL}/report/${slug}`),
+          url: pageUrl,
         };
-        seoRootArticle = buildReportSeoArticle(data, meta.url, !!isStateReport, stateAbbrev);
+        seoRootArticle = buildReportSeoArticle(data, meta.url, !!isStateReport, stateAbbrev, cc);
       }
     } catch (_) {
       // keep default meta
     }
   }
 
-  if (pathParts[0] === "state" && pathParts[1]) {
-    const stateAbbrev = pathParts[1].toUpperCase();
-    const shortId = pathParts[2];
+  if (pathParts[0] === "world") {
+    meta = {
+      title: "Churches worldwide — Here's My Church",
+      description: "Browse Christian churches by country. Explore the United States, Canada, and more as they come online.",
+      image: `${SITE_URL}/og-default.png`,
+      url: `${SITE_URL}/world`,
+    };
+  }
 
-    if (!shortId) {
-      const stateName = getStateName(stateAbbrev);
+  // Normalize legacy + canonical map paths into { cc, region, shortId }.
+  let mapCc: string | null = null;
+  let mapRegion: string | undefined;
+  let mapShortId: string | undefined;
+  if (pathParts[0] === "country" && pathParts[1]) {
+    mapCc = pathParts[1].toUpperCase();
+    mapRegion = pathParts[2]?.toUpperCase();
+    mapShortId = pathParts[3];
+  } else if (pathParts[0] === "state" && pathParts[1]) {
+    mapCc = "US";
+    mapRegion = pathParts[1].toUpperCase();
+    mapShortId = pathParts[2];
+  } else if (pathParts[0] && COUNTRY_META[pathParts[0].toUpperCase()]) {
+    mapCc = pathParts[0].toUpperCase();
+    mapRegion = pathParts[1]?.toUpperCase();
+    mapShortId = pathParts[2];
+  }
+
+  if (mapCc) {
+    const country = COUNTRY_META[mapCc];
+    const countryName = country?.name ?? mapCc;
+    if (!mapRegion) {
       meta = {
-        title: `Churches in ${stateName}`,
-        description: `Find Christian churches in ${stateName}. ${DEFAULT_DESCRIPTION}`,
-        image: `${apiBase}/og-image?type=state&state=${encodeURIComponent(stateAbbrev)}`,
-        url: `${SITE_URL}/state/${stateAbbrev}`,
+        title: `Churches in ${countryName}`,
+        description: `Find Christian churches in ${countryName}. Free and crowd-sourced.`,
+        image: `${SITE_URL}/og-default.png`,
+        url: `${SITE_URL}/${mapCc}`,
+      };
+    } else if (!mapShortId || mapShortId === "county") {
+      const regionName = country?.regions[mapRegion] ?? (mapCc === "US" ? getStateName(mapRegion) : mapRegion);
+      meta = {
+        title: `Churches in ${regionName}${mapCc === "US" ? "" : `, ${countryName}`}`,
+        description:
+          mapCc === "US"
+            ? `Find Christian churches in ${regionName}. ${DEFAULT_DESCRIPTION}`
+            : `Find Christian churches in ${regionName}, ${countryName}. Free and crowd-sourced.`,
+        image: `${apiBase}/og-image?type=state&state=${encodeURIComponent(mapRegion)}`,
+        url: `${SITE_URL}/${mapCc}/${mapRegion}`,
       };
     } else {
       try {
-        const res = await fetch(`${apiBase}/churches/${stateAbbrev}`, { headers: supabaseHeaders });
+        const res = await fetch(`${apiBase}/churches/${mapRegion}`, { headers: supabaseHeaders });
         if (res.ok) {
           const data = await res.json();
           const churches = data.churches ?? [];
-          const church = churches.find((c: { shortId?: string }) => String(c.shortId) === String(shortId));
+          const church = churches.find((c: { shortId?: string }) => String(c.shortId) === String(mapShortId));
           if (church) {
             const name = church.name ?? "Church";
             const city = church.city ?? "";
             const denom = church.denomination ?? "";
-            const ogParams = new URLSearchParams({
-              type: "church",
-              name: name,
-              state: stateAbbrev,
-            });
+            const regionName = country?.regions[mapRegion] ?? (mapCc === "US" ? getStateName(mapRegion) : mapRegion);
+            const ogParams = new URLSearchParams({ type: "church", name, state: mapRegion });
             if (city) ogParams.set("city", city);
             if (denom) ogParams.set("denomination", denom);
             meta = {
               title: name,
-              description: [city, stateAbbrev].filter(Boolean).join(", ") + (denom ? ` · ${denom}` : ""),
+              description:
+                [city, regionName, mapCc === "US" ? null : countryName].filter(Boolean).join(", ") +
+                (denom ? ` · ${denom}` : ""),
               image: `${apiBase}/og-image?${ogParams.toString()}`,
-              url: `${SITE_URL}/state/${stateAbbrev}/${shortId}`,
+              url: `${SITE_URL}/${mapCc}/${mapRegion}/${mapShortId}`,
             };
           }
         }

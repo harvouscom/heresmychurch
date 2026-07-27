@@ -155,14 +155,14 @@ export function HelpModal({
               <AccordionContent className="text-white/70 space-y-2">
                 <p>
                   Here&apos;s My Church (HMC) is a free, open-source, interactive map that helps people
-                  discover Christian churches across all 50 U.S. states. No account needed. You can
-                  browse by state, search and filter by denomination, size, or language, view church
+                  discover Christian churches worldwide. No account needed. You can browse by country
+                  and region, search and filter by denomination, size, or language, view church
                   details (address, website, service times, and more), and contribute by adding
                   churches or suggesting edits.
                 </p>
                 <p className="text-white/50 text-xs">
-                  Started by Derek Castelli, who&apos;s also building a Bible notes app called{" "}
-                  <a href="https://harvous.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-white/70 transition-colors">Harvous</a>.
+                  An open-source project by{" "}
+                  <a href="https://harvous.com/about" target="_blank" rel="noopener noreferrer" className="underline hover:text-white/70 transition-colors">Harvous</a>.
                 </p>
               </AccordionContent>
             </AccordionItem>
@@ -181,12 +181,12 @@ export function HelpModal({
                 Where does the data come from?
               </AccordionTrigger>
               <AccordionContent className="text-white/70">
-                We use OpenStreetMap church data with denomination matching, ARDA (Association of
-                Religion Data Archives) reference data, U.S. Census population data,
-                and community-submitted churches and corrections. Attendance estimates
-                are primarily based on building footprint area from OpenStreetMap, with
-                denomination averages, capacity data, and regional population scaling
-                used where building data is not available.
+                We use OpenStreetMap church data with denomination matching, population figures where
+                available (including U.S. Census for the United States), ARDA reference data for U.S.
+                attendance benchmarks, and community-submitted churches and corrections. Attendance
+                estimates are primarily based on building footprint area from OpenStreetMap, with
+                denomination averages, capacity data, and regional population scaling used where
+                building data is not available.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="methodology-numbers" className="border-white/10">
@@ -203,8 +203,8 @@ export function HelpModal({
               </AccordionTrigger>
               <AccordionContent className="text-white/70 space-y-2">
                 <p>
-                  Click any state on the map to zoom in, then use the &quot;Add a Church&quot; button
-                  in the state summary panel. You can also start a search and you&apos;ll see the
+                  Open a country or region on the map, then use the &quot;Add a Church&quot; button
+                  in the summary panel. You can also start a search and you&apos;ll see the
                   option to add your church. No account is required.
                 </p>
                 <p className="text-white/50 text-xs italic">
@@ -303,12 +303,14 @@ export function HelpModal({
                 .
               </AccordionContent>
             </AccordionItem>
-            <AccordionItem value="expand-us" className="border-white/10">
+            <AccordionItem value="expand-coverage" className="border-white/10">
               <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
-                Are there plans to expand beyond the U.S.?
+                Will coverage keep expanding?
               </AccordionTrigger>
               <AccordionContent className="text-white/70">
-                Yes. We plan to expand to other countries in the future.
+                Yes. HMC already includes churches in many countries. Open the world map to explore,
+                and we keep adding regions and improving existing ones through OpenStreetMap refreshes
+                and community submissions.
               </AccordionContent>
             </AccordionItem>
           </Accordion>

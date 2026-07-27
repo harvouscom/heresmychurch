@@ -43,7 +43,8 @@ import { formatPhoneDisplay } from "./ui/utils";
 import { withSiteRef } from "./url-utils";
 import { confirmChurchData, fetchCorrectionHistory, fetchReactions, submitReaction, moderateApproveSuggestion, moderateRejectSuggestion } from "./api";
 import type { CorrectionHistoryEntry, ReactionType, ReactionCounts, PendingSuggestionItem } from "./api";
-
+import { haversineMiles, formatDistance, timezoneLabelForPoint } from "../lib/geo";
+import { getCountry } from "../config/countries";
 /** Church or minimal summary for cross-state main campus link; both have state and shortId for navigation. */
 export type ChurchClickTarget = Church | HomeCampusSummary;
 
@@ -53,6 +54,7 @@ const PENDING_FIELD_LABELS: Record<string, string> = {
   address: "Address",
   reportClosed: "Church has closed or doesn't exist anymore",
   reportDuplicate: "This church is a duplicate",
+  reportOutOfScope: "Not a Trinitarian Christian church",
   attendance: "Attendance",
   denomination: "Denomination",
   serviceTimes: "Service times",
@@ -95,24 +97,6 @@ function formatTimeAgo(ts: number): string {
   if (days < 30) return `${days}d ago`;
   const months = Math.floor(days / 30);
   return `${months}mo ago`;
-}
-
-// Haversine distance in miles
-function distanceMiles(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number
-): number {
-  const R = 3959;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 // Fun denomination facts
@@ -174,30 +158,28 @@ function TimeWithBlinkingColon({ time }: { time: string }) {
   );
 }
 
-const STATE_TIMEZONE: Record<string, string> = {
-  AL: "CST", AK: "AKST", AZ: "MST", AR: "CST", CA: "PST",
-  CO: "MST", CT: "EST", DE: "EST", FL: "EST", GA: "EST",
-  HI: "HST", ID: "MST", IL: "CST", IN: "EST", IA: "CST",
-  KS: "CST", KY: "EST", LA: "CST", ME: "EST", MD: "EST",
-  MA: "EST", MI: "EST", MN: "CST", MS: "CST", MO: "CST",
-  MT: "MST", NE: "CST", NV: "PST", NH: "EST", NJ: "EST",
-  NM: "MST", NY: "EST", NC: "EST", ND: "CST", OH: "EST",
-  OK: "CST", OR: "PST", PA: "EST", RI: "EST", SC: "EST",
-  SD: "CST", TN: "CST", TX: "CST", UT: "MST", VT: "EST",
-  VA: "EST", WA: "PST", WV: "EST", WI: "CST", WY: "MST",
-  DC: "EST",
-};
-
-function ServiceTimesCard({ serviceTimes, state }: { serviceTimes: string; state?: string }) {
+function ServiceTimesCard({
+  serviceTimes,
+  lat,
+  lng,
+}: {
+  serviceTimes: string;
+  lat?: number;
+  lng?: number;
+}) {
   const grouped = groupServiceTimesByDay(parseServiceTimesForDisplay(serviceTimes));
+  const tz =
+    typeof lat === "number" && typeof lng === "number"
+      ? timezoneLabelForPoint(lat, lng)
+      : null;
   return (
     <div className="rounded-xl p-3 bg-white/5 border border-white/5">
       <div className="flex items-center gap-2 mb-2">
         <Clock size={16} className="text-purple-400" />
         <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
           Service Times
-          {state && STATE_TIMEZONE[state.toUpperCase()] && (
-            <span className="ml-1 normal-case tracking-normal text-white/25">({STATE_TIMEZONE[state.toUpperCase()]})</span>
+          {tz && (
+            <span className="ml-1 normal-case tracking-normal text-white/25">({tz})</span>
           )}
         </span>
         {grouped.length > 1 && (
@@ -211,7 +193,9 @@ function ServiceTimesCard({ serviceTimes, state }: { serviceTimes: string; state
           {grouped.map((group) => (
             <div key={group.day} className="flex items-baseline gap-3">
               <span className="text-white/50 text-sm font-semibold flex-shrink-0">
-                {group.dayFull.slice(0, 3)}
+                {group.dayFull.includes("–") || group.dayFull.length <= 3
+                  ? group.dayFull
+                  : group.dayFull.slice(0, 3)}
               </span>
               <div className="flex flex-wrap gap-2">
                 {group.services.map((svc, i) => (
@@ -355,7 +339,7 @@ export function ChurchDetailPanel({
       .filter((c) => c.id !== church.id)
       .map((c) => ({
         ...c,
-        distance: distanceMiles(church.lat, church.lng, c.lat, c.lng),
+        distance: haversineMiles(church.lat, church.lng, c.lat, c.lng),
       }))
       .sort((a, b) => a.distance - b.distance)
       .slice(0, 5);
@@ -684,7 +668,7 @@ export function ChurchDetailPanel({
 
         {/* Primary: Service Times first */}
         {church.serviceTimes && (
-          <ServiceTimesCard serviceTimes={church.serviceTimes} state={church.state} />
+          <ServiceTimesCard serviceTimes={church.serviceTimes} lat={church.lat} lng={church.lng} />
         )}
 
         {/* Primary: Core stats — 2-col grid for attendance + denomination */}
@@ -733,7 +717,11 @@ export function ChurchDetailPanel({
         )}
 
         {/* Bilingual estimate — only when language not confirmed */}
-        {!bilingualInfo.confirmed && (
+        {/* Suppress the card outside countries with a bilingual model — otherwise
+            estimateBilingualProbability falls through to 0 and shows "0% EST". */}
+        {!bilingualInfo.confirmed &&
+            (getCountry(church.country)?.hasBilingualModel ?? (church.country == null || church.country === "US")) &&
+          (bilingualInfo.probability > 0 || bilingualInfo.confirmed) && (
           <LanguageEstimateCard bilingualInfo={bilingualInfo} />
         )}
 
@@ -771,7 +759,7 @@ export function ChurchDetailPanel({
               {church.phone && (
                 <div className="flex justify-between items-center gap-2">
                   <span className="text-white/50 text-xs flex items-center gap-1"><Phone size={11} /> Phone</span>
-                  <a href={`tel:${church.phone}`} className="text-purple-300 text-sm font-medium hover:text-purple-200 transition-colors truncate">{formatPhoneDisplay(church.phone)}</a>
+                  <a href={`tel:${church.phone}`} className="text-purple-300 text-sm font-medium hover:text-purple-200 transition-colors truncate">{formatPhoneDisplay(church.phone, church.country || "US")}</a>
                 </div>
               )}
               {church.email && (
@@ -998,9 +986,16 @@ export function ChurchDetailPanel({
                     </div>
                     <div className="flex-shrink-0 text-right">
                       <div className="text-white/50 text-xs font-medium">
-                        {nc.distance < 1
-                          ? `${(nc.distance * 5280).toFixed(0)} ft`
-                          : `${nc.distance.toFixed(1)} mi`}
+                        {(() => {
+                          const units = getCountry(church.country)?.units ?? "mi";
+                          if (units === "km") {
+                            const km = nc.distance * 1.609344;
+                            return km < 1 ? `${Math.round(km * 1000)} m` : formatDistance(nc.distance, "km");
+                          }
+                          return nc.distance < 1
+                            ? `${(nc.distance * 5280).toFixed(0)} ft`
+                            : formatDistance(nc.distance, "mi");
+                        })()}
                       </div>
                     </div>
                   </button>
@@ -1036,6 +1031,7 @@ const MOD_FIELD_LABELS: Record<string, string> = {
   address: "Address",
   reportClosed: "Church closed / doesn't exist",
   reportDuplicate: "Duplicate of another church",
+  reportOutOfScope: "Out of scope (not Trinitarian Christian)",
 };
 
 function InlineModerationSection({
