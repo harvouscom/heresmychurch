@@ -40,6 +40,15 @@ export interface Church {
   lastVerified?: number; // timestamp of last correction or confirmation
   /** Building square footage from OSM polygon geometry; used as primary attendance estimate when available. */
   buildingSqft?: number;
+  /**
+   * When set to "pending_reverify", this pin's congregation relocated elsewhere.
+   * Name/pin remain for the building until community/mods update the new occupant.
+   */
+  listingStatus?: "pending_reverify";
+  /** Set on the new listing created by an approved relocate report. */
+  relocatedFrom?: string;
+  /** Set on the old listing after an approved relocate report. */
+  relocatedTo?: string;
 }
 
 /** Minimal church info for cross-state main campus link (from API). */

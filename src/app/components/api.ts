@@ -316,6 +316,9 @@ export async function fetchChurchByShortId(
     bilingualProbability: raw.bilingualProbability,
     lastVerified: raw.lastVerified,
     buildingSqft: raw.buildingSqft,
+    listingStatus: raw.listingStatus === "pending_reverify" ? "pending_reverify" : undefined,
+    relocatedFrom: typeof raw.relocatedFrom === "string" ? raw.relocatedFrom : undefined,
+    relocatedTo: typeof raw.relocatedTo === "string" ? raw.relocatedTo : undefined,
   };
   return { church };
 }
@@ -410,7 +413,7 @@ export async function fetchSuggestions(
 
 export async function submitSuggestion(
   churchId: string,
-  field: "name" | "website" | "address" | "reportClosed" | "reportDuplicate" | "reportOutOfScope" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email" | "homeCampusId",
+  field: "name" | "website" | "address" | "reportClosed" | "reportDuplicate" | "reportOutOfScope" | "reportRelocated" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email" | "homeCampusId",
   value: string
 ): Promise<SubmitSuggestionResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/suggestions`, {
@@ -978,6 +981,19 @@ export interface PendingSuggestionItem {
   churchShortId?: string;
   /** True when this suggestion was already applied; currentValue is the stored value before that apply */
   alreadyApplied?: boolean;
+  relocatedTo?: string;
+  listingStatus?: string;
+}
+
+export interface PendingReverifyChurchItem {
+  churchId: string;
+  shortId?: string;
+  name: string;
+  city: string;
+  state: string;
+  address?: string;
+  relocatedTo?: string;
+  listingStatus?: string;
 }
 
 export interface PendingChurchItem {
@@ -1009,6 +1025,7 @@ export interface InReviewChurchItem {
 export interface ModeratorPendingResponse {
   pendingSuggestions: PendingSuggestionItem[];
   pendingChurches: PendingChurchItem[];
+  pendingReverifyChurches?: PendingReverifyChurchItem[];
   inReviewSuggestions?: InReviewSuggestionItem[];
   inReviewChurches?: InReviewChurchItem[];
   error?: string;

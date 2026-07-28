@@ -60,11 +60,12 @@ interface SuggestEditFormProps {
   pendingFieldsForChurch?: string[];
 }
 
-type EditableField = "name" | "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email" | "homeCampusId" | "reportClosed" | "reportDuplicate" | "reportOutOfScope";
+type EditableField = "name" | "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email" | "homeCampusId" | "reportClosed" | "reportDuplicate" | "reportOutOfScope" | "reportRelocated";
 
 const REPORT_CLOSED_LABEL = "Church has closed or doesn't exist anymore";
 const REPORT_DUPLICATE_LABEL = "This church is a duplicate";
 const REPORT_OUT_OF_SCOPE_LABEL = "Not a Trinitarian Christian church";
+const REPORT_RELOCATED_LABEL = "This church relocated";
 
 const FIELD_CONFIG: {
   key: EditableField;
@@ -113,6 +114,7 @@ function isFieldEmpty(church: Church, field: EditableField): boolean {
     case "reportClosed": return false;
     case "reportDuplicate": return false;
     case "reportOutOfScope": return false;
+    case "reportRelocated": return false;
   }
 }
 
@@ -138,6 +140,7 @@ function getCurrentValue(church: Church, field: EditableField): string {
     case "reportClosed": return "";
     case "reportDuplicate": return "";
     case "reportOutOfScope": return "";
+    case "reportRelocated": return "";
   }
 }
 
@@ -151,6 +154,9 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
   const [showDuplicatePicker, setShowDuplicatePicker] = useState(false);
   const [selectedCanonicalChurchId, setSelectedCanonicalChurchId] = useState<string | null>(null);
   const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
+  const [showRelocateForm, setShowRelocateForm] = useState(false);
+  const [showRelocateConfirm, setShowRelocateConfirm] = useState(false);
+  const [relocateAddress, setRelocateAddress] = useState("");
 
   // Server-backed + just-submitted pending: persists across close/reopen and prevents duplicate submissions
   const effectivePending = useMemo(
@@ -366,7 +372,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
               <div className="flex items-center gap-2 rounded-lg p-3 bg-amber-500/10 border border-amber-500/20">
                 <Clock size={14} className="text-amber-400 flex-shrink-0" />
                 <p className="text-amber-300/80 text-xs">
-                  Changes to {Array.from(effectivePending).map((f) => f === "reportClosed" ? REPORT_CLOSED_LABEL : f === "reportDuplicate" ? REPORT_DUPLICATE_LABEL : f === "reportOutOfScope" ? REPORT_OUT_OF_SCOPE_LABEL : FIELD_CONFIG.find(c => c.key === f)?.label ?? f).join(", ")} require review and will be applied once approved.
+                  Changes to {Array.from(effectivePending).map((f) => f === "reportClosed" ? REPORT_CLOSED_LABEL : f === "reportDuplicate" ? REPORT_DUPLICATE_LABEL : f === "reportOutOfScope" ? REPORT_OUT_OF_SCOPE_LABEL : f === "reportRelocated" ? REPORT_RELOCATED_LABEL : FIELD_CONFIG.find(c => c.key === f)?.label ?? f).join(", ")} require review and will be applied once approved.
                 </p>
               </div>
             )}
@@ -587,12 +593,137 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
                 </button>
               )}
             </div>
+
+            {/* This church relocated — requires review */}
+            <div>
+              {effectivePending.has("reportRelocated") ? (
+                <div className="flex items-center gap-2 rounded-lg p-3 bg-amber-500/10 border border-amber-500/20">
+                  <Clock size={14} className="text-amber-400 flex-shrink-0" />
+                  <p className="text-amber-300/80 text-xs">
+                    Relocate report submitted — pending review. If approved, a new listing is created at the new address and this pin is marked needs update.
+                  </p>
+                </div>
+              ) : submitting === "reportRelocated" ? (
+                <div className="flex items-center gap-2 rounded-lg p-3 bg-white/5 border border-white/10">
+                  <ThreeDotLoader className="text-white/60" />
+                  <p className="text-white/60 text-xs">Submitting…</p>
+                </div>
+              ) : showRelocateConfirm && relocateAddress.trim() ? (
+                <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-4 space-y-3">
+                  <p className="text-amber-200/90 text-sm">
+                    Are you sure? If approved, <strong>{church.name}</strong>&apos;s info will move to a new listing at the new address, and this pin will stay marked as needing an update for whoever is here now.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowRelocateConfirm(false);
+                      }}
+                      className="flex-1 px-3 py-2 rounded-lg text-sm font-medium text-white/80 bg-white/10 hover:bg-white/15 border border-white/10 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        let val = relocateAddress.trim();
+                        setShowRelocateConfirm(false);
+                        setSubmitting("reportRelocated");
+                        setError(null);
+                        try {
+                          const parts = parseAddressValue(val);
+                          if (parts.address && parts.city && parts.state) {
+                            try {
+                              const coords = await geocodeAddress(parts.address, parts.city, parts.state);
+                              if (coords) {
+                                val = serializeAddress({ ...parts, lat: coords.lat, lng: coords.lng });
+                              }
+                            } catch {
+                              // submit without coords; server may geocode
+                            }
+                          }
+                          const result = await submitSuggestion(church.id, "reportRelocated", val);
+                          setPendingModeration((prev) => new Set([...prev, "reportRelocated"]));
+                          setShowRelocateForm(false);
+                          setRelocateAddress("");
+                          onPendingSubmitted?.();
+                          if (!result.needsModeration) onChurchUpdated?.();
+                        } catch (err: any) {
+                          setError(err.message ?? "Failed to submit report");
+                        } finally {
+                          setSubmitting(null);
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-500 transition-colors"
+                    >
+                      Yes, submit report
+                    </button>
+                  </div>
+                </div>
+              ) : showRelocateForm ? (
+                <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 space-y-3">
+                  <p className="text-amber-200/90 text-xs font-medium">
+                    Enter where this congregation meets now. Their info will move to a new listing there; this pin stays so it can be updated for whoever is at the old address.
+                  </p>
+                  <AddressInput
+                    value={relocateAddress || serializeAddress({ address: "", city: "", state: church.state || "" })}
+                    onChange={setRelocateAddress}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowRelocateForm(false);
+                        setRelocateAddress("");
+                      }}
+                      className="flex-1 px-3 py-2 rounded-lg text-sm font-medium text-white/80 bg-white/10 hover:bg-white/15 border border-white/10 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const parts = parseAddressValue(relocateAddress);
+                        if (!parts.address.trim() || !parts.city.trim() || !parts.state.trim()) {
+                          setError("Street, city, and state are required for the new location");
+                          return;
+                        }
+                        const churchSt = normalizeStateAbbrev(church.state, church.id);
+                        if (churchSt && parts.state.toUpperCase() !== churchSt) {
+                          setError("New address must be in the same state as this church");
+                          return;
+                        }
+                        setError(null);
+                        setShowRelocateConfirm(true);
+                      }}
+                      className="flex-1 px-3 py-2 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-500 transition-colors"
+                    >
+                      Continue
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRelocateAddress(serializeAddress({ address: "", city: "", state: church.state || "" }));
+                    setShowRelocateForm(true);
+                  }}
+                  className="w-full flex items-center gap-2 px-4 py-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition-colors text-left"
+                >
+                  <MapPin size={16} className="text-amber-400 flex-shrink-0" />
+                  <span className="text-amber-300/90 text-sm font-medium">
+                    {REPORT_RELOCATED_LABEL}
+                  </span>
+                </button>
+              )}
+            </div>
             </div>
 
         {/* Info note */}
         <div className="pt-3 border-t border-white/5 text-pretty">
           <p className="text-white/55 text-[10px] leading-relaxed text-center">
-            Most edits are applied immediately. Changes to name, website, address, or reports (closed, duplicate, or out of scope) require a brief review.
+            Most edits are applied immediately. Changes to name, website, address, or reports (closed, duplicate, relocated, or out of scope) require a brief review.
           </p>
         </div>
       </div>

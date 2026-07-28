@@ -11,7 +11,7 @@ import {
   addToInReview,
   removeFromInReview,
 } from "./api";
-import type { PendingSuggestionItem, PendingChurchItem, InReviewSuggestionItem, InReviewChurchItem } from "./api";
+import type { PendingSuggestionItem, PendingChurchItem, PendingReverifyChurchItem, InReviewSuggestionItem, InReviewChurchItem } from "./api";
 import { CloseButton } from "./ui/close-button";
 import { formatModerationDisplayValue } from "./formatModerationValue";
 
@@ -22,6 +22,7 @@ const FIELD_LABELS: Record<string, string> = {
   reportClosed: "Church closed / doesn't exist",
   reportDuplicate: "Duplicate of another church",
   reportOutOfScope: "Out of scope (not Trinitarian Christian)",
+  reportRelocated: "Church relocated",
   homeCampusId: "Link to main campus",
 };
 
@@ -50,6 +51,7 @@ export function ReviewPill({
   pending: {
     pendingSuggestions: PendingSuggestionItem[];
     pendingChurches: PendingChurchItem[];
+    pendingReverifyChurches?: PendingReverifyChurchItem[];
     inReviewSuggestions?: InReviewSuggestionItem[];
     inReviewChurches?: InReviewChurchItem[];
   };
@@ -81,9 +83,10 @@ export function ReviewPill({
   );
   const inReviewChurchesList = pending.pendingChurches.filter((ch) => inReviewChurchSet.has(ch.id) && notRemoved(`c:${ch.id}`));
 
-  const needingCount = needingSuggestions.length + needingChurches.length;
+  const pendingReverify = (pending.pendingReverifyChurches ?? []).filter((ch) => notRemoved(`r:${ch.churchId}`));
+  const needingCount = needingSuggestions.length + needingChurches.length + pendingReverify.length;
   const inReviewCount = inReviewSuggestionsList.length + inReviewChurchesList.length;
-  const totalPending = pending.pendingSuggestions.length + pending.pendingChurches.length;
+  const totalPending = pending.pendingSuggestions.length + pending.pendingChurches.length + pendingReverify.length;
 
   const handleAction = async (actionFn: () => Promise<any>, actionId: string, optimisticKey?: string) => {
     setActionLoading(actionId);
@@ -276,7 +279,7 @@ export function ReviewPill({
                             {editing?.churchId === s.churchId && editing?.field === s.field ? (
                               <div className="space-y-2">
                                 <label className="text-white/70 text-xs font-medium">Edit value then approve</label>
-                                {s.field === "address" ? (
+                                {s.field === "address" || s.field === "reportRelocated" ? (
                                   <textarea
                                     value={editing.value}
                                     onChange={(e) => setEditing((prev) => (prev ? { ...prev, value: e.target.value } : null))}
@@ -429,6 +432,46 @@ export function ReviewPill({
                       })}
                     </div>
                   )}
+
+                  {/* Needing: Pins awaiting reverify after relocate */}
+                  {pendingReverify.length > 0 && (
+                    <div className="space-y-3">
+                      <p className="text-white/40 text-[10px] uppercase tracking-wider font-medium">Needs update (relocated)</p>
+                      {pendingReverify.map((ch) => (
+                        <div key={ch.churchId} className="rounded-lg bg-white/4 hover:bg-white/8 transition-colors px-3.5 py-3 space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px] font-medium uppercase tracking-wider">
+                              Pending reverify
+                            </span>
+                            {onOpenChurch && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onOpenChurch(ch.churchId, ch.shortId, ch.state);
+                                  onOpenChange(false);
+                                }}
+                                className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-purple-300 bg-purple-500/15 border border-purple-500/25 hover:bg-purple-500/25 hover:text-purple-200 transition-colors"
+                              >
+                                View church
+                                <ChevronRight size={10} />
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-white font-medium text-sm">{ch.name}</p>
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-white/50">
+                            {(ch.address || ch.city) && (
+                              <span className="flex items-center gap-1">
+                                <MapPin size={10} /> {[ch.address, ch.city, ch.state].filter(Boolean).join(", ")}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-white/40 text-xs">
+                            Previous congregation relocated. Open the church and update the name, or report closed / out of scope.
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </>
               )}
 
@@ -505,7 +548,7 @@ export function ReviewPill({
                             {editing?.churchId === s.churchId && editing?.field === s.field ? (
                               <div className="space-y-2">
                                 <label className="text-white/70 text-xs font-medium">Edit value then approve</label>
-                                {s.field === "address" ? (
+                                {s.field === "address" || s.field === "reportRelocated" ? (
                                   <textarea
                                     value={editing.value}
                                     onChange={(e) => setEditing((prev) => (prev ? { ...prev, value: e.target.value } : null))}

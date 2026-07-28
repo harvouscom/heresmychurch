@@ -55,6 +55,7 @@ const PENDING_FIELD_LABELS: Record<string, string> = {
   reportClosed: "Church has closed or doesn't exist anymore",
   reportDuplicate: "This church is a duplicate",
   reportOutOfScope: "Not a Trinitarian Christian church",
+  reportRelocated: "This church relocated",
   attendance: "Attendance",
   denomination: "Denomination",
   serviceTimes: "Service times",
@@ -513,6 +514,16 @@ export function ChurchDetailPanel({
           </div>
           <CloseButton onClick={onClose} size="lg" className="md:-mt-2" />
         </div>
+
+        {/* Listing needs update after congregation relocated */}
+        {church.listingStatus === "pending_reverify" && (
+          <div className="flex items-center gap-2 mt-3 py-2 px-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <Clock size={14} className="text-amber-400 flex-shrink-0" />
+            <p className="text-amber-200/90 text-xs">
+              Needs update — the previous congregation relocated. Confirm or update who meets here now (name, closed, etc.).
+            </p>
+          </div>
+        )}
 
         {/* Updates pending review — visible to all visitors (not only moderators) */}
         {!moderationMode && pendingFieldsForChurch.length > 0 && (
@@ -1032,6 +1043,7 @@ const MOD_FIELD_LABELS: Record<string, string> = {
   reportClosed: "Church closed / doesn't exist",
   reportDuplicate: "Duplicate of another church",
   reportOutOfScope: "Out of scope (not Trinitarian Christian)",
+  reportRelocated: "Church relocated",
 };
 
 function InlineModerationSection({

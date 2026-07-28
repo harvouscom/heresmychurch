@@ -576,7 +576,7 @@ function buildIdx(ch:any[]){return ch.map((c:any)=>({id:c.id,shortId:c.shortId,n
 async function writeIdx(st:string,ch:any[]){await setSidx(st,buildIdx(ch));await persistStateReviewStats(st,ch);}
 
 // Preserve user/community-submitted fields when overwriting cache (populate force, refresh-attendance).
-const USER_FIELDS_TO_PRESERVE=["shortId","homeCampusId","website","serviceTimes","languages","ministries","pastorName","phone","email","lastVerified","buildingSqft"] as const;
+const USER_FIELDS_TO_PRESERVE=["shortId","homeCampusId","website","serviceTimes","languages","ministries","pastorName","phone","email","lastVerified","buildingSqft","listingStatus","relocatedFrom","relocatedTo"] as const;
 function mergeUserFieldsFromExisting(existingChurches:any[],newChurches:any[]):void{
   if(!Array.isArray(existingChurches)||!existingChurches.length)return;
   const oldById=new Map<string,any>();
@@ -2062,8 +2062,9 @@ const THR=1;
 const ALERT_THR=3;
 const ADD_CHURCH_RATE_LIMIT=5;
 const ADD_CHURCH_WINDOW_MS=15*60*1000;
-const SENSITIVE_FIELDS=["name","website","address","reportClosed","reportDuplicate","reportOutOfScope","homeCampusId"];
+const SENSITIVE_FIELDS=["name","website","address","reportClosed","reportDuplicate","reportOutOfScope","reportRelocated","homeCampusId"];
 const REMOVAL_REPORT_FIELDS=new Set(["reportClosed","reportDuplicate","reportOutOfScope"]);
+const TRANSFERRED_ON_RELOCATE=["website","serviceTimes","languages","ministries","pastorName","phone","email"] as const;
 const MODERATOR_KEY=Deno.env.get("MODERATOR_KEY")||"";
 function cip(c:any):string{return c.req.header("x-forwarded-for")?.split(",")[0]?.trim()||c.req.header("x-real-ip")||"unknown";}
 function checkModKey(c:any):boolean{const k=new URL(c.req.url).searchParams.get("key")||c.req.header("x-moderator-key")||"";return!!MODERATOR_KEY&&k===MODERATOR_KEY;}
@@ -2144,7 +2145,7 @@ function normalizePhone(s:string):string{
   if(digits.length<10)return "";
   return digits;
 }
-const VF=["name","website","address","reportClosed","reportDuplicate","reportOutOfScope","attendance","denomination","serviceTimes","languages","ministries","pastorName","phone","email","homeCampusId"];
+const VF=["name","website","address","reportClosed","reportDuplicate","reportOutOfScope","reportRelocated","attendance","denomination","serviceTimes","languages","ministries","pastorName","phone","email","homeCampusId"];
 function consensus(subs:any[]){
   const res:Record<string,any>={};
   for(const f of VF){
@@ -2252,7 +2253,13 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>,a
         else if(f==="phone"){(ch as any).phone=normalizePhone(String(v))||undefined;}
         else if(f==="serviceTimes"){(ch as any).serviceTimes=normalizeServiceTimes(String(v))||undefined;}
         else if(f==="homeCampusId"){(ch as any).homeCampusId=(String(v).trim()||undefined);}
+        else if(f==="reportClosed"||f==="reportDuplicate"||f==="reportOutOfScope"||f==="reportRelocated"){/* report fields applied via dedicated handlers */}
         else{(ch as any)[f]=v;}
+      }
+      // Resolving a pending_reverify listing: any approved field edit clears the flag.
+      if((ch as any).listingStatus==="pending_reverify"){
+        delete (ch as any).listingStatus;
+        auditEntries.push({field:"listingStatus",oldVal:"pending_reverify",newVal:null});
       }
       ch.lastVerified=Date.now();updated=true;
       break;
@@ -2298,6 +2305,25 @@ async function submitSuggestionCore(opts:{churchId:string;field:string;value:unk
   if(field==="reportClosed"){storeValue="closed";}
   if(field==="reportOutOfScope"){storeValue="out_of_scope";}
   if(field==="reportDuplicate"){if(!stateFromChurchId(storeValue))return{ok:false,status:400,error:"Invalid church ID format"};if(storeValue===churchId)return{ok:false,status:400,error:"Cannot report self as duplicate"};}
+  if(field==="reportRelocated"){
+    const churchSt=regionFromChurchId(churchId);
+    if(!churchSt||!isValidRegion(churchSt))return{ok:false,status:400,error:"Invalid church ID"};
+    let street="",city="",stateAbbrev="";
+    if(storeValue.startsWith("{")){
+      try{
+        const o=JSON.parse(storeValue) as Record<string,unknown>;
+        street=String(o.address??"").trim();
+        city=String(o.city??"").trim();
+        stateAbbrev=String(o.state??"").trim().toUpperCase().slice(0,2);
+      }catch{return{ok:false,status:400,error:"Invalid address format"};}
+    }else{
+      const parts=storeValue.split(",").map((s:string)=>s.trim());
+      street=parts[0]??"";city=parts[1]??"";stateAbbrev=(parts[2]??"").toUpperCase().slice(0,2);
+    }
+    if(!street||!city||!stateAbbrev)return{ok:false,status:400,error:"Street, city, and state are required"};
+    if(!isValidRegion(stateAbbrev))return{ok:false,status:400,error:"Invalid state"};
+    if(stateAbbrev!==churchSt)return{ok:false,status:400,error:"New address must be in the same state/region as this church"};
+  }
   if(field==="name"&&storeValue.length<2)return{ok:false,status:400,error:"Church name must be at least 2 characters"};
   if(field==="phone"){storeValue=normalizePhone(storeValue);if(!storeValue)return{ok:false,status:400,error:"Invalid phone number"};}
   if(field==="serviceTimes"){storeValue=normalizeServiceTimes(storeValue);if(!storeValue)return{ok:false,status:400,error:"Invalid service times"};}
@@ -2820,7 +2846,7 @@ const moderatePendingHandler=async(c:any)=>{
         if(Array.isArray(values[j]))churchesByState.set(regionBatch[j],values[j]);
       }
     }
-    // SENSITIVE_FIELDS includes name, website, address, reportClosed, reportDuplicate, reportOutOfScope, homeCampusId. Entries are only skipped when proposed matches current (per valuesMatchForReview).
+    // SENSITIVE_FIELDS includes name, website, address, reportClosed/Duplicate/OutOfScope/Relocated, homeCampusId. Entries are only skipped when proposed matches current (per valuesMatchForReview).
     if(Array.isArray(allSuggestions)){
       for(const entry of allSuggestions){
         if(!entry||!Array.isArray(entry.submissions)||!entry.churchId)continue;
@@ -2833,31 +2859,52 @@ const moderatePendingHandler=async(c:any)=>{
             let ch:any=null;
             if(st&&isValidRegion(st)){
               const churches=churchesByState.get(st);
-              if(Array.isArray(churches)){ch=churches.find((x:any)=>x.id===entry.churchId);if(ch){if(f==="address")currentValue=[ch.address,ch.city,ch.state].filter(Boolean).join(", ");else if(f==="name")currentValue=String(ch.name??"");else if(f==="website")currentValue=String(ch.website??"");else currentValue=String(ch[f]||"");}}
+              if(Array.isArray(churches)){ch=churches.find((x:any)=>x.id===entry.churchId);if(ch){if(f==="address"||f==="reportRelocated")currentValue=[ch.address,ch.city,ch.state].filter(Boolean).join(", ");else if(f==="name")currentValue=String(ch.name??"");else if(f==="website")currentValue=String(ch.website??"");else currentValue=String(ch[f]||"");}}
             }
             let proposedForMatch=d.value;
-            if(f==="address"&&String(d.value).trim().startsWith("{")){try{const o=JSON.parse(d.value)as Record<string,unknown>;proposedForMatch=[o.address,o.city,o.state].map((x:unknown)=>String(x??"").trim()).filter(Boolean).join(", ");}catch(_){}}
+            if((f==="address"||f==="reportRelocated")&&String(d.value).trim().startsWith("{")){try{const o=JSON.parse(d.value)as Record<string,unknown>;proposedForMatch=[o.address,o.city,o.state].map((x:unknown)=>String(x??"").trim()).filter(Boolean).join(", ");}catch(_){}}
+            // Relocate reports always need review — never skip as "already matches current address".
             let alreadyApplied=false;
-            if(valuesMatchForReview(f,currentValue,proposedForMatch)){
+            if(f!=="reportRelocated"&&valuesMatchForReview(f,currentValue,proposedForMatch)){
               const storedPrev=(entry as any).previousValues?.[f];
               if(storedPrev!=null&&String(storedPrev).trim()!==""){currentValue=String(storedPrev);alreadyApplied=true;}
               else continue;
             }
-            pendingSuggestions.push({churchId:entry.churchId,field:f,proposedValue:d.value,currentValue,churchName:ch?.name,churchCity:ch?.city,churchState:ch?.state,churchShortId:ch?.shortId,votes:d.votes,submissions:d.submissions||[],alreadyApplied});
+            pendingSuggestions.push({churchId:entry.churchId,field:f,proposedValue:d.value,currentValue,churchName:ch?.name,churchCity:ch?.city,churchState:ch?.state,churchShortId:ch?.shortId,votes:d.votes,submissions:d.submissions||[],alreadyApplied,relocatedTo:ch?.relocatedTo,listingStatus:ch?.listingStatus});
           }
         }
       }
     }
     const pendingChurches:any[]=[];
+    const pendingReverifyChurches:any[]=[];
     for(let i=0;i<US_STATES_LIST.length;i+=MODERATE_BATCH){
       const batch=US_STATES_LIST.slice(i,i+MODERATE_BATCH);
       const pendingKeys=batch.map(st=>`pending-churches:${regionCountry(st)}:${st}`);
-      const pendingValues=await kv.mget(pendingKeys);
+      const churchKeysBatch=batch.map(st=>churchesKey(regionCountry(st),st));
+      const [pendingValues,churchValues]=await Promise.all([kv.mget(pendingKeys),kv.mget(churchKeysBatch)]);
       for(let j=0;j<batch.length;j++){
         const store=pendingValues[j];
         const st=batch[j];
-        if(!store||!Array.isArray(store.churches))continue;
-        for(const ch of store.churches){if(!ch.approved)pendingChurches.push({...ch,state:st});}
+        if(store&&Array.isArray(store.churches)){
+          for(const ch of store.churches){if(!ch.approved)pendingChurches.push({...ch,state:st});}
+        }
+        const churches=churchValues[j];
+        if(Array.isArray(churches)){
+          for(const ch of churches){
+            if(ch?.listingStatus==="pending_reverify"){
+              pendingReverifyChurches.push({
+                churchId:ch.id,
+                shortId:ch.shortId,
+                name:ch.name,
+                city:ch.city,
+                state:ch.state||st,
+                address:ch.address||"",
+                relocatedTo:ch.relocatedTo,
+                listingStatus:ch.listingStatus,
+              });
+            }
+          }
+        }
       }
     }
     const modKey=getModKey(c);
@@ -2867,7 +2914,7 @@ const moderatePendingHandler=async(c:any)=>{
     const myHash=modKey?modKeyHash(modKey):"";
     const inReviewSuggestions=globalSugs.map((s:any)=>({churchId:s.churchId,field:s.field,byMe:s.modKeyHash===myHash}));
     const inReviewChurches=globalChs.map((c:any)=>({churchId:c.churchId,byMe:c.modKeyHash===myHash}));
-    return c.json({pendingSuggestions,pendingChurches,inReviewSuggestions,inReviewChurches});
+    return c.json({pendingSuggestions,pendingChurches,pendingReverifyChurches,inReviewSuggestions,inReviewChurches});
   }catch(e){return c.json({error:`${e}`},500);}
 };
 app.get(`${P}/moderate/pending`,moderatePendingHandler);
@@ -2914,8 +2961,8 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
       if(!d||d.value===null)return c.json({error:"No value to approve"},400);
       valueToApply=d.value;
     }
-    // For address approvals, ensure lat/lng coordinates are present (geocode if missing)
-    if(field==="address"){
+    // For address / relocate approvals, ensure lat/lng coordinates are present (geocode if missing)
+    if(field==="address"||field==="reportRelocated"){
       let val=String(valueToApply).trim();
       if(!val.startsWith("{")){
         const parts=val.split(",").map((s:string)=>s.trim());
@@ -2932,6 +2979,77 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
           }
         }catch{}
       }
+    }
+    if(field==="reportRelocated"){
+      const st=regionFromChurchId(churchId);
+      if(!st||!isValidRegion(st))return c.json({error:"Invalid church ID"},400);
+      let addrObj:{address:string;city:string;state:string;lat?:number;lng?:number};
+      try{
+        const o=JSON.parse(String(valueToApply).trim()) as Record<string,unknown>;
+        addrObj={
+          address:String(o.address??"").trim(),
+          city:String(o.city??"").trim(),
+          state:String(o.state??"").trim().toUpperCase().slice(0,2),
+          lat:typeof o.lat==="number"&&!isNaN(o.lat)?o.lat:undefined,
+          lng:typeof o.lng==="number"&&!isNaN(o.lng)?o.lng:undefined,
+        };
+      }catch{return c.json({error:"Invalid address format"},400);}
+      if(!addrObj.address||!addrObj.city||!addrObj.state)return c.json({error:"Street, city, and state are required"},400);
+      if(addrObj.state!==st)return c.json({error:"New address must be in the same state/region as this church"},400);
+      if(addrObj.lat==null||addrObj.lng==null){
+        const geo=await geocodeAddress(addrObj.address,addrObj.city,addrObj.state);
+        if(!geo)return c.json({error:"Could not geocode new address"},400);
+        addrObj.lat=geo.lat;addrObj.lng=geo.lng;
+      }
+      const mainChurches=await getChurches(st);
+      if(!Array.isArray(mainChurches))return c.json({error:"Church list not found"},404);
+      const source=mainChurches.find((x:any)=>x.id===churchId);
+      if(!source)return c.json({error:"Church not found"},404);
+      const cc=regionCountry(st);
+      const newId=cc==="US"
+        ?`community-${st}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`
+        :`community-${cc}-${st}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+      const existingShortIds=new Set(mainChurches.map((c:any)=>c.shortId||toShortId(c.id,c.state||st)));
+      let shortId:string;do{shortId=Math.floor(10000000+Math.random()*90000000).toString();}while(existingShortIds.has(shortId));
+      const newChurch:Record<string,unknown>={
+        id:newId,
+        shortId,
+        name:source.name,
+        address:addrObj.address,
+        city:addrObj.city,
+        state:st,
+        country:cc,
+        lat:addrObj.lat,
+        lng:addrObj.lng,
+        denomination:source.denomination||"Unknown",
+        attendance:source.attendance||50,
+        website:source.website||"",
+        serviceTimes:source.serviceTimes,
+        languages:source.languages,
+        ministries:source.ministries,
+        pastorName:source.pastorName,
+        phone:source.phone,
+        email:source.email,
+        lastVerified:Date.now(),
+        relocatedFrom:churchId,
+      };
+      const oldAddress=[source.address,source.city,source.state].filter(Boolean).join(", ");
+      source.listingStatus="pending_reverify";
+      source.relocatedTo=newId;
+      for(const f of TRANSFERRED_ON_RELOCATE){delete (source as any)[f];}
+      mainChurches.push(newChurch);
+      await setChurches(st,mainChurches);
+      await writeIdx(st,mainChurches);
+      const meta=await getMeta();if(meta){meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,mainChurches.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
+      await invalidateReviewStatsCache();
+      await queueChurch(newChurch);
+      const modKeyOpts={hashModKey:getModKey(c)};
+      void recordChurchAudit({church_id:churchId,church_name:source.name,church_city_state:[source.city,st].filter(Boolean).join(", "),state:st,action:"church_relocated",field:"reportRelocated",old_value:{address:oldAddress,lat:source.lat,lng:source.lng},new_value:{relocatedTo:newId,address:addrObj,lat:addrObj.lat,lng:addrObj.lng},source:"moderate_approve"},modKeyOpts);
+      void recordChurchAudit({church_id:newId,church_name:String(newChurch.name),church_city_state:[addrObj.city,st].filter(Boolean).join(", "),state:st,action:"church_added",new_value:{name:newChurch.name,city:addrObj.city,state:st,denomination:newChurch.denomination,relocatedFrom:churchId},source:"moderate_approve"},modKeyOpts);
+      ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
+      await kv.set(k,ex);
+      const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);
+      return c.json({success:true,applied:true,churchId,field,value:valueToApply,newChurchId:newId,newChurchShortId:shortId});
     }
     if(REMOVAL_REPORT_FIELDS.has(field)){
       const st=regionFromChurchId(churchId);

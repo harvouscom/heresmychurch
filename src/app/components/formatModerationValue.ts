@@ -12,6 +12,18 @@ export function formatModerationDisplayValue(field: string, value: string | null
   if (field === "homeCampusId") return value == null || value.trim() === "" ? "Unlink from main campus" : `Link to main campus: ${value.trim()}`;
   if (value == null || value === "") return "";
   const trimmed = value.trim();
+  if (field === "reportRelocated") {
+    // Proposed values are address JSON; current is a plain "street, city, ST" string.
+    if (trimmed.startsWith("{")) {
+      try {
+        const p = parseAddressValue(trimmed);
+        return `Relocated to: ${formatFullAddress(p.address, p.city, p.state)}`;
+      } catch {
+        return `Relocated to: ${trimmed}`;
+      }
+    }
+    return trimmed;
+  }
   if (field === "address" && trimmed.startsWith("{")) {
     try {
       const p = parseAddressValue(trimmed);
