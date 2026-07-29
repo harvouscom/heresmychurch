@@ -2,6 +2,8 @@
 
 Many users have asked about importing or displaying reviews for churches. This document captures options for a future implementation.
 
+**Note:** This is about **star ratings / written reviews**, not listing completeness. For clearing “needs review” (address, worship times, denomination), see [faster-church-data-review.md](./faster-church-data-review.md). For why star culture is deferred vs claimable listings, see [claimable-listings-and-traction.md](./claimable-listings-and-traction.md).
+
 ## Google Places API
 
 - **What:** Google Places (Maps) stores business listings and user reviews, including many churches.
