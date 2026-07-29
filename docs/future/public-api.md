@@ -2,6 +2,8 @@
 
 We already have an API: the Supabase Edge Function (`make-server-283d8046`). The frontend calls it via `src/app/components/api.ts` with the public anon key. This doc covers the **versioned partner surface** (Harvous-first) and the longer-term roadmap for a broader public API.
 
+Billing: [polar-api-billing.md](./polar-api-billing.md). Product sequencing (richer data / claim before selling hard): [claimable-listings-and-traction.md](./claimable-listings-and-traction.md).
+
 ## Current state (site API)
 
 - **Base URL:** `https://<projectId>.supabase.co/functions/v1/make-server-283d8046`

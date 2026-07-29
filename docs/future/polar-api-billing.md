@@ -3,6 +3,7 @@
 Turn Here’s My Church’s partner surface (`/v1/*`) into a **paid API product**, billed through [Polar](https://polar.sh) as merchant of record — same stack pattern as Harvous Plus (`harvouscom/harvous`), but a **separate Polar organization** for HMC.
 
 > Companion: [public-api.md](./public-api.md) (current `/v1` contract).  
+> Product thesis (claim + richer data before selling): [claimable-listings-and-traction.md](./claimable-listings-and-traction.md).  
 > Harvous reference: `harvouscom/harvous` → `docs/BILLING_ARCHITECTURE.md`.
 
 ---
