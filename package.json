@@ -9,6 +9,7 @@
     "build": "vite build",
     "dev": "vite",
     "prebuild": "node scripts/generate-sitemap.mjs",
+    "postbuild": "node scripts/generate-metro-pages.mjs",
     "generate:state-populations": "node scripts/generate-state-populations.mjs",
     "cleanup-blocked": "node scripts/cleanup-blocked-denominations.mjs"
   },

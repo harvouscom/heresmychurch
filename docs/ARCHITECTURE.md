@@ -177,7 +177,7 @@ Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurc
 | What | Where |
 |------|--------|
 | **Church**, **StateInfo**, **HomeCampusSummary** | [src/app/components/church-data.ts](src/app/components/church-data.ts) |
-| **Completeness / “needs review”** (`churchNeedsReview`, tier-1 fields: address, serviceTimes, denomination) | [src/app/components/church-data.ts](src/app/components/church-data.ts) |
+| **Completeness / “needs review”** (`churchNeedsReview`: needs name + meaningful street address) | [src/app/components/church-data.ts](src/app/components/church-data.ts) |
 | **API request/response types** (e.g. `StatesResponse`, `ChurchesResponse`, `SuggestionsResponse`, `ModeratorPendingResponse`) | [src/app/components/api.ts](src/app/components/api.ts) |
 | **Map constants** (STATE_BOUNDS, STATE_NAMES, STATE_NEIGHBORS, etc.) | [src/app/components/map-constants.ts](src/app/components/map-constants.ts) |
 
@@ -204,7 +204,7 @@ Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurc
 - Publish: `dist`.
 - Edge functions:
   - **geo-inject** — runs on `/*`; injects detected country (+ US state) into HTML (uses context.geo). Client lands on that country, or `/world` when geo is missing/unsupported.
-  - **og-rewrite** — runs on `/state/*`; for crawler user-agents, rewrites HTML meta (og/twitter) and title to use per-page OG images from the Supabase og-image endpoint.
+  - **og-rewrite** — runs on map country paths (`/US/*`, `/CA/*`, …), `/metro/*`, reports, and legacy `/state/*` `/country/*`; for crawler user-agents, rewrites HTML meta (og/twitter/title/canonical) and injects crawlable `#root` HTML for reports, regions, churches, and metro directories. OG images come from the Supabase og-image endpoint where applicable.
 
 **Supabase:**
 
@@ -212,9 +212,11 @@ Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurc
 
 **Scripts:**
 
-- `scripts/generate-sitemap.mjs` — run at prebuild; generates sitemap.
+- `scripts/generate-sitemap.mjs` — run at prebuild; writes sitemap index (`public/sitemap.xml`) plus `public/sitemaps/{core,metros,churches-*}.xml`, and syncs `us-metros.generated.ts` for the edge function.
+- `scripts/generate-metro-pages.mjs` — run at postbuild; writes crawlable `dist/metro/**/index.html` shells with church lists in `#root`.
 - `scripts/generate-state-populations.mjs` — refresh state/county population totals from Census; then redeploy edge function.
 - `scripts/cleanup-blocked-denominations.mjs` — cleanup related to blocked denominations.
+- Shared metro definitions: `src/app/data/us-metros.json` (enrichment script + SEO pages + edge SEO).
 
 ---
 

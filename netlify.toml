@@ -10,7 +10,8 @@
   function = "geo-inject"
   path = "/*"
 
-# Edge function: rewrite HTML meta tags for social crawlers so they get per-page OG images
+# Edge function: rewrite HTML meta tags for social crawlers so they get per-page OG images.
+# Paths cover all supported map countries (see intl-country-meta) plus reports + metro SEO pages.
 [[edge_functions]]
   function = "og-rewrite"
   path = "/world"
@@ -39,6 +40,96 @@
 [[edge_functions]]
   function = "og-rewrite"
   path = "/IE/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/FR"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/FR/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/DE"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/DE/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/NL"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/NL/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/BE"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/BE/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/ES"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/ES/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/IT"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/IT/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/PT"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/PT/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/AT"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/AT/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/CH"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/CH/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/SE"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/SE/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/NO"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/NO/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/DK"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/DK/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/FI"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/FI/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/PL"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/PL/*"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/AU"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/AU/*"
 
 # Legacy map URLs (still rewritten for bots until caches clear)
 [[edge_functions]]
@@ -55,6 +146,13 @@
 [[edge_functions]]
   function = "og-rewrite"
   path = "/reports"
+
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/metro"
+[[edge_functions]]
+  function = "og-rewrite"
+  path = "/metro/*"
 
 # Canonical map paths: /state/* → /US/*, /country/CC/* → /CC/*
 [[redirects]]

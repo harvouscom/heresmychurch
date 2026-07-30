@@ -572,7 +572,7 @@ function addShortIdsUnique(ch:any[],st:string):any[]{
 function addShortIds(ch:any[],st:string):any[]{return ch.map((c:any)=>({...c,shortId:toShortId(c.id,c.state||st,c.shortId)}));}
 
 // ── Search index (include shortId so search returns unique segment per church) ──
-function buildIdx(ch:any[]){return ch.map((c:any)=>({id:c.id,shortId:c.shortId,n:c.name||"",c:c.city||"",d:c.denomination||"",a:c.attendance||0,ad:c.address||"",la:c.lat||0,lo:c.lng||0,w:c.website||"",st:c.serviceTimes||""}));}
+function buildIdx(ch:any[]){return ch.map((c:any)=>({id:c.id,shortId:c.shortId,n:c.name||"",c:c.city||"",d:c.denomination||"",a:c.attendance||0,ad:c.address||"",la:c.lat||0,lo:c.lng||0,w:c.website||"",st:c.serviceTimes||"",p:c.phone||"",e:c.email||""}));}
 async function writeIdx(st:string,ch:any[]){await setSidx(st,buildIdx(ch));await persistStateReviewStats(st,ch);}
 
 // Preserve user/community-submitted fields when overwriting cache (populate force, refresh-attendance).
@@ -1381,9 +1381,7 @@ async function resolveHomeCampus(churches:any[],currentState:string):Promise<voi
 }
 
 // ── Review stats (must be before /churches/:state so "review-stats" is not matched as state) ──
-const TIER1_DENOM_EMPTY=["","Unknown","Other"];
 const TIER1_SVC_EMPTY=["","unknown","other","see website","tbd","n/a","na","pending","to be determined"];
-function isDenomMissing(d:string|undefined):boolean{if(!d)return true;const v=d.trim();return !v||TIER1_DENOM_EMPTY.includes(v);}
 function isServiceTimesMissing(v:string|undefined):boolean{if(!v)return true;const n=v.trim().toLowerCase();return TIER1_SVC_EMPTY.includes(n);}
 function isAddressMeaningful(addr:string|undefined,city:string,state:string):boolean{
   if(!addr||!addr.trim())return false;
@@ -1394,89 +1392,138 @@ function isAddressMeaningful(addr:string|undefined,city:string,state:string):boo
   if(cs&&an===cs)return false;
   return true;
 }
-function churchNeedsReview(ch:any):{needsReview:boolean;missingAddress:boolean;missingWebsite:boolean;missingServiceTimes:boolean;missingDenomination:boolean}{
+function hasEmailField(ch:any):boolean{return!!(ch.email||"").trim();}
+function hasNameField(ch:any):boolean{return!!(ch.name||"").trim();}
+/** Complete = name + meaningful street address. Contact fields tracked but do not gate review. */
+function churchNeedsReview(ch:any):{needsReview:boolean;missingName:boolean;missingAddress:boolean;missingWebsite:boolean;missingPhone:boolean;missingEmail:boolean}{
+  const missingName=!hasNameField(ch);
   const missingAddress=!isAddressMeaningful(ch.address,ch.city||"",ch.state||"");
   const missingWebsite=!hasWebsiteField(ch);
-  const missingServiceTimes=isServiceTimesMissing(ch.serviceTimes);
-  const missingDenomination=isDenomMissing(ch.denomination);
-  const missingCount=[missingAddress,missingWebsite,missingServiceTimes,missingDenomination].filter(Boolean).length;
-  return{needsReview:missingCount>=2,missingAddress,missingWebsite,missingServiceTimes,missingDenomination};
+  const missingPhone=!hasPhoneField(ch);
+  const missingEmail=!hasEmailField(ch);
+  return{needsReview:missingName||missingAddress,missingName,missingAddress,missingWebsite,missingPhone,missingEmail};
 }
 
 const REVIEW_STATS_CACHE_KEY="churches:review-stats";
 const REVIEW_STATS_COUNTRY_CODES=["US","CA","GB","IE","FR","DE","NL","BE","ES","IT","PT","AT","CH","SE","NO","DK","FI","PL","AU"] as const;
-type StateReviewStats={total:number;needsReview:number;missingAddress:number;missingWebsite:number;missingServiceTimes:number;missingDenomination:number};
-const EMPTY_STATE_REVIEW_STATS:StateReviewStats={total:0,needsReview:0,missingAddress:0,missingWebsite:0,missingServiceTimes:0,missingDenomination:0};
+/** Bump when needs-review criteria change so cached per-state stats recompute. */
+const REVIEW_STATS_CRITERIA_V=3;
+type StateReviewStats={total:number;needsReview:number;missingAddress:number;missingWebsite:number;missingPhone:number;missingEmail:number;v?:number};
+const EMPTY_STATE_REVIEW_STATS:StateReviewStats={total:0,needsReview:0,missingAddress:0,missingWebsite:0,missingPhone:0,missingEmail:0,v:REVIEW_STATS_CRITERIA_V};
 
-function reviewStatsForChurches(ch:any[],st:string):StateReviewStats{
+function reviewStatsForChurches(ch:any[],_st:string):StateReviewStats{
   if(!Array.isArray(ch)||!ch.length)return EMPTY_STATE_REVIEW_STATS;
-  let need=0,ma=0,mw=0,ms=0,md=0;
+  let need=0,ma=0,mw=0,mp=0,me=0;
   for(const church of ch){
     const r=churchNeedsReview(church);
     if(r.needsReview)need++;
     if(r.missingAddress)ma++;
     if(r.missingWebsite)mw++;
-    if(r.missingServiceTimes)ms++;
-    if(r.missingDenomination)md++;
+    if(r.missingPhone)mp++;
+    if(r.missingEmail)me++;
   }
-  return{total:ch.length,needsReview:need,missingAddress:ma,missingWebsite:mw,missingServiceTimes:ms,missingDenomination:md};
+  return{total:ch.length,needsReview:need,missingAddress:ma,missingWebsite:mw,missingPhone:mp,missingEmail:me,v:REVIEW_STATS_CRITERIA_V};
 }
-async function persistStateReviewStats(st:string,ch:any[],cc="US"):Promise<void>{try{await setReviewStatsState(st,reviewStatsForChurches(ch,st),cc);}catch(_){}}
+async function persistStateReviewStats(st:string,ch:any[],cc="US"):Promise<void>{
+  try{await setReviewStatsState(st,reviewStatsForChurches(ch,st),cc);}catch(_){}
+}
+
+/** Recompute one state's review stats with corrections + Places overlay (post-enrich). */
+async function persistStateReviewStatsWithOverlays(st:string,ch:any[],cc="US"):Promise<void>{
+  try{
+    const copy=(Array.isArray(ch)?ch:[]).map((x:any)=>({...x}));
+    if(copy.length)await applyCorrectionsAndGoogleEnrichment(copy,st);
+    await setReviewStatsState(st,reviewStatsForChurches(copy,st),cc);
+  }catch(_){}
+}
+/** Soft-invalidate aggregates: keep the payload for stale-while-revalidate so the
+ * UI never cold-blocks on WORLD/US recompute after enrich/populate writes. */
 async function invalidateReviewStatsCache():Promise<void>{
   try{
-    await kv.del(REVIEW_STATS_CACHE_KEY);
-    await Promise.all([
-      ...REVIEW_STATS_COUNTRY_CODES.map((cc)=>kv.del(`${REVIEW_STATS_CACHE_KEY}:${cc}`)),
-      kv.del(`${REVIEW_STATS_CACHE_KEY}:WORLD`),
-    ]);
+    const keys=[
+      REVIEW_STATS_CACHE_KEY,
+      ...REVIEW_STATS_COUNTRY_CODES.map((cc)=>`${REVIEW_STATS_CACHE_KEY}:${cc}`),
+      `${REVIEW_STATS_CACHE_KEY}:WORLD`,
+    ];
+    await Promise.all(keys.map(async(key)=>{
+      try{
+        const cached=await kv.get(key);
+        if(cached&&typeof cached==="object"&&cached.states!=null){
+          await kv.set(key,{...cached,_cachedAt:0});
+        }else{
+          await kv.del(key);
+        }
+      }catch(_){try{await kv.del(key);}catch(__){}}
+    }));
   }catch(_){}
 }
 function stripReviewStatsCache(cached:any){const{_cachedAt,...clean}=cached;return clean;}
-function reviewStatsCacheKey(cc:string){return `${REVIEW_STATS_CACHE_KEY}:${cc}`;}
+function reviewStatsCacheKey(cc:string){return `${REVIEW_STATS_CACHE_KEY}:${cc}:v${REVIEW_STATS_CRITERIA_V}`;}
 
-function churchesFromSidx(idx:any[],st:string):any[]{return idx.map((c:any)=>({address:c.ad,city:c.c||"",state:st,website:"w" in c?c.w:"",serviceTimes:"st" in c?c.st:"",denomination:c.d}));}
+function churchesFromSidx(idx:any[],st:string):any[]{return idx.map((c:any)=>({name:c.n||"",address:c.ad,city:c.c||"",state:st,website:"w" in c?c.w:"",phone:"p" in c?c.p:"",email:"e" in c?c.e:"",serviceTimes:"st" in c?c.st:"",denomination:c.d}));}
 
 async function computeStateReviewStats(st:string,cc="US"):Promise<StateReviewStats>{
   const country=String(cc||"US").toUpperCase();
   const idx=await getSidx(st,country);
-  if(Array.isArray(idx)&&idx.length){
+  // New sidx rows include phone (`p`) / email (`e`). Until reindexed, load full churches.
+  const sidxHasContact=Array.isArray(idx)&&idx.length>0&&idx.some((c:any)=>c&&typeof c==="object"&&("p" in c||"e" in c));
+  if(sidxHasContact){
     const stats=reviewStatsForChurches(churchesFromSidx(idx,st),st);
     try{await setReviewStatsState(st,stats,country);}catch(_){}
     return stats;
   }
   const ch=await getChurches(st,country);
-  if(!Array.isArray(ch)||!ch.length)return EMPTY_STATE_REVIEW_STATS;
-  const stats=reviewStatsForChurches(ch,st);
-  await persistStateReviewStats(st,ch,country);
-  return stats;
+  if(Array.isArray(ch)&&ch.length){
+    const stats=reviewStatsForChurches(ch,st);
+    await persistStateReviewStats(st,ch,country);
+    return stats;
+  }
+  if(Array.isArray(idx)&&idx.length){
+    const stats=reviewStatsForChurches(churchesFromSidx(idx,st),st);
+    try{await setReviewStatsState(st,stats,country);}catch(_){}
+    return stats;
+  }
+  return EMPTY_STATE_REVIEW_STATS;
 }
 
-async function computeReviewStats(cc="US"):Promise<{states:Record<string,StateReviewStats>;totalChurches:number;totalNeedsReview:number;percentage:number;missingAddress:number;missingWebsite:number;missingServiceTimes:number;missingDenomination:number}>{
+async function computeReviewStats(cc="US"):Promise<{states:Record<string,StateReviewStats>;totalChurches:number;totalNeedsReview:number;percentage:number;missingAddress:number;missingWebsite:number;missingPhone:number;missingEmail:number}>{
   const country=String(cc||"US").toUpperCase();
   // World rollup: one entry per country (keyed by ISO CC) for the world review modal.
+  // Prefer each country's rollup cache so WORLD doesn't re-walk every region when
+  // US/CA/… were already computed (cold WORLD was ~60–90s otherwise).
   if(country==="WORLD"||country==="ALL"){
     const states:Record<string,StateReviewStats>={};
-    let totalChurches=0,totalNeedsReview=0,missingAddress=0,missingWebsite=0,missingServiceTimes=0,missingDenomination=0;
-    for(const code of REVIEW_STATS_COUNTRY_CODES){
-      const r=await computeReviewStats(code);
+    let totalChurches=0,totalNeedsReview=0,missingAddress=0,missingWebsite=0,missingPhone=0,missingEmail=0;
+    const countryKeys=REVIEW_STATS_COUNTRY_CODES.map((code)=>reviewStatsCacheKey(code));
+    const countryCached=await kv.mget(countryKeys);
+    for(let i=0;i<REVIEW_STATS_COUNTRY_CODES.length;i++){
+      const code=REVIEW_STATS_COUNTRY_CODES[i];
+      const cached=countryCached[i];
+      const fromCache=cached&&typeof cached==="object"&&cached.states&&cached.totalChurches!=null
+        ?stripReviewStatsCache(cached)
+        :null;
+      const r=fromCache??await computeReviewStats(code);
+      if(!fromCache&&r.totalChurches){
+        try{await kv.set(reviewStatsCacheKey(code),{...r,_cachedAt:Date.now()});}catch(_){}
+      }
       if(!r.totalChurches)continue;
       states[code]={
         total:r.totalChurches,
         needsReview:r.totalNeedsReview,
         missingAddress:r.missingAddress,
         missingWebsite:r.missingWebsite,
-        missingServiceTimes:r.missingServiceTimes,
-        missingDenomination:r.missingDenomination,
+        missingPhone:r.missingPhone,
+        missingEmail:r.missingEmail,
       };
       totalChurches+=r.totalChurches;
       totalNeedsReview+=r.totalNeedsReview;
       missingAddress+=r.missingAddress;
       missingWebsite+=r.missingWebsite;
-      missingServiceTimes+=r.missingServiceTimes;
-      missingDenomination+=r.missingDenomination;
+      missingPhone+=r.missingPhone;
+      missingEmail+=r.missingEmail;
     }
     const percentage=totalChurches>0?Math.round((totalNeedsReview/totalChurches)*1000)/10:0;
-    return {states,totalChurches,totalNeedsReview,percentage,missingAddress,missingWebsite,missingServiceTimes,missingDenomination};
+    return {states,totalChurches,totalNeedsReview,percentage,missingAddress,missingWebsite,missingPhone,missingEmail};
   }
   const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
   let populated=listPopulated(sc).filter(p=>p.cc===country);
@@ -1484,9 +1531,9 @@ async function computeReviewStats(cc="US"):Promise<{states:Record<string,StateRe
     populated=populated.filter(p=>p.abbrev!=="DC");
     if(!populated.some(p=>p.abbrev==="MD"))populated.push({cc:"US",abbrev:"MD"});
   }
-  if(!populated.length)return {states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingWebsite:0,missingServiceTimes:0,missingDenomination:0};
+  if(!populated.length)return {states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingWebsite:0,missingPhone:0,missingEmail:0};
   const states:Record<string,StateReviewStats>={};
-  let totalChurches=0,totalNeedsReview=0,missingAddress=0,missingWebsite=0,missingServiceTimes=0,missingDenomination=0;
+  let totalChurches=0,totalNeedsReview=0,missingAddress=0,missingWebsite=0,missingPhone=0,missingEmail=0;
   const BATCH=20;
   for(let i=0;i<populated.length;i+=BATCH){
     const batch=populated.slice(i,i+BATCH);
@@ -1494,13 +1541,16 @@ async function computeReviewStats(cc="US"):Promise<{states:Record<string,StateRe
     for(let j=0;j<batch.length;j++){
       const st=batch[j].abbrev;
       const cached=values[j];
-      const data=cached&&typeof cached==="object"&&cached.total!=null?(cached as StateReviewStats):await computeStateReviewStats(st,country);
+      // Recompute when criteria version mismatches (or legacy cache without v).
+      const data=cached&&typeof cached==="object"&&cached.total!=null&&(cached as any).v===REVIEW_STATS_CRITERIA_V
+        ?(cached as StateReviewStats)
+        :await computeStateReviewStats(st,country);
       states[st]=data;
-      totalChurches+=data.total;totalNeedsReview+=data.needsReview;missingAddress+=data.missingAddress;missingWebsite+=data.missingWebsite;missingServiceTimes+=data.missingServiceTimes;missingDenomination+=data.missingDenomination;
+      totalChurches+=data.total;totalNeedsReview+=data.needsReview;missingAddress+=data.missingAddress;missingWebsite+=data.missingWebsite;missingPhone+=data.missingPhone;missingEmail+=data.missingEmail;
     }
   }
   const percentage=totalChurches>0?Math.round((totalNeedsReview/totalChurches)*1000)/10:0;
-  return {states,totalChurches,totalNeedsReview,percentage,missingAddress,missingWebsite,missingServiceTimes,missingDenomination};
+  return {states,totalChurches,totalNeedsReview,percentage,missingAddress,missingWebsite,missingPhone,missingEmail};
 }
 
 const REVIEW_STATS_TTL=30*60_000; // 30 minutes
@@ -1510,7 +1560,8 @@ app.get(`${P}/churches/review-stats`,async(c)=>{
     const cacheKey=reviewStatsCacheKey(cc);
     const cached=await kv.get(cacheKey);
     const hasCache=cached&&typeof cached==="object"&&cached.states&&cached.totalChurches!=null;
-    const fresh=hasCache&&cached._cachedAt&&Date.now()-cached._cachedAt<REVIEW_STATS_TTL;
+    // Treat missing/0 _cachedAt as stale (soft-invalidated) but still serveable.
+    const fresh=hasCache&&typeof cached._cachedAt==="number"&&cached._cachedAt>0&&Date.now()-cached._cachedAt<REVIEW_STATS_TTL;
     if(fresh)return c.json(stripReviewStatsCache(cached));
     if(hasCache){
       void computeReviewStats(cc).then(async(result)=>{try{await kv.set(cacheKey,{...result,_cachedAt:Date.now()});}catch(_){}}).catch(()=>{});
@@ -1519,7 +1570,7 @@ app.get(`${P}/churches/review-stats`,async(c)=>{
     const result=await computeReviewStats(cc);
     try{await kv.set(cacheKey,{...result,_cachedAt:Date.now()});}catch(_){}
     return c.json(result);
-  }catch(e){return c.json({states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingWebsite:0,missingServiceTimes:0,missingDenomination:0,error:`${e}`},500);}
+  }catch(e){return c.json({states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingWebsite:0,missingPhone:0,missingEmail:0,error:`${e}`},500);}
 });
 
 // ── Special reports ──
@@ -1824,8 +1875,11 @@ app.post(`${P}/admin/refresh-attendance`,async(c)=>{
 /**
  * Google Places bulk enrichment (pilot / throttled).
  * Query: dryRun=true|false, missingOnly=true|false (default true), limit=N (default 25, max 100),
- *        fetchDetails=true|false (default true — Place Details for phone/website; Enterprise SKU).
+ *        fetchDetails=true|false (default false — Text Search address first; opt-in Place Details for phone/website),
+ *        nearLat=&nearLng=&nearRadiusKm= (optional metro filter; default radius 45km),
+ *        cities=Los Angeles,Pasadena (optional city-name filter, case-insensitive substring).
  * Secret: GOOGLE_MAPS_API_KEY. Never writes serviceTimes from Google hours.
+ * Queue order: no contact path first, then higher attendance.
  */
 app.post(`${P}/admin/enrich-google/:state`,async(c)=>{
   try{
@@ -1835,29 +1889,68 @@ app.post(`${P}/admin/enrich-google/:state`,async(c)=>{
     const dryRun=c.req.query("dryRun")==="true";
     if(!apiKey&&!dryRun)return c.json({error:"GOOGLE_MAPS_API_KEY secret is not set"},503);
     const missingOnly=c.req.query("missingOnly")!=="false";
-    const fetchDetails=c.req.query("fetchDetails")!=="false";
+    // Default false: address from Text Search clears needs-review; Details burns scarcer free tier.
+    const fetchDetails=c.req.query("fetchDetails")==="true";
     const limitRaw=parseInt(c.req.query("limit")||"25",10);
     const limit=Math.min(100,Math.max(1,Number.isFinite(limitRaw)?limitRaw:25));
+    const nearLat=parseFloat(c.req.query("nearLat")||"");
+    const nearLng=parseFloat(c.req.query("nearLng")||"");
+    const nearRadiusKmRaw=parseFloat(c.req.query("nearRadiusKm")||"45");
+    const nearRadiusKm=Number.isFinite(nearRadiusKmRaw)?Math.min(120,Math.max(5,nearRadiusKmRaw)):45;
+    const hasNear=Number.isFinite(nearLat)&&Number.isFinite(nearLng);
+    const cityFilters=(c.req.query("cities")||"").split(",").map((s)=>s.trim().toLowerCase()).filter(Boolean);
 
-    let ch=await kv.get(`churches:${st}`);
+    const cc=regionCountry(st);
+    let ch=await getChurches(st,cc);
     if(!ch||!Array.isArray(ch)||!ch.length)return c.json({error:`No churches for ${info.n}. Populate first.`,enriched:0},404);
 
     const corrections=await getApprovedCorrectionsForState(st);
     // Work on a shallow copy so community corrections inform missing-field selection without mutating KV.
     const working=ch.map((x:any)=>({...x}));
     mergeCorrectionsIntoChurches(working,corrections);
-    const queue=working.filter((x:any)=>!missingOnly||churchMissingEnrichableFields(x)).slice(0,limit);
+    const queue=working
+      .filter((x:any)=>{
+        if(missingOnly&&!churchMissingEnrichableFields(x))return false;
+        if(hasNear){
+          const lat=Number(x.lat),lng=Number(x.lng);
+          if(!Number.isFinite(lat)||!Number.isFinite(lng))return false;
+          // Inline haversine km (avoid pulling enrichment helpers for a one-liner).
+          const toRad=(d:number)=>d*Math.PI/180;
+          const R=6371;
+          const dLat=toRad(lat-nearLat),dLng=toRad(lng-nearLng);
+          const a=Math.sin(dLat/2)**2+Math.cos(toRad(nearLat))*Math.cos(toRad(lat))*Math.sin(dLng/2)**2;
+          const km=2*R*Math.asin(Math.min(1,Math.sqrt(a)));
+          if(km>nearRadiusKm)return false;
+        }
+        if(cityFilters.length){
+          const city=String(x.city||"").trim().toLowerCase();
+          if(!city||!cityFilters.some((f)=>city===f||city.includes(f)||f.includes(city)))return false;
+        }
+        return true;
+      })
+      .sort((a:any,b:any)=>{
+        const aAll=churchNeedsReview(a).needsReview?1:0;
+        const bAll=churchNeedsReview(b).needsReview?1:0;
+        if(bAll!==aAll)return bAll-aAll;
+        return (Number(b.attendance)||0)-(Number(a.attendance)||0);
+      })
+      .slice(0,limit);
 
     const counters=emptyCounters();
     const usedPlaceIds=new Set<string>();
     try{
-      const [reg,comm]=await Promise.all([
+      // US ids: TX-123; intl ids: CA-ON-123 — scan both legacy and namespaced prefixes.
+      const prefixLists=await Promise.all([
         kv.getByPrefix(`enrichment:google:${st}-`),
         kv.getByPrefix(`enrichment:google:community-${st}-`),
+        kv.getByPrefix(`enrichment:google:${cc}-${st}-`),
+        kv.getByPrefix(`enrichment:google:community-${cc}-${st}-`),
       ]);
-      for(const v of [...(Array.isArray(reg)?reg:[]),...(Array.isArray(comm)?comm:[])]){
-        if(v&&typeof v==="object"&&(v as GoogleEnrichment).placeId&&(v as GoogleEnrichment).confidence==="high"){
-          usedPlaceIds.add((v as GoogleEnrichment).placeId);
+      for(const list of prefixLists){
+        for(const v of Array.isArray(list)?list:[]){
+          if(v&&typeof v==="object"&&(v as GoogleEnrichment).placeId&&(v as GoogleEnrichment).confidence==="high"){
+            usedPlaceIds.add((v as GoogleEnrichment).placeId);
+          }
         }
       }
     }catch(_){}
@@ -1885,6 +1978,7 @@ app.post(`${P}/admin/enrich-google/:state`,async(c)=>{
         missingOnly,
         fetchDetailsForContact:fetchDetails,
         counters,
+        regionCode:cc,
       });
       if(result.status==="enriched"){
         await kv.set(googleEnrichmentKey(result.enrichment.churchId),result.enrichment);
@@ -1908,6 +2002,8 @@ app.post(`${P}/admin/enrich-google/:state`,async(c)=>{
       }catch(_){}
     }
     if(!dryRun&&enriched>0){
+      // Persist contact-path stats including Places overlay for this state, then bust national cache.
+      await persistStateReviewStatsWithOverlays(st,working);
       await invalidateReviewStatsCache();
       void recordChurchAudit({state:st,action:"google_places_enrich",new_value:{enriched,noMatch,duplicatePlace,limit},source:"admin_enrich_google",actor_type:"system"});
     }
@@ -1917,10 +2013,13 @@ app.post(`${P}/admin/enrich-google/:state`,async(c)=>{
         ?`Dry-run Google Places enrich for ${info.n}: ${wouldEnrich||enriched} would enrich of ${queue.length} considered.`
         :`Google Places enrich for ${info.n}: wrote ${enriched} enrichment(s).`,
       state:st,
+      country:cc,
       dryRun,
       missingOnly,
       fetchDetails,
       limit,
+      near:hasNear?{lat:nearLat,lng:nearLng,radiusKm:nearRadiusKm}:null,
+      cities:cityFilters.length?cityFilters:null,
       considered:queue.length,
       enriched,
       wouldEnrich,
@@ -2775,13 +2874,14 @@ app.post(`${P}/internal/monthly-stats`,async(c)=>{
     const totalPop=Object.keys(POP).reduce((s,k)=>(k==="DC"?s:s+(POP[k]||0)),0);
     const nationalPeoplePer=review.totalChurches>0&&totalPop>0?Math.round(totalPop/review.totalChurches):null;
     const nationalChurchesPer10k=review.totalChurches>0&&totalPop>0?(review.totalChurches/totalPop)*10000:null;
-    rows.push({month:monthDate,state_abbrev:"",total_churches:review.totalChurches,total_needs_review:review.totalNeedsReview,pct_needs_review:review.percentage,missing_address:review.missingAddress,missing_service_times:review.missingServiceTimes,missing_denomination:review.missingDenomination,total_corrections:commStats.totalCorrections||0,churches_improved:improvedTotal,population:totalPop,people_per_church:nationalPeoplePer,churches_per_10k:nationalChurchesPer10k});
+    // Legacy snapshot columns: missing_service_times / missing_denomination store missing phone / email counts.
+    rows.push({month:monthDate,state_abbrev:"",total_churches:review.totalChurches,total_needs_review:review.totalNeedsReview,pct_needs_review:review.percentage,missing_address:review.missingAddress,missing_service_times:review.missingPhone,missing_denomination:review.missingEmail,total_corrections:commStats.totalCorrections||0,churches_improved:improvedTotal,population:totalPop,people_per_church:nationalPeoplePer,churches_per_10k:nationalChurchesPer10k});
     for(const [st,data] of Object.entries(review.states)){
       const comm=commByState[st]||{totalCorrections:0,churchesImproved:0};
       const pop=statePopulation(st);
       const peoplePer=pop>0&&data.total>0?Math.round(pop/data.total):null;
       const per10k=pop>0&&data.total>0?(data.total/pop)*10000:null;
-      rows.push({month:monthDate,state_abbrev:st,total_churches:data.total,total_needs_review:data.needsReview,pct_needs_review:data.total>0?Math.round((data.needsReview/data.total)*1000)/10:0,missing_address:data.missingAddress,missing_service_times:data.missingServiceTimes,missing_denomination:data.missingDenomination,total_corrections:comm.totalCorrections,churches_improved:comm.churchesImproved,population:pop||null,people_per_church:peoplePer,churches_per_10k:per10k});
+      rows.push({month:monthDate,state_abbrev:st,total_churches:data.total,total_needs_review:data.needsReview,pct_needs_review:data.total>0?Math.round((data.needsReview/data.total)*1000)/10:0,missing_address:data.missingAddress,missing_service_times:data.missingPhone,missing_denomination:data.missingEmail,total_corrections:comm.totalCorrections,churches_improved:comm.churchesImproved,population:pop||null,people_per_church:peoplePer,churches_per_10k:per10k});
     }
     const {error}=await sb.from(MONTHLY_SNAPSHOTS_TABLE).upsert(rows,{onConflict:"month,state_abbrev"});
     if(error)return c.json({error:error.message},500);
@@ -4560,8 +4660,8 @@ async function computeSeasonalReport(slug:string,scope:ReportComputeScope={type:
         const r=churchNeedsReview(c);
         if(r.needsReview){totalNeedsReview++;stNR++;}
         if(r.missingAddress)totalMissingAddr++;
-        if(r.missingServiceTimes)totalMissingSvc++;
-        if(r.missingDenomination)totalMissingDenom++;
+        if(isServiceTimesMissing(c.serviceTimes))totalMissingSvc++;
+        {const d=(c.denomination||"").trim();if(!d||d==="Unknown"||d==="Other")totalMissingDenom++;}
         // Denomination
         const dg=getDenomGroup(c.denomination||"");
         denomCounts[dg]=(denomCounts[dg]||0)+1;

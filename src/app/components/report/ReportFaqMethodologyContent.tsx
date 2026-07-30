@@ -150,19 +150,16 @@ export function SeasonalReportMethodologyFaqDetails({
         <p className={s.sectionTitle}>“Needs review” and completeness scores</p>
         <ul className={s.list}>
           <li>
-            We treat four fields as core: a meaningful street address (not only city/region), a website
-            that looks like a real URL, service times that aren&apos;t empty placeholders (e.g. &quot;see
-            website&quot;, &quot;TBD&quot;), and a denomination other than blank / Unknown / Other.
+            A church is <span className={s.em}>complete</span> when it has a name and a meaningful street
+            address (not only city/region)—enough to verify the pin on the map. It is flagged{" "}
+            <span className={s.em}>needs review</span> when either is missing. Rankings use{" "}
+            <span className={s.em}>% complete</span> as the share of churches in that {unitOne} that are{" "}
+            <em>not</em> in that bucket.
           </li>
           <li>
-            A church is flagged <span className={s.em}>needs review</span> when{" "}
-            <span className={s.em}>two or more</span> of those are missing. Rankings use{" "}
-            <span className={s.em}>% complete</span> as the share of churches in that {unitOne} that
-            are <em>not</em> in that bucket.
-          </li>
-          <li>
-            Separate percentages (website, phone, service times, etc.) count each field on its own.
-            &quot;Has a contact path&quot; means website <em>or</em> a phone number with at least 10 digits.
+            Separate percentages (website, phone, service times, etc.) count each field on its own and do
+            not gate needs-review. &quot;Has a contact path&quot; means website <em>or</em> a phone number
+            with at least 10 digits.
           </li>
         </ul>
       </div>

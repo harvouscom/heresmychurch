@@ -71,8 +71,13 @@ export interface NationalReviewStateStats {
   total: number;
   needsReview: number;
   missingAddress: number;
-  missingServiceTimes: number;
-  missingDenomination: number;
+  missingWebsite?: number;
+  missingPhone?: number;
+  missingEmail?: number;
+  /** @deprecated use missingPhone */
+  missingServiceTimes?: number;
+  /** @deprecated use missingEmail */
+  missingDenomination?: number;
 }
 
 export interface NationalReviewStatsResponse {
@@ -81,8 +86,13 @@ export interface NationalReviewStatsResponse {
   totalNeedsReview: number;
   percentage: number;
   missingAddress: number;
-  missingServiceTimes: number;
-  missingDenomination: number;
+  missingWebsite?: number;
+  missingPhone?: number;
+  missingEmail?: number;
+  /** @deprecated use missingPhone */
+  missingServiceTimes?: number;
+  /** @deprecated use missingEmail */
+  missingDenomination?: number;
 }
 
 export interface ChurchesResponse {
@@ -177,9 +187,11 @@ export async function fetchNationalReviewStats(
   countryCode: string = "US",
 ): Promise<NationalReviewStatsResponse> {
   const cc = encodeURIComponent(countryCode.toUpperCase());
+  // WORLD rollup can cold-recompute many countries; allow longer than US/single-country.
+  const timeoutMs = cc === "WORLD" || cc === "ALL" ? 180000 : 60000;
   const res = await fetchWithRetry(
     `${BASE_URL}/churches/review-stats?country=${cc}`,
-    { headers, timeoutMs: 60000 },
+    { headers, timeoutMs },
   );
   if (!res.ok) {
     const text = await res.text();
@@ -194,8 +206,11 @@ export async function fetchNationalReviewStats(
     totalNeedsReview: data.totalNeedsReview ?? 0,
     percentage: data.percentage ?? 0,
     missingAddress: data.missingAddress ?? 0,
-    missingServiceTimes: data.missingServiceTimes ?? 0,
-    missingDenomination: data.missingDenomination ?? 0,
+    missingWebsite: data.missingWebsite ?? 0,
+    missingPhone: data.missingPhone ?? data.missingServiceTimes ?? 0,
+    missingEmail: data.missingEmail ?? data.missingDenomination ?? 0,
+    missingServiceTimes: data.missingPhone ?? data.missingServiceTimes ?? 0,
+    missingDenomination: data.missingEmail ?? data.missingDenomination ?? 0,
   };
 }
 

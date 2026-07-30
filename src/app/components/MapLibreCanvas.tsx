@@ -1354,6 +1354,22 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     // in the opposite corner and in someone else's visual style.
     mapRef.current = map;
 
+    /** True while the container is being resized — map.resize() fires moveend
+     *  with a new viewport aspect, which must NOT count as a user zoom-out
+     *  (that was stepping the map up a level / reloading choropleth mid-drag). */
+    let containerResizing = false;
+    let resizeSettleTimer = 0;
+
+    const publishMoveEnd = () => {
+      const c = map.getCenter();
+      const b = map.getBounds();
+      const view: [[number, number], [number, number]] = [
+        [b.getWest(), b.getSouth()],
+        [b.getEast(), b.getNorth()],
+      ];
+      handlersRef.current.onMoveEnd?.([c.lng, c.lat], map.getZoom(), view);
+    };
+
     const handleMoveEnd = () => {
       const c = map.getCenter();
       const b = map.getBounds();
@@ -1379,6 +1395,11 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
         // Camera settled on the target admin-2 — step-out may use its bounds now.
         framedCountyRef.current = targetCountyRef.current;
       }
+
+      // Container resize: skip step-out + React bounds updates until the drag
+      // settles (one publishMoveEnd below). Continuous onMoveEnd was re-rendering
+      // the whole map shell on every RAF.
+      if (containerResizing) return;
 
       if (!wasProgrammatic && !selectedChurchIdRef.current) {
         // Compare against what the camera actually framed, not what the UI has
@@ -1541,22 +1562,32 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     map.on("mouseout", handleMouseOut);
 
     // The map can be constructed before its container has a measured size
-    // (MapLibre then falls back to a 400×300 canvas that never grows). A
-    // ResizeObserver keeps the canvas matched to the container. Coalesce to one
-    // resize per frame — continuous window drags otherwise flood moveend + React.
-    let resizeRaf = 0;
+    // (MapLibre then falls back to a 400×300 canvas that never grows).
+    // Important: do NOT call map.resize() on every frame while the window is
+    // being dragged — each resize reallocates the WebGL drawing buffer and
+    // the whole map flickers. Let CSS stretch the canvas during the drag,
+    // then resize once when it settles.
     const ro = new ResizeObserver(() => {
-      if (resizeRaf) return;
-      resizeRaf = requestAnimationFrame(() => {
-        resizeRaf = 0;
+      containerResizing = true;
+      if (resizeSettleTimer) window.clearTimeout(resizeSettleTimer);
+      resizeSettleTimer = window.setTimeout(() => {
         map.resize();
-      });
+        // Keep suppressing until resize's own moveend has fired, then publish
+        // bounds once. Clearing the flag immediately would treat that moveend
+        // as a user zoom-out (aspect-ratio change) and step the view up a level.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            containerResizing = false;
+            publishMoveEnd();
+          });
+        });
+      }, 180);
     });
     ro.observe(containerRef.current);
 
     return () => {
       ro.disconnect();
-      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      if (resizeSettleTimer) window.clearTimeout(resizeSettleTimer);
       if (hoverFrame != null) cancelAnimationFrame(hoverFrame);
       map.off("moveend", handleMoveEnd);
       map.remove();
