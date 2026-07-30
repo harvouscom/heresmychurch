@@ -18,6 +18,11 @@ Country-scoped URLs use `/{CC}` and `/{CC}/{region}` (ISO country code, then reg
 - Church detail URLs: `/{CC}/{region}/{shortId}` (e.g. `/US/TX/12345678`). Optional query: `?county={FIPS}` for US county context.
 - Legacy aliases `/state/{ST}` and `/country/{CC}/…` redirect to the canonical `/{CC}/…` form.
 
+## Metro directories (U.S.)
+
+- [Metro index](https://heresmychurch.com/metro): Major U.S. metro area directories.
+- Metro page: `/metro/{slug}` (e.g. `/metro/nashville-tn`) — filterable church list (denomination, size, verified); links into map deep links. Query params are for UI only; the canonical URL is the unfiltered metro path.
+
 ## Reports
 
 - [Reports hub](https://heresmychurch.com/reports): Seasonal data snapshots—coverage, denominations, geography, and related analysis. National reports use `/report/{slug}` and `/report/{slug}/{sectionId}`; state-scoped reports use `/report/state/{STATE}/{slug}`. Current slugs are listed on the hub.

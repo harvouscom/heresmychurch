@@ -324,13 +324,14 @@ async function textSearchPlace(
   lat: number,
   lng: number,
   counters: PlacesApiCounters,
+  regionCode = "US",
 ): Promise<PlaceCandidate[]> {
   const data = await placesFetch(
     "https://places.googleapis.com/v1/places:searchText",
     apiKey,
     {
       textQuery: query,
-      regionCode: "US",
+      regionCode: regionCode || "US",
       languageCode: "en",
       pageSize: 5,
       locationBias: {
@@ -350,6 +351,7 @@ async function nearbySearchPlace(
   lat: number,
   lng: number,
   counters: PlacesApiCounters,
+  regionCode = "US",
 ): Promise<PlaceCandidate[]> {
   const data = await placesFetch(
     "https://places.googleapis.com/v1/places:searchNearby",
@@ -361,7 +363,7 @@ async function nearbySearchPlace(
         circle: { center: { latitude: lat, longitude: lng }, radius: GOOGLE_ENRICHMENT_NEARBY_RADIUS_M },
       },
       languageCode: "en",
-      regionCode: "US",
+      regionCode: regionCode || "US",
     },
     NEARBY_SEARCH_MASK,
     counters,
@@ -430,6 +432,8 @@ export async function enrichOneChurch(opts: {
   missingOnly: boolean;
   fetchDetailsForContact: boolean;
   counters: PlacesApiCounters;
+  /** ISO 3166-1 alpha-2 for Places regionCode (US, CA, GB, …). */
+  regionCode?: string;
 }): Promise<EnrichChurchResult> {
   const ch = opts.church;
   const churchId = String(ch.id || "");
@@ -441,20 +445,25 @@ export async function enrichOneChurch(opts: {
   const lng = Number(ch.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { status: "no_match" };
 
+  const regionCode = (opts.regionCode || "US").toUpperCase().slice(0, 2);
   const city = (ch.city || "").trim();
-  const state = (ch.state || "").trim().toUpperCase().slice(0, 2);
+  const region = (ch.state || "").trim();
   const addr = (ch.address || "").trim();
-  const queryParts = [ch.name, addr, city, state].filter(Boolean);
+  const queryParts = [ch.name, addr, city, region, regionCode].filter(Boolean);
   const query = queryParts.join(", ");
 
   await sleep(GOOGLE_ENRICHMENT_REQUEST_GAP_MS);
-  let picked = pickBestCandidate({ name: ch.name, lat, lng }, await textSearchPlace(opts.apiKey, query, lat, lng, opts.counters), "text_search");
+  let picked = pickBestCandidate(
+    { name: ch.name, lat, lng },
+    await textSearchPlace(opts.apiKey, query, lat, lng, opts.counters, regionCode),
+    "text_search",
+  );
 
   if (!picked) {
     await sleep(GOOGLE_ENRICHMENT_REQUEST_GAP_MS);
     picked = pickBestCandidate(
       { name: ch.name, lat, lng },
-      await nearbySearchPlace(opts.apiKey, lat, lng, opts.counters),
+      await nearbySearchPlace(opts.apiKey, lat, lng, opts.counters, regionCode),
       "nearby",
     );
   }
@@ -486,7 +495,7 @@ export async function enrichOneChurch(opts: {
     }
   }
 
-  const parts = parseAddressComponents(candidate.addressComponents, candidate.formattedAddress, state);
+  const parts = parseAddressComponents(candidate.addressComponents, candidate.formattedAddress, region);
   const enrichment: GoogleEnrichment = {
     churchId,
     placeId: candidate.placeId,
@@ -494,7 +503,7 @@ export async function enrichOneChurch(opts: {
     name: candidate.displayName || undefined,
     address: parts.address || undefined,
     city: parts.city || city || undefined,
-    state: parts.state || state || undefined,
+    state: parts.state || region || undefined,
     phone: normalizeEnrichmentPhone(candidate.phone || "") || undefined,
     website: normalizeWebsite(candidate.website) || undefined,
     confidence: "high",

@@ -43,6 +43,7 @@ import { useChurchMapData } from "./useChurchMapData";
 import { buildRegionSummaryStats, computeNationalSummary, computeWorldSummary } from "./hooks/useChurchFilters";
 import { findCountyNameForPoint } from "./county-resolve";
 import { churchMatchesRouteSegment, getChurchUrlSegment } from "./url-utils";
+import { syncChurchDocumentSeo } from "../lib/church-seo";
 import {
   clearNavigationChurchPreload,
   matchNavigationChurchPreload,
@@ -361,9 +362,23 @@ export function ChurchMap({
   }, [isIntl, routeChurchShortId, routeStateAbbrev, selectedChurch]);
 
   useEffect(() => {
-    if (!isIntl || !selectedChurch) return;
-    const place = selectedChurch.city || routeStateAbbrev || countryCode;
-    document.title = `${selectedChurch.name} -- ${place} | Here's My Church`;
+    if (!isIntl) return;
+    if (selectedChurch) {
+      syncChurchDocumentSeo(selectedChurch, countryCode);
+    } else {
+      syncChurchDocumentSeo(null);
+      const regionName = routeStateAbbrev
+        ? getRegion(countryCode, routeStateAbbrev)?.name
+        : null;
+      if (regionName) {
+        document.title = `Churches in ${regionName} | Here's My Church`;
+      } else {
+        const countryName = getCountry(countryCode)?.name;
+        document.title = countryName
+          ? `Churches in ${countryName} | Here's My Church`
+          : "Here's My Church";
+      }
+    }
   }, [isIntl, selectedChurch, routeStateAbbrev, countryCode]);
 
   const handleIntlCountyClick = useCallback(
@@ -553,6 +568,7 @@ export function ChurchMap({
     showNationalReviewModal: false,
     pendingReviewCount: 0,
     nationalReviewStats: null,
+    nationalReviewStatsKey: null as string | null,
     nationalReviewStatsLoading: false,
     forceEditForm: false,
     showAbout: !hasSeenAbout && !routeStateAbbrev,
@@ -624,16 +640,12 @@ export function ChurchMap({
     return p ? Object.keys(p.fields) : [];
   }, [selectedChurch?.id, d.statePendingSuggestions]);
 
-  // Compute churches that need review (missing 2+ of address, service times, denomination)
+  // Compute churches that need review (missing name or meaningful street address)
   // When in county/admin-2 view, scope to that area; otherwise region/state
-  const incompleteChurches = useMemo(() => {
+  const reviewScopeChurches = useMemo(() => {
     if (isWorld) return [];
-    if (isIntl) {
-      const list = intlFocusedAdmin2 ? intlChurchesForMap : intlChurches;
-      return list.filter(churchNeedsReview);
-    }
-    const list = d.focusedCounty ? d.filteredChurches : d.churches;
-    return list.filter(churchNeedsReview);
+    if (isIntl) return intlFocusedAdmin2 ? intlChurchesForMap : intlChurches;
+    return d.focusedCounty ? d.filteredChurches : d.churches;
   }, [
     isWorld,
     isIntl,
@@ -643,6 +655,30 @@ export function ChurchMap({
     d.focusedCounty,
     d.filteredChurches,
     d.churches,
+  ]);
+  const incompleteChurches = useMemo(
+    () => reviewScopeChurches.filter(churchNeedsReview),
+    [reviewScopeChurches],
+  );
+  const pendingReviewPercentage = useMemo(() => {
+    const total = reviewScopeChurches.length;
+    if (total > 0) {
+      return Math.round((incompleteChurches.length / total) * 1000) / 10;
+    }
+    // Churches not loaded yet — use national rollup per-region so the pill
+    // still changes as you click different states/regions.
+    const abbrev = routeStateAbbrev || d.focusedState;
+    const rollup = abbrev ? local.nationalReviewStats?.states?.[abbrev] : null;
+    if (rollup && rollup.total > 0) {
+      return Math.round((rollup.needsReview / rollup.total) * 1000) / 10;
+    }
+    return 0;
+  }, [
+    reviewScopeChurches.length,
+    incompleteChurches.length,
+    routeStateAbbrev,
+    d.focusedState,
+    local.nationalReviewStats,
   ]);
 
   // Set review count based on incomplete churches
@@ -666,25 +702,45 @@ export function ChurchMap({
     onExitReviewView?.();
   }, [onExitReviewView]);
 
-  // Fetch review stats: world rollup, or country-level when not in a region
+  // Fetch review stats for WORLD / country. Independent of state/region route so
+  // clicking states does not cancel the request. Stats also power per-state %
+  // in the pill before churches finish loading.
   useEffect(() => {
-    const atCountryLevel = isIntl ? !routeStateAbbrev : !d.focusedState;
-    if (!isWorld && !atCountryLevel) return;
+    const statsKey = isWorld ? "WORLD" : countryCode;
     let cancelled = false;
-    localDispatch({ type: "SET", key: "nationalReviewStatsLoading", value: true });
-    fetchNationalReviewStats(isWorld ? "WORLD" : countryCode)
+    const haveStatsForView =
+      local.nationalReviewStats != null && local.nationalReviewStatsKey === statsKey;
+    // Spinner only when the national/world row would be shown with no matching data.
+    // Do not clear loading in cleanup — that races the next effect and can leave the
+    // WORLD spinner stuck off while a long cold fetch is still in flight.
+    if ((isWorld || !routeStateAbbrev) && !haveStatsForView) {
+      localDispatch({ type: "SET", key: "nationalReviewStatsLoading", value: true });
+    }
+    fetchNationalReviewStats(statsKey)
       .then((stats: NationalReviewStatsResponse) => {
         if (cancelled) return;
         localDispatch({ type: "SET", key: "nationalReviewStats", value: stats });
+        localDispatch({ type: "SET", key: "nationalReviewStatsKey", value: statsKey });
         localDispatch({ type: "SET", key: "nationalReviewStatsLoading", value: false });
       })
       .catch(() => {
         if (cancelled) return;
-        localDispatch({ type: "SET", key: "nationalReviewStats", value: null });
         localDispatch({ type: "SET", key: "nationalReviewStatsLoading", value: false });
       });
-    return () => { cancelled = true; };
-  }, [isWorld, isIntl, countryCode, routeStateAbbrev, d.focusedState]);
+    return () => {
+      cancelled = true;
+    };
+    // routeStateAbbrev read once for initial spinner decision; state clicks must
+    // not retrigger/cancel this fetch. local.nationalReviewStats* intentionally omitted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isWorld, countryCode]);
+
+  // Leaving national/world view: clear spinner so a slow fetch cannot stick.
+  useEffect(() => {
+    if (!isWorld && routeStateAbbrev) {
+      localDispatch({ type: "SET", key: "nationalReviewStatsLoading", value: false });
+    }
+  }, [isWorld, routeStateAbbrev]);
 
   // Refetch state churches when opening the verification modal so stats use latest API data (incl. merged corrections)
   useEffect(() => {
@@ -825,6 +881,8 @@ export function ChurchMap({
         navigateToCounty={navigateToCounty}
         navigateToStateOnly={navigateToStateOnly}
         routeStateAbbrev={routeStateAbbrev}
+        routeChurchShortId={routeChurchShortId}
+        routeLegacyChurchId={routeLegacyChurchId}
         routeCountyFips={routeCountyFips}
         viewLevel={viewLevel}
         countryCode={countryCode}
@@ -845,7 +903,9 @@ export function ChurchMap({
         onShowVerification={onShowVerification}
         onShowNationalReviewModal={() => localDispatch({ type: "SET", key: "showNationalReviewModal", value: true })}
         pendingReviewCount={local.pendingReviewCount}
+        pendingReviewPercentage={pendingReviewPercentage}
         nationalReviewStats={local.nationalReviewStats}
+        nationalReviewStatsKey={local.nationalReviewStatsKey}
         nationalReviewStatsLoading={local.nationalReviewStatsLoading}
         showAbout={local.showAbout}
         onDismissAbout={dismissAbout}
@@ -1029,7 +1089,11 @@ export function ChurchMap({
 
       {local.showNationalReviewModal && (
         <NationalReviewModal
-          stats={local.nationalReviewStats}
+          stats={
+            local.nationalReviewStatsKey === (isWorld ? "WORLD" : countryCode)
+              ? local.nationalReviewStats
+              : null
+          }
           countryCode={isWorld ? "WORLD" : countryCode}
           regionNoun={
             isWorld
@@ -1052,7 +1116,9 @@ export function ChurchMap({
       <AnimatePresence mode="wait">
         {selectedChurch && (
           <motion.div
-            key={`church-detail-panel-${isMobile ? "mobile" : "desktop"}`}
+            // Stable key — remounting on isMobile used to flash the whole map
+            // whenever a window resize crossed the breakpoint.
+            key="church-detail-panel"
             className={`overflow-hidden absolute z-40 ${
               isMobile ? "bottom-0 left-0 right-0" : "top-0 right-0 bottom-0"
             }`}
@@ -1113,6 +1179,8 @@ type LocalState = {
   showNationalReviewModal: boolean;
   pendingReviewCount: number;
   nationalReviewStats: NationalReviewStatsResponse | null;
+  /** Country/WORLD key the current nationalReviewStats were fetched for. */
+  nationalReviewStatsKey: string | null;
   nationalReviewStatsLoading: boolean;
   forceEditForm: boolean;
   showAbout: boolean;
@@ -1151,6 +1219,8 @@ function MapArea({
   navigateToCounty,
   navigateToStateOnly,
   routeStateAbbrev,
+  routeChurchShortId,
+  routeLegacyChurchId,
   routeCountyFips,
   viewLevel,
   countryCode,
@@ -1171,7 +1241,9 @@ function MapArea({
   onShowVerification,
   onShowNationalReviewModal,
   pendingReviewCount,
+  pendingReviewPercentage,
   nationalReviewStats,
+  nationalReviewStatsKey,
   nationalReviewStatsLoading,
   showAbout,
   onDismissAbout,
@@ -1228,6 +1300,8 @@ function MapArea({
   navigateToCounty: (stateAbbrev: string, countyFips: string) => void;
   navigateToStateOnly: (stateAbbrev: string) => void;
   routeStateAbbrev: string | null;
+  routeChurchShortId: string | null;
+  routeLegacyChurchId: string | null;
   routeCountyFips: string | null;
   viewLevel: "world" | "country" | "region";
   countryCode: string;
@@ -1248,7 +1322,10 @@ function MapArea({
   onShowVerification: () => void;
   onShowNationalReviewModal: () => void;
   pendingReviewCount: number;
+  pendingReviewPercentage: number;
   nationalReviewStats: NationalReviewStatsResponse | null;
+  /** Country/WORLD key the current nationalReviewStats were fetched for. */
+  nationalReviewStatsKey: string | null;
   nationalReviewStatsLoading: boolean;
   showAbout: boolean;
   onDismissAbout: () => void;
@@ -1303,6 +1380,13 @@ function MapArea({
   ) => {
     setMapLibreBounds((prev) => (mapBoundsEqual(prev, bounds) ? prev : bounds));
   }, []);
+  // Snapshot once when the detail panel opens — don't recompute every resize
+  // pixel (that broke MapLibreCanvas memo and churned padding props).
+  const hasSelectedChurch = !!selectedChurch;
+  const mobileDetailBottomPad = useMemo(
+    () => (isMobile && hasSelectedChurch ? Math.round(window.innerHeight * 0.55) : 0),
+    [isMobile, hasSelectedChurch],
+  );
   const isWorld = viewLevel === "world";
   const isIntl = !isWorld && countryCode !== "US";
   const countryCfg = getCountry(countryCode);
@@ -1369,11 +1453,25 @@ function MapArea({
     : null;
   // Keep "Loading churches…" until region data is on the map — not merely until
   // the network call ends — so the pill covers the paint/settle gap.
+  // Church deep-links: stay loading while fetch runs, or while a prior selection
+  // still mismatches the URL (don't flash the previous state's count / review %).
+  const churchRouteKey = routeChurchShortId ?? routeLegacyChurchId ?? null;
+  const churchRoutePending =
+    !!churchRouteKey &&
+    !!routeStateAbbrev &&
+    countryCode === "US" &&
+    (d.loading ||
+      d.populating ||
+      (!!selectedChurch &&
+        !churchMatchesRouteSegment(selectedChurch, churchRouteKey, routeStateAbbrev)));
   const headerLoading = isWorld
     ? worldLoading
     : routeStateAbbrev
       ? (countryCode === "US"
-          ? (d.loading || d.populating || d.focusedState !== routeStateAbbrev)
+          ? (d.loading ||
+            d.populating ||
+            d.focusedState !== routeStateAbbrev ||
+            churchRoutePending)
           : (intlChurchesLoading || (intlRegions.length === 0 && intlRegionsLoading)))
       : (isIntl ? intlRegionsLoading : d.states.length === 0);
 
@@ -1452,7 +1550,9 @@ function MapArea({
                 }
                 showSummary={d.showSummary}
                 pendingReviewCount={pendingReviewCount}
+                pendingReviewPercentage={pendingReviewPercentage}
                 nationalReviewStats={nationalReviewStats}
+                nationalReviewStatsKey={nationalReviewStatsKey}
                 nationalReviewStatsLoading={nationalReviewStatsLoading}
                 onShowVerification={onShowVerification}
                 onShowNationalReviewModal={onShowNationalReviewModal}
@@ -1589,9 +1689,7 @@ function MapArea({
         onMoveEnd={handleMapMoveEnd}
         // On mobile the detail panel covers the bottom 55vh, so keep that much
         // clear of the camera and the pin stays visible above it.
-        bottomPadding={
-          isMobile && selectedChurch ? Math.round(window.innerHeight * 0.55) : 0
-        }
+        bottomPadding={mobileDetailBottomPad}
         rightPadding={!isMobile && selectedChurch ? DETAIL_PANEL_WIDTH : 0}
         viewLevel={viewLevel}
         countryCode={countryCode}
@@ -1946,8 +2044,9 @@ function HeaderPill({
   placeLabel,
   showReviewPercentage,
   showSummary,
-  pendingReviewCount,
+  pendingReviewPercentage = 0,
   nationalReviewStats,
+  nationalReviewStatsKey = null,
   nationalReviewStatsLoading,
   onShowVerification,
   onShowNationalReviewModal,
@@ -1966,8 +2065,11 @@ function HeaderPill({
   /** Show national/world % needing review under the pill. Defaults to country view (no region focus). */
   showReviewPercentage?: boolean;
   showSummary: boolean;
-  pendingReviewCount: number;
+  /** Region/county need-review share (0–100). */
+  pendingReviewPercentage?: number;
   nationalReviewStats: NationalReviewStatsResponse | null;
+  /** Scope key for nationalReviewStats; must match WORLD or countryCode to show %. */
+  nationalReviewStatsKey?: string | null;
   nationalReviewStatsLoading: boolean;
   onShowVerification: () => void;
   onShowNationalReviewModal: () => void;
@@ -1997,9 +2099,13 @@ function HeaderPill({
     return () => window.clearTimeout(t);
   }, [loading]);
 
+  const expectedReviewStatsKey = placeLabel === "the world" ? "WORLD" : countryCode;
+  const nationalStatsMatch =
+    nationalReviewStats != null && nationalReviewStatsKey === expectedReviewStatsKey;
   const nationalReviewPercentage = nationalReviewStats?.percentage ?? 0;
+  const showLocalReviewRow = !!focusedState;
   const showNationalReviewRow =
-    (showReviewPercentage ?? (!focusedState && !placeLabel)) && !showLoading;
+    (showReviewPercentage ?? (!focusedState && !placeLabel)) && !focusedState;
   const countryLabel = placeLabel ?? getCountry(countryCode)?.name ?? countryCode;
   const readyCount = focusedState
     ? `${filteredCount.toLocaleString()} churches*`
@@ -2062,14 +2168,26 @@ function HeaderPill({
         />
       </div>
 
-      {/* Review row — state view: count; national view: percentage */}
-      {focusedState && pendingReviewCount > 0 && (
+      {/* Review row — hide stale percentages while the main count is still loading */}
+      {showLocalReviewRow && (
         <div
-          onClick={(e) => { e.stopPropagation(); onShowVerification(); }}
-          className="flex items-center justify-center gap-1.5 w-full min-w-0 px-5 pb-1.5 -mt-1.5 hover:opacity-80 transition-opacity"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!showLoading) onShowVerification();
+          }}
+          className={`flex items-center justify-center gap-1.5 w-full min-w-0 px-5 pb-1.5 -mt-1.5 transition-opacity ${
+            showLoading ? "opacity-70 cursor-default" : "hover:opacity-80"
+          }`}
         >
-          <span className="text-pink-300 text-[11px] font-medium min-w-0 truncate">
-            {pendingReviewCount.toLocaleString()} need review
+          <span className="text-pink-300 text-[11px] font-medium min-w-0 truncate inline-flex items-center gap-1">
+            {showLoading ? (
+              <>
+                <ThreeDotLoader size={10} className="bg-pink-300" />
+                <span>need review</span>
+              </>
+            ) : (
+              `${pendingReviewPercentage}% need review`
+            )}
           </span>
         </div>
       )}
@@ -2079,11 +2197,11 @@ function HeaderPill({
           className="flex items-center justify-center gap-1.5 w-full min-w-0 px-5 pb-1.5 -mt-1.5 hover:opacity-80 transition-opacity"
         >
           <span className="text-pink-300 text-[11px] font-medium min-w-0 truncate inline-flex items-center gap-1">
-            {nationalReviewStatsLoading
-              ? <><ThreeDotLoader /> <span>of them need reviewed</span></>
-              : nationalReviewStats !== null
-                ? `${nationalReviewPercentage}% of them need reviewed`
-                : "—% of them need reviewed"}
+            {nationalStatsMatch
+              ? <span>{nationalReviewPercentage}% need review</span>
+              : nationalReviewStatsLoading
+                ? <><ThreeDotLoader size={10} className="bg-pink-300" /> <span>need review</span></>
+                : "—% need review"}
           </span>
         </div>
       )}

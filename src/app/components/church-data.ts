@@ -68,16 +68,9 @@ export interface StateInfo {
   isPopulated: boolean;
 }
 
-// ── Completeness tiers (tier 1 = critical for "needs review") ──
+// ── Completeness: name + meaningful street address (map-verifiable) ──
 
-/** Tier 1: address, serviceTimes, denomination. "Needs review" when 2+ are missing. */
-const TIER1_DENOM_EMPTY_VALUES = ["", "Unknown", "Other"];
-
-function isDenominationMissing(denomination: string | undefined): boolean {
-  return !denomination || TIER1_DENOM_EMPTY_VALUES.includes(denomination.trim());
-}
-
-/** Placeholder service-time values that don't count as "has service times". */
+/** Placeholder service-time values that don't count as "has service times" (verified-map mode). */
 const TIER1_SERVICE_TIMES_EMPTY_VALUES = [
   "",
   "unknown",
@@ -112,6 +105,17 @@ function isAddressMeaningful(
   const cityState = [cityNorm, stateNorm].filter(Boolean).join(", ");
   if (cityState && aNorm === cityState) return false;
   return true;
+}
+
+/** Phone with at least 10 digits. Keep in sync with `hasPhoneField` on the server. */
+export function hasUsablePhone(phone: string | undefined): boolean {
+  const digits = (phone || "").replace(/\D/g, "");
+  return digits.length >= 10;
+}
+
+/** Non-empty email string. */
+export function hasUsableEmail(email: string | undefined): boolean {
+  return !!(email || "").trim();
 }
 
 /**
@@ -195,34 +199,14 @@ export function formatAddressWithCity(address?: string | null, city?: string | n
 }
 
 export interface Tier1Completeness {
+  missingName: boolean;
   missingAddress: boolean;
-  missingServiceTimes: boolean;
-  missingDenomination: boolean;
-  missingCount: number;
+  missingWebsite: boolean;
+  missingPhone: boolean;
+  missingEmail: boolean;
+  /** True when website, phone, and email are all missing. */
+  missingContactMethod: boolean;
   needsReview: boolean;
-}
-
-/**
- * Returns tier-1 completeness for a church. "Needs review" when 2+ of
- * address, service times, denomination are missing (denom treated as missing if Unknown/Other).
- */
-export function getTier1Completeness(church: Church): Tier1Completeness {
-  const missingAddress = !isAddressMeaningful(church.address, church.city, church.state);
-  const missingServiceTimes = isServiceTimesMissing(church.serviceTimes);
-  const missingDenomination = isDenominationMissing(church.denomination);
-  const missingCount = [missingAddress, missingServiceTimes, missingDenomination].filter(Boolean).length;
-  return {
-    missingAddress,
-    missingServiceTimes,
-    missingDenomination,
-    missingCount,
-    needsReview: missingCount >= 2,
-  };
-}
-
-/** True if church should appear in "need review" list (missing 2+ of address, service times, denomination). */
-export function churchNeedsReview(church: Church): boolean {
-  return getTier1Completeness(church).needsReview;
 }
 
 /**
@@ -235,6 +219,37 @@ export function hasUsableWebsite(website: string | undefined): boolean {
   return (
     /^https?:\/\//i.test(w) || /^www\./i.test(w) || (/\./.test(w) && w.length > 4)
   );
+}
+
+export function hasUsableName(name: string | undefined): boolean {
+  return !!(name || "").trim();
+}
+
+/**
+ * Complete when: name + meaningful street address (verifiable on the map).
+ * Contact fields are tracked for UI/reports but do not gate needs-review.
+ */
+export function getTier1Completeness(church: Church): Tier1Completeness {
+  const missingName = !hasUsableName(church.name);
+  const missingAddress = !isAddressMeaningful(church.address, church.city, church.state);
+  const missingWebsite = !hasUsableWebsite(church.website);
+  const missingPhone = !hasUsablePhone(church.phone);
+  const missingEmail = !hasUsableEmail(church.email);
+  const missingContactMethod = missingWebsite && missingPhone && missingEmail;
+  return {
+    missingName,
+    missingAddress,
+    missingWebsite,
+    missingPhone,
+    missingEmail,
+    missingContactMethod,
+    needsReview: missingName || missingAddress,
+  };
+}
+
+/** True if church should appear in "need review" list. */
+export function churchNeedsReview(church: Church): boolean {
+  return getTier1Completeness(church).needsReview;
 }
 
 /** Verified-map mode: meaningful address, non-placeholder service times, usable website (denomination not required). */

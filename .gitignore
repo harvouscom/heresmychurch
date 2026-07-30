@@ -2,3 +2,11 @@ node_modules
 
 # Local Netlify folder
 .netlify
+
+# Google Places enrich drip resume cursor
+scripts/.enrich-google-progress.json
+
+# Generated at prebuild/postbuild (can be ~40MB+ of church URLs)
+public/sitemaps/
+dist/sitemaps/
+dist/metro/

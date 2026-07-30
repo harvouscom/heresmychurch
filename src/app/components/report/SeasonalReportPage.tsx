@@ -563,7 +563,7 @@ function DataQualityBreakdownTable({
         {kind === "county" ? "Counties needing the most review" : "States needing the most review"}
       </h3>
       <p className="text-pretty mb-4 text-sm text-stone-700/70">
-        Share of listings missing two or more core fields (address, website, service times, denomination). Sorted with highest gap first — a roadmap for contributors.
+        Share of listings missing name, address, or all of website/email/phone. Sorted with highest gap first — a roadmap for contributors.
       </p>
       <div className="max-h-[min(420px,55vh)] overflow-auto rounded-xl border border-stone-200/60">
         <table className="w-full text-sm">
@@ -1645,7 +1645,7 @@ export function SeasonalReportPage() {
                   label="Still Need Review"
                   sub={`${dq.totalNeedsReview.toLocaleString()} churches`}
                   color="pink"
-                  hint="Missing 2+ of: address, website, service times, denomination"
+                  hint="Missing name, address, or website/email/phone"
                 />
               </div>
 
@@ -1775,14 +1775,14 @@ export function SeasonalReportPage() {
                   label="Need More Data"
                   sub={`${dq.totalNeedsReview.toLocaleString()} churches`}
                   color="pink"
-                  hint="Missing 2+ core fields — you can help fix this"
+                  hint="Missing name, address, or website/email/phone — you can help fix this"
                 />
                 <StatCard
                   value={`${(100 - dq.pctNeedsReview).toFixed(1)}%`}
                   label="Have Core Info"
-                  sub="Address + website + service times + denomination"
+                  sub="Name + street address"
                   color="pink"
-                  hint="Has at least 3 of these 4 fields filled in"
+                  hint="Has name, address, and at least one contact method"
                 />
               </div>
               {(dq.pctWithWebsite != null ||
@@ -1929,7 +1929,7 @@ export function SeasonalReportPage() {
                 />
               </div>
               <Insight eyebrow="The Gap" color="pink">
-                Our data quality goal is ambitious: a complete address, website, service times, and denomination for every church. Right now {dq.pctNeedsReview}% of churches are missing 2 or more of these — and that&apos;s where you come in.
+                Our data quality goal: every church should have a name and a street address so seekers can find it on the map. Right now {dq.pctNeedsReview}% still need review — and that&apos;s where you come in.
               </Insight>
             </Section>)}
 

@@ -1,1 +1,0 @@
-import{k as t,v as e}from"./index-yRYjnxVu.js";function i(){return t.useEffect(()=>{window.location.replace("/US?verified=1")},[]),e.jsx("div",{className:"min-h-screen bg-background",children:e.jsx("div",{className:"mx-auto max-w-3xl px-6 py-10 text-sm text-stone-500",children:"Redirecting to the verified Easter map…"})})}export{i as Easter2026EntryRedirect};

@@ -12,6 +12,8 @@ import { RootLayout } from "./RootLayout";
 // Legacy (redirected in ChurchMapPage + Netlify):
 //   /state/:abbrev…  → /US/:abbrev…
 //   /country/:cc…    → /:cc…
+// /metro                       → U.S. metro directory index (SEO)
+// /metro/:slug                 → Metro church list + filters (SEO)
 // /reports                     → Index of seasonal reports
 // /report/:slug…               → US national seasonal report
 // /report/:countryCode/:slug…  → Country / WORLD seasonal report (ISO CC or WORLD)
@@ -52,6 +54,20 @@ export const router = createBrowserRouter([
         path: "/privacy",
         lazy: async () => ({
           Component: (await import("./components/report/PrivacyPolicyPage")).PrivacyPolicyPage,
+        }),
+        ErrorBoundary: RouteError,
+      },
+      {
+        path: "/metro",
+        lazy: async () => ({
+          Component: (await import("./components/metro/MetroIndexPage")).MetroIndexPage,
+        }),
+        ErrorBoundary: RouteError,
+      },
+      {
+        path: "/metro/:slug",
+        lazy: async () => ({
+          Component: (await import("./components/metro/MetroPage")).MetroPage,
         }),
         ErrorBoundary: RouteError,
       },

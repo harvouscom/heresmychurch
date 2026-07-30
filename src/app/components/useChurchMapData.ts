@@ -27,6 +27,7 @@ import {
   setNavigationChurchPreload,
 } from "./church-navigation-preload";
 import { getRegion } from "../config/countries";
+import { syncChurchDocumentSeo } from "../lib/church-seo";
 import {
   buildAdmin2Stats,
   filterChurchesToAdmin2,
@@ -294,20 +295,18 @@ export function useChurchMapData({
 
     console.log(`[ChurchMap] Loading state: ${stateAbbrev} (${stateInfo.name}) [v${version}]`);
 
-    setFocusedState(null);
-    setFocusedStateName("");
+    // Keep the target region focused (so the pill/map don't flash national /
+    // a previous state) but clear churches until the fetch finishes.
+    setFocusedState(stateAbbrev);
+    setFocusedStateName(stateInfo.name);
     setChurches([]);
     setSelectedChurch(null);
     setLoadingStateName(stateInfo.name);
-    refs.current.pendingTransition = {
-      abbrev: stateAbbrev,
-      name: stateInfo.name,
-      lat: stateInfo.lat,
-      lng: stateInfo.lng,
-      churches: [],
-    };
+    refs.current.pendingTransition = null;
     setLoading(true);
+    setPopulating(false);
     setError(null);
+    moveToView([stateInfo.lng, stateInfo.lat], getStateZoom(stateAbbrev));
 
     try {
       const data = await fetchChurches(stateAbbrev);
@@ -322,6 +321,7 @@ export function useChurchMapData({
 
         if (isTruncated) {
           console.log(`${stateInfo.name} has exactly 2000 churches (likely truncated) -- refreshing...`);
+          setChurches(filtered);
           setLoading(false);
           setPopulating(true);
 
@@ -332,34 +332,28 @@ export function useChurchMapData({
               const freshData = await fetchChurches(stateAbbrev);
               if (isStale()) return;
               if (freshData.churches && freshData.churches.length > 0) {
-                const freshFiltered = filterToStatePolygon(freshData.churches, stateAbbrev, refs.current.stateFeatures);
-                if (refs.current.pendingTransition?.abbrev === stateAbbrev) {
-                  refs.current.pendingTransition.churches = freshFiltered;
-                }
+                setChurches(
+                  filterToStatePolygon(freshData.churches, stateAbbrev, refs.current.stateFeatures),
+                );
               }
               const statesData = await fetchStates();
               if (!isStale()) {
                 setStates(statesData.states);
                 setTotalChurches(statesData.totalChurches);
               }
-            } else {
-              if (refs.current.pendingTransition?.abbrev === stateAbbrev) {
-                refs.current.pendingTransition.churches = filtered;
-              }
             }
           } catch (refreshErr) {
             console.warn(`Background refresh failed for ${stateInfo.name}:`, refreshErr);
-            if (!isStale() && refs.current.pendingTransition?.abbrev === stateAbbrev) {
-              refs.current.pendingTransition.churches = filtered;
-            }
           } finally {
-            if (!isStale()) setPopulating(false);
+            if (!isStale()) {
+              setPopulating(false);
+              setLoadingStateName("");
+            }
           }
         } else {
-          if (refs.current.pendingTransition?.abbrev === stateAbbrev) {
-            refs.current.pendingTransition.churches = filtered;
-          }
+          setChurches(filtered);
           setLoading(false);
+          setLoadingStateName("");
         }
         return;
       }
@@ -372,10 +366,6 @@ export function useChurchMapData({
       if (isStale()) return;
       if (result.error) {
         setError(result.error);
-        setFocusedState(stateAbbrev);
-        setFocusedStateName(stateInfo.name);
-        moveToView([stateInfo.lng, stateInfo.lat], getStateZoom(stateAbbrev));
-        refs.current.pendingTransition = null;
         setLoadingStateName("");
         overlay.setForceLoadingVisible(false);
         setPopulating(false);
@@ -384,10 +374,9 @@ export function useChurchMapData({
 
       const freshData = await fetchChurches(stateAbbrev);
       if (isStale()) return;
-      const freshFiltered = filterToStatePolygon(freshData.churches || [], stateAbbrev, refs.current.stateFeatures);
-      if (refs.current.pendingTransition?.abbrev === stateAbbrev) {
-        refs.current.pendingTransition.churches = freshFiltered;
-      }
+      setChurches(
+        filterToStatePolygon(freshData.churches || [], stateAbbrev, refs.current.stateFeatures),
+      );
 
       const statesData = await fetchStates();
       if (!isStale()) {
@@ -400,16 +389,13 @@ export function useChurchMapData({
       setError(
         `Failed to load churches for ${stateInfo.name}. This might be due to API rate limits -- try again in a moment.`
       );
-      setFocusedState(stateAbbrev);
-      setFocusedStateName(stateInfo.name);
-      moveToView([stateInfo.lng, stateInfo.lat], getStateZoom(stateAbbrev));
-      refs.current.pendingTransition = null;
       setLoadingStateName("");
       overlay.setForceLoadingVisible(false);
     } finally {
       if (!isStale()) {
         setLoading(false);
         setPopulating(false);
+        setLoadingStateName("");
       }
     }
   };
@@ -532,15 +518,20 @@ export function useChurchMapData({
     const version = ++refs.current.loadVersion;
     const isStale = () => refs.current.loadVersion !== version;
 
-    console.log(`[ChurchMap] Church page load (silent): ${stateAbbrev} / ${churchId} [v${version}]`);
+    console.log(`[ChurchMap] Church page load: ${stateAbbrev} / ${churchId} [v${version}]`);
 
     refs.current.churchLookupTriedKey = null;
+    // Keep place name on the pill, but clear stale churches + mark loading so we
+    // don't flash the previous state's count / review % while fetching.
     setFocusedState(stateAbbrev);
     setFocusedStateName(stateInfo.name);
+    setChurches([]);
     setSelectedChurch(null);
     setError(null);
+    setLoading(true);
+    setPopulating(false);
     refs.current.pendingTransition = null;
-    setLoadingStateName("");
+    setLoadingStateName(stateInfo.name);
     overlay.setForceLoadingVisible(false);
     moveToView([stateInfo.lng, stateInfo.lat], getStateZoom(stateAbbrev));
 
@@ -577,8 +568,14 @@ export function useChurchMapData({
           }
         }
 
+        if (!isStale()) {
+          setLoading(false);
+          setLoadingStateName("");
+        }
+
         if (data.churches.length === 2000) {
           try {
+            setPopulating(true);
             const result = await populateState(stateAbbrev, true);
             if (isStale()) return;
             if (!result.error) {
@@ -606,12 +603,15 @@ export function useChurchMapData({
             }
           } catch (e) {
             console.warn(`Background refresh failed for ${stateAbbrev}:`, e);
+          } finally {
+            if (!isStale()) setPopulating(false);
           }
         }
         return;
       }
 
       setPopulating(true);
+      setLoading(false);
       setLoadingStateName(stateInfo.name);
       try {
         const result = await populateState(stateAbbrev);
@@ -662,7 +662,11 @@ export function useChurchMapData({
           );
         }
       } finally {
-        if (!isStale()) setPopulating(false);
+        if (!isStale()) {
+          setPopulating(false);
+          setLoading(false);
+          setLoadingStateName("");
+        }
       }
     } catch (err) {
       if (isStale()) return;
@@ -672,6 +676,7 @@ export function useChurchMapData({
       );
       setLoading(false);
       setPopulating(false);
+      setLoadingStateName("");
     }
   };
 
@@ -1006,67 +1011,23 @@ export function useChurchMapData({
     }
   }, [routeCountyFips, routeChurchShortId, routeLegacyChurchId, focusedState, countyFeatures, states, selectedChurch]);
 
-  // Re-center map when isMobile changes while viewing a church
-  const prevIsMobileRef = useRef(isMobile);
-  useEffect(() => {
-    if (prevIsMobileRef.current === isMobile) return;
-    prevIsMobileRef.current = isMobile;
-    if (!selectedChurch) return;
-    if (isMobile) {
-      setCenter([selectedChurch.lng, selectedChurch.lat - getMobileLatOffset(zoom)]);
-    } else {
-      setCenter([selectedChurch.lng, selectedChurch.lat]);
-    }
-  }, [isMobile]);
+  // Mobile/desktop camera offset is owned by MapLibreCanvas padding now.
+  // Recenter-on-isMobile used to fly the camera (and flash the map) whenever a
+  // window resize crossed the breakpoint.
 
-  // Update page title
+  // Update page title + church JSON-LD / OG meta (US map path)
   useEffect(() => {
     if (selectedChurch) {
-      document.title = `${selectedChurch.name} -- ${selectedChurch.city || selectedChurch.state} | Here's My Church`;
-    } else if (focusedState && focusedStateName) {
-      document.title = `Churches in ${focusedStateName} | Here's My Church`;
+      syncChurchDocumentSeo(selectedChurch, selectedChurch.country || "US");
     } else {
-      document.title = "Here's My Church";
+      syncChurchDocumentSeo(null);
+      if (focusedState && focusedStateName) {
+        document.title = `Churches in ${focusedStateName} | Here's My Church`;
+      } else {
+        document.title = "Here's My Church";
+      }
     }
   }, [selectedChurch, focusedState, focusedStateName]);
-
-  // Inject or remove JSON-LD for selected church (SEO / rich results)
-  const CHURCH_JSONLD_ID = "church-jsonld";
-  useEffect(() => {
-    let el = document.getElementById(CHURCH_JSONLD_ID) as HTMLScriptElement | null;
-    if (selectedChurch && focusedState) {
-      const url = `https://heresmychurch.com/US/${focusedState}/${getChurchUrlSegment(selectedChurch, focusedState)}`;
-      const address =
-        selectedChurch.address
-          ? { "@type": "PostalAddress" as const, streetAddress: selectedChurch.address, addressLocality: selectedChurch.city || undefined, addressRegion: selectedChurch.state || undefined }
-          : { "@type": "PostalAddress" as const, addressLocality: selectedChurch.city || undefined, addressRegion: selectedChurch.state || undefined };
-      const payload: Record<string, unknown> = {
-        "@context": "https://schema.org",
-        "@type": "Place",
-        name: selectedChurch.name,
-        address,
-        geo: {
-          "@type": "GeoCoordinates",
-          latitude: selectedChurch.lat,
-          longitude: selectedChurch.lng,
-        },
-        url,
-      };
-      if (selectedChurch.website) payload.sameAs = selectedChurch.website;
-      const json = JSON.stringify(payload);
-      if (el) {
-        el.textContent = json;
-      } else {
-        el = document.createElement("script");
-        el.id = CHURCH_JSONLD_ID;
-        el.type = "application/ld+json";
-        el.textContent = json;
-        document.head.appendChild(el);
-      }
-    } else {
-      el?.remove();
-    }
-  }, [selectedChurch, focusedState]);
 
   // ── Plain handler functions (no useCallback — only used from return object) ──
   const handlePopulate = async () => {
