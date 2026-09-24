@@ -1157,6 +1157,10 @@ function parsePartnerSince(raw:string):{ok:true;iso:string}|{ok:false;error:stri
   if(now-ms>PARTNER_CHANGES_MAX_LOOKBACK_MS){
     return{ok:false,error:"since cannot be older than 30 days"};
   }
+  // Pass a validated ISO string through untouched. `created_at` has microseconds and
+  // `nextSince` echoes them back; rebuilding from ms truncated .181494 to .181, so
+  // `created_at > since` kept returning the cursor row itself and the feed never advanced.
+  if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:?\d{2})$/.test(s))return{ok:true,iso:s};
   return{ok:true,iso:new Date(ms).toISOString()};
 }
 
