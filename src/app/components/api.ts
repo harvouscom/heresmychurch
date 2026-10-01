@@ -18,23 +18,33 @@ async function fetchWithTimeout(
   url: string,
   options: RequestInit & { timeoutMs?: number } = {}
 ): Promise<Response> {
-  const { timeoutMs = 30000, ...fetchOpts } = options;
+  const { timeoutMs = 30000, signal: callerSignal, ...fetchOpts } = options;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  // Propagate caller cancellation (e.g. a superseded search) to this request.
+  const onCallerAbort = () => controller.abort();
+  if (callerSignal) {
+    if (callerSignal.aborted) controller.abort();
+    else callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+  }
   try {
     const res = await fetch(url, { ...fetchOpts, signal: controller.signal });
     return res;
   } catch (err: any) {
+    if (callerSignal?.aborted) throw err;
     if (err.name === "AbortError") {
       throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
     }
     throw err;
   } finally {
     clearTimeout(timer);
+    callerSignal?.removeEventListener("abort", onCallerAbort);
   }
 }
 
-// Retry wrapper for network-level failures (TypeError: Failed to fetch)
+// Retry wrapper for fast network-level failures (TypeError: Failed to fetch).
+// Timeouts are NOT retried: the aborted request keeps running on the server,
+// so retrying a slow endpoint only multiplies load on an already-slow backend.
 async function fetchWithRetry(
   url: string,
   options: RequestInit & { timeoutMs?: number } = {},
@@ -46,12 +56,12 @@ async function fetchWithRetry(
       return await fetchWithTimeout(url, options);
     } catch (err: any) {
       lastError = err;
+      if (options.signal?.aborted) throw err;
       const isNetworkError =
         err instanceof TypeError ||
-        err.message?.includes("timed out") ||
         err.message?.includes("Failed to fetch");
       if (!isNetworkError || attempt === maxRetries) throw err;
-      const waitMs = (attempt + 1) * 3000;
+      const waitMs = (attempt + 1) * 1000;
       console.warn(
         `Network error on attempt ${attempt + 1}/${maxRetries + 1} for ${url}: ${err.message}. Retrying in ${waitMs / 1000}s...`
       );
@@ -167,7 +177,19 @@ export interface SubmitSuggestionResponse {
   needsModeration?: boolean;
 }
 
-export async function fetchStates(): Promise<StatesResponse> {
+// Many callers request states concurrently on load; share one in-flight request.
+let statesInFlight: Promise<StatesResponse> | null = null;
+
+export function fetchStates(): Promise<StatesResponse> {
+  if (!statesInFlight) {
+    statesInFlight = fetchStatesOnce().finally(() => {
+      statesInFlight = null;
+    });
+  }
+  return statesInFlight;
+}
+
+async function fetchStatesOnce(): Promise<StatesResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/churches/states`, { headers, timeoutMs: 15000 });
   if (!res.ok) {
     const text = await res.text();
@@ -671,6 +693,7 @@ export async function searchChurches(
   state?: string,
   priorityStates?: string[],
   country?: string,
+  signal?: AbortSignal,
 ): Promise<SearchResponse> {
   let url = `${BASE_URL}/churches/search?q=${encodeURIComponent(query)}&limit=${limit}`;
   if (country) url += `&country=${encodeURIComponent(country.toUpperCase())}`;
@@ -679,7 +702,7 @@ export async function searchChurches(
   } else if (state) {
     url += `&state=${encodeURIComponent(state.toUpperCase())}`;
   }
-  const res = await fetchWithRetry(url, { headers, timeoutMs: 15000 });
+  const res = await fetchWithRetry(url, { headers, timeoutMs: 15000, signal });
   if (!res.ok) {
     const text = await res.text();
     console.error("Error searching churches:", text);
