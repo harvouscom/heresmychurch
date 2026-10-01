@@ -27,6 +27,9 @@ import {
   setChurches,
   delChurches,
   getSidx,
+  getSidxCached,
+  getSidxMany,
+  getChurchesCached,
   setSidx,
   delSidx,
   getPending,
@@ -42,6 +45,7 @@ import {
   regionFromChurchId,
   parseMetaCountKey,
 } from "./church-keys.ts";
+import { searchTable, setSearchTableReady, syncSearchRegion } from "./search-table.ts";
 
 // ── State data ──
 interface SI{a:string;n:string;la:number;lo:number;}
@@ -573,7 +577,7 @@ function addShortIds(ch:any[],st:string):any[]{return ch.map((c:any)=>({...c,sho
 
 // ── Search index (include shortId so search returns unique segment per church) ──
 function buildIdx(ch:any[]){return ch.map((c:any)=>({id:c.id,shortId:c.shortId,n:c.name||"",c:c.city||"",d:c.denomination||"",a:c.attendance||0,ad:c.address||"",la:c.lat||0,lo:c.lng||0,w:c.website||"",st:c.serviceTimes||"",p:c.phone||"",e:c.email||""}));}
-async function writeIdx(st:string,ch:any[]){await setSidx(st,buildIdx(ch));await persistStateReviewStats(st,ch);}
+async function writeIdx(st:string,ch:any[]){const idx=buildIdx(ch);await setSidx(st,idx);await syncSearchRegion(regionCountry(st),st,idx);await persistStateReviewStats(st,ch);}
 
 // Preserve user/community-submitted fields when overwriting cache (populate force, refresh-attendance).
 const USER_FIELDS_TO_PRESERVE=["shortId","homeCampusId","website","serviceTimes","languages","ministries","pastorName","phone","email","lastVerified","buildingSqft","listingStatus","relocatedFrom","relocatedTo"] as const;
@@ -745,13 +749,13 @@ async function loadStateSearchItems(st:string):Promise<{items:any[];isIdx:boolea
   const realSt=normalizePartnerState(st);
   try{
     // Prefer namespaced dual-read helpers (churches:sidx:US:TX → legacy churches:sidx:TX).
-    const idxKey=await getSidx(realSt);
+    const idxKey=await getSidxCached(realSt);
     if(Array.isArray(idxKey)&&idxKey.length)return{items:idxKey,isIdx:true};
     // DC folded into MD for API; also try DC key if MD empty
     if(realSt==="MD"){
-      const dcIdx=await getSidx("DC","US");
+      const dcIdx=await getSidxCached("DC","US");
       if(Array.isArray(dcIdx)&&dcIdx.length){
-        const mdRaw=await getChurches("MD","US");
+        const mdRaw=await getChurchesCached("MD","US");
         const md=Array.isArray(mdRaw)?mdRaw:[];
         if(md.length){
           const withShort=addShortIdsUnique(md,"MD");
@@ -759,10 +763,10 @@ async function loadStateSearchItems(st:string):Promise<{items:any[];isIdx:boolea
         }
       }
     }
-    const raw=await getChurches(realSt);
+    const raw=await getChurchesCached(realSt);
     if(Array.isArray(raw)&&raw.length)return{items:raw,isIdx:false};
     if(realSt==="MD"){
-      const dc=await getChurches("DC","US");
+      const dc=await getChurchesCached("DC","US");
       if(Array.isArray(dc)&&dc.length)return{items:dc.map((x:any)=>({...x,state:"MD"})),isIdx:false};
     }
   }catch(_){}
@@ -781,15 +785,16 @@ async function searchChurchesInState(qRaw:string,st:string,limit:number):Promise
   if(realSt==="MD"&&isIdx){
     // Merge DC index entries into MD search when using sidx
     try{
-      const dcIdx=await getSidx("DC","US");
+      const dcIdx=await getSidxCached("DC","US");
       if(Array.isArray(dcIdx)&&dcIdx.length)items=items.concat(dcIdx);
     }catch(_){}
   }else if(realSt==="MD"&&!isIdx){
     try{
-      const dc=await getChurches("DC","US");
+      const dc=await getChurchesCached("DC","US");
       if(Array.isArray(dc)&&dc.length){
+        // Copy: items may be a shared cached array.
         const ids=new Set(items.map((c:any)=>c.id));
-        for(const x of dc)if(!ids.has(x.id))items.push({...x,state:"MD"});
+        items=items.concat(dc.filter((x:any)=>!ids.has(x.id)).map((x:any)=>({...x,state:"MD"})));
       }
     }catch(_){}
   }
@@ -879,6 +884,8 @@ app.get(`${P}/churches/states`,async(c)=>{
     const dc=getCount(sc,"DC","US");if(dc){setCount(sc,"MD",getCount(sc,"MD","US")+dc,"US");deleteCount(sc,"DC","US");}
     // Count only US states. stateCounts may hold non-US regions under "CA:PE" etc.
     const states=US.map(s=>{const n=getCount(sc,s.a,"US");return{abbrev:s.a,name:s.n,lat:s.la,lng:s.lo,churchCount:n,isPopulated:!!n};});
+    // Counts change only on populate/add; let browsers reuse a recent copy and refresh in the background.
+    c.header("Cache-Control","public, max-age=60, stale-while-revalidate=600");
     return c.json({states,totalChurches:states.reduce((a,s)=>a+s.churchCount,0),populatedStates:states.filter(s=>s.isPopulated).length});
   }catch(e){return c.json({states:[],totalChurches:0,populatedStates:0,error:`${e}`},500);}
 });
@@ -1019,23 +1026,38 @@ app.get(`${P}/churches/search`,async(c)=>{
     const candidates:Array<{score:number,id:string,shortId:string,name:string,city:string,state:string,country:string,denomination:string,attendance:number,lat:number,lng:number,address:string,locationLabel:string}>=[];
     const seen=new Set<string>();
     let idx=0;
-    for(const st of exp){
+    const scoreQ=search.length<tokens.length?search.join(" "):q;
+    const searchTokens=tokenizeSearchText(scoreQ);
+    // Load indexes in batched chunks (one round trip per chunk, cached per isolate)
+    // instead of one sequential read per region.
+    const SIDX_CHUNK=8;
+    let chunkStart=-1,chunkVals:any[]=[];
+    // Indexed Postgres search when available: only matching rows come back,
+    // grouped by region and fed through the same scoring loop below.
+    const tableHits=searchTokens.length?await searchTable(searchTokens,exp):null;
+    for(let si=0;si<exp.length;si++){
+      const st=exp[si];
       if(candidates.length>=COLLECT_CAP)break;
       const realSt=st==="DC"?"MD":st;
       const resultCc=regionCountry(realSt);
       let items:any[]=null;
       try{
-        const idxKey=await getSidx(st);
+        if(tableHits){items=tableHits.get(st)??null;}
+        else{
+        if(chunkStart<0||si>=chunkStart+SIDX_CHUNK){
+          chunkStart=si;
+          chunkVals=await getSidxMany(exp.slice(si,si+SIDX_CHUNK));
+        }
+        const idxKey=chunkVals[si-chunkStart];
         if(Array.isArray(idxKey)&&idxKey.length){items=idxKey;}
         else{
-          const raw=await getChurches(st);
+          const raw=await getChurchesCached(st);
           if(Array.isArray(raw)&&raw.length)items=raw;
+        }
         }
       }catch(_){}
       if(!Array.isArray(items)){idx++;continue;}
       const isIdx=items.length>0&&items[0]?.n!==undefined;
-      const scoreQ=search.length<tokens.length?search.join(" "):q;
-      const searchTokens=tokenizeSearchText(scoreQ);
       for(const e of items){
         if(candidates.length>=COLLECT_CAP)break;
         const n=isIdx?e.n:(e.name||""),ci=isIdx?e.c:(e.city||""),d=isIdx?e.d:(e.denomination||""),ad=isIdx?e.ad:(e.address||"");
@@ -1283,17 +1305,24 @@ function mergeCorrectionsIntoChurches(churches:any[],corrections:Record<string,R
 async function getGoogleEnrichmentsForChurches(churches:any[]):Promise<Record<string,GoogleEnrichment>>{
   const ids=churches.map((c:any)=>c?.id).filter((id:unknown):id is string=>typeof id==="string"&&!!id);
   const out:Record<string,GoogleEnrichment>={};
-  const BATCH=100;
-  for(let i=0;i<ids.length;i+=BATCH){
-    const batch=ids.slice(i,i+BATCH);
-    const vals=await kv.mget(batch.map(googleEnrichmentKey));
-    for(let j=0;j<batch.length;j++){
-      const v=vals[j];
-      if(v&&typeof v==="object"&&(v as GoogleEnrichment).placeId&&(v as GoogleEnrichment).confidence==="high"){
-        out[batch[j]]=v as GoogleEnrichment;
+  const BATCH=100,CONCURRENCY=4;
+  const batches:string[][]=[];
+  for(let i=0;i<ids.length;i+=BATCH)batches.push(ids.slice(i,i+BATCH));
+  // Run a few mgets at a time rather than strictly one after another.
+  let next=0;
+  const worker=async()=>{
+    while(next<batches.length){
+      const batch=batches[next++];
+      const vals=await kv.mget(batch.map(googleEnrichmentKey));
+      for(let j=0;j<batch.length;j++){
+        const v=vals[j];
+        if(v&&typeof v==="object"&&(v as GoogleEnrichment).placeId&&(v as GoogleEnrichment).confidence==="high"){
+          out[batch[j]]=v as GoogleEnrichment;
+        }
       }
     }
-  }
+  };
+  await Promise.all(Array.from({length:Math.min(CONCURRENCY,batches.length)},worker));
   return out;
 }
 
@@ -1341,16 +1370,23 @@ async function findChurchLeanById(id:string):Promise<LeanChurchRef|null>{
   const decoded=decodeURIComponent(id);
   const parsed=stateFromChurchId(decoded);
   const st=parsed?normalizePartnerState(parsed):null;
+  let triedSt:string|null=null;
   if(st&&gS(st)){
-    let ch=await getChurches(st);
+    let ch=await getChurchesCached(st);
     if(st==="MD"){
-      if(!Array.isArray(ch))ch=[];
-      try{const dc=await getChurches("DC","US");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));for(const x of dc)if(!ids.has(x.id))ch.push({...x,state:"MD"});}}catch(_){}
+      ch=Array.isArray(ch)?ch:[];
+      // Copy before merging DC: ch is a shared cached array.
+      try{const dc=await getChurchesCached("DC","US");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));ch=ch.concat(dc.filter((x:any)=>!ids.has(x.id)).map((x:any)=>({...x,state:"MD"})));}}catch(_){}
     }
     if(Array.isArray(ch)&&ch.length){
-      const withShort=addShortIdsUnique(ch,st);
-      const church=withShort.find((c:any)=>c.id===decoded);
-      if(church)return toLeanChurchRef(church,st,false);
+      // Assign short ids across the full list (uniqueness), but only when the id is present.
+      if(ch.some((c:any)=>c.id===decoded)){
+        const withShort=addShortIdsUnique(ch,st);
+        const church=withShort.find((c:any)=>c.id===decoded);
+        if(church)return toLeanChurchRef(church,st,false);
+      }
+      // Parsed state was authoritative and loaded: don't re-read it in the fallback scan.
+      triedSt=st;
     }
   }
   // Fallback: scan populated states (rare / legacy ids)
@@ -1360,7 +1396,8 @@ async function findChurchLeanById(id:string):Promise<LeanChurchRef|null>{
     const parsedKey=parseMetaCountKey(s);
     const realSt=normalizePartnerState(parsedKey.abbrev);
     if(st&&realSt!==st)continue;
-    const ch=await getChurches(realSt,parsedKey.cc);
+    if(triedSt&&realSt===triedSt&&parsedKey.cc===regionCountry(triedSt))continue;
+    const ch=await getChurchesCached(realSt,parsedKey.cc);
     if(!Array.isArray(ch)||!ch.length)continue;
     if(!ch.some((c:any)=>c.id===decoded))continue;
     const withShort=addShortIdsUnique(ch,realSt);
@@ -1377,7 +1414,7 @@ async function resolveHomeCampus(churches:any[],currentState:string):Promise<voi
     const hid=(ch as any).homeCampusId;if(!hid||typeof hid!=="string")continue;
     const otherSt=stateFromChurchId(hid);if(!otherSt||otherSt===currentState)continue;
     if(!getCount(stateCounts,otherSt))continue;
-    const otherCh=await getChurches(otherSt);if(!Array.isArray(otherCh))continue;
+    const otherCh=await getChurchesCached(otherSt);if(!Array.isArray(otherCh))continue;
     const main=otherCh.find((c:any)=>c.id===hid);if(!main){continue;}
     const shortId=toShortId(main.id,main.state||otherSt,main.shortId);
     (ch as any).homeCampus={id:main.id,name:main.name||"Unknown",state:otherSt,shortId};
@@ -1558,23 +1595,48 @@ async function computeReviewStats(cc="US"):Promise<{states:Record<string,StateRe
 }
 
 const REVIEW_STATS_TTL=30*60_000; // 30 minutes
+const REVIEW_STATS_INLINE_WAIT_MS=8_000;
+const EMPTY_REVIEW_STATS={states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingWebsite:0,missingPhone:0,missingEmail:0};
+// One recompute per country per isolate: concurrent stale/cold requests share it
+// instead of each kicking off a full scan.
+const reviewStatsInFlight=new Map<string,Promise<Awaited<ReturnType<typeof computeReviewStats>>>>();
+function refreshReviewStats(cc:string){
+  let p=reviewStatsInFlight.get(cc);
+  if(!p){
+    p=computeReviewStats(cc).then(async(result)=>{
+      try{await kv.set(reviewStatsCacheKey(cc),{...result,_cachedAt:Date.now()});}catch(_){}
+      return result;
+    }).finally(()=>{reviewStatsInFlight.delete(cc);});
+    reviewStatsInFlight.set(cc,p);
+    // Keep the isolate alive for the recompute after the response is sent.
+    try{(globalThis as any).EdgeRuntime?.waitUntil?.(p.catch(()=>{}));}catch(_){}
+  }
+  return p;
+}
 app.get(`${P}/churches/review-stats`,async(c)=>{
+  const cc=String(c.req.query("country")||"US").toUpperCase();
   try{
-    const cc=String(c.req.query("country")||"US").toUpperCase();
     const cacheKey=reviewStatsCacheKey(cc);
     const cached=await kv.get(cacheKey);
     const hasCache=cached&&typeof cached==="object"&&cached.states&&cached.totalChurches!=null;
     // Treat missing/0 _cachedAt as stale (soft-invalidated) but still serveable.
     const fresh=hasCache&&typeof cached._cachedAt==="number"&&cached._cachedAt>0&&Date.now()-cached._cachedAt<REVIEW_STATS_TTL;
     if(fresh)return c.json(stripReviewStatsCache(cached));
+    const refresh=refreshReviewStats(cc);
     if(hasCache){
-      void computeReviewStats(cc).then(async(result)=>{try{await kv.set(cacheKey,{...result,_cachedAt:Date.now()});}catch(_){}}).catch(()=>{});
+      refresh.catch((e)=>console.log(`review-stats background refresh failed for ${cc}: ${e}`));
       return c.json(stripReviewStatsCache(cached));
     }
-    const result=await computeReviewStats(cc);
-    try{await kv.set(cacheKey,{...result,_cachedAt:Date.now()});}catch(_){}
-    return c.json(result);
-  }catch(e){return c.json({states:{},totalChurches:0,totalNeedsReview:0,percentage:0,missingAddress:0,missingWebsite:0,missingPhone:0,missingEmail:0,error:`${e}`},500);}
+    // Cold cache: wait briefly, otherwise return an empty payload while the compute finishes.
+    const timeout=new Promise<null>((r)=>setTimeout(()=>r(null),REVIEW_STATS_INLINE_WAIT_MS));
+    const result=await Promise.race([refresh,timeout]);
+    if(result)return c.json(result);
+    refresh.catch((e)=>console.log(`review-stats compute failed for ${cc}: ${e}`));
+    return c.json({...EMPTY_REVIEW_STATS,pending:true});
+  }catch(e){
+    console.log(`review-stats failed for ${cc}: ${e}`);
+    return c.json({...EMPTY_REVIEW_STATS,pending:true});
+  }
 });
 
 // ── Special reports ──
@@ -1840,11 +1902,47 @@ app.get(`${P}/churches/denominations/all`,async(c)=>{
 
 app.post(`${P}/churches/search/rebuild-index`,async(c)=>{
   try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     const meta=await getMeta();const ps=listPopulated(meta?.stateCounts||{});
     if(!ps.length)return c.json({message:"No states populated.",rebuilt:0});
     let n=0;for(const{cc,abbrev:s}of ps){const ch=await getChurches(s,cc);if(Array.isArray(ch)&&ch.length){await writeIdx(s,ch);n++;}}
     await invalidateReviewStatsCache();
     return c.json({message:`Rebuilt indexes for ${n} states`,rebuilt:n});
+  }catch(e){return c.json({error:`${e}`},500);}
+});
+
+// Backfill the church_search table from the KV search indexes, a few regions per
+// call (keeps each request well inside edge limits). Loop with ?offset=<next>
+// until done; pass the first call's startedAt back so a sync failure during the
+// backfill isn't masked by marking the table ready. See scripts/backfill-church-search.mjs.
+app.post(`${P}/churches/search/backfill`,async(c)=>{
+  try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    const offset=Math.max(0,parseInt(c.req.query("offset")||"0")||0);
+    const count=Math.min(Math.max(1,parseInt(c.req.query("count")||"8")||8),25);
+    const startedAt=c.req.query("startedAt")||new Date().toISOString();
+    if(offset===0)await setSearchTableReady(false,"backfill");
+    const meta=await getMeta();const ps=listPopulated(meta?.stateCounts||{});
+    const slice=ps.slice(offset,offset+count);
+    const synced:string[]=[],failed:string[]=[];
+    for(const{cc,abbrev}of slice){
+      let idx=await getSidx(abbrev,cc);
+      if(!Array.isArray(idx)||!idx.length){
+        const ch=await getChurches(abbrev,cc);
+        idx=Array.isArray(ch)?buildIdx(addShortIdsUnique(ch,abbrev)):[];
+      }
+      (await syncSearchRegion(cc,abbrev,idx)?synced:failed).push(`${cc}:${abbrev}`);
+    }
+    const next=offset+slice.length;
+    const done=next>=ps.length;
+    let ready=false;
+    if(done&&!failed.length){
+      // Only mark ready if no sync (here or from a concurrent writeIdx) failed since this backfill began.
+      const flag=await kv.get("church-search:ready");
+      const failedSince=flag&&flag.ready===false&&flag.reason==="sync-failed"&&flag.at&&flag.at>startedAt;
+      if(!failedSince){await setSearchTableReady(true);ready=true;}
+    }
+    return c.json({synced,failed,next:done?null:next,total:ps.length,startedAt,ready});
   }catch(e){return c.json({error:`${e}`},500);}
 });
 
@@ -2040,6 +2138,8 @@ app.post(`${P}/admin/enrich-google/:state`,async(c)=>{
 app.get(`${P}/population`,async(c)=>{
   try{
     const cached=await kv.get("state-populations-v1");
+    // Static census data: cache aggressively.
+    c.header("Cache-Control","public, max-age=3600, stale-while-revalidate=86400");
     if(cached){const p=typeof cached==="string"?JSON.parse(cached):cached;if(p.populations)return c.json({populations:p.populations,source:"kv-cache"});}
     await kv.set("state-populations-v1",JSON.stringify({populations:POP,fetchedAt:Date.now()}));
     return c.json({populations:POP,source:"census-2023"});

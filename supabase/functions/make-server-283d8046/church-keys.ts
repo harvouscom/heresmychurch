@@ -101,6 +101,90 @@ export function parseMetaCountKey(key: string): { cc: string; abbrev: string } {
   return { cc: regionCountry(abbrev), abbrev };
 }
 
+// ── Per-isolate read cache for large church blobs ──
+// Whole-region arrays and search indexes are multi-MB JSONB rows. Hot read
+// paths (search, partner by-id, home-campus lookups) re-read them constantly,
+// so cache them briefly in memory and share in-flight reads. Writes through
+// set*/del* below invalidate this isolate; other isolates may serve data up to
+// BLOB_TTL_MS old. Cached values are SHARED — callers must not mutate them.
+const BLOB_TTL_MS = 5 * 60_000;
+type BlobEntry = { at: number; value: Promise<any> };
+
+function makeBlobCache(maxEntries: number) {
+  const m = new Map<string, BlobEntry>();
+  return {
+    get(key: string): Promise<any> | null {
+      const e = m.get(key);
+      if (!e) return null;
+      if (Date.now() - e.at > BLOB_TTL_MS) { m.delete(key); return null; }
+      // Refresh LRU position
+      m.delete(key); m.set(key, e);
+      return e.value;
+    },
+    put(key: string, value: Promise<any>): void {
+      m.set(key, { at: Date.now(), value });
+      // Don't cache failed reads
+      value.catch(() => { if (m.get(key)?.value === value) m.delete(key); });
+      while (m.size > maxEntries) m.delete(m.keys().next().value!);
+    },
+    del(key: string): void { m.delete(key); },
+  };
+}
+
+const churchesCache = makeBlobCache(12);
+const sidxCache = makeBlobCache(120);
+
+/** Cached, read-only view of a region's church array. Do not mutate the result. */
+export function getChurchesCached(abbrev: string, cc?: string): Promise<any> {
+  const st = abbrev.toUpperCase();
+  const key = churchesKey(cc || regionCountry(st), st);
+  const hit = churchesCache.get(key);
+  if (hit) return hit;
+  const p = getChurches(st, cc);
+  churchesCache.put(key, p);
+  return p;
+}
+
+/** Cached, read-only view of a region's search index. Do not mutate the result. */
+export function getSidxCached(abbrev: string, cc?: string): Promise<any> {
+  const st = abbrev.toUpperCase();
+  const key = sidxKey(cc || regionCountry(st), st);
+  const hit = sidxCache.get(key);
+  if (hit) return hit;
+  const p = getSidx(st, cc);
+  sidxCache.put(key, p);
+  return p;
+}
+
+/**
+ * Batch-load search indexes for many regions in at most two round trips
+ * (namespaced keys, then legacy keys for misses). Results are cached and
+ * returned in input order (null when a region has no index).
+ */
+export async function getSidxMany(abbrevs: string[]): Promise<any[]> {
+  const sts = abbrevs.map((a) => a.toUpperCase());
+  const keys = sts.map((st) => sidxKey(regionCountry(st), st));
+  const out: Array<Promise<any> | null> = keys.map((k) => sidxCache.get(k));
+  const missIdx = out.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0);
+  if (missIdx.length) {
+    const load = (async () => {
+      const vals = await kv.mget(missIdx.map((i) => keys[i]));
+      const legacyIdx = missIdx.filter((_, j) => vals[j] == null);
+      if (legacyIdx.length) {
+        const legacy = await kv.mget(legacyIdx.map((i) => `churches:sidx:${sts[i]}`));
+        legacyIdx.forEach((i, j) => { vals[missIdx.indexOf(i)] = legacy[j]; });
+      }
+      return vals;
+    })();
+    missIdx.forEach((i, j) => {
+      const p = load.then((vals) => vals[j]);
+      sidxCache.put(keys[i], p);
+      out[i] = p;
+    });
+  }
+  return Promise.all(out);
+}
+
 export async function getChurches(abbrev: string, cc?: string): Promise<any> {
   const st = abbrev.toUpperCase();
   const country = (cc || regionCountry(st)).toUpperCase();
@@ -112,12 +196,15 @@ export async function getChurches(abbrev: string, cc?: string): Promise<any> {
 export async function setChurches(abbrev: string, value: any, cc?: string): Promise<void> {
   const st = abbrev.toUpperCase();
   const country = (cc || regionCountry(st)).toUpperCase();
+  churchesCache.del(churchesKey(country, st));
   await kv.set(churchesKey(country, st), value);
+  churchesCache.del(churchesKey(country, st));
 }
 
 export async function delChurches(abbrev: string, cc?: string): Promise<void> {
   const st = abbrev.toUpperCase();
   const country = (cc || regionCountry(st)).toUpperCase();
+  churchesCache.del(churchesKey(country, st));
   await kv.del(churchesKey(country, st));
   // Also clear legacy flat key if present
   try { await kv.del(`churches:${st}`); } catch { /* ignore */ }
@@ -134,12 +221,15 @@ export async function getSidx(abbrev: string, cc?: string): Promise<any> {
 export async function setSidx(abbrev: string, value: any, cc?: string): Promise<void> {
   const st = abbrev.toUpperCase();
   const country = (cc || regionCountry(st)).toUpperCase();
+  sidxCache.del(sidxKey(country, st));
   await kv.set(sidxKey(country, st), value);
+  sidxCache.del(sidxKey(country, st));
 }
 
 export async function delSidx(abbrev: string, cc?: string): Promise<void> {
   const st = abbrev.toUpperCase();
   const country = (cc || regionCountry(st)).toUpperCase();
+  sidxCache.del(sidxKey(country, st));
   await kv.del(sidxKey(country, st));
   try { await kv.del(`churches:sidx:${st}`); } catch { /* ignore */ }
 }

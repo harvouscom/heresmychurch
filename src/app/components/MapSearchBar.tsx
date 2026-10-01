@@ -325,6 +325,7 @@ export function MapSearchBar({
 
     setRemoteLoading(true);
     const version = ++searchVersionRef.current;
+    const controller = new AbortController();
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
@@ -343,11 +344,13 @@ export function MapSearchBar({
           isWorld ? undefined : (stateFilter || undefined),
           undefined,
           searchCountry,
+          controller.signal,
         );
         if (searchVersionRef.current !== version) return;
         setRemoteResults(data.results);
         setRemoteSearched(true);
       } catch (err) {
+        if (controller.signal.aborted) return;
         console.error("[MapSearchBar] Search failed:", err);
         if (searchVersionRef.current !== version) return;
         setRemoteResults([]);
@@ -361,6 +364,7 @@ export function MapSearchBar({
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      controller.abort();
     };
   }, [query, focusedState, stateFilter, countryFilter, countryCode, isWorld]);
 
