@@ -884,6 +884,8 @@ app.get(`${P}/churches/states`,async(c)=>{
     const dc=getCount(sc,"DC","US");if(dc){setCount(sc,"MD",getCount(sc,"MD","US")+dc,"US");deleteCount(sc,"DC","US");}
     // Count only US states. stateCounts may hold non-US regions under "CA:PE" etc.
     const states=US.map(s=>{const n=getCount(sc,s.a,"US");return{abbrev:s.a,name:s.n,lat:s.la,lng:s.lo,churchCount:n,isPopulated:!!n};});
+    // Counts change only on populate/add; let browsers reuse a recent copy and refresh in the background.
+    c.header("Cache-Control","public, max-age=60, stale-while-revalidate=600");
     return c.json({states,totalChurches:states.reduce((a,s)=>a+s.churchCount,0),populatedStates:states.filter(s=>s.isPopulated).length});
   }catch(e){return c.json({states:[],totalChurches:0,populatedStates:0,error:`${e}`},500);}
 });
@@ -2136,6 +2138,8 @@ app.post(`${P}/admin/enrich-google/:state`,async(c)=>{
 app.get(`${P}/population`,async(c)=>{
   try{
     const cached=await kv.get("state-populations-v1");
+    // Static census data: cache aggressively.
+    c.header("Cache-Control","public, max-age=3600, stale-while-revalidate=86400");
     if(cached){const p=typeof cached==="string"?JSON.parse(cached):cached;if(p.populations)return c.json({populations:p.populations,source:"kv-cache"});}
     await kv.set("state-populations-v1",JSON.stringify({populations:POP,fetchedAt:Date.now()}));
     return c.json({populations:POP,source:"census-2023"});

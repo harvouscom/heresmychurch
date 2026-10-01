@@ -177,6 +177,25 @@ export interface SubmitSuggestionResponse {
   needsModeration?: boolean;
 }
 
+// Last-known-good copies of rarely-changing read endpoints. When the backend is
+// slow or down, serving the previous response keeps the map usable.
+const LKG_PREFIX = "hmc:lkg:v1:";
+function lkgRead<T>(name: string): T | null {
+  try {
+    const raw = localStorage.getItem(LKG_PREFIX + name);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+function lkgWrite(name: string, value: unknown): void {
+  try {
+    localStorage.setItem(LKG_PREFIX + name, JSON.stringify(value));
+  } catch {
+    /* storage unavailable or full */
+  }
+}
+
 // Many callers request states concurrently on load; share one in-flight request.
 let statesInFlight: Promise<StatesResponse> | null = null;
 
@@ -190,19 +209,30 @@ export function fetchStates(): Promise<StatesResponse> {
 }
 
 async function fetchStatesOnce(): Promise<StatesResponse> {
-  const res = await fetchWithRetry(`${BASE_URL}/churches/states`, { headers, timeoutMs: 15000 });
-  if (!res.ok) {
-    const text = await res.text();
-    console.error("Error fetching states:", text);
-    throw new Error(`Failed to fetch states: ${res.status}`);
+  try {
+    const res = await fetchWithRetry(`${BASE_URL}/churches/states`, { headers, timeoutMs: 15000 });
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("Error fetching states:", text);
+      throw new Error(`Failed to fetch states: ${res.status}`);
+    }
+    const data = await res.json();
+    // Defensive: ensure states is always an array
+    const out: StatesResponse = {
+      states: Array.isArray(data.states) ? data.states : [],
+      totalChurches: data.totalChurches ?? 0,
+      populatedStates: data.populatedStates ?? 0,
+    };
+    if (out.states.length) lkgWrite("states", out);
+    return out;
+  } catch (err) {
+    const cached = lkgRead<StatesResponse>("states");
+    if (cached?.states?.length) {
+      console.warn("Using last-known-good states after fetch failure:", err);
+      return cached;
+    }
+    throw err;
   }
-  const data = await res.json();
-  // Defensive: ensure states is always an array
-  return {
-    states: Array.isArray(data.states) ? data.states : [],
-    totalChurches: data.totalChurches ?? 0,
-    populatedStates: data.populatedStates ?? 0,
-  };
 }
 
 export async function fetchNationalReviewStats(
@@ -853,16 +883,27 @@ export interface PopulationResponse {
 }
 
 export async function fetchStatePopulations(): Promise<PopulationResponse> {
-  const res = await fetchWithRetry(`${BASE_URL}/population`, {
-    headers,
-    timeoutMs: 15000,
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    console.error("Error fetching state populations:", text);
-    throw new Error(`Failed to fetch populations: ${res.status}`);
+  try {
+    const res = await fetchWithRetry(`${BASE_URL}/population`, {
+      headers,
+      timeoutMs: 15000,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("Error fetching state populations:", text);
+      throw new Error(`Failed to fetch populations: ${res.status}`);
+    }
+    const data: PopulationResponse = await res.json();
+    lkgWrite("populations", data);
+    return data;
+  } catch (err) {
+    const cached = lkgRead<PopulationResponse>("populations");
+    if (cached) {
+      console.warn("Using last-known-good populations after fetch failure:", err);
+      return cached;
+    }
+    throw err;
   }
-  return res.json();
 }
 
 // ── Community-managed alerts ──
