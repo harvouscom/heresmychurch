@@ -16,6 +16,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIRS = [
   join(__dirname, "../supabase/functions/make-server-283d8046"),
   join(__dirname, "../supabase/functions/server"),
+  // Bundled frontend fallback when /population is unreachable.
+  join(__dirname, "../src/app/data"),
 ];
 
 const CSV_URL =
