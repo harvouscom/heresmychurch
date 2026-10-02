@@ -1,7 +1,7 @@
 import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
-import * as kv from "./kv_store.tsx";
+import * as kv from "./kv.ts";
 import { recordChurchAudit, queryAuditRecent, queryAuditByState, queryAuditByChurch, queryAuditChangesSince } from "./audit.ts";
 import { POP } from "./state-populations.ts";
 import {
@@ -46,6 +46,7 @@ import {
   parseMetaCountKey,
 } from "./church-keys.ts";
 import { searchTable, setSearchTableReady, syncSearchRegion } from "./search-table.ts";
+import { r2Enabled, r2PutJson } from "./r2.ts";
 
 // ── State data ──
 interface SI{a:string;n:string;la:number;lo:number;}
@@ -917,15 +918,21 @@ app.get(`${P}/og-image`,async(c)=>{
   }
 });
 
+// Body of GET /churches/states; also published to R2 as states.json.
+async function buildStatesPayload(allowStale=true){
+  const meta=await getMeta(allowStale);const sc:Record<string,number>={...(meta?.stateCounts||{})};
+  const dc=getCount(sc,"DC","US");if(dc){setCount(sc,"MD",getCount(sc,"MD","US")+dc,"US");deleteCount(sc,"DC","US");}
+  // Count only US states. stateCounts may hold non-US regions under "CA:PE" etc.
+  const states=US.map(s=>{const n=getCount(sc,s.a,"US");return{abbrev:s.a,name:s.n,lat:s.la,lng:s.lo,churchCount:n,isPopulated:!!n};});
+  return{states,totalChurches:states.reduce((a,s)=>a+s.churchCount,0),populatedStates:states.filter(s=>s.isPopulated).length};
+}
+
 app.get(`${P}/churches/states`,async(c)=>{
   try{
-    const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
-    const dc=getCount(sc,"DC","US");if(dc){setCount(sc,"MD",getCount(sc,"MD","US")+dc,"US");deleteCount(sc,"DC","US");}
-    // Count only US states. stateCounts may hold non-US regions under "CA:PE" etc.
-    const states=US.map(s=>{const n=getCount(sc,s.a,"US");return{abbrev:s.a,name:s.n,lat:s.la,lng:s.lo,churchCount:n,isPopulated:!!n};});
+    const body=await buildStatesPayload();
     // Counts change only on populate/add; let browsers reuse a recent copy and refresh in the background.
     c.header("Cache-Control","public, max-age=60, stale-while-revalidate=600");
-    return c.json({states,totalChurches:states.reduce((a,s)=>a+s.churchCount,0),populatedStates:states.filter(s=>s.isPopulated).length});
+    return c.json(body);
   }catch(e){return c.json({states:[],totalChurches:0,populatedStates:0,error:`${e}`},500);}
 });
 
@@ -1798,20 +1805,30 @@ app.get(`${P}/churches/:state/church/:shortId`,async(c)=>{
   }catch(e){return c.json({church:null,error:String(e)},500);}
 });
 
+// Body of GET /churches/:state (stored list plus corrections, enrichment, calibration and
+// home campuses); also published to R2 as churches/{REGION}.json. Returns null for unknown regions.
+async function buildRegionPayload(st:string):Promise<any|null>{
+  const info=gS(st);
+  if(!info)return null;
+  const state={abbrev:info.a,name:info.n,lat:info.la,lng:info.lo};
+  let ch=await getChurches(st);
+  if(!ch||!Array.isArray(ch)||!ch.length)return{churches:[],state,fromCache:false,message:`No data for ${info.n}. POST /churches/populate/${st} to fetch.`};
+  if(st==="MD"){try{const dc=await getChurches("DC","US");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));for(const x of dc)if(!ids.has(x.id))ch.push({...x,state:"MD"});}}catch(_){}}
+  await applyCorrectionsAndGoogleEnrichment(ch,st);
+  const withShort=addShortIdsUnique(ch,st);
+  let cal=await kv.get(`calibration:${st}`);
+  if(!cal||!cal.medians){cal=await computeCalibrationForState(st,ch);try{await kv.set(`calibration:${st}`,cal);}catch(_){}}
+  if(Object.keys(cal.medians||{}).length)applyCalibrationToChurches(withShort,cal);
+  await resolveHomeCampus(withShort,st);
+  return{churches:withShort,state,count:withShort.length,fromCache:true};
+}
+
 app.get(`${P}/churches/:state`,async(c)=>{
   try{
-    const st=c.req.param("state").toUpperCase(),info=gS(st);
-    if(!info)return c.json({error:`Unknown state: ${st}`},400);
-    let ch=await getChurches(st);
-    if(!ch||!Array.isArray(ch)||!ch.length)return c.json({churches:[],state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},fromCache:false,message:`No data for ${info.n}. POST /churches/populate/${st} to fetch.`});
-    if(st==="MD"){try{const dc=await getChurches("DC","US");if(Array.isArray(dc)&&dc.length){const ids=new Set(ch.map((c:any)=>c.id));for(const x of dc)if(!ids.has(x.id))ch.push({...x,state:"MD"});}}catch(_){}}
-    await applyCorrectionsAndGoogleEnrichment(ch,st);
-    const withShort=addShortIdsUnique(ch,st);
-    let cal=await kv.get(`calibration:${st}`);
-    if(!cal||!cal.medians){cal=await computeCalibrationForState(st,ch);try{await kv.set(`calibration:${st}`,cal);}catch(_){}}
-    if(Object.keys(cal.medians||{}).length)applyCalibrationToChurches(withShort,cal);
-    await resolveHomeCampus(withShort,st);
-    return c.json({churches:withShort,state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},count:withShort.length,fromCache:true});
+    const st=c.req.param("state").toUpperCase();
+    const body=await buildRegionPayload(st);
+    if(!body)return c.json({error:`Unknown state: ${st}`},400);
+    return c.json(body);
   }catch(e){return c.json({churches:[],error:`${e}`},500);}
 });
 
@@ -5682,6 +5699,84 @@ app.post(`${P}/internal/reports/generate`,async(c)=>{
       out.results.push({scope:stateRaw,cached:r.cached,generatedAt:r.report?.generatedAt});
     }
     return c.json(out);
+  }catch(e){return c.json({error:String(e)},500);}
+});
+
+// ── Static files on Cloudflare R2 ──
+// The two hottest public reads (GET /churches/states and GET /churches/:state) are also
+// published as files on R2 behind Cloudflare's CDN, so page loads don't hit Postgres.
+// Every KV write is mapped to the files it feeds (see kv.ts) and those files are rebuilt
+// in the background. A daily full republish (POST /admin/publish-static) catches anything
+// the mapping can't see, such as home-campus summaries that read other regions.
+const STATIC_CACHE_CONTROL="public, max-age=60, stale-while-revalidate=600";
+const _publishPending=new Set<string>(); // "states" | "region:{REGION}"
+let _publishDrain:Promise<void>|null=null;
+
+function publishTargetsForKey(key:string,kind:"set"|"del"):string[]{
+  const region=(r:string|null)=>{if(!r)return[];const u=r.toUpperCase();return[`region:${u==="DC"?"MD":u}`];};
+  if(key==="churches:meta")return["states"];
+  // Whole-region church lists: churches:{CC}:{REGION} and legacy churches:{REGION}.
+  // Lowercase segments (sidx, meta, review-stats) don't match.
+  const m=key.match(/^churches:(?:[A-Z]{2}:)?([A-Z][A-Z0-9]+)$/);
+  if(m)return region(m[1]);
+  if(key.startsWith("suggestions:"))return region(regionFromChurchId(key.slice("suggestions:".length)));
+  if(key.startsWith("enrichment:google:"))return region(regionFromChurchId(key.slice("enrichment:google:".length)));
+  // Calibration is written by the region build itself on a cache miss; only a delete means it changed.
+  if(kind==="del"&&key.startsWith("calibration:"))return region(key.slice("calibration:".length));
+  return[];
+}
+
+kv.onKvWrite((keys,kind)=>{
+  if(!r2Enabled())return;
+  for(const k of keys)for(const t of publishTargetsForKey(k,kind))schedulePublish(t);
+});
+
+function schedulePublish(target:string){
+  _publishPending.add(target);
+  if(_publishDrain)return;
+  _publishDrain=drainPublishQueue().finally(()=>{
+    _publishDrain=null;
+    // A target queued between the loop ending and this callback would otherwise wait for the next write.
+    if(_publishPending.size){const[t]=_publishPending;_publishPending.delete(t);schedulePublish(t);}
+  });
+  try{(globalThis as any).EdgeRuntime?.waitUntil?.(_publishDrain.catch(()=>{}));}catch(_){}
+}
+
+async function drainPublishQueue(){
+  // Let a burst of writes (e.g. setChurches + writeIdx + meta) settle into one rebuild per file.
+  await new Promise(r=>setTimeout(r,1500));
+  while(_publishPending.size){
+    const[t]=_publishPending;_publishPending.delete(t);
+    try{await publishTarget(t);}catch(e){console.error(`publish ${t} failed:`,e);}
+  }
+}
+
+async function publishTarget(target:string){
+  if(target==="states"){
+    await r2PutJson("states.json",await buildStatesPayload(false),STATIC_CACHE_CONTROL);
+    return;
+  }
+  const st=target.slice("region:".length);
+  const body=await buildRegionPayload(st);
+  if(!body)return;
+  await r2PutJson(`churches/${st}.json`,body,STATIC_CACHE_CONTROL);
+}
+
+// Full republish, a few regions per call (each region build reads its whole list from Postgres).
+// Loop with ?offset=<next> until next is null. See scripts/publish-static.mjs.
+app.post(`${P}/admin/publish-static`,async(c)=>{
+  try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(!r2Enabled())return c.json({error:"R2 is not configured (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET)"},400);
+    const offset=Math.max(0,parseInt(c.req.query("offset")||"0",10)||0);
+    const limit=Math.min(10,Math.max(1,parseInt(c.req.query("limit")||"3",10)||3));
+    const meta=await getMeta(false);
+    const regions=[...new Set(listPopulated(meta?.stateCounts||{}).map(p=>p.abbrev==="DC"?"MD":p.abbrev))].sort();
+    const published:string[]=[];const failed:{target:string;error:string}[]=[];
+    const targets=[...(offset===0?["states"]:[]),...regions.slice(offset,offset+limit).map(r=>`region:${r}`)];
+    for(const t of targets){try{await publishTarget(t);published.push(t);}catch(e){failed.push({target:t,error:String(e)});}}
+    const next=offset+limit<regions.length?offset+limit:null;
+    return c.json({published,failed,next,total:regions.length});
   }catch(e){return c.json({error:String(e)},500);}
 });
 
