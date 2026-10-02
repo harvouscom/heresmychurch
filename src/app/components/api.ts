@@ -8,6 +8,35 @@ const BASE_URL = import.meta.env.DEV
   ? "/functions/v1/make-server-283d8046"
   : `https://${projectId}.supabase.co/functions/v1/make-server-283d8046`;
 
+/**
+ * Public static copies of hot read endpoints, published to Cloudflare R2 by the edge
+ * function (states.json, churches/{REGION}.json). Empty disables them (dev, or before
+ * the bucket exists); every static read falls back to the API.
+ */
+const DATA_BASE_URL = ((import.meta.env.VITE_HMC_DATA_BASE_URL as string | undefined) || "").replace(/\/$/, "");
+
+// Static files lag writes by a few seconds plus CDN cache time. After this tab writes,
+// read from the API for a while so people see their own change immediately.
+const STATIC_BYPASS_AFTER_WRITE_MS = 2 * 60 * 1000;
+let staticBypassUntil = 0;
+function markDataWritten(): void {
+  staticBypassUntil = Date.now() + STATIC_BYPASS_AFTER_WRITE_MS;
+}
+
+/** Fetch a published static JSON file, or null to fall back to the API. Never throws. */
+async function fetchStatic<T>(path: string, timeoutMs = 8000): Promise<T | null> {
+  if (!DATA_BASE_URL || Date.now() < staticBypassUntil) return null;
+  try {
+    // No auth headers: keeps this a simple CORS request (no preflight) and CDN-cacheable.
+    const res = await fetchWithTimeout(`${DATA_BASE_URL}/${path}`, { timeoutMs });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch (err) {
+    console.warn(`Static ${path} unavailable, using API:`, err);
+    return null;
+  }
+}
+
 const headers = {
   "Content-Type": "application/json",
   Authorization: `Bearer ${publicAnonKey}`,
@@ -213,13 +242,16 @@ export function fetchStates(): Promise<StatesResponse> {
 
 async function fetchStatesOnce(): Promise<StatesResponse> {
   try {
-    const res = await fetchWithRetry(`${BASE_URL}/churches/states`, { headers, timeoutMs: 8000 });
-    if (!res.ok) {
-      const text = await res.text();
-      console.error("Error fetching states:", text);
-      throw new Error(`Failed to fetch states: ${res.status}`);
+    let data: any = await fetchStatic("states.json");
+    if (!data?.states?.length) {
+      const res = await fetchWithRetry(`${BASE_URL}/churches/states`, { headers, timeoutMs: 8000 });
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("Error fetching states:", text);
+        throw new Error(`Failed to fetch states: ${res.status}`);
+      }
+      data = await res.json();
     }
-    const data = await res.json();
     // Defensive: ensure states is always an array
     const out: StatesResponse = {
       states: Array.isArray(data.states) ? data.states : [],
@@ -333,16 +365,21 @@ export async function fetchCountries(): Promise<{ countries: CountrySummary[]; t
 export async function fetchChurches(
   stateAbbrev: string
 ): Promise<ChurchesResponse> {
-  const res = await fetchWithRetry(
-    `${BASE_URL}/churches/${stateAbbrev.toUpperCase()}`,
-    { headers, timeoutMs: 30000 }
-  );
-  if (!res.ok) {
-    const text = await res.text();
-    console.error(`Error fetching churches for ${stateAbbrev}:`, text);
-    throw new Error(`Failed to fetch churches: ${res.status}`);
+  const region = stateAbbrev.toUpperCase();
+  // Large states are several MB; allow longer than the default static timeout.
+  let data: any = await fetchStatic(`churches/${encodeURIComponent(region)}.json`, 20000);
+  if (!Array.isArray(data?.churches)) {
+    const res = await fetchWithRetry(
+      `${BASE_URL}/churches/${region}`,
+      { headers, timeoutMs: 30000 }
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(`Error fetching churches for ${stateAbbrev}:`, text);
+      throw new Error(`Failed to fetch churches: ${res.status}`);
+    }
+    data = await res.json();
   }
-  const data = await res.json();
   // Defensive: ensure churches is always an array
   return {
     churches: Array.isArray(data.churches) ? data.churches : [],
@@ -405,6 +442,7 @@ export async function populateState(
   stateAbbrev: string,
   force: boolean = false
 ): Promise<PopulateResponse> {
+  markDataWritten();
   const url = `${BASE_URL}/churches/populate/${stateAbbrev.toUpperCase()}${force ? "?force=true" : ""}`;
   // Population can take a very long time for large states (4 quadrant queries)
   const res = await fetchWithRetry(url, {
@@ -494,6 +532,7 @@ export async function submitSuggestion(
   field: "name" | "website" | "address" | "reportClosed" | "reportDuplicate" | "reportOutOfScope" | "reportRelocated" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email" | "homeCampusId",
   value: string
 ): Promise<SubmitSuggestionResponse> {
+  markDataWritten();
   const res = await fetchWithRetry(`${BASE_URL}/suggestions`, {
     method: "POST",
     headers,
@@ -622,6 +661,7 @@ export async function addChurch(data: {
   /** Set true after the user confirms this is not one of the similar matches. */
   confirmAdd?: boolean;
 }): Promise<AddChurchResponse> {
+  markDataWritten();
   const res = await fetchWithRetry(`${BASE_URL}/churches/add`, {
     method: "POST",
     headers,
@@ -784,6 +824,7 @@ export interface CorrectionHistoryEntry {
 }
 
 export async function confirmChurchData(churchId: string): Promise<{ success: boolean; alreadyConfirmed?: boolean; totalConfirmations?: number }> {
+  markDataWritten();
   const res = await fetchWithRetry(`${BASE_URL}/churches/confirm/${encodeURIComponent(churchId)}`, {
     method: "POST",
     headers,
