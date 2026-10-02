@@ -1869,6 +1869,14 @@ async function finalizePopulate(st:string,ch:any[],ex:any,force:boolean){
 // see a half-populated state.
 const STAGE=(st:string)=>`populate:staging:${st}`;
 
+// Unauthenticated populate guard (see the populate route). 2000 matches the
+// truncation check in useChurchMapData; 160s outlives Supabase's 150s kill so
+// a crashed run releases the in-flight lock on its own.
+const POPULATE_LOCK=(st:string)=>`populate:lock:${st}`;
+const POPULATE_TRUNCATED_COUNT=2000;
+const POPULATE_INFLIGHT_MS=160*1000;
+const POPULATE_COOLDOWN_MS=30*60*1000;
+
 function parseBbox(s:string|undefined):[number,number,number,number]|null{
   if(!s)return null;
   const p=s.split(",").map(Number);
@@ -1880,6 +1888,7 @@ function parseBbox(s:string|undefined):[number,number,number,number]|null{
 
 app.post(`${P}/churches/populate-cell/:state`,async(c)=>{
   try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     const st=c.req.param("state").toUpperCase(),info=gS(st);
     if(!info)return c.json({error:`Unknown state: ${st}`},400);
     const bbox=parseBbox(c.req.query("bbox"));
@@ -1904,6 +1913,7 @@ app.post(`${P}/churches/populate-cell/:state`,async(c)=>{
 
 app.post(`${P}/churches/populate-finalize/:state`,async(c)=>{
   try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     const st=c.req.param("state").toUpperCase(),info=gS(st);
     if(!info)return c.json({error:`Unknown state: ${st}`},400);
     const staged=await kv.get(STAGE(st));
@@ -1922,9 +1932,30 @@ app.post(`${P}/churches/populate/:state`,async(c)=>{
     const force=c.req.query("force")==="true";
     const ex=await getChurches(st);
     if(!force&&Array.isArray(ex)&&ex.length)return c.json({message:`${info.n} already has ${ex.length} churches.`,count:ex.length,alreadyCached:true});
+    // Public callers get exactly what the map auto-populates: an empty region,
+    // or a force refresh of one stuck at the old 2000-result truncation. Each
+    // region is then locked so a loop can't re-run Overpass and rewrite the
+    // blob — a region costs at most one fetch per cooldown.
+    const isMod=checkModKey(c);
+    if(!isMod){
+      if(force&&!(Array.isArray(ex)&&ex.length===POPULATE_TRUNCATED_COUNT))return c.json({error:"Force refresh requires the moderator key"},403);
+      const lock=await kv.get(POPULATE_LOCK(st));
+      const now=Date.now();
+      if(lock?.finishedAt&&now-lock.finishedAt<POPULATE_COOLDOWN_MS)return c.json({error:`${info.n} was populated recently. Try again later.`},429);
+      if(lock?.startedAt&&!lock.finishedAt&&now-lock.startedAt<POPULATE_INFLIGHT_MS)return c.json({error:`${info.n} is already being populated. Try again shortly.`},429);
+    }
+    await kv.set(POPULATE_LOCK(st),{startedAt:Date.now()});
     console.log(`Populating ${info.n}${force?" (force)":""}...`);
-    const ch=await fetchCh(st);
-    const r=await finalizePopulate(st,ch,ex,force);
+    let r;
+    try{
+      const ch=await fetchCh(st);
+      r=await finalizePopulate(st,ch,ex,force);
+    }catch(e){
+      // A failed run shouldn't block the next visitor's retry for the full cooldown.
+      try{await kv.del(POPULATE_LOCK(st));}catch(_){}
+      throw e;
+    }
+    await kv.set(POPULATE_LOCK(st),{startedAt:Date.now(),finishedAt:Date.now()});
     return c.json({message:`Populated ${r.count} churches for ${info.n}`,count:r.count,communityPreserved:r.communityPreserved,state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},ardaEnriched:r.ardaEnriched});
   }catch(e){console.log(`Populate error:${e}`);return c.json({error:`${e}`},500);}
 });
@@ -1987,6 +2018,7 @@ app.post(`${P}/churches/search/backfill`,async(c)=>{
 
 app.post(`${P}/admin/refresh-attendance`,async(c)=>{
   try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     const stateParam=(c.req.query("state")||"").toUpperCase().trim();
     const meta=await getMeta(false);const populated=listPopulated(meta?.stateCounts||{});
     if(!populated.length)return c.json({message:"No states populated. Use POST /churches/populate/:state first.",refreshed:0});
@@ -2024,6 +2056,7 @@ app.post(`${P}/admin/refresh-attendance`,async(c)=>{
  */
 app.post(`${P}/admin/enrich-google/:state`,async(c)=>{
   try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     const st=c.req.param("state").toUpperCase(),info=gS(st);
     if(!info)return c.json({error:`Unknown state: ${st}`},400);
     const apiKey=(Deno.env.get("GOOGLE_MAPS_API_KEY")||"").trim();
@@ -2184,6 +2217,7 @@ app.get(`${P}/population`,async(c)=>{
 
 app.post(`${P}/admin/cleanup-dc`,async(c)=>{
   try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     let d=0;for(const k of["churches:DC","churches:sidx:DC","churches:US:DC","churches:sidx:US:DC"]){if(await kv.get(k)){await kv.del(k);d++;}}
     const meta=await getMeta(false);if(meta?.stateCounts){const before=Object.keys(meta.stateCounts).length;deleteCount(meta.stateCounts,"DC","US");if(Object.keys(meta.stateCounts).length!==before){await kv.set("churches:meta",meta);invalidateMetaCache();d++;}}
     if(d>0){void recordChurchAudit({state:"DC",action:"dc_removed",new_value:{deleted:d},source:"admin_dc_remove",actor_type:"system"});}
@@ -2194,6 +2228,7 @@ app.post(`${P}/admin/cleanup-dc`,async(c)=>{
 
 app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
   try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     const meta=await getMeta(false);const sc:Record<string,number>={...(meta?.stateCounts||{})};
     const populated=listPopulated(sc);
     if(!populated.length)return c.json({message:"No states populated.",cleaned:0});
@@ -2220,6 +2255,7 @@ app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
 
 app.post(`${P}/admin/migrate-denominations`,async(c)=>{
   try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     const meta=await getMeta(false);
     const allPop=listPopulated(meta?.stateCounts||{});
     if(!allPop.length)return c.json({message:"No states populated.",updatedStates:0,updatedChurches:0});
@@ -2261,6 +2297,7 @@ app.post(`${P}/admin/migrate-denominations`,async(c)=>{
 
 app.post(`${P}/admin/remove-churches-by-name`,async(c)=>{
   try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     const b=await c.req.json().catch(()=>({}));
     const name=typeof b?.name==="string"?b.name.trim():"";
     if(!name)return c.json({error:"Body must include { name: \"Church Name\" }"},400);
@@ -2301,6 +2338,12 @@ const THR=1;
 const ALERT_THR=3;
 const ADD_CHURCH_RATE_LIMIT=5;
 const ADD_CHURCH_WINDOW_MS=15*60*1000;
+// Each first-of-the-day confirm can rewrite a whole region blob, so cap how
+// many distinct churches one IP can confirm, and skip the rewrite when the
+// church was verified recently (lastVerified is display-only at this grain).
+const CONFIRM_RATE_LIMIT=30;
+const CONFIRM_WINDOW_MS=15*60*1000;
+const CONFIRM_REWRITE_MIN_MS=60*60*1000;
 const SENSITIVE_FIELDS=["name","website","address","reportClosed","reportDuplicate","reportOutOfScope","reportRelocated","homeCampusId"];
 const REMOVAL_REPORT_FIELDS=new Set(["reportClosed","reportDuplicate","reportOutOfScope"]);
 const TRANSFERRED_ON_RELOCATE=["website","serviceTimes","languages","ministries","pastorName","phone","email"] as const;
@@ -2631,8 +2674,10 @@ async function confirmChurchCore(opts:{churchId:string;actorKey:string;auditSour
   if(Array.isArray(churches)){
     const ch=churches.find((x:any)=>x.id===churchId);
     if(ch){
-      ch.lastVerified=Date.now();
-      await setChurches(st,churches);
+      if(!(typeof ch.lastVerified==="number"&&Date.now()-ch.lastVerified<CONFIRM_REWRITE_MIN_MS)){
+        ch.lastVerified=Date.now();
+        await setChurches(st,churches);
+      }
       void recordChurchAudit({church_id:churchId,church_name:ch.name,church_city_state:[ch.city,ch.state].filter(Boolean).join(", "),state:st,action:"church_confirmed",source:auditSource},{hashIp:actorKey});
     }
   }
@@ -2895,6 +2940,12 @@ app.post(`${P}/churches/verify/:pendingId`,async(c)=>{
 app.post(`${P}/churches/confirm/:churchId`,async(c)=>{
   try{
     const ip=cip(c);const churchId=c.req.param("churchId");
+    const rlKey=`ratelimit:confirm:${ip}`;
+    const raw=await kv.get(rlKey);
+    const now=Date.now();
+    const data=(!raw||(now-(raw.windowStart||0))>CONFIRM_WINDOW_MS)?{count:1,windowStart:now}:{count:(raw.count||0)+1,windowStart:raw.windowStart||now};
+    if(data.count>CONFIRM_RATE_LIMIT)return c.json({error:"Too many confirmations. Please try again later."},429);
+    await kv.set(rlKey,data);
     const result=await confirmChurchCore({churchId,actorKey:ip,auditSource:"confirm"});
     if(!result.ok)return c.json({error:result.error},result.status);
     if(result.alreadyConfirmed)return c.json({success:true,alreadyConfirmed:true});
@@ -4298,6 +4349,7 @@ app.post(`${P}/twitter/admin/reset`,async(c)=>{
 // ── One-time migration: apply all pending corrections & merge pending churches ──
 app.post(`${P}/migrate/apply-pending`,async(c)=>{
   try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     let correctionsApplied=0,churchesMerged=0;
     // 1. Apply all pending corrections (skip sensitive fields — those need moderator approval)
     const allSuggestions=await kv.getByPrefix("suggestions:");
