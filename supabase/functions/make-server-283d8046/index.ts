@@ -850,8 +850,47 @@ const P="/make-server-283d8046";
 // ── In-memory cache for churches:meta (read on nearly every endpoint, changes rarely) ──
 let _metaCache:{data:any;ts:number}|null=null;
 const META_TTL=60_000; // 60s
-async function getMeta(){if(_metaCache&&Date.now()-_metaCache.ts<META_TTL)return _metaCache.data;const m=await kv.get("churches:meta");_metaCache={data:m,ts:Date.now()};return m;}
-function invalidateMetaCache(){_metaCache=null;}
+const META_FETCH_TIMEOUT=4_000;
+const META_FAIL_BACKOFF=30_000;
+let _metaFailUntil=0;
+let _metaReadInFlight:Promise<any>|null=null;
+function readMetaForReaders(){
+  // Concurrent readers share one DB read, so a recovering DB isn't hit by a burst.
+  if(!_metaReadInFlight){
+    let timer:number|undefined;
+    _metaReadInFlight=Promise.race([
+      kv.get("churches:meta"),
+      new Promise<never>((_,rej)=>{timer=setTimeout(()=>rej(new Error("churches:meta read timed out")),META_FETCH_TIMEOUT);}),
+    ]).then(
+      (m)=>{_metaCache={data:m,ts:Date.now()};_metaFailUntil=0;return m;},
+      (e)=>{_metaFailUntil=Date.now()+META_FAIL_BACKOFF;throw e;},
+    ).finally(()=>{clearTimeout(timer);_metaReadInFlight=null;});
+  }
+  return _metaReadInFlight;
+}
+// When the DB is slow or down, readers get the last good copy instead of failing every endpoint,
+// and skip the DB entirely for META_FAIL_BACKOFF after a failed read.
+// Writers (read-modify-write of churches:meta) pass allowStale=false: they always read fresh and
+// never write back stale counts.
+async function getMeta(allowStale=true){
+  if(_metaCache&&Date.now()-_metaCache.ts<META_TTL)return _metaCache.data;
+  if(!allowStale){
+    const m=await kv.get("churches:meta");
+    _metaCache={data:m,ts:Date.now()};_metaFailUntil=0;return m;
+  }
+  if(Date.now()<_metaFailUntil){
+    if(_metaCache)return _metaCache.data;
+    throw new Error("churches:meta unavailable (backing off after failed read)");
+  }
+  try{
+    return await readMetaForReaders();
+  }catch(e){
+    if(_metaCache){console.warn("getMeta: serving stale meta:",e);return _metaCache.data;}
+    throw e;
+  }
+}
+// Expire rather than drop, so a stale copy survives as a fallback if the next read fails.
+function invalidateMetaCache(){if(_metaCache)_metaCache.ts=0;}
 
 app.get(`${P}/health`,(c)=>c.json({status:"ok",v:6}));
 
@@ -1815,7 +1854,7 @@ async function finalizePopulate(st:string,ch:any[],ex:any,force:boolean){
   const chWithShort=addShortIdsUnique(ch,st);
   await setChurches(st,chWithShort);await writeIdx(st,chWithShort);
   void recordChurchAudit({state:st,action:"state_populated",old_value:Array.isArray(ex)?{churchCount:ex.length}:undefined,new_value:{churchCount:ch.length},source:"populate",actor_type:"system"});
-  const meta=(await getMeta())||{stateCounts:{}};meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,ch.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();
+  const meta=(await getMeta(false))||{stateCounts:{}};meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,ch.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();
   await invalidateReviewStatsCache();
   return{count:ch.length,communityPreserved,ardaEnriched};
 }
@@ -1949,7 +1988,7 @@ app.post(`${P}/churches/search/backfill`,async(c)=>{
 app.post(`${P}/admin/refresh-attendance`,async(c)=>{
   try{
     const stateParam=(c.req.query("state")||"").toUpperCase().trim();
-    const meta=await getMeta();const populated=listPopulated(meta?.stateCounts||{});
+    const meta=await getMeta(false);const populated=listPopulated(meta?.stateCounts||{});
     if(!populated.length)return c.json({message:"No states populated. Use POST /churches/populate/:state first.",refreshed:0});
     const states=stateParam?populated.filter(p=>p.abbrev===stateParam):populated;
     let refreshed=0;
@@ -2137,11 +2176,8 @@ app.post(`${P}/admin/enrich-google/:state`,async(c)=>{
 
 app.get(`${P}/population`,async(c)=>{
   try{
-    const cached=await kv.get("state-populations-v1");
-    // Static census data: cache aggressively.
+    // Static census data bundled with the function: no DB read, cache aggressively.
     c.header("Cache-Control","public, max-age=3600, stale-while-revalidate=86400");
-    if(cached){const p=typeof cached==="string"?JSON.parse(cached):cached;if(p.populations)return c.json({populations:p.populations,source:"kv-cache"});}
-    await kv.set("state-populations-v1",JSON.stringify({populations:POP,fetchedAt:Date.now()}));
     return c.json({populations:POP,source:"census-2023"});
   }catch(e){return c.json({populations:POP,source:"fallback"});}
 });
@@ -2149,7 +2185,7 @@ app.get(`${P}/population`,async(c)=>{
 app.post(`${P}/admin/cleanup-dc`,async(c)=>{
   try{
     let d=0;for(const k of["churches:DC","churches:sidx:DC","churches:US:DC","churches:sidx:US:DC"]){if(await kv.get(k)){await kv.del(k);d++;}}
-    const meta=await getMeta();if(meta?.stateCounts){const before=Object.keys(meta.stateCounts).length;deleteCount(meta.stateCounts,"DC","US");if(Object.keys(meta.stateCounts).length!==before){await kv.set("churches:meta",meta);invalidateMetaCache();d++;}}
+    const meta=await getMeta(false);if(meta?.stateCounts){const before=Object.keys(meta.stateCounts).length;deleteCount(meta.stateCounts,"DC","US");if(Object.keys(meta.stateCounts).length!==before){await kv.set("churches:meta",meta);invalidateMetaCache();d++;}}
     if(d>0){void recordChurchAudit({state:"DC",action:"dc_removed",new_value:{deleted:d},source:"admin_dc_remove",actor_type:"system"});}
     await invalidateReviewStatsCache();
     return c.json({message:`DC cleanup done. ${d} removed.`,deleted:d});
@@ -2158,7 +2194,7 @@ app.post(`${P}/admin/cleanup-dc`,async(c)=>{
 
 app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
   try{
-    const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
+    const meta=await getMeta(false);const sc:Record<string,number>={...(meta?.stateCounts||{})};
     const populated=listPopulated(sc);
     if(!populated.length)return c.json({message:"No states populated.",cleaned:0});
     let cleanedStates=0,removedTotal=0;
@@ -2184,7 +2220,7 @@ app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
 
 app.post(`${P}/admin/migrate-denominations`,async(c)=>{
   try{
-    const meta=await getMeta();
+    const meta=await getMeta(false);
     const allPop=listPopulated(meta?.stateCounts||{});
     if(!allPop.length)return c.json({message:"No states populated.",updatedStates:0,updatedChurches:0});
     const stateParam=(c.req.query("state")||"").toUpperCase().trim();
@@ -2228,7 +2264,7 @@ app.post(`${P}/admin/remove-churches-by-name`,async(c)=>{
     const b=await c.req.json().catch(()=>({}));
     const name=typeof b?.name==="string"?b.name.trim():"";
     if(!name)return c.json({error:"Body must include { name: \"Church Name\" }"},400);
-    const meta=await getMeta();const sc:Record<string,number>={...(meta?.stateCounts||{})};
+    const meta=await getMeta(false);const sc:Record<string,number>={...(meta?.stateCounts||{})};
     const populated=listPopulated(sc);
     let removedMain=0,removedPending=0;
     const norm=(s:string)=>s.trim().toLowerCase();
@@ -3244,7 +3280,7 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
       mainChurches.push(newChurch);
       await setChurches(st,mainChurches);
       await writeIdx(st,mainChurches);
-      const meta=await getMeta();if(meta){meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,mainChurches.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
+      const meta=await getMeta(false);if(meta){meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,mainChurches.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
       await invalidateReviewStatsCache();
       await queueChurch(newChurch);
       const modKeyOpts={hashModKey:getModKey(c)};
@@ -3267,7 +3303,7 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
         if(filtered.length!==mainChurches.length){
           await setChurches(st,filtered);
           await writeIdx(st,filtered);
-          const meta=await getMeta();if(meta){meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,filtered.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
+          const meta=await getMeta(false);if(meta){meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,filtered.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
         }
       }
       const store=await getPending(st);

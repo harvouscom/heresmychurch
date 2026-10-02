@@ -22,6 +22,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const BASE = "https://heresmychurch.com";
 const PUBLIC = join(__dirname, "..", "public");
 const SITEMAPS_DIR = join(PUBLIC, "sitemaps");
+const STATES_SNAPSHOT = join(__dirname, "..", "src", "app", "data", "states-snapshot.json");
 
 const DEFAULT_API_BASE =
   "https://epufchwxofsyuictfufy.supabase.co/functions/v1/make-server-283d8046";
@@ -143,6 +144,27 @@ async function fetchRegionChurches(apiBase, headers, region) {
 }
 
 /**
+ * Refresh src/app/data/states-snapshot.json, the bundled fallback the map uses when
+ * /churches/states is unreachable and the visitor has no last-known-good copy.
+ * Keeps the committed snapshot when the fetch failed or came back empty.
+ */
+function writeStatesSnapshot(statesData) {
+  const states = Array.isArray(statesData?.states) ? statesData.states : [];
+  if (!states.length || !(statesData.totalChurches > 0)) {
+    console.warn("generate-sitemap: /churches/states unavailable; keeping existing states snapshot");
+    return;
+  }
+  const snapshot = {
+    generatedAt: new Date().toISOString(),
+    states,
+    totalChurches: statesData.totalChurches,
+    populatedStates: statesData.populatedStates ?? states.filter((s) => s.isPopulated).length,
+  };
+  writeFileSync(STATES_SNAPSHOT, JSON.stringify(snapshot, null, 1) + "\n", "utf8");
+  console.log(`generate-sitemap: wrote states snapshot (${snapshot.totalChurches} churches)`);
+}
+
+/**
  * Regions to include in church URL sitemaps.
  * Default: US only (build-time + crawl budget). Set HMC_SITEMAP_CHURCHES=all for intl too.
  */
@@ -151,6 +173,7 @@ async function listPopulatedRegions(apiBase, headers, intlCountries) {
   const out = [];
   const statesData = await fetchJson(apiBase, headers, "/churches/states");
   const states = Array.isArray(statesData?.states) ? statesData.states : [];
+  writeStatesSnapshot(statesData);
   for (const s of states) {
     if (s?.isPopulated && s?.abbrev) out.push({ cc: "US", region: String(s.abbrev).toUpperCase() });
   }

@@ -1,5 +1,7 @@
 import { projectId, publicAnonKey } from "/utils/supabase/info";
 import type { Church, StateInfo } from "./church-data";
+import statesSnapshot from "../data/states-snapshot.json";
+import { POP as BUNDLED_POPULATIONS } from "../data/state-populations";
 
 /** In dev, use same-origin URL so Vite proxies to Supabase (avoids browser CORS). Production hits Supabase directly. */
 const BASE_URL = import.meta.env.DEV
@@ -178,7 +180,8 @@ export interface SubmitSuggestionResponse {
 }
 
 // Last-known-good copies of rarely-changing read endpoints. When the backend is
-// slow or down, serving the previous response keeps the map usable.
+// slow or down, serving the previous response keeps the map usable. First-time
+// visitors with no stored copy get the snapshot bundled at build time.
 const LKG_PREFIX = "hmc:lkg:v1:";
 function lkgRead<T>(name: string): T | null {
   try {
@@ -210,7 +213,7 @@ export function fetchStates(): Promise<StatesResponse> {
 
 async function fetchStatesOnce(): Promise<StatesResponse> {
   try {
-    const res = await fetchWithRetry(`${BASE_URL}/churches/states`, { headers, timeoutMs: 15000 });
+    const res = await fetchWithRetry(`${BASE_URL}/churches/states`, { headers, timeoutMs: 8000 });
     if (!res.ok) {
       const text = await res.text();
       console.error("Error fetching states:", text);
@@ -230,6 +233,14 @@ async function fetchStatesOnce(): Promise<StatesResponse> {
     if (cached?.states?.length) {
       console.warn("Using last-known-good states after fetch failure:", err);
       return cached;
+    }
+    if (statesSnapshot.states.length) {
+      console.warn(`Using bundled states snapshot (${statesSnapshot.generatedAt}) after fetch failure:`, err);
+      return {
+        states: statesSnapshot.states,
+        totalChurches: statesSnapshot.totalChurches,
+        populatedStates: statesSnapshot.populatedStates,
+      };
     }
     throw err;
   }
@@ -886,7 +897,7 @@ export async function fetchStatePopulations(): Promise<PopulationResponse> {
   try {
     const res = await fetchWithRetry(`${BASE_URL}/population`, {
       headers,
-      timeoutMs: 15000,
+      timeoutMs: 8000,
     });
     if (!res.ok) {
       const text = await res.text();
@@ -902,7 +913,8 @@ export async function fetchStatePopulations(): Promise<PopulationResponse> {
       console.warn("Using last-known-good populations after fetch failure:", err);
       return cached;
     }
-    throw err;
+    console.warn("Using bundled populations after fetch failure:", err);
+    return { populations: BUNDLED_POPULATIONS, source: "bundled" };
   }
 }
 

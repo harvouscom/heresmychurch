@@ -1,0 +1,407 @@
+{
+ "generatedAt": "2026-07-29T14:18:00Z",
+ "states": [
+  {
+   "abbrev": "AL",
+   "name": "Alabama",
+   "lat": 32.81,
+   "lng": -86.79,
+   "churchCount": 11989,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "AK",
+   "name": "Alaska",
+   "lat": 61.37,
+   "lng": -152.4,
+   "churchCount": 464,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "AZ",
+   "name": "Arizona",
+   "lat": 33.73,
+   "lng": -111.43,
+   "churchCount": 1644,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "AR",
+   "name": "Arkansas",
+   "lat": 34.97,
+   "lng": -92.37,
+   "churchCount": 6170,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "CA",
+   "name": "California",
+   "lat": 36.12,
+   "lng": -119.68,
+   "churchCount": 12115,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "CO",
+   "name": "Colorado",
+   "lat": 39.06,
+   "lng": -105.31,
+   "churchCount": 2002,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "CT",
+   "name": "Connecticut",
+   "lat": 41.6,
+   "lng": -72.76,
+   "churchCount": 1768,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "DE",
+   "name": "Delaware",
+   "lat": 39.32,
+   "lng": -75.51,
+   "churchCount": 311,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "FL",
+   "name": "Florida",
+   "lat": 27.77,
+   "lng": -81.69,
+   "churchCount": 9292,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "GA",
+   "name": "Georgia",
+   "lat": 33.04,
+   "lng": -83.64,
+   "churchCount": 12686,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "HI",
+   "name": "Hawaii",
+   "lat": 21.09,
+   "lng": -157.5,
+   "churchCount": 242,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "ID",
+   "name": "Idaho",
+   "lat": 44.24,
+   "lng": -114.48,
+   "churchCount": 633,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "IL",
+   "name": "Illinois",
+   "lat": 40.35,
+   "lng": -88.99,
+   "churchCount": 9506,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "IN",
+   "name": "Indiana",
+   "lat": 39.85,
+   "lng": -86.26,
+   "churchCount": 5141,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "IA",
+   "name": "Iowa",
+   "lat": 42.01,
+   "lng": -93.21,
+   "churchCount": 5182,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "KS",
+   "name": "Kansas",
+   "lat": 38.53,
+   "lng": -96.73,
+   "churchCount": 2566,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "KY",
+   "name": "Kentucky",
+   "lat": 37.67,
+   "lng": -84.67,
+   "churchCount": 6112,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "LA",
+   "name": "Louisiana",
+   "lat": 31.17,
+   "lng": -91.87,
+   "churchCount": 5686,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "ME",
+   "name": "Maine",
+   "lat": 44.69,
+   "lng": -69.38,
+   "churchCount": 1124,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "MD",
+   "name": "Maryland",
+   "lat": 39.06,
+   "lng": -76.8,
+   "churchCount": 5346,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "MA",
+   "name": "Massachusetts",
+   "lat": 42.23,
+   "lng": -71.53,
+   "churchCount": 2361,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "MI",
+   "name": "Michigan",
+   "lat": 43.33,
+   "lng": -84.54,
+   "churchCount": 6917,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "MN",
+   "name": "Minnesota",
+   "lat": 45.69,
+   "lng": -93.9,
+   "churchCount": 2419,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "MS",
+   "name": "Mississippi",
+   "lat": 32.74,
+   "lng": -89.68,
+   "churchCount": 8380,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "MO",
+   "name": "Missouri",
+   "lat": 38.46,
+   "lng": -92.29,
+   "churchCount": 6186,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "MT",
+   "name": "Montana",
+   "lat": 46.92,
+   "lng": -110.45,
+   "churchCount": 1461,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "NE",
+   "name": "Nebraska",
+   "lat": 41.13,
+   "lng": -98.27,
+   "churchCount": 2873,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "NV",
+   "name": "Nevada",
+   "lat": 38.31,
+   "lng": -117.06,
+   "churchCount": 489,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "NH",
+   "name": "New Hampshire",
+   "lat": 43.45,
+   "lng": -71.56,
+   "churchCount": 815,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "NJ",
+   "name": "New Jersey",
+   "lat": 40.3,
+   "lng": -74.52,
+   "churchCount": 3407,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "NM",
+   "name": "New Mexico",
+   "lat": 34.84,
+   "lng": -106.25,
+   "churchCount": 1809,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "NY",
+   "name": "New York",
+   "lat": 42.17,
+   "lng": -74.95,
+   "churchCount": 7666,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "NC",
+   "name": "North Carolina",
+   "lat": 35.63,
+   "lng": -79.81,
+   "churchCount": 12801,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "ND",
+   "name": "North Dakota",
+   "lat": 47.53,
+   "lng": -99.78,
+   "churchCount": 769,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "OH",
+   "name": "Ohio",
+   "lat": 40.39,
+   "lng": -82.76,
+   "churchCount": 10438,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "OK",
+   "name": "Oklahoma",
+   "lat": 35.57,
+   "lng": -96.93,
+   "churchCount": 4923,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "OR",
+   "name": "Oregon",
+   "lat": 44.57,
+   "lng": -122.07,
+   "churchCount": 1894,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "PA",
+   "name": "Pennsylvania",
+   "lat": 40.59,
+   "lng": -77.21,
+   "churchCount": 9819,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "RI",
+   "name": "Rhode Island",
+   "lat": 41.68,
+   "lng": -71.51,
+   "churchCount": 528,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "SC",
+   "name": "South Carolina",
+   "lat": 33.86,
+   "lng": -80.95,
+   "churchCount": 8180,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "SD",
+   "name": "South Dakota",
+   "lat": 44.3,
+   "lng": -99.44,
+   "churchCount": 1045,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "TN",
+   "name": "Tennessee",
+   "lat": 35.75,
+   "lng": -86.69,
+   "churchCount": 11057,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "TX",
+   "name": "Texas",
+   "lat": 31.05,
+   "lng": -97.56,
+   "churchCount": 16795,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "UT",
+   "name": "Utah",
+   "lat": 40.15,
+   "lng": -111.86,
+   "churchCount": 534,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "VT",
+   "name": "Vermont",
+   "lat": 44.05,
+   "lng": -72.71,
+   "churchCount": 583,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "VA",
+   "name": "Virginia",
+   "lat": 37.77,
+   "lng": -78.17,
+   "churchCount": 9636,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "WA",
+   "name": "Washington",
+   "lat": 47.4,
+   "lng": -121.49,
+   "churchCount": 3492,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "WV",
+   "name": "West Virginia",
+   "lat": 38.49,
+   "lng": -80.95,
+   "churchCount": 4360,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "WI",
+   "name": "Wisconsin",
+   "lat": 44.27,
+   "lng": -89.62,
+   "churchCount": 2596,
+   "isPopulated": true
+  },
+  {
+   "abbrev": "WY",
+   "name": "Wyoming",
+   "lat": 42.76,
+   "lng": -107.3,
+   "churchCount": 366,
+   "isPopulated": true
+  }
+ ],
+ "totalChurches": 244578,
+ "populatedStates": 50
+}
