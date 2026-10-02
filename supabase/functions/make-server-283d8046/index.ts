@@ -851,19 +851,41 @@ const P="/make-server-283d8046";
 let _metaCache:{data:any;ts:number}|null=null;
 const META_TTL=60_000; // 60s
 const META_FETCH_TIMEOUT=4_000;
-// When the DB is slow or down, readers get the last good copy instead of failing every endpoint.
-// Writers (read-modify-write of churches:meta) pass allowStale=false so they never write back stale counts.
+const META_FAIL_BACKOFF=30_000;
+let _metaFailUntil=0;
+let _metaReadInFlight:Promise<any>|null=null;
+function readMetaForReaders(){
+  // Concurrent readers share one DB read, so a recovering DB isn't hit by a burst.
+  if(!_metaReadInFlight){
+    let timer:number|undefined;
+    _metaReadInFlight=Promise.race([
+      kv.get("churches:meta"),
+      new Promise<never>((_,rej)=>{timer=setTimeout(()=>rej(new Error("churches:meta read timed out")),META_FETCH_TIMEOUT);}),
+    ]).then(
+      (m)=>{_metaCache={data:m,ts:Date.now()};_metaFailUntil=0;return m;},
+      (e)=>{_metaFailUntil=Date.now()+META_FAIL_BACKOFF;throw e;},
+    ).finally(()=>{clearTimeout(timer);_metaReadInFlight=null;});
+  }
+  return _metaReadInFlight;
+}
+// When the DB is slow or down, readers get the last good copy instead of failing every endpoint,
+// and skip the DB entirely for META_FAIL_BACKOFF after a failed read.
+// Writers (read-modify-write of churches:meta) pass allowStale=false: they always read fresh and
+// never write back stale counts.
 async function getMeta(allowStale=true){
   if(_metaCache&&Date.now()-_metaCache.ts<META_TTL)return _metaCache.data;
+  if(!allowStale){
+    const m=await kv.get("churches:meta");
+    _metaCache={data:m,ts:Date.now()};_metaFailUntil=0;return m;
+  }
+  if(Date.now()<_metaFailUntil){
+    if(_metaCache)return _metaCache.data;
+    throw new Error("churches:meta unavailable (backing off after failed read)");
+  }
   try{
-    const read=kv.get("churches:meta");
-    let timer:number|undefined;
-    const m=allowStale
-      ?await Promise.race([read,new Promise<never>((_,rej)=>{timer=setTimeout(()=>rej(new Error("churches:meta read timed out")),META_FETCH_TIMEOUT);})]).finally(()=>clearTimeout(timer))
-      :await read;
-    _metaCache={data:m,ts:Date.now()};return m;
+    return await readMetaForReaders();
   }catch(e){
-    if(allowStale&&_metaCache){console.warn("getMeta: serving stale meta:",e);return _metaCache.data;}
+    if(_metaCache){console.warn("getMeta: serving stale meta:",e);return _metaCache.data;}
     throw e;
   }
 }
