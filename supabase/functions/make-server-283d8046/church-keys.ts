@@ -5,7 +5,7 @@
  * Legacy flat keys (churches:TX) are dual-read during cutover so a botched
  * migration cannot blank the map. Writes always go to the namespaced key.
  */
-import * as kv from "./kv_store.tsx";
+import * as kv from "./kv.ts";
 import { INTL_REGIONS } from "./regions-intl.ts";
 
 const US_STATE_ABBREVS = new Set([
