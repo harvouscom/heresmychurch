@@ -17,6 +17,7 @@
 import { writeFileSync, readFileSync, mkdirSync, rmSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import { apiAvailableOrExit } from "./api-health.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BASE = "https://heresmychurch.com";
@@ -255,6 +256,9 @@ async function main() {
     "Content-Type": "application/json",
   };
 
+  // Fails the build in production if the API is down; otherwise tells us to skip API-backed URLs.
+  const apiUp = await apiAvailableOrExit("generate-sitemap", apiBase, headers);
+
   const now = new Date().toISOString().slice(0, 10);
   const INTL_COUNTRIES = loadIntlCountries();
   const US_METROS = loadUsMetros();
@@ -291,7 +295,7 @@ async function main() {
     ]),
   ];
 
-  const reports = await fetchReportList(apiBase, headers, "US");
+  const reports = apiUp ? await fetchReportList(apiBase, headers, "US") : [];
   if (!Array.isArray(reports) || reports.length === 0) {
     console.warn(
       "generate-sitemap: could not load /reports (network or empty). Sitemap will omit report URLs.",
@@ -324,7 +328,7 @@ async function main() {
     }
   }
 
-  const worldReports = await fetchReportList(apiBase, headers, "WORLD");
+  const worldReports = apiUp ? await fetchReportList(apiBase, headers, "WORLD") : [];
   if (Array.isArray(worldReports)) {
     for (const r of worldReports) {
       if (!r?.slug) continue;
@@ -335,7 +339,7 @@ async function main() {
       });
     }
   }
-  for (const cc of Object.keys(INTL_COUNTRIES)) {
+  for (const cc of apiUp ? Object.keys(INTL_COUNTRIES) : []) {
     const countryReports = await fetchReportList(apiBase, headers, cc);
     if (!Array.isArray(countryReports)) continue;
     for (const r of countryReports) {
@@ -360,7 +364,7 @@ async function main() {
   ];
   writeFileSync(join(SITEMAPS_DIR, "metros.xml"), urlsetXml(metroUrls, now), "utf8");
 
-  const regionsToFetch = await listPopulatedRegions(apiBase, headers, INTL_COUNTRIES);
+  const regionsToFetch = apiUp ? await listPopulatedRegions(apiBase, headers, INTL_COUNTRIES) : [];
 
   console.log(`generate-sitemap: fetching churches for ${regionsToFetch.length} populated regions…`);
   const churchSitemapFiles = [];
