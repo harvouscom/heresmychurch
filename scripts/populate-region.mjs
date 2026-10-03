@@ -20,7 +20,8 @@
  *   node scripts/populate-region.mjs --list-intl    # print intl abbrevs
  *   node scripts/populate-country.mjs FR            # see sibling script
  *
- * Env: SUPABASE_PROJECT_ID, SUPABASE_ANON_KEY (both default to the app's).
+ * Env: MODERATOR_KEY (required; same value as the edge function secret),
+ *      SUPABASE_PROJECT_ID, SUPABASE_ANON_KEY (both default to the app's).
  */
 
 import { readFileSync } from "fs";
@@ -33,6 +34,7 @@ const PROJECT_ID = process.env.SUPABASE_PROJECT_ID ?? "epufchwxofsyuictfufy";
 const ANON_KEY =
   process.env.SUPABASE_ANON_KEY ??
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwdWZjaHd4b2ZzeXVpY3RmdWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5NzcxMTUsImV4cCI6MjA4ODU1MzExNX0.v11kHHpM1IsK6q81909CYkWgX5TdV8kJhCkNqSEs5QM";
+const MODERATOR_KEY = process.env.MODERATOR_KEY;
 const BASE = `https://${PROJECT_ID}.supabase.co/functions/v1/make-server-283d8046`;
 
 /** US state bounding boxes [south, west, north, east]. */
@@ -91,6 +93,10 @@ if (!/^[A-Z][A-Z0-9]{1,30}$/.test(region)) {
   console.error("Usage: node scripts/populate-region.mjs <REGION> [--dry-run] [--resume]");
   process.exit(1);
 }
+if (!MODERATOR_KEY) {
+  console.error("Set MODERATOR_KEY (same value as the edge function secret).");
+  process.exit(1);
+}
 
 const MAX_DEPTH = 6; // 4^6 cells; far more headroom than the server's one-shot path
 const PACE_MS = 600; // be a good citizen to a free shared Overpass
@@ -106,7 +112,7 @@ async function post(path) {
   // instead of hanging forever when the function idle-times out.
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${ANON_KEY}` },
+    headers: { Authorization: `Bearer ${ANON_KEY}`, "x-moderator-key": MODERATOR_KEY },
     signal: AbortSignal.timeout(145_000),
   });
   const body = await res.json().catch(() => ({}));
