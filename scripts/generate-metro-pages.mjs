@@ -7,6 +7,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { apiAvailableOrExit } from "./api-health.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -143,6 +144,10 @@ async function main() {
     "Content-Type": "application/json",
   };
 
+  // Fails the build in production if the API is down; otherwise skip the per-metro pages below,
+  // since they'd render as empty "no churches mapped" pages.
+  const apiUp = await apiAvailableOrExit("generate-metro-pages", apiBase, headers);
+
   // Index page
   {
     const url = `${BASE}/metro`;
@@ -177,6 +182,11 @@ ${sections}
     html = injectRoot(html, article, null);
     mkdirSync(join(DIST, "metro"), { recursive: true });
     writeFileSync(join(DIST, "metro", "index.html"), html, "utf8");
+  }
+
+  if (!apiUp) {
+    console.warn("generate-metro-pages: wrote /metro index only; per-metro pages skipped (API unavailable)");
+    return;
   }
 
   /** Cache region → churches */
