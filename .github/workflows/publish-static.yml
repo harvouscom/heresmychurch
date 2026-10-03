@@ -1,0 +1,22 @@
+name: Republish static files
+
+on:
+  schedule:
+    # Daily at 09:00 UTC, outside the usual traffic peak
+    - cron: '0 9 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Republish states.json and churches/{REGION}.json to R2
+        env:
+          HMC_FUNCTIONS_BASE_URL: ${{ secrets.SUPABASE_FUNCTION_URL }}
+          HMC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          MODERATOR_KEY: ${{ secrets.MODERATOR_KEY }}
+        run: node scripts/publish-static.mjs
