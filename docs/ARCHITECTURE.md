@@ -26,7 +26,7 @@ This doc explains how **Here's My Church** is built: what it does, how the front
 | **Backend** | Single Supabase Edge Function (Hono) — `make-server-283d8046`. No Next.js or other API routes. |
 | **Data** | One Supabase table used by the edge function: `kv_store_283d8046` (key/value JSON). Church and state data is served from this KV layer (populated by the server from OSM, Census, etc.). |
 | **Realtime** | Supabase Realtime (presence on `active-users` channel) for “who’s viewing this state.” |
-| **Hosting** | Netlify: SPA from `dist/`, with edge functions for geo-inject and OG meta rewrite. |
+| **Hosting** | Cloudflare Worker with static assets: SPA from `dist/`, plus geo-inject and OG meta rewrite in `worker/` (see [HOSTING-CLOUDFLARE.md](HOSTING-CLOUDFLARE.md)). Netlify is being retired. |
 
 ---
 
@@ -37,10 +37,10 @@ flowchart LR
   subgraph browser [Browser]
     SPA[React SPA]
   end
-  subgraph netlify [Netlify]
+  subgraph netlify [Cloudflare Worker]
     Static[Static dist]
-    GeoInject[geo-inject edge]
-    OGRewrite[og-rewrite edge]
+    GeoInject[geo-inject]
+    OGRewrite[og-rewrite]
   end
   subgraph supabase [Supabase]
     Edge[Hono Edge Function]
@@ -198,12 +198,12 @@ Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurc
 
 ## 10. Deployment and scripts
 
-**Netlify:**
+**Cloudflare Worker** (`wrangler.jsonc`, `worker/index.ts`; see [HOSTING-CLOUDFLARE.md](HOSTING-CLOUDFLARE.md)):
 
-- Build: `pnpm run build` (Vite → `dist/`).
-- Publish: `dist`.
-- Edge functions:
-  - **geo-inject** — runs on `/*`; injects detected country (+ US state) into HTML (uses context.geo). Client lands on that country, or `/world` when geo is missing/unsupported.
+- Build: `pnpm run build` (Vite → `dist/`), deploy: `wrangler deploy` (Workers Builds on push to `main`).
+- Static assets from `dist/` with SPA fallback; the Worker handles www → apex and legacy redirects.
+- Edge logic (shared with the temporary Netlify wrappers in `netlify/edge-functions/`):
+  - **geo-inject** — runs on HTML responses; injects detected country (+ US state) into HTML (uses `request.cf`). Client lands on that country, or `/world` when geo is missing/unsupported.
   - **og-rewrite** — runs on map country paths (`/US/*`, `/CA/*`, …), `/metro/*`, reports, and legacy `/state/*` `/country/*`; for crawler user-agents, rewrites HTML meta (og/twitter/title/canonical) and injects crawlable `#root` HTML for reports, regions, churches, and metro directories. OG images come from the Supabase og-image endpoint where applicable.
 
 **Supabase:**
@@ -270,6 +270,6 @@ This keeps future automated posts aligned with the latest copy and logic without
 - **One page, one route component:** React Router renders **ChurchMapPage** for all routes; URL params drive state and church.
 - **One data hook:** **useChurchMapData** owns states, churches, filters, and map view state; it talks to the **api** module, which talks to the **Supabase edge function**.
 - **One backend:** The **make-server-283d8046** Hono app and **kv_store** table; Realtime for presence only.
-- **One host:** Netlify serves the SPA and edge functions; Supabase runs the API and Realtime.
+- **One host:** A Cloudflare Worker serves the SPA and edge logic; Supabase runs the API and Realtime.
 
 Use this doc plus the linked file paths to jump into the code and trace any flow end-to-end.

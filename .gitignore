@@ -10,3 +10,6 @@ scripts/.enrich-google-progress.json
 public/sitemaps/
 dist/sitemaps/
 dist/metro/
+
+# Wrangler local state
+.wrangler

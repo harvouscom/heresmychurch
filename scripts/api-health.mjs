@@ -7,10 +7,11 @@
  * until Netlify killed them. Instead, probe once up front:
  *
  *   healthy                    → run normally
- *   unhealthy + production     → fail in seconds, so Netlify keeps the last good deploy live
+ *   unhealthy + production     → fail in seconds, so the host keeps the last good deploy live
  *   unhealthy + anything else  → skip the church-dependent output and warn
  *
- * "Production" is Netlify's CONTEXT=production. Overrides:
+ * "Production" is Netlify's CONTEXT=production or a Cloudflare Workers Builds run on
+ * main (WORKERS_CI_BRANCH=main). Overrides:
  *   HMC_REQUIRE_API=1  always fail when the API is down
  *   HMC_SKIP_API=1     always skip church-dependent output (no probe)
  */
@@ -18,7 +19,7 @@
 const PROBE_TIMEOUT_MS = 12_000;
 
 function isProduction() {
-  return process.env.CONTEXT === "production";
+  return process.env.CONTEXT === "production" || process.env.WORKERS_CI_BRANCH === "main";
 }
 
 async function probe(apiBase, headers) {

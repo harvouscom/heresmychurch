@@ -4,15 +4,33 @@
     {
       "name": "dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 5173
     },
     {
       "name": "dev-maplibre",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 5174,
       "autoPort": true
+    },
+    {
+      "name": "cf-worker",
+      "runtimeExecutable": "node_modules/.bin/wrangler",
+      "runtimeArgs": [
+        "dev",
+        "--port",
+        "8787",
+        "--ip",
+        "127.0.0.1"
+      ],
+      "port": 8787
     }
   ]
 }
