@@ -172,3 +172,10 @@
   to = "/:code/:splat"
   status = 301
   force = true
+
+# SPA fallback (moved from public/_redirects, which Cloudflare's asset upload rejects).
+# Not forced, so real files still win.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -14,7 +14,7 @@ replacing Netlify. The API is still the Supabase edge function (moving it is a s
 | Every HTML response | Worker → `worker/geo-inject.ts` (`request.cf.country` / `regionCode`) |
 | Unknown paths | `index.html` (`not_found_handling: single-page-application`) |
 
-`public/_redirects` is Netlify-only and excluded from the upload by `public/.assetsignore`.
+There is no `public/_redirects`: Cloudflare rejects Netlify's syntax, so Netlify's redirects and SPA fallback live in `netlify.toml`.
 
 ## Deploys
 

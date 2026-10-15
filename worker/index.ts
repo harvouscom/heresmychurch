@@ -24,7 +24,7 @@ function isOgPath(path: string): boolean {
   return !!m && SUPPORTED_COUNTRIES.has(m[1]);
 }
 
-/** Legacy map URLs → canonical /:CC/... (from netlify.toml / public/_redirects). */
+/** Legacy map URLs → canonical /:CC/... (mirrors netlify.toml). */
 function legacyRedirect(url: URL): string | null {
   const p = url.pathname;
   let m = p.match(/^\/state\/(.+)$/);
@@ -50,7 +50,17 @@ export default {
       return Response.redirect(new URL(legacy + url.search, url).toString(), 301);
     }
 
-    const next = () => env.ASSETS.fetch(request);
+    const next = async () => {
+      const res = await env.ASSETS.fetch(request);
+      // Asset handling adds trailing slashes with a 307 (/metro → /metro/); keep Netlify's permanent 301.
+      if (res.status === 307) {
+        const loc = res.headers.get("location");
+        if (loc && new URL(loc, url).pathname === `${url.pathname}/`) {
+          return new Response(null, { status: 301, headers: { location: loc } });
+        }
+      }
+      return res;
+    };
     const response = isOgPath(url.pathname) ? await rewriteForBots(request, next, env) : await next();
 
     const cf = (request as Request & { cf?: { country?: string; regionCode?: string } }).cf;
