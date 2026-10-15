@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "heresmychurch",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // SPA fallback: unknown paths serve index.html (replaces Netlify's `/* /index.html 200`).
+    "not_found_handling": "single-page-application",
+    // Run the Worker for HTML routes (redirects, og-rewrite, geo-inject); hashed bundles skip it.
+    "run_worker_first": ["/*", "!/assets/*"]
+  },
+  "vars": {
+    "SUPABASE_FUNCTIONS_BASE_URL": "https://epufchwxofsyuictfufy.supabase.co/functions/v1/make-server-283d8046",
+    // Public anon key (same value shipped in the client bundle, utils/supabase/info.tsx).
+    "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwdWZjaHd4b2ZzeXVpY3RmdWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5NzcxMTUsImV4cCI6MjA4ODU1MzExNX0.v11kHHpM1IsK6q81909CYkWgX5TdV8kJhCkNqSEs5QM"
+  },
+  "observability": { "enabled": true }
+}

@@ -12,7 +12,9 @@
     "postbuild": "node scripts/generate-metro-pages.mjs",
     "generate:state-populations": "node scripts/generate-state-populations.mjs",
     "publish:static": "node scripts/publish-static.mjs",
-    "cleanup-blocked": "node scripts/cleanup-blocked-denominations.mjs"
+    "cleanup-blocked": "node scripts/cleanup-blocked-denominations.mjs",
+    "deploy": "pnpm run build && wrangler deploy",
+    "preview:cf": "pnpm run build && wrangler dev"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -91,11 +93,13 @@
     "vaul": "1.1.2"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261015.1",
     "@tailwindcss/vite": "4.1.12",
     "@vitejs/plugin-react": "4.7.0",
     "supabase": "^2.78.1",
     "tailwindcss": "4.1.12",
-    "vite": "6.3.5"
+    "vite": "6.3.5",
+    "wrangler": "^4.151.0"
   },
   "peerDependencies": {
     "react": "^19.0.0",

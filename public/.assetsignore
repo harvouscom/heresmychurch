@@ -1,0 +1,2 @@
+# Netlify-only redirect rules; the Cloudflare Worker handles redirects and SPA fallback.
+_redirects

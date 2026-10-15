@@ -7,7 +7,7 @@
  * - public/sitemaps/metros.xml — /metro + /metro/{slug}
  * - public/sitemaps/churches-{CC}-{REGION}.xml — church deep links (US by default)
  *
- * Also syncs netlify/edge-functions/lib/us-metros.generated.ts from src/app/data/us-metros.json.
+ * Also syncs worker/lib/us-metros.generated.ts from src/app/data/us-metros.json.
  *
  * Env (optional):
  *   HMC_FUNCTIONS_BASE_URL — e.g. https://PROJECT.supabase.co/functions/v1/make-server-283d8046
@@ -60,7 +60,7 @@ const FETCH_CONCURRENCY = 10;
 
 function loadIntlCountries() {
   const src = readFileSync(
-    join(__dirname, "..", "netlify", "edge-functions", "lib", "intl-country-meta.generated.ts"),
+    join(__dirname, "..", "worker", "lib", "intl-country-meta.generated.ts"),
     "utf8",
   );
   const m = src.match(/INTL_COUNTRY_META[\s\S]*?=\s*(\{[\s\S]*\});?\s*$/);
@@ -77,9 +77,9 @@ function loadUsMetros() {
   );
 }
 
-/** Keep Netlify edge og-rewrite metro list in sync with src/app/data/us-metros.json */
+/** Keep the edge og-rewrite metro list in sync with src/app/data/us-metros.json */
 function syncEdgeUsMetros(metros) {
-  const edgeLib = join(__dirname, "..", "netlify", "edge-functions", "lib");
+  const edgeLib = join(__dirname, "..", "worker", "lib");
   writeFileSync(join(edgeLib, "us-metros.json"), JSON.stringify(metros, null, 2) + "\n", "utf8");
   writeFileSync(
     join(edgeLib, "us-metros.generated.ts"),
