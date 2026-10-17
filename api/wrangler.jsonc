@@ -17,6 +17,8 @@
   "limits": { "cpu_ms": 300000 },
   "vars": {
     "SUPABASE_URL": "https://epufchwxofsyuictfufy.supabase.co",
+    // Tells app.ts it runs behind Cloudflare, so cf-connecting-ip can be trusted for client IPs.
+    "HMC_RUNTIME": "worker",
     "R2_ACCOUNT_ID": "ec934baa29eb81459ffeaf18ba044b9e",
     "R2_BUCKET": "hmc-data"
   },
