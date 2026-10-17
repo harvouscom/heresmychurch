@@ -2,7 +2,7 @@
  * Inject detected country (+ US subdivision) into HTML so the client can land
  * visitors in their country and (for the US) preselect a state. Unsupported /
  * unknown geo falls through to /world on the client. Geo comes from the
- * platform (Cloudflare request.cf, Netlify context.geo); no third-party API.
+ * platform (Cloudflare request.cf); no third-party API.
  *
  * DC is mapped to MD (DC churches are folded into MD).
  */

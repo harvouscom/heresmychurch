@@ -1,6 +1,10 @@
 node_modules
 
-# Local Netlify folder
+# Build output (built by Cloudflare Workers Builds; never commit)
+dist/
+.next/
+
+# Local Netlify folder (legacy)
 .netlify
 
 # Google Places enrich drip resume cursor

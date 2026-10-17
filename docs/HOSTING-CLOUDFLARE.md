@@ -14,7 +14,7 @@ replacing Netlify. The API runs on a second Worker, `hmc-api` (api.heresmychurch
 | Every HTML response | Worker → `worker/geo-inject.ts` (`request.cf.country` / `regionCode`) |
 | Unknown paths | `index.html` (`not_found_handling: single-page-application`) |
 
-There is no `public/_redirects`: Cloudflare rejects Netlify's syntax, so Netlify's redirects and SPA fallback live in `netlify.toml`.
+There is no `public/_redirects`: the Worker handles redirects and `not_found_handling` provides the SPA fallback.
 
 ## Deploys
 
@@ -34,8 +34,9 @@ Manual deploy: `pnpm run deploy`. Local: `pnpm run preview:cf` (wrangler dev on 
 `heresmychurch.com` and `www.heresmychurch.com` are Custom Domains on the Worker.
 `data.heresmychurch.com` is the R2 bucket `hmc-data`. MX/`*` records stay at Hover.
 
-Rollback to Netlify (until the Netlify site is deleted): remove the two Custom Domains, then
-re-add `A @ 75.2.60.5` and `CNAME www heresmychurch.netlify.app` (DNS only).
+Netlify was retired after the cutover (Oct 2026): `netlify.toml`, `netlify/edge-functions/` and the
+committed `dist/` were removed. Roll back a bad deploy with Workers → heresmychurch → Deployments →
+"Rollback" to a previous version.
 
 ## API Worker (`hmc-api`, api.heresmychurch.com)
 

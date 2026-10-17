@@ -13,7 +13,7 @@ flowchart LR
     OSM[OSM Overpass]
     Nominatim[Nominatim]
     CDN[us-atlas CDN]
-    NetlifyGeo[Netlify geo]
+    NetlifyGeo[Edge geo]
     UserSubmit[User submissions]
     Realtime[Supabase Realtime]
   end
@@ -117,7 +117,7 @@ flowchart LR
 
 | Stage | Detail |
 |-------|--------|
-| **Source** | Netlify geo (context.geo). |
+| **Source** | Cloudflare edge geo (`request.cf`), injected by `worker/geo-inject.ts`. |
 | **Ingestion** | geo-inject edge writes `<meta name="x-user-region">` into HTML. |
 | **Storage** | Read in [useChurchMapData.ts](src/app/components/useChurchMapData.ts): `document.querySelector('meta[name="x-user-region"]')?.content` → `detectedState`. |
 | **Transformation** | Map region code to state (e.g. DC → MD). |

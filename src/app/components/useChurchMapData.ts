@@ -795,7 +795,7 @@ export function useChurchMapData({
         console.warn("[ChurchMap] Failed to load state populations:", err);
       });
 
-    // Detect user's state from edge-injected meta (Netlify context.geo; DC → MD)
+    // Detect user's state from edge-injected meta (Cloudflare request.cf via worker/geo-inject.ts; DC → MD)
     const regionMeta = document.querySelector('meta[name="x-user-region"]');
     if (regionMeta) {
       let abbrev = regionMeta.getAttribute("content")?.toUpperCase() ?? "";

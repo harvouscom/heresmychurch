@@ -203,7 +203,7 @@ Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurc
 
 - Build: `pnpm run build` (Vite → `dist/`), deploy: `wrangler deploy` (Workers Builds on push to `main`).
 - Static assets from `dist/` with SPA fallback; the Worker handles www → apex and legacy redirects.
-- Edge logic (shared with the temporary Netlify wrappers in `netlify/edge-functions/`):
+- Edge logic (`worker/`):
   - **geo-inject** — runs on HTML responses; injects detected country (+ US state) into HTML (uses `request.cf`). Client lands on that country, or `/world` when geo is missing/unsupported.
   - **og-rewrite** — runs on map country paths (`/US/*`, `/CA/*`, …), `/metro/*`, reports, and legacy `/state/*` `/country/*`; for crawler user-agents, rewrites HTML meta (og/twitter/title/canonical) and injects crawlable `#root` HTML for reports, regions, churches, and metro directories. OG images come from the Supabase og-image endpoint where applicable.
 

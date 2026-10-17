@@ -3,8 +3,7 @@
  * deep links get correct og:image/title/url. Legacy /state/* and /country/*
  * paths are still recognized.
  *
- * Platform-neutral: the Cloudflare Worker (worker/index.ts) and the Netlify edge
- * wrapper (netlify/edge-functions/og-rewrite.ts) both call rewriteForBots().
+ * Called by the site Worker (worker/index.ts).
  *
  * Optional env (bot requests only; defaults below match utils/supabase/info.tsx):
  *   HMC_API_BASE_URL - API base, e.g. https://api.heresmychurch.com
