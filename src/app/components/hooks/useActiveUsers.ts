@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { getSupabase } from "../../lib/supabase";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 const CHANNEL_NAME = "active-users";
 const PRESENCE_STORAGE_KEY = "hmc-presence-id";
@@ -124,56 +124,67 @@ export function useActiveUsers(viewingState: string | null = null): {
   }, []);
 
   useEffect(() => {
-    const supabase = getSupabase();
-    const channel = supabase.channel(CHANNEL_NAME);
+    // supabase-js (~170 KB) is only needed for presence, so load it after first paint
+    // rather than in the main bundle.
+    let disposed = false;
+    let cleanup: (() => void) | null = null;
+    void import("../../lib/supabase").then(({ getSupabase }) => {
+      if (disposed) return;
+      const supabase = getSupabase();
+      const channel: RealtimeChannel = supabase.channel(CHANNEL_NAME);
 
-    const updateCount = () => {
-      const state = channel.presenceState() as Record<string, PresencePayload[]>;
-      const { people, bots } = countPeopleAndBots(state);
-      const byState = countByState(state);
-      setCounts({ people, bots, byState });
-    };
+      const updateCount = () => {
+        const state = channel.presenceState() as Record<string, PresencePayload[]>;
+        const { people, bots } = countPeopleAndBots(state);
+        const byState = countByState(state);
+        setCounts({ people, bots, byState });
+      };
 
-    channel
-      .on("presence", { event: "sync" }, updateCount)
-      .on("presence", { event: "join" }, updateCount)
-      .on("presence", { event: "leave" }, updateCount)
-      .subscribe(async (status) => {
-        if (status !== "SUBSCRIBED") return;
-        await channel.track({
-          id: getOrCreateSessionId(),
-          isBot: detectBot(),
-          viewingState: viewingStateRef.current ?? null,
+      channel
+        .on("presence", { event: "sync" }, updateCount)
+        .on("presence", { event: "join" }, updateCount)
+        .on("presence", { event: "leave" }, updateCount)
+        .subscribe(async (status) => {
+          if (status !== "SUBSCRIBED") return;
+          await channel.track({
+            id: getOrCreateSessionId(),
+            isBot: detectBot(),
+            viewingState: viewingStateRef.current ?? null,
+          });
         });
-      });
 
-    channelRef.current = channel;
+      channelRef.current = channel;
 
-    // Re-announce presence when the tab becomes visible again (handles mobile
-    // browsers that freeze WebSocket connections when backgrounded / screen locked).
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") retrack();
-    };
+      // Re-announce presence when the tab becomes visible again (handles mobile
+      // browsers that freeze WebSocket connections when backgrounded / screen locked).
+      const onVisibilityChange = () => {
+        if (document.visibilityState === "visible") retrack();
+      };
 
-    // Re-announce when the device comes back online (handles cellular drops,
-    // WiFi→cellular handoff, airplane mode toggle, etc.).
-    const onOnline = () => retrack();
+      // Re-announce when the device comes back online (handles cellular drops,
+      // WiFi→cellular handoff, airplane mode toggle, etc.).
+      const onOnline = () => retrack();
 
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("online", onOnline);
+      document.addEventListener("visibilitychange", onVisibilityChange);
+      window.addEventListener("online", onOnline);
 
-    // Periodic heartbeat to recover from silent WebSocket drops that don't
-    // fire any browser events (common on cellular networks with aggressive NAT).
-    const heartbeat = setInterval(retrack, 30_000);
+      // Periodic heartbeat to recover from silent WebSocket drops that don't
+      // fire any browser events (common on cellular networks with aggressive NAT).
+      const heartbeat = setInterval(retrack, 30_000);
 
+      cleanup = () => {
+        clearInterval(heartbeat);
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+        window.removeEventListener("online", onOnline);
+        void channel.untrack().then(() => {
+          supabase.removeChannel(channel);
+        });
+        channelRef.current = null;
+      };
+    });
     return () => {
-      clearInterval(heartbeat);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("online", onOnline);
-      void channel.untrack().then(() => {
-        supabase.removeChannel(channel);
-      });
-      channelRef.current = null;
+      disposed = true;
+      cleanup?.();
     };
   }, [retrack]);
 

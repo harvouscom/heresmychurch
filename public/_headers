@@ -1,0 +1,12 @@
+# Cache rules for Workers static assets (the Worker adds none of its own).
+# Hashed bundles never change, so cache them forever; fonts and boundary files
+# change rarely, so cache for a day and revalidate in the background.
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/fonts/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+
+/*.geojson
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
