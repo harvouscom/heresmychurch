@@ -537,7 +537,7 @@ function Insight({ children, eyebrow = "Key Finding", color = "purple" }: { chil
   const c = INSIGHT_COLORS[color];
   return (
     <div className={`my-8 rounded-xl ${c.bg} px-5 py-4`}>
-      <span className={`text-[11px] font-bold uppercase tracking-widest ${c.eyebrow}`}>
+      <span className={`text-caption font-bold uppercase tracking-widest ${c.eyebrow}`}>
         {eyebrow}
       </span>
       <p className="text-pretty mt-1.5 text-sm sm:text-base text-stone-700/70 leading-relaxed">

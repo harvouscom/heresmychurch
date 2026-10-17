@@ -178,16 +178,16 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
   }, []);
 
   const selectClass = compact
-    ? "bg-white/8 rounded px-1.5 py-1 text-white text-[10px] border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors appearance-none cursor-pointer"
-    : "bg-white/8 rounded-lg px-2 py-1.5 text-white text-[11px] border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors appearance-none cursor-pointer";
+    ? "bg-white/8 rounded px-1.5 py-1 text-white text-caption border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors appearance-none cursor-pointer"
+    : "bg-white/8 rounded-lg px-2 py-1.5 text-white text-caption border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors appearance-none cursor-pointer";
 
   const inputClass = compact
-    ? "bg-white/5 rounded px-2 py-1 text-[10px] text-white/90 border border-white/5 focus:border-purple-500/30 focus:outline-none transition-colors placeholder:text-white/40"
-    : "bg-white/5 rounded-lg px-2 py-1.5 text-[11px] text-white/90 border border-white/5 focus:border-purple-500/30 focus:outline-none transition-colors placeholder:text-white/40";
+    ? "bg-white/5 rounded px-2 py-1 text-caption text-white/90 border border-white/5 focus:border-purple-500/30 focus:outline-none transition-colors placeholder:text-white/40"
+    : "bg-white/5 rounded-lg px-2 py-1.5 text-caption text-white/90 border border-white/5 focus:border-purple-500/30 focus:outline-none transition-colors placeholder:text-white/40";
 
   const amPmClass = compact
-    ? "px-2 py-1 text-[10px] font-semibold transition-colors"
-    : "px-2.5 py-1.5 text-[11px] font-semibold transition-colors";
+    ? "px-2 py-1 text-caption font-semibold transition-colors"
+    : "px-2.5 py-1.5 text-caption font-semibold transition-colors";
 
   return (
     <div className="space-y-2">
@@ -273,7 +273,7 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
             className={`${inputClass} w-full`}
           />
 
-          <div className={`leading-relaxed text-white/60 ${compact ? "text-[10px]" : "text-[11px]"}`}>
+          <div className={`leading-relaxed text-white/60 ${compact ? "text-caption" : "text-caption"}`}>
             Stored as: <span className="text-white/90 font-mono">{formatEntryStored(entry)}</span>
           </div>
         </div>
@@ -283,7 +283,7 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
         <button
           type="button"
           onClick={addEntry}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium text-purple-300 hover:text-purple-200 bg-purple-500/10 hover:bg-purple-500/20 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-caption font-medium text-purple-300 hover:text-purple-200 bg-purple-500/10 hover:bg-purple-500/20 transition-colors"
         >
           <Plus size={11} />
           Add service
@@ -293,7 +293,7 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
           <button
             type="button"
             onClick={() => removeEntry(entries[entries.length - 1].id)}
-            className="px-3 py-1.5 rounded-lg text-[11px] font-medium text-white/65 hover:bg-white/5 transition-colors"
+            className="px-3 py-1.5 rounded-lg text-caption font-medium text-white/65 hover:bg-white/5 transition-colors"
           >
             Remove
           </button>
@@ -304,7 +304,7 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
             <button
               type="button"
               onClick={() => setShowPresets(!showPresets)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium text-white/30 hover:text-white/50 bg-white/5 hover:bg-white/8 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-caption font-medium text-white/30 hover:text-white/50 bg-white/5 hover:bg-white/8 transition-colors"
             >
               <Clock size={11} />
               Quick presets
@@ -319,10 +319,10 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
                     key={preset.label}
                     type="button"
                     onClick={() => applyPreset(preset)}
-                    className="w-full text-left px-2.5 py-1.5 rounded-md text-[10px] text-white/60 hover:text-white hover:bg-white/8 transition-colors"
+                    className="w-full text-left px-2.5 py-1.5 rounded-md text-caption text-white/60 hover:text-white hover:bg-white/8 transition-colors"
                   >
                     {preset.label}
-                    <span className="block text-[9px] text-white/25 mt-0.5">
+                    <span className="block text-caption text-white/25 mt-0.5">
                       {preset.entries
                         .map((e) => `${e.day} ${e.hour}:${e.minute.padStart(2, "0")} ${e.period}`)
                         .join(", ")}

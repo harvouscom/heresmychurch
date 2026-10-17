@@ -38,7 +38,7 @@ export function AnnouncementsPill({
           className="text-purple-700 flex-shrink-0"
           aria-hidden
         />
-        <span className="text-purple-800 text-[11px] font-medium truncate">
+        <span className="text-purple-800 text-caption font-medium truncate">
           {collapsedLabel}
         </span>
         <ChevronDown
@@ -73,7 +73,7 @@ export function AnnouncementsPill({
             </div>
             <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1 min-h-0">
               {activeAnnouncements.length === 0 ? (
-                <p className="text-white/60 text-[11px]">No announcements right now.</p>
+                <p className="text-white/60 text-caption">No announcements right now.</p>
               ) : (
                 <div className="space-y-3">
                   {activeAnnouncements.map((ann) => (
@@ -97,7 +97,7 @@ export function AnnouncementsPill({
                           : ann.body}
                       </p>
                       {ann.date && (
-                        <p className="text-purple-300/90 text-[11px]">
+                        <p className="text-purple-300/90 text-caption">
                           {ann.date}
                         </p>
                       )}

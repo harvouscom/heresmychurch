@@ -254,21 +254,21 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
   return (
     <div
       className="h-full flex flex-col overflow-hidden rounded-[20px]"
-      style={{ backgroundColor: "#1E1040", fontFamily: "'Livvic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" }}
+      style={{ backgroundColor: "#1E1040" }}
     >
       {/* Header */}
       <div className="flex-shrink-0 px-5 pt-5 pb-4 border-b border-white/10">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] uppercase tracking-wider text-purple-400/70 font-semibold">
+              <span className="text-caption uppercase tracking-wider text-purple-400/70 font-semibold">
                 Update Church Info
               </span>
             </div>
             <h2 className="text-white font-semibold text-[22px] leading-tight line-clamp-2 text-pretty">
               {church.name}
             </h2>
-            <p className="text-white/60 text-[11px] mt-1.5 leading-relaxed">
+            <p className="text-white/60 text-caption mt-1.5 leading-relaxed">
               Help keep this church&apos;s information accurate and up to date.
               {emptyCount > 0 && (
                 <span className="text-white">
@@ -321,7 +321,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
             {/* Divider */}
             <div className="flex items-center gap-3 py-1">
               <div className="flex-1 h-px bg-white/8" />
-              <span className="text-[9px] uppercase tracking-wider text-white/55 font-semibold">
+              <span className="text-caption uppercase tracking-wider text-white/55 font-semibold">
                 Service Details & Contact
               </span>
               <div className="flex-1 h-px bg-white/8" />
@@ -722,7 +722,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
 
         {/* Info note */}
         <div className="pt-3 border-t border-white/5 text-pretty">
-          <p className="text-white/55 text-[10px] leading-relaxed text-center">
+          <p className="text-white/55 text-caption leading-relaxed text-center">
             Most edits are applied immediately. Changes to name, website, address, or reports (closed, duplicate, relocated, or out of scope) require a brief review.
           </p>
         </div>
@@ -871,13 +871,13 @@ function MainCampusSearch({
           autoFocus
         />
       </div>
-      {error && <p className="text-red-400 text-[10px]">{error}</p>}
-      {loading && <p className="text-white/70 text-[10px]">Searching...</p>}
+      {error && <p className="text-red-400 text-caption">{error}</p>}
+      {loading && <p className="text-white/70 text-caption">Searching...</p>}
       {!loading && query.trim().length >= 2 && results.length === 0 && !error && (
-        <p className="text-white/70 text-[10px]">No churches found. Try a different name or city.</p>
+        <p className="text-white/70 text-caption">No churches found. Try a different name or city.</p>
       )}
       {!loading && results.length > 0 && (
-        <p className="text-white/40 text-[10px]">{results.length} church{results.length === 1 ? "" : "es"} found</p>
+        <p className="text-white/40 text-caption">{results.length} church{results.length === 1 ? "" : "es"} found</p>
       )}
       <div className="max-h-60 overflow-y-auto space-y-1">
         {results.map((r, i) => {
@@ -895,7 +895,7 @@ function MainCampusSearch({
           return (
             <div key={r.id}>
               {showHeader && (
-                <p className="text-[9px] text-white/40 uppercase tracking-wider px-2.5 pt-2 pb-0.5">{tierLabel}</p>
+                <p className="text-caption text-white/40 uppercase tracking-wider px-2.5 pt-2 pb-0.5">{tierLabel}</p>
               )}
               <button
                 type="button"
@@ -917,11 +917,11 @@ function MainCampusSearch({
                 <div className="flex-1 min-w-0">
                   <span className="text-white font-medium truncate block">{r.name}</span>
                   {locationLine ? (
-                    <span className="text-white/70 text-[10px] block truncate">{locationLine}</span>
+                    <span className="text-white/70 text-caption block truncate">{locationLine}</span>
                   ) : null}
                 </div>
                 {selectedId === r.id && (
-                  <span className="text-purple-300 text-[10px] flex-shrink-0">Linking...</span>
+                  <span className="text-purple-300 text-caption flex-shrink-0">Linking...</span>
                 )}
               </button>
             </div>
@@ -931,7 +931,7 @@ function MainCampusSearch({
       <button
         type="button"
         onClick={onCancel}
-        className="px-3 py-1.5 rounded-lg text-white/65 text-[11px] font-medium hover:bg-white/5 transition-colors"
+        className="px-3 py-1.5 rounded-lg text-white/65 text-caption font-medium hover:bg-white/5 transition-colors"
       >
         Cancel
       </button>
@@ -1007,16 +1007,16 @@ function FieldCard({
       {/* Field header */}
       <div className="flex items-center gap-2 mb-2">
         <Icon size={13} className={empty && !isOptionalField(key) ? "text-white" : "text-purple-400"} />
-        <span className="text-[10px] uppercase tracking-wider text-white/70 font-semibold">
+        <span className="text-caption uppercase tracking-wider text-white/70 font-semibold">
           {label}
         </span>
         {empty && isOptionalField(key) && (
-          <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-white/10 text-white/70 font-medium">
+          <span className="ml-auto text-caption px-1.5 py-0.5 rounded-full bg-white/10 text-white/70 font-medium">
             Optional
           </span>
         )}
         {empty && !isOptionalField(key) && (
-          <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-pink-500/15 text-white font-medium">
+          <span className="ml-auto text-caption px-1.5 py-0.5 rounded-full bg-pink-500/15 text-white font-medium">
             MISSING
           </span>
         )}
@@ -1025,7 +1025,7 @@ function FieldCard({
       {/* Current value display */}
       {displayValue && !empty && (
         <div className="mb-2.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04]">
-          <p className="text-[10px] text-white/55 mb-0.5">Current value</p>
+          <p className="text-caption text-white/55 mb-0.5">Current value</p>
           <p className="text-white/90 text-xs truncate">{displayValue}</p>
         </div>
       )}
@@ -1051,7 +1051,7 @@ function FieldCard({
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={onStartEdit}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/12 text-purple-300 text-[11px] font-medium hover:bg-purple-500/20 transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/12 text-purple-300 text-caption font-medium hover:bg-purple-500/20 transition-colors cursor-pointer"
               >
                 <Pencil size={10} />
                 {empty ? "Add" : "Edit"}
@@ -1061,7 +1061,7 @@ function FieldCard({
                   type="button"
                   onClick={() => onSubmitWithValue("")}
                   disabled={isSubmitting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/8 text-white/80 text-[11px] font-medium hover:bg-white/12 transition-colors cursor-pointer disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/8 text-white/80 text-caption font-medium hover:bg-white/12 transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {isSubmitting ? <ThreeDotLoader size={10} /> : null}
                   Unlink from main campus
@@ -1099,7 +1099,7 @@ function FieldCard({
                     <button
                       onClick={onSubmitEdit}
                       disabled={isSubmitting || (key === "address" ? !canSubmitAddress : !values[key]?.trim())}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-300 text-[11px] font-medium hover:bg-purple-500/30 transition-colors disabled:opacity-30 cursor-pointer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-300 text-caption font-medium hover:bg-purple-500/30 transition-colors disabled:opacity-30 cursor-pointer"
                     >
                       {isSubmitting ? (
                         <ThreeDotLoader size={10} />
@@ -1110,7 +1110,7 @@ function FieldCard({
                     </button>
                     <button
                       onClick={onCancelEdit}
-                      className="px-3 py-1.5 rounded-lg text-white/65 text-[11px] font-medium hover:bg-white/5 transition-colors cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg text-white/65 text-caption font-medium hover:bg-white/5 transition-colors cursor-pointer"
                     >
                       Cancel
                     </button>
@@ -1162,7 +1162,7 @@ function EditInput({
                 return next;
               });
             }}
-            className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border cursor-pointer ${
+            className={`px-2 py-0.5 rounded-full text-caption font-medium transition-all border cursor-pointer ${
               chipLanguages.has(lang)
                 ? "bg-purple-500/30 border-purple-500/50 text-purple-300"
                 : "bg-white/5 border-white/8 text-white/60 hover:text-white/80"
@@ -1190,7 +1190,7 @@ function EditInput({
                 return next;
               });
             }}
-            className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border cursor-pointer ${
+            className={`px-2 py-0.5 rounded-full text-caption font-medium transition-all border cursor-pointer ${
               chipMinistries.has(ministry)
                 ? "bg-purple-500/30 border-purple-500/50 text-purple-300"
                 : "bg-white/5 border-white/8 text-white/60 hover:text-white/80"

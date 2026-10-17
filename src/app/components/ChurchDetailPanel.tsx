@@ -184,7 +184,7 @@ function ServiceTimesCard({
           )}
         </span>
         {grouped.length > 1 && (
-          <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400/70 font-medium">
+          <span className="ml-auto text-caption px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400/70 font-medium">
             {grouped.reduce((sum, g) => sum + g.services.length, 0)} services
           </span>
         )}
@@ -244,7 +244,7 @@ function LanguageEstimateCard({ bilingualInfo }: { bilingualInfo: { probability:
         <Languages size={14} className="text-amber-400 flex-shrink-0" />
         <span className="text-xs text-white/50 font-medium">{label}</span>
         <span className="text-white/40 text-xs font-semibold tabular-nums ml-auto">{pct}%</span>
-        <span className={`text-[10px] px-1 py-px rounded font-semibold ${
+        <span className={`text-caption px-1 py-px rounded font-semibold ${
           bilingualInfo.confirmed
             ? "bg-green-500/15 text-green-400/80"
             : "bg-amber-500/15 text-amber-400/70"
@@ -478,7 +478,6 @@ export function ChurchDetailPanel({
       className="h-full flex flex-col overflow-hidden rounded-[20px]"
       style={{
         backgroundColor: "#1E1040",
-        fontFamily: "'Livvic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
       }}
     >
       {/* Header */}
@@ -491,7 +490,7 @@ export function ChurchDetailPanel({
             {(church.homeCampusId || otherCampuses.length > 0 || fullAddress) && (
               <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 {church.homeCampusId && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider bg-purple-500/25 text-purple-300 border border-purple-500/30">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-caption font-semibold uppercase tracking-wider bg-purple-500/25 text-purple-300 border border-purple-500/30">
                     Campus
                   </span>
                 )}
@@ -499,7 +498,7 @@ export function ChurchDetailPanel({
                   <button
                     type="button"
                     onClick={() => document.getElementById("other-campuses")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                    className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider bg-purple-500/25 text-purple-300 border border-purple-500/30 hover:bg-purple-500/35 transition-colors cursor-pointer"
+                    className="inline-flex items-center px-2 py-0.5 rounded-md text-caption font-semibold uppercase tracking-wider bg-purple-500/25 text-purple-300 border border-purple-500/30 hover:bg-purple-500/35 transition-colors cursor-pointer"
                   >
                     Multiple Campuses
                   </button>
@@ -585,7 +584,7 @@ export function ChurchDetailPanel({
         {/* Reaction bar (Netflix-style thumbs) — above service times */}
         {!reactionsLoading && (
           <div className="flex flex-col gap-2">
-            <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
+            <span className="text-caption uppercase tracking-wider text-white/40 font-semibold">
               How do you feel about this church?
             </span>
             <div className="flex gap-2">
@@ -687,19 +686,19 @@ export function ChurchDetailPanel({
           <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/5">
             <div className="flex items-center gap-1.5 mb-1">
               <Users size={13} className="text-purple-400 flex-shrink-0" />
-              <span className="text-[10px] uppercase tracking-wider text-white/35 font-semibold">Attendance*</span>
+              <span className="text-caption uppercase tracking-wider text-white/35 font-semibold">Attendance*</span>
             </div>
             <div className="text-white text-base font-semibold">~{church.attendance.toLocaleString()}</div>
             <div className="flex items-center gap-1.5 mt-0.5">
               <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: sizeCat.color }} />
               <span className="text-white/50 text-xs">{sizeCat.label}</span>
             </div>
-            <div className="text-white/35 text-[10px] mt-1">* Estimated weekly number</div>
+            <div className="text-white/35 text-caption mt-1">* Estimated weekly number</div>
           </div>
           <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/5">
             <div className="flex items-center gap-1.5 mb-1">
               <ChurchIcon size={13} className="text-purple-400 flex-shrink-0" />
-              <span className="text-[10px] uppercase tracking-wider text-white/35 font-semibold">Denomination</span>
+              <span className="text-caption uppercase tracking-wider text-white/35 font-semibold">Denomination</span>
             </div>
             <div className="text-white text-base font-medium">{church.denomination === "Other" || church.denomination === "Unknown" ? "Unspecified" : church.denomination}</div>
             <div className="text-white/40 text-xs mt-0.5">{sameDenomCount.toLocaleString()} similar in state</div>
@@ -829,7 +828,7 @@ export function ChurchDetailPanel({
               Update Church Info
             </span>
             {missingFieldCount > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pink-500/20 text-white font-medium">
+              <span className="text-caption px-1.5 py-0.5 rounded-full bg-pink-500/20 text-white font-medium">
                 {missingFieldCount} missing
               </span>
             )}
@@ -1071,7 +1070,7 @@ function InlineModerationSection({
 
   return (
     <div className="rounded-xl p-4 bg-purple-500/10 border border-purple-500/20 space-y-3">
-      <p className="text-[10px] uppercase tracking-widest text-purple-400/80 font-semibold flex items-center gap-1.5">
+      <p className="text-caption uppercase tracking-widest text-purple-400/80 font-semibold flex items-center gap-1.5">
         <Shield size={11} className="text-purple-400" />
         Pending Changes
       </p>
@@ -1085,11 +1084,11 @@ function InlineModerationSection({
         const proposedIsUrl = isWebsite && /^https?:\/\//i.test(s.proposedValue);
         return (
           <div key={id} className="space-y-1">
-            <span className="text-purple-300 text-[10px] uppercase tracking-wider font-semibold">
+            <span className="text-purple-300 text-caption uppercase tracking-wider font-semibold">
               {MOD_FIELD_LABELS[s.field] || s.field}
             </span>
             {s.alreadyApplied && (
-              <p className="text-[10px] uppercase tracking-wider text-amber-400/90 font-medium">Already applied</p>
+              <p className="text-caption uppercase tracking-wider text-amber-400/90 font-medium">Already applied</p>
             )}
             {s.currentValue != null && s.currentValue !== "" && (
               <p className="text-white/50 text-xs">
@@ -1127,7 +1126,7 @@ function InlineModerationSection({
               <button
                 onClick={() => handle(() => moderateApproveSuggestion(moderatorKey, s.churchId, s.field), id)}
                 disabled={isActing}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[10px] font-medium transition-colors disabled:opacity-50"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-600/20 hover:bg-green-600/40 text-green-400 text-caption font-medium transition-colors disabled:opacity-50"
               >
                 {isActing ? <ThreeDotLoader size={10} /> : <Check size={10} />}
                 Approve
@@ -1135,7 +1134,7 @@ function InlineModerationSection({
               <button
                 onClick={() => handle(() => moderateRejectSuggestion(moderatorKey, s.churchId, s.field), id)}
                 disabled={isActing}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-600/20 hover:bg-red-600/40 text-red-400 text-[10px] font-medium transition-colors disabled:opacity-50"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-600/20 hover:bg-red-600/40 text-red-400 text-caption font-medium transition-colors disabled:opacity-50"
               >
                 <X size={10} />
                 Reject

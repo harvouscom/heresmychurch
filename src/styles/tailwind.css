@@ -5,6 +5,29 @@
 
 @theme {
   --breakpoint-md: 990px;
+
+  /* Typography: Google Sans Flex everywhere (same stack as Harvous). */
+  --font-sans: "Google Sans Flex", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-sans);
+
+  /* Named type scale (use instead of text-caption/[10px]/[11px] etc.). 11px is the floor. */
+  --text-caption: 11px;
+  --text-caption--line-height: 14px;
+  --text-label: 12px;
+  --text-label--line-height: 16px;
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  --text-title: 17px;
+  --text-title--line-height: 22px;
+  --text-title-lg: 22px;
+  --text-title-lg--line-height: 28px;
+}
+
+/* Rounded titles (Harvous convention): only the ROND axis, so font-weight still applies. */
+@utility font-display {
+  font-family: var(--font-display);
+  font-variation-settings: "ROND" 100;
+  letter-spacing: -0.012em;
 }
 
 @keyframes colon-blink {

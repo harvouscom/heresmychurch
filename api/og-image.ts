@@ -1,7 +1,8 @@
 /**
  * OG image renderer for the Workers API (workers-og: satori + resvg wasm).
  * Same layout as supabase/functions/make-server-283d8046/og-image.tsx, built as plain
- * element objects so the Worker needs no React. Fonts are TTF: satori can't read woff2.
+ * element objects so the Worker needs no React. Fonts are static TTFs: satori can't read
+ * variable fonts or woff2.
  */
 import { ImageResponse } from "workers-og";
 
@@ -14,7 +15,14 @@ const BG_BOTTOM = "#4c1d95"; // purple-800
 const TEXT_WHITE = "#ffffff";
 const SUBTITLE_OPACITY = 0.9;
 
-const LIVVIC_TTF = [
+// Google Sans Flex static cuts (scripts/build-og-fonts.py), served by the site Worker.
+// Title = wght 600 + rounded, body = wght 400 square. Falls back to Livvic if unreachable.
+const FONT_FAMILY = "Google Sans Flex";
+const OG_FONTS = [
+  { url: "https://heresmychurch.com/fonts/og/GoogleSansFlex-Body.ttf", weight: 400 as const },
+  { url: "https://heresmychurch.com/fonts/og/GoogleSansFlex-Title.ttf", weight: 600 as const },
+];
+const FALLBACK_FONTS = [
   { url: "https://fonts.gstatic.com/s/livvic/v15/rnCp-x1S2hzjrlfnbw.ttf", weight: 400 as const },
   { url: "https://fonts.gstatic.com/s/livvic/v15/rnCq-x1S2hzjrlfft8cesg.ttf", weight: 600 as const },
 ];
@@ -22,18 +30,28 @@ const LIVVIC_TTF = [
 type Font = { name: string; data: ArrayBuffer; weight: 400 | 600; style: "normal" };
 let cachedFonts: Promise<Font[]> | null = null;
 
-function getLivvicFonts(): Promise<Font[]> {
+async function loadFonts(list: typeof OG_FONTS): Promise<Font[]> {
+  return Promise.all(
+    list.map(async ({ url, weight }) => {
+      const res = await fetch(url, { cf: { cacheTtl: 86400 * 30, cacheEverything: true } } as RequestInit);
+      if (!res.ok) throw new Error(`Font fetch failed: ${res.status} ${url}`);
+      // Same family name either way so the layout's fontFamily matches.
+      return { name: FONT_FAMILY, data: await res.arrayBuffer(), weight, style: "normal" as const };
+    }),
+  );
+}
+
+function getFonts(): Promise<Font[]> {
   if (!cachedFonts) {
-    cachedFonts = Promise.all(
-      LIVVIC_TTF.map(async ({ url, weight }) => {
-        const res = await fetch(url, { cf: { cacheTtl: 86400 * 30, cacheEverything: true } } as RequestInit);
-        if (!res.ok) throw new Error(`Font fetch failed: ${res.status}`);
-        return { name: "Livvic", data: await res.arrayBuffer(), weight, style: "normal" as const };
-      }),
-    ).catch((e) => {
-      cachedFonts = null; // retry on the next request
-      throw e;
-    });
+    cachedFonts = loadFonts(OG_FONTS)
+      .catch((e) => {
+        console.log(`OG fonts: ${e}; falling back to Livvic`);
+        return loadFonts(FALLBACK_FONTS);
+      })
+      .catch((e) => {
+        cachedFonts = null; // retry on the next request
+        throw e;
+      });
   }
   return cachedFonts;
 }
@@ -60,14 +78,14 @@ const frame = (children: El[]): El =>
       alignItems: "center",
       justifyContent: "center",
       background: `linear-gradient(180deg, ${BG_TOP} 0%, ${BG_BOTTOM} 100%)`,
-      fontFamily: "Livvic",
+      fontFamily: FONT_FAMILY,
       padding: 80,
     },
     children,
   );
 
 export async function generateOgImage(params: OgImageParams): Promise<Response> {
-  const fonts = await getLivvicFonts();
+  const fonts = await getFonts();
 
   const el =
     params.type === "state"

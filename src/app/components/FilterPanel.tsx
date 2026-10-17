@@ -86,7 +86,7 @@ export function FilterPanel({
           <CheckCheck size={13} className={showVerified ? "text-purple-400" : "text-white/40"} />
           Verified
           {showVerified && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-medium normal-case tracking-normal">
+            <span className="text-caption px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-medium normal-case tracking-normal">
               active
             </span>
           )}
@@ -116,14 +116,14 @@ export function FilterPanel({
           </label>
 
           {verifiedCount != null && verifiedTotalCount != null && (
-            <div className="mt-1 text-[11px] text-white/40 px-2">
+            <div className="mt-1 text-caption text-white/40 px-2">
               <span className="tabular-nums">{verifiedCount.toLocaleString()}</span> of{" "}
               <span className="tabular-nums">{verifiedTotalCount.toLocaleString()}</span> churches verified
             </div>
           )}
 
           <div className="mt-2 px-2">
-            <p className="text-[9px] text-white/25 uppercase tracking-wider font-semibold mb-1">
+            <p className="text-caption text-white/25 uppercase tracking-wider font-semibold mb-1">
               Verified means
             </p>
             <div className="space-y-1">
@@ -204,7 +204,7 @@ export function FilterPanel({
           <Languages size={12} />
           Languages
           {languageFilter !== "all" && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-medium normal-case tracking-normal">
+            <span className="text-caption px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-medium normal-case tracking-normal">
               active
             </span>
           )}
@@ -342,7 +342,7 @@ function LanguageFilters({
       {languageStats.sortedLangs.length > 0 && (
         <>
           <div className="h-px bg-white/5 mx-2 my-1" />
-          <p className="text-[9px] text-white/25 px-2 uppercase tracking-wider font-semibold">
+          <p className="text-caption text-white/25 px-2 uppercase tracking-wider font-semibold">
             By language{" "}
             {languageStats.sortedLangs.some(
               (l) => l.estimated > 0 && l.confirmed === 0
@@ -368,7 +368,7 @@ function LanguageFilters({
               <span className="text-xs text-white/30 tabular-nums">
                 {total}
                 {estimated > 0 && confirmed < total && (
-                  <span className="text-blue-400/40 text-[9px] ml-0.5">~</span>
+                  <span className="text-blue-400/40 text-caption ml-0.5">~</span>
                 )}
               </span>
             </label>

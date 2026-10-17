@@ -860,7 +860,6 @@ export function ChurchMap({
   return (
     <div
       className={`relative size-full overflow-hidden flex ${selectedChurch ? 'flex-col md:flex-row' : ''}`}
-      style={{ fontFamily: "'Livvic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" }}
       onMouseMove={d.handleMouseMove}
       onMouseLeave={d.handleMouseLeave}
     >
@@ -1479,13 +1478,13 @@ function MapArea({
     <div className="flex flex-1 flex-col relative" style={{ backgroundColor: "#F5F0E8" }}>
       {/* Review banner — only when key is in URL (so it disappears on navigate without key) */}
       {moderatorKey && moderationMode && (
-        <div className="flex-shrink-0 bg-pink-100 text-pink-800 text-[11px] py-1.5 px-4 backdrop-blur-sm font-medium tracking-wide flex items-center justify-center gap-3">
+        <div className="flex-shrink-0 bg-pink-100 text-pink-800 text-caption py-1.5 px-4 backdrop-blur-sm font-medium tracking-wide flex items-center justify-center gap-3">
           <span>You're currently in review view</span>
           {onExitReviewView && (
             <button
               type="button"
               onClick={onExitReviewView}
-              className="shrink-0 px-2 py-0.5 rounded border border-pink-300/80 bg-pink-50 hover:bg-pink-200/80 text-pink-800 text-[10px] font-medium transition-colors"
+              className="shrink-0 px-2 py-0.5 rounded border border-pink-300/80 bg-pink-50 hover:bg-pink-200/80 text-pink-800 text-caption font-medium transition-colors"
             >
               Exit review view
             </button>
@@ -1963,7 +1962,7 @@ function MapArea({
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-600 opacity-75" />
                   <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-600" />
                 </span>
-                <span className="text-green-700 text-[11px] font-medium truncate">{label}</span>
+                <span className="text-green-700 text-caption font-medium truncate">{label}</span>
               </div>
             );
           })()}
@@ -2134,7 +2133,7 @@ function HeaderPill({
           </span>
         </span>
         {focusedState ? (
-          <span className="text-white text-sm text-pretty min-w-0 truncate flex items-center gap-1.5">
+          <span className="text-white text-sm font-display text-pretty min-w-0 truncate flex items-center gap-1.5">
             <span
               key={showLoading ? "loading" : "ready"}
               className="font-medium whitespace-nowrap animate-in fade-in duration-300"
@@ -2149,7 +2148,7 @@ function HeaderPill({
             </span>
           </span>
         ) : (
-          <span className="text-white text-sm text-pretty min-w-0 truncate">
+          <span className="text-white text-sm font-display text-pretty min-w-0 truncate">
             <span
               key={showLoading ? "loading" : "ready"}
               className="font-medium animate-in fade-in duration-300"
@@ -2179,7 +2178,7 @@ function HeaderPill({
             showLoading ? "opacity-70 cursor-default" : "hover:opacity-80"
           }`}
         >
-          <span className="text-pink-300 text-[11px] font-medium min-w-0 truncate inline-flex items-center gap-1">
+          <span className="text-pink-300 text-caption font-medium min-w-0 truncate inline-flex items-center gap-1">
             {showLoading ? (
               <>
                 <ThreeDotLoader size={10} className="bg-pink-300" />
@@ -2196,7 +2195,7 @@ function HeaderPill({
           onClick={(e) => { e.stopPropagation(); onShowNationalReviewModal(); }}
           className="flex items-center justify-center gap-1.5 w-full min-w-0 px-5 pb-1.5 -mt-1.5 hover:opacity-80 transition-opacity"
         >
-          <span className="text-pink-300 text-[11px] font-medium min-w-0 truncate inline-flex items-center gap-1">
+          <span className="text-pink-300 text-caption font-medium min-w-0 truncate inline-flex items-center gap-1">
             {nationalStatsMatch
               ? <span>{nationalReviewPercentage}% need review</span>
               : nationalReviewStatsLoading
@@ -2285,7 +2284,7 @@ function ReviewerLoginModal({ loading, error, onClose }: { loading: boolean; err
                     <p className="text-white/50 text-xs italic leading-relaxed">
                       &quot;{REVIEW_SAYINGS[sayingIndex].text}&quot;
                     </p>
-                    <p className="text-purple-400/60 text-[10px] mt-1.5 font-medium">
+                    <p className="text-purple-400/60 text-caption mt-1.5 font-medium">
                       -- {REVIEW_SAYINGS[sayingIndex].ref}
                     </p>
                   </motion.div>
@@ -2350,7 +2349,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
             <span className="text-purple-300 text-xs">{"\u2726"}</span>
             <p className="text-white/60 text-xs text-pretty">100% free open-sourced project with crowd-sourced data</p>
           </div>
-          <p className="text-white/40 text-[11px] uppercase tracking-wider font-medium mb-3">What you can do</p>
+          <p className="text-white/40 text-caption uppercase tracking-wider font-medium mb-3">What you can do</p>
           <ul className="space-y-2.5">
             {[
               "Browse Christian churches by country and region",
@@ -2380,13 +2379,13 @@ function AboutModal({ onClose }: { onClose: () => void }) {
           >
             Start Finding Churches
           </button>
-          <p className="text-white/30 text-[11px] text-center mt-2.5 text-pretty">
+          <p className="text-white/30 text-caption text-center mt-2.5 text-pretty">
             An open-source project by{" "}
             <a href="https://harvous.com/about" target="_blank" rel="noopener noreferrer" className="underline hover:text-white/50 transition-colors">Harvous</a>
             . Need help?{" "}
             <a href="mailto:hey@heresmychurch.com" className="underline hover:text-white/50 transition-colors">hey@heresmychurch.com</a>
           </p>
-          <p className="text-white/25 text-[10px] text-center mt-1.5">Version {__APP_VERSION__}</p>
+          <p className="text-white/25 text-caption text-center mt-1.5">Version {__APP_VERSION__}</p>
         </div>
       </div>
     </div>

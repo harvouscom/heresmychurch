@@ -43,7 +43,7 @@ export function LoadingOverlay({
                 <p className="text-white/50 text-xs italic leading-relaxed">
                   "{WAITING_SAYINGS[sayingIndex].text}"
                 </p>
-                <p className="text-purple-400/60 text-[10px] mt-1.5 font-medium">
+                <p className="text-purple-400/60 text-caption mt-1.5 font-medium">
                   -- {WAITING_SAYINGS[sayingIndex].ref}
                 </p>
               </motion.div>
@@ -204,7 +204,7 @@ export function StateTooltip({
         </div>
       )}
       {reviewCount != null && reviewCount > 0 && (
-        <div className="text-pink-300 text-[11px] font-medium mt-1">
+        <div className="text-pink-300 text-caption font-medium mt-1">
           {reviewCount.toLocaleString()} need review
         </div>
       )}
@@ -353,7 +353,7 @@ export function ChurchTooltip({
         {church.denomination === "Other" || church.denomination === "Unknown" ? "Unspecified" : church.denomination}
       </div>
       {showReviewStatus && churchNeedsReview(church) && (
-        <div className="text-pink-300 text-[11px] font-medium mt-1">
+        <div className="text-pink-300 text-caption font-medium mt-1">
           Needs review
         </div>
       )}

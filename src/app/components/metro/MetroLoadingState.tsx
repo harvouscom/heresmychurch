@@ -64,7 +64,7 @@ export function MetroLoadingState({ placeName }: { placeName: string }) {
               <p className="text-stone-500 text-xs italic leading-relaxed">
                 “{WAITING_SAYINGS[sayingIndex].text}”
               </p>
-              <p className="text-purple-500/70 text-[10px] mt-1.5 font-medium">
+              <p className="text-purple-500/70 text-caption mt-1.5 font-medium">
                 — {WAITING_SAYINGS[sayingIndex].ref}
               </p>
             </motion.div>

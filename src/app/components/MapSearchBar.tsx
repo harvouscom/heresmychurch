@@ -490,7 +490,7 @@ export function MapSearchBar({
           className="mb-2 rounded-xl shadow-2xl overflow-hidden max-h-[40vh] overflow-y-auto"
           style={{ backgroundColor: "rgba(30, 16, 64, 0.97)" }}
         >
-          <div className="px-3 py-2 text-[10px] font-medium text-white/30 uppercase tracking-wider border-b border-white/5">
+          <div className="px-3 py-2 text-caption font-medium text-white/30 uppercase tracking-wider border-b border-white/5">
             {isWorld ? "Filter by country" : "Filter by " + regionNounOne}
           </div>
           <button
@@ -521,7 +521,7 @@ export function MapSearchBar({
                 >
                   <PlaceFlag abbrev={c.code} size="sm" />
                   <span className="flex-1 min-w-0 truncate">{c.name}</span>
-                  <span className="text-[10px] text-white/30 tabular-nums flex-shrink-0">
+                  <span className="text-caption text-white/30 tabular-nums flex-shrink-0">
                     {c.churchCount.toLocaleString()}
                   </span>
                 </button>
@@ -539,7 +539,7 @@ export function MapSearchBar({
                   }}
                 >
                   <PlaceFlag abbrev={s.abbrev} size="sm" />
-                  <span className="w-5 text-[10px] text-white/30 font-mono flex-shrink-0">{s.abbrev}</span>
+                  <span className="w-5 text-caption text-white/30 font-mono flex-shrink-0">{s.abbrev}</span>
                   <span className="min-w-0 truncate">{STATE_NAMES[s.abbrev] || s.name || s.abbrev}</span>
                 </button>
               ))}

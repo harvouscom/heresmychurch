@@ -161,7 +161,7 @@ export function PendingAlertsPill({
           className="text-amber-700 flex-shrink-0"
           aria-hidden
         />
-        <span className="text-amber-800 text-[11px] font-medium truncate">
+        <span className="text-amber-800 text-caption font-medium truncate">
           {collapsedLabel}
         </span>
         <ChevronDown
@@ -196,16 +196,16 @@ export function PendingAlertsPill({
             </div>
             <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1 min-h-0">
               {error && (
-                <p className="text-amber-300 text-[11px]">{error}</p>
+                <p className="text-amber-300 text-caption">{error}</p>
               )}
 
               {loading ? (
-                <p className="text-white/60 text-[11px]">Loading…</p>
+                <p className="text-white/60 text-caption">Loading…</p>
               ) : (
                 <>
                   {activeAlerts.length > 0 && (
                     <div className="space-y-3">
-                      <p className="text-[10px] uppercase tracking-widest text-amber-400/80 font-medium">
+                      <p className="text-caption uppercase tracking-widest text-amber-400/80 font-medium">
                         Active issues
                       </p>
                       {activeAlerts.map((alert) => (
@@ -217,7 +217,7 @@ export function PendingAlertsPill({
                             {alert.description}
                           </p>
                           {alert.estimatedResolution && (
-                            <p className="text-amber-300/90 text-[11px]">
+                            <p className="text-amber-300/90 text-caption">
                               Est. resolved: {alert.estimatedResolution}
                             </p>
                           )}
@@ -226,7 +226,7 @@ export function PendingAlertsPill({
                               type="button"
                               disabled={votingId === alert.id}
                               onClick={() => handleVoteResolve(alert.id)}
-                              className="text-[11px] text-amber-300 hover:text-amber-200 font-medium disabled:opacity-50"
+                              className="text-caption text-amber-300 hover:text-amber-200 font-medium disabled:opacity-50"
                             >
                               {votingId === alert.id
                                 ? "Voting…"
@@ -240,26 +240,26 @@ export function PendingAlertsPill({
 
                   {createProposals.length > 0 && (
                     <div className="space-y-2 pt-2 border-t border-amber-500/20">
-                      <p className="text-[10px] uppercase tracking-widest text-amber-400/80 font-medium">
+                      <p className="text-caption uppercase tracking-widest text-amber-400/80 font-medium">
                         Proposed new alerts
                       </p>
                       {createProposals.map((p) => (
                         <div key={p.id} className="space-y-0.5">
-                          <p className="text-white text-[12px] font-medium">
+                          <p className="text-white text-label font-medium">
                             {p.shortLabel}
                           </p>
-                          <p className="text-white/70 text-[11px] leading-relaxed">
+                          <p className="text-white/70 text-caption leading-relaxed">
                             {p.description}
                           </p>
                           <div className="flex items-center gap-2">
-                            <span className="text-white/60 text-[11px]">
+                            <span className="text-white/60 text-caption">
                               {p.votes} / {p.needed} votes
                             </span>
                             <button
                               type="button"
                               disabled={p.myVote || votingId === p.id}
                               onClick={() => handleVoteCreate(p.id)}
-                              className="text-[11px] font-medium text-amber-300 hover:text-amber-200 disabled:opacity-50"
+                              className="text-caption font-medium text-amber-300 hover:text-amber-200 disabled:opacity-50"
                             >
                               {p.myVote ? "Voted" : votingId === p.id ? "Voting…" : "Vote"}
                             </button>
@@ -271,14 +271,14 @@ export function PendingAlertsPill({
 
                   {resolveProposals.length > 0 && (
                     <div className="space-y-2 pt-2 border-t border-amber-500/20">
-                      <p className="text-[10px] uppercase tracking-widest text-amber-400/80 font-medium">
+                      <p className="text-caption uppercase tracking-widest text-amber-400/80 font-medium">
                         Proposed resolutions
                       </p>
                       {resolveProposals.map((p) => {
                         const alert = activeAlerts.find((a) => a.id === p.alertId);
                         const label = alert?.shortLabel ?? `Alert ${p.alertId.slice(0, 8)}…`;
                         return (
-                        <div key={p.alertId} className="flex items-center gap-2 text-[11px]">
+                        <div key={p.alertId} className="flex items-center gap-2 text-caption">
                           <span className="text-white/70">
                             {label} — {p.votes} / {p.needed} votes
                           </span>
@@ -298,7 +298,7 @@ export function PendingAlertsPill({
 
                   {showReportIssue && showProposeForm && (
                     <div className="space-y-2 pt-2 border-t border-amber-500/20">
-                      <p className="text-[10px] uppercase tracking-widest text-amber-400/80 font-medium">
+                      <p className="text-caption uppercase tracking-widest text-amber-400/80 font-medium">
                         Describe the issue you&apos;re experiencing
                       </p>
                       <input
@@ -306,20 +306,20 @@ export function PendingAlertsPill({
                         placeholder="Brief summary"
                         value={proposeShortLabel}
                         onChange={(e) => setProposeShortLabel(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-lg text-[12px] text-white placeholder:text-white/40 bg-white/10 border border-amber-500/20"
+                        className="w-full px-3 py-1.5 rounded-lg text-label text-white placeholder:text-white/40 bg-white/10 border border-amber-500/20"
                       />
                       <textarea
                         placeholder="What happened? (optional details)"
                         value={proposeDescription}
                         onChange={(e) => setProposeDescription(e.target.value)}
                         rows={2}
-                        className="w-full px-3 py-1.5 rounded-lg text-[12px] text-white placeholder:text-white/40 bg-white/10 border border-amber-500/20 resize-none"
+                        className="w-full px-3 py-1.5 rounded-lg text-label text-white placeholder:text-white/40 bg-white/10 border border-amber-500/20 resize-none"
                       />
                       <button
                         type="button"
                         disabled={!proposeShortLabel.trim() || submittingPropose}
                         onClick={handlePropose}
-                        className="px-3 py-1.5 rounded-lg text-[11px] font-medium text-white bg-amber-700/80 hover:bg-amber-700 disabled:opacity-50"
+                        className="px-3 py-1.5 rounded-lg text-caption font-medium text-white bg-amber-700/80 hover:bg-amber-700 disabled:opacity-50"
                       >
                         {submittingPropose ? "Sending…" : "Send"}
                       </button>

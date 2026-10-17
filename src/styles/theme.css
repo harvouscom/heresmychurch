@@ -8,7 +8,7 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: #030213;
+  --primary: var(--hmc-brand);
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.95 0.0058 264.53);
   --secondary-foreground: #030213;
@@ -24,13 +24,13 @@
   --switch-background: #cbced4;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: oklch(0.708 0 0);
+  --ring: var(--hmc-brand-soft);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --radius: 0.625rem;
+  --radius: 0.625rem; /* 10px: inputs and rows */
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: #030213;
@@ -39,6 +39,38 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* ── Here's My Church design tokens ──────────────────────────────────────
+   * The purples were previously inline hex/rgba in ~30 places. Use these via
+   * Tailwind (bg-hmc-surface, text-hmc-text-muted, shadow-hmc-panel, …). */
+  --hmc-surface: #1E1040;          /* panels, cards, modals on the map */
+  --hmc-surface-raised: #231450;   /* hovered rows, nested cards */
+  --hmc-surface-sunken: #1A0E38;   /* forms, wells */
+  --hmc-surface-glass: rgba(30, 16, 64, 0.92); /* floating pills/controls over the map */
+  --hmc-brand: #6B21A8;
+  --hmc-brand-strong: #4C1D95;
+  --hmc-brand-soft: #A855F7;
+  --hmc-accent-lilac: #C9A0DC;
+  --hmc-text: #ffffff;
+  --hmc-text-muted: rgba(233, 213, 255, 0.78);  /* ≈ purple-200 on surface */
+  --hmc-text-subtle: rgba(216, 180, 254, 0.58); /* ≈ purple-300, secondary labels */
+  --hmc-border: rgba(255, 255, 255, 0.08);
+  --hmc-border-strong: rgba(255, 255, 255, 0.14);
+
+  /* Elevation */
+  --hmc-shadow-pill: 0 1px 2px rgba(17, 8, 40, 0.25), 0 6px 16px -4px rgba(17, 8, 40, 0.35);
+  --hmc-shadow-panel: 0 2px 6px rgba(17, 8, 40, 0.18), 0 18px 40px -12px rgba(17, 8, 40, 0.45);
+  --hmc-shadow-menu: 0 4px 12px rgba(17, 8, 40, 0.22), 0 12px 28px -8px rgba(17, 8, 40, 0.4);
+  --hmc-shadow-sheet: 0 -8px 32px -12px rgba(17, 8, 40, 0.45);
+
+  /* Layering scale (use with z-[var(--z-…)]) */
+  --z-controls: 10;
+  --z-pills: 20;
+  --z-panels: 30;
+  --z-popovers: 40;
+  --z-modals: 50;
+  --z-toasts: 60;
+  --z-tooltips: 70;
 }
 
 .dark {
@@ -117,16 +149,40 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-hmc-surface: var(--hmc-surface);
+  --color-hmc-surface-raised: var(--hmc-surface-raised);
+  --color-hmc-surface-sunken: var(--hmc-surface-sunken);
+  --color-hmc-surface-glass: var(--hmc-surface-glass);
+  --color-hmc-brand: var(--hmc-brand);
+  --color-hmc-brand-strong: var(--hmc-brand-strong);
+  --color-hmc-brand-soft: var(--hmc-brand-soft);
+  --color-hmc-lilac: var(--hmc-accent-lilac);
+  --color-hmc-text: var(--hmc-text);
+  --color-hmc-text-muted: var(--hmc-text-muted);
+  --color-hmc-text-subtle: var(--hmc-text-subtle);
+  --color-hmc-border: var(--hmc-border);
+  --color-hmc-border-strong: var(--hmc-border-strong);
+
+  --shadow-hmc-pill: var(--hmc-shadow-pill);
+  --shadow-hmc-panel: var(--hmc-shadow-panel);
+  --shadow-hmc-menu: var(--hmc-shadow-menu);
+  --shadow-hmc-sheet: var(--hmc-shadow-sheet);
+
+  /* Radius scale: rows/inputs 10, menus 12, panels/cards 20, pills full */
+  --radius-row: 10px;
+  --radius-menu: 12px;
+  --radius-panel: 20px;
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring;
   }
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Livvic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--font-sans);
     overflow: hidden;
   }
 
@@ -149,24 +205,28 @@
     font-size: var(--text-2xl);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
+    font-variation-settings: "ROND" 100;
   }
 
   h2 {
     font-size: var(--text-xl);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
+    font-variation-settings: "ROND" 100;
   }
 
   h3 {
     font-size: var(--text-lg);
     font-weight: var(--font-weight-medium);
     line-height: 1.5;
+    font-variation-settings: "ROND" 100;
   }
 
   h4 {
     font-size: var(--text-base);
     font-weight: var(--font-weight-medium);
     line-height: 1.5;
+    font-variation-settings: "ROND" 100;
   }
 
   label {
@@ -180,8 +240,6 @@
     font-weight: var(--font-weight-medium);
     line-height: 1.5;
     cursor: pointer;
-    --tw-inset-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 0 rgba(0, 0, 0, 0.1);
-    box-shadow: var(--tw-inset-shadow);
   }
 
   input {
@@ -190,21 +248,21 @@
     line-height: 1.5;
   }
 
+  /* Visible keyboard focus everywhere (mouse clicks don't trigger :focus-visible). */
+  :focus-visible {
+    outline: 2px solid var(--hmc-brand-soft);
+    outline-offset: 2px;
+  }
+
   ::selection {
-    background-color: #1e1040;
+    background-color: var(--hmc-surface);
     color: #ffffff;
   }
 
   ::-moz-selection {
-    background-color: #1e1040;
+    background-color: var(--hmc-surface);
     color: #ffffff;
   }
-}
-
-/* Accordion triggers: no inner shadow (override base button style) */
-[data-slot="accordion-trigger"] {
-  --tw-inset-shadow: none;
-  box-shadow: none;
 }
 
 /* react-simple-maps: ensure pointer cursor on clickable map states */

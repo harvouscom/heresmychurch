@@ -136,7 +136,7 @@ export function ReviewPill({
         aria-expanded={open}
       >
         <CheckCheck size={12} className="text-purple-600 flex-shrink-0" aria-hidden />
-        <span className="text-purple-800 text-[11px] font-medium truncate">{label}</span>
+        <span className="text-purple-800 text-caption font-medium truncate">{label}</span>
         <ChevronDown
           size={12}
           className={`text-purple-700/70 flex-shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
@@ -177,7 +177,7 @@ export function ReviewPill({
                 <button
                   type="button"
                   onClick={() => setActiveTab("needing")}
-                  className={`flex-1 py-2 px-3 rounded-full text-[11px] font-medium transition-colors ${
+                  className={`flex-1 py-2 px-3 rounded-full text-caption font-medium transition-colors ${
                     activeTab === "needing"
                       ? "bg-purple-500/30 text-white"
                       : "text-white/60 hover:text-white/80 hover:bg-white/5"
@@ -188,7 +188,7 @@ export function ReviewPill({
                 <button
                   type="button"
                   onClick={() => setActiveTab("inReview")}
-                  className={`flex-1 py-2 px-3 rounded-full text-[11px] font-medium transition-colors ${
+                  className={`flex-1 py-2 px-3 rounded-full text-caption font-medium transition-colors ${
                     activeTab === "inReview"
                       ? "bg-purple-500/30 text-white"
                       : "text-white/60 hover:text-white/80 hover:bg-white/5"
@@ -200,7 +200,7 @@ export function ReviewPill({
 
             <div className="px-5 py-4 space-y-4">
               {error && (
-                <p className="text-red-400 text-[11px]">{error}</p>
+                <p className="text-red-400 text-caption">{error}</p>
               )}
 
               {activeTab === "needing" && needingCount === 0 && (
@@ -228,7 +228,7 @@ export function ReviewPill({
                             className="rounded-lg bg-white/4 hover:bg-white/8 transition-colors px-3.5 py-3 space-y-2 group"
                           >
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-[10px] font-medium uppercase tracking-wider">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-caption font-medium uppercase tracking-wider">
                                 {FIELD_LABELS[s.field] || s.field}
                               </span>
                               {onOpenChurch && (
@@ -239,7 +239,7 @@ export function ReviewPill({
                                       onOpenChurch(s.churchId, s.churchShortId, s.churchState);
                                       onOpenChange(false);
                                     }}
-                                    className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-purple-300 bg-purple-500/15 border border-purple-500/25 hover:bg-purple-500/25 hover:text-purple-200 transition-colors"
+                                    className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-caption font-medium text-purple-300 bg-purple-500/15 border border-purple-500/25 hover:bg-purple-500/25 hover:text-purple-200 transition-colors"
                                   >
                                     View church
                                     <ChevronRight size={10} />
@@ -251,7 +251,7 @@ export function ReviewPill({
                                         onOpenChurch(s.proposedValue!.trim(), undefined, canonicalStateFromChurchId(s.proposedValue!)!);
                                         onOpenChange(false);
                                       }}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-amber-300 bg-amber-500/15 border border-amber-500/25 hover:bg-amber-500/25 hover:text-amber-200 transition-colors"
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-caption font-medium text-amber-300 bg-amber-500/15 border border-amber-500/25 hover:bg-amber-500/25 hover:text-amber-200 transition-colors"
                                     >
                                       View duplicate-of church
                                       <ChevronRight size={10} />
@@ -274,7 +274,7 @@ export function ReviewPill({
                               </p>
                             )}
                             {s.alreadyApplied && (
-                              <p className="text-[10px] uppercase tracking-wider text-amber-400/90 font-medium">Already applied</p>
+                              <p className="text-caption uppercase tracking-wider text-amber-400/90 font-medium">Already applied</p>
                             )}
                             {editing?.churchId === s.churchId && editing?.field === s.field ? (
                               <div className="space-y-2">
@@ -303,7 +303,7 @@ export function ReviewPill({
                                       `s:${s.churchId}:${s.field}`
                                     ).then((ok) => ok && setEditing(null))}
                                     disabled={actionLoading === `edit-${actionId}` || !editing.value.trim()}
-                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-caption font-medium transition-colors disabled:opacity-50"
                                   >
                                     {actionLoading === `edit-${actionId}` ? <ThreeDotLoader size={12} /> : <Check size={12} />}
                                     Approve edited
@@ -311,7 +311,7 @@ export function ReviewPill({
                                   <button
                                     type="button"
                                     onClick={() => setEditing(null)}
-                                    className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-[11px] font-medium transition-colors"
+                                    className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-caption font-medium transition-colors"
                                   >
                                     Cancel
                                   </button>
@@ -339,14 +339,14 @@ export function ReviewPill({
                                   <button
                                     onClick={() => handleAction(() => addToInReview(moderatorKey, "suggestion", s.churchId, s.field), `add-${actionId}`)}
                                     disabled={actionLoading === `add-${actionId}`}
-                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-caption font-medium transition-colors disabled:opacity-50"
                                   >
                                     {actionLoading === `add-${actionId}` ? <ThreeDotLoader size={12} /> : <ListEnd size={12} />}
                                     Add to up next
                                   </button>
                                   <button
                                     onClick={() => setEditing({ churchId: s.churchId, field: s.field, value: s.proposedValue })}
-                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 text-[11px] font-medium transition-colors"
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 text-caption font-medium transition-colors"
                                   >
                                     <Pencil size={12} />
                                     Edit
@@ -354,7 +354,7 @@ export function ReviewPill({
                                   <button
                                     onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.churchId, s.field), actionId, `s:${s.churchId}:${s.field}`)}
                                     disabled={isActing}
-                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-caption font-medium transition-colors disabled:opacity-50"
                                   >
                                     {isActing ? <ThreeDotLoader size={12} /> : <Check size={12} />}
                                     Approve
@@ -362,7 +362,7 @@ export function ReviewPill({
                                   <button
                                     onClick={() => handleAction(() => moderateRejectSuggestion(moderatorKey, s.churchId, s.field), actionId, `s:${s.churchId}:${s.field}`)}
                                     disabled={isActing}
-                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-caption font-medium transition-colors disabled:opacity-50"
                                   >
                                     <X size={12} />
                                     Reject
@@ -385,7 +385,7 @@ export function ReviewPill({
                         return (
                           <div key={ch.id} className="rounded-lg bg-white/4 hover:bg-white/8 transition-colors px-3.5 py-3 space-y-2">
                             <p className="text-white font-medium text-sm">{ch.name}</p>
-                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-white/50">
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-caption text-white/50">
                               {ch.address && (
                                 <span className="flex items-center gap-1">
                                   <MapPin size={10} /> {ch.address}, {ch.city}, {ch.state}
@@ -398,14 +398,14 @@ export function ReviewPill({
                                 </span>
                               )}
                             </div>
-                            <p className="text-white/30 text-[10px]">
+                            <p className="text-white/30 text-caption">
                               Submitted {new Date(ch.submittedAt).toLocaleDateString()}
                             </p>
                             <div className="flex gap-2 pt-0.5 flex-wrap">
                               <button
                                 onClick={() => handleAction(() => addToInReview(moderatorKey, "church", ch.id), `add-${actionId}`)}
                                 disabled={actionLoading === `add-${actionId}`}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-caption font-medium transition-colors disabled:opacity-50"
                               >
                                 {actionLoading === `add-${actionId}` ? <ThreeDotLoader size={12} /> : <ListEnd size={12} />}
                                 Add to up next
@@ -413,7 +413,7 @@ export function ReviewPill({
                               <button
                                 onClick={() => handleAction(() => moderateApproveChurch(moderatorKey, ch.id), actionId, `c:${ch.id}`)}
                                 disabled={isActing}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-caption font-medium transition-colors disabled:opacity-50"
                               >
                                 {isActing ? <ThreeDotLoader size={12} /> : <Check size={12} />}
                                 Approve
@@ -421,7 +421,7 @@ export function ReviewPill({
                               <button
                                 onClick={() => handleAction(() => moderateRejectChurch(moderatorKey, ch.id), actionId, `c:${ch.id}`)}
                                 disabled={isActing}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-caption font-medium transition-colors disabled:opacity-50"
                               >
                                 <X size={12} />
                                 Reject
@@ -436,11 +436,11 @@ export function ReviewPill({
                   {/* Needing: Pins awaiting reverify after relocate */}
                   {pendingReverify.length > 0 && (
                     <div className="space-y-3">
-                      <p className="text-white/40 text-[10px] uppercase tracking-wider font-medium">Needs update (relocated)</p>
+                      <p className="text-white/40 text-caption uppercase tracking-wider font-medium">Needs update (relocated)</p>
                       {pendingReverify.map((ch) => (
                         <div key={ch.churchId} className="rounded-lg bg-white/4 hover:bg-white/8 transition-colors px-3.5 py-3 space-y-2">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px] font-medium uppercase tracking-wider">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-caption font-medium uppercase tracking-wider">
                               Pending reverify
                             </span>
                             {onOpenChurch && (
@@ -450,7 +450,7 @@ export function ReviewPill({
                                   onOpenChurch(ch.churchId, ch.shortId, ch.state);
                                   onOpenChange(false);
                                 }}
-                                className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-purple-300 bg-purple-500/15 border border-purple-500/25 hover:bg-purple-500/25 hover:text-purple-200 transition-colors"
+                                className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-caption font-medium text-purple-300 bg-purple-500/15 border border-purple-500/25 hover:bg-purple-500/25 hover:text-purple-200 transition-colors"
                               >
                                 View church
                                 <ChevronRight size={10} />
@@ -458,7 +458,7 @@ export function ReviewPill({
                             )}
                           </div>
                           <p className="text-white font-medium text-sm">{ch.name}</p>
-                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-white/50">
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-caption text-white/50">
                             {(ch.address || ch.city) && (
                               <span className="flex items-center gap-1">
                                 <MapPin size={10} /> {[ch.address, ch.city, ch.state].filter(Boolean).join(", ")}
@@ -494,11 +494,11 @@ export function ReviewPill({
                             className="rounded-lg bg-white/4 hover:bg-white/8 transition-colors px-3.5 py-3 space-y-2 group"
                           >
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-[10px] font-medium uppercase tracking-wider">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-caption font-medium uppercase tracking-wider">
                                 {FIELD_LABELS[s.field] || s.field}
                               </span>
                               {!isMine && (
-                                <span className="text-[10px] text-white/50 font-medium">In review by another moderator</span>
+                                <span className="text-caption text-white/50 font-medium">In review by another moderator</span>
                               )}
                               {onOpenChurch && (
                                 <>
@@ -508,7 +508,7 @@ export function ReviewPill({
                                       onOpenChurch(s.churchId, s.churchShortId, s.churchState);
                                       onOpenChange(false);
                                     }}
-                                    className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-purple-300 bg-purple-500/15 border border-purple-500/25 hover:bg-purple-500/25 hover:text-purple-200 transition-colors"
+                                    className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-caption font-medium text-purple-300 bg-purple-500/15 border border-purple-500/25 hover:bg-purple-500/25 hover:text-purple-200 transition-colors"
                                   >
                                     View church
                                     <ChevronRight size={10} />
@@ -520,7 +520,7 @@ export function ReviewPill({
                                         onOpenChurch(s.proposedValue!.trim(), undefined, canonicalStateFromChurchId(s.proposedValue!)!);
                                         onOpenChange(false);
                                       }}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-amber-300 bg-amber-500/15 border border-amber-500/25 hover:bg-amber-500/25 hover:text-amber-200 transition-colors"
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-caption font-medium text-amber-300 bg-amber-500/15 border border-amber-500/25 hover:bg-amber-500/25 hover:text-amber-200 transition-colors"
                                     >
                                       View duplicate-of church
                                       <ChevronRight size={10} />
@@ -543,7 +543,7 @@ export function ReviewPill({
                               </p>
                             )}
                             {s.alreadyApplied && (
-                              <p className="text-[10px] uppercase tracking-wider text-amber-400/90 font-medium">Already applied</p>
+                              <p className="text-caption uppercase tracking-wider text-amber-400/90 font-medium">Already applied</p>
                             )}
                             {editing?.churchId === s.churchId && editing?.field === s.field ? (
                               <div className="space-y-2">
@@ -572,7 +572,7 @@ export function ReviewPill({
                                       `s:${s.churchId}:${s.field}`
                                     ).then((ok) => ok && setEditing(null))}
                                     disabled={actionLoading === `edit-${actionId}` || !editing.value.trim()}
-                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-caption font-medium transition-colors disabled:opacity-50"
                                   >
                                     {actionLoading === `edit-${actionId}` ? <ThreeDotLoader size={12} /> : <Check size={12} />}
                                     Approve edited
@@ -580,7 +580,7 @@ export function ReviewPill({
                                   <button
                                     type="button"
                                     onClick={() => setEditing(null)}
-                                    className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-[11px] font-medium transition-colors"
+                                    className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-caption font-medium transition-colors"
                                   >
                                     Cancel
                                   </button>
@@ -609,14 +609,14 @@ export function ReviewPill({
                                     <button
                                       onClick={() => handleAction(() => removeFromInReview(moderatorKey, "suggestion", s.churchId, s.field), `remove-${actionId}`)}
                                       disabled={actionLoading === `remove-${actionId}`}
-                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-caption font-medium transition-colors disabled:opacity-50"
                                     >
                                       {actionLoading === `remove-${actionId}` ? <ThreeDotLoader size={12} /> : null}
                                       Remove from up next
                                     </button>
                                     <button
                                       onClick={() => setEditing({ churchId: s.churchId, field: s.field, value: s.proposedValue })}
-                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 text-[11px] font-medium transition-colors"
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 text-caption font-medium transition-colors"
                                     >
                                       <Pencil size={12} />
                                       Edit
@@ -624,7 +624,7 @@ export function ReviewPill({
                                     <button
 onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.churchId, s.field), actionId, `s:${s.churchId}:${s.field}`)}
                                     disabled={isActing}
-                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-caption font-medium transition-colors disabled:opacity-50"
                                   >
                                     {isActing ? <ThreeDotLoader size={12} /> : <Check size={12} />}
                                     Approve
@@ -632,7 +632,7 @@ onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.chur
                                   <button
                                     onClick={() => handleAction(() => moderateRejectSuggestion(moderatorKey, s.churchId, s.field), actionId, `s:${s.churchId}:${s.field}`)}
                                       disabled={isActing}
-                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-caption font-medium transition-colors disabled:opacity-50"
                                     >
                                       <X size={12} />
                                       Reject
@@ -659,10 +659,10 @@ onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.chur
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className="text-white font-medium text-sm">{ch.name}</p>
                               {!isMine && (
-                                <span className="text-[10px] text-white/50 font-medium">In review by another moderator</span>
+                                <span className="text-caption text-white/50 font-medium">In review by another moderator</span>
                               )}
                             </div>
-                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-white/50">
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-caption text-white/50">
                               {ch.address && (
                                 <span className="flex items-center gap-1">
                                   <MapPin size={10} /> {ch.address}, {ch.city}, {ch.state}
@@ -675,7 +675,7 @@ onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.chur
                                 </span>
                               )}
                             </div>
-                            <p className="text-white/30 text-[10px]">
+                            <p className="text-white/30 text-caption">
                               Submitted {new Date(ch.submittedAt).toLocaleDateString()}
                             </p>
                             {isMine && (
@@ -683,7 +683,7 @@ onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.chur
                                 <button
                                   onClick={() => handleAction(() => removeFromInReview(moderatorKey, "church", ch.id), `remove-${actionId}`)}
                                   disabled={actionLoading === `remove-${actionId}`}
-                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-caption font-medium transition-colors disabled:opacity-50"
                                 >
                                   {actionLoading === `remove-${actionId}` ? <ThreeDotLoader size={12} /> : null}
                                   Remove from up next
@@ -691,7 +691,7 @@ onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.chur
                                 <button
                                   onClick={() => handleAction(() => moderateApproveChurch(moderatorKey, ch.id), actionId, `c:${ch.id}`)}
                                   disabled={isActing}
-                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-caption font-medium transition-colors disabled:opacity-50"
                                 >
                                   {isActing ? <ThreeDotLoader size={12} /> : <Check size={12} />}
                                   Approve
@@ -699,7 +699,7 @@ onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.chur
                                 <button
                                   onClick={() => handleAction(() => moderateRejectChurch(moderatorKey, ch.id), actionId, `c:${ch.id}`)}
                                   disabled={isActing}
-                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-caption font-medium transition-colors disabled:opacity-50"
                                 >
                                   <X size={12} />
                                   Reject

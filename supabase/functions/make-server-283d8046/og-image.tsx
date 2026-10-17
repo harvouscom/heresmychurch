@@ -13,22 +13,36 @@ const SUBTITLE_OPACITY = 0.9;
 
 let cachedFont: { name: string; data: ArrayBuffer; weight: number; style: "normal" }[] | null = null;
 
-async function getLivvicFont(): Promise<{ name: string; data: ArrayBuffer; weight: number; style: "normal" }[]> {
-  if (cachedFont) return cachedFont;
-  // Livvic 400 and 600 from Google Fonts. TTF: satori can't parse woff2, and the old v14
-  // woff2 URLs now return an HTML error page (broke every OG image). Keep in sync with api/og-image.ts.
-  const urls = [
-    "https://fonts.gstatic.com/s/livvic/v15/rnCp-x1S2hzjrlfnbw.ttf",
-    "https://fonts.gstatic.com/s/livvic/v15/rnCq-x1S2hzjrlfft8cesg.ttf",
-  ];
-  const weights = [400, 600];
-  const buffers = await Promise.all(urls.map(async (u) => {
+const FONT_FAMILY = "Google Sans Flex";
+
+async function fetchFonts(urls: string[]): Promise<ArrayBuffer[]> {
+  return Promise.all(urls.map(async (u) => {
     const r = await fetch(u);
     if (!r.ok) throw new Error(`Font fetch failed: ${r.status} ${u}`);
     return r.arrayBuffer();
   }));
+}
+
+async function getFonts(): Promise<{ name: string; data: ArrayBuffer; weight: number; style: "normal" }[]> {
+  if (cachedFont) return cachedFont;
+  // Google Sans Flex static cuts (scripts/build-og-fonts.py, served by the site). satori can't
+  // read variable fonts or woff2. Keep in sync with api/og-image.ts. Livvic TTF as fallback.
+  const weights = [400, 600];
+  let buffers: ArrayBuffer[];
+  try {
+    buffers = await fetchFonts([
+      "https://heresmychurch.com/fonts/og/GoogleSansFlex-Body.ttf",
+      "https://heresmychurch.com/fonts/og/GoogleSansFlex-Title.ttf",
+    ]);
+  } catch (e) {
+    console.log(`OG fonts: ${e}; falling back to Livvic`);
+    buffers = await fetchFonts([
+      "https://fonts.gstatic.com/s/livvic/v15/rnCp-x1S2hzjrlfnbw.ttf",
+      "https://fonts.gstatic.com/s/livvic/v15/rnCq-x1S2hzjrlfft8cesg.ttf",
+    ]);
+  }
   cachedFont = buffers.map((data, i) => ({
-    name: "Livvic",
+    name: FONT_FAMILY,
     data,
     weight: weights[i],
     style: "normal" as const,
@@ -46,7 +60,7 @@ export interface OgImageParams {
 }
 
 export async function generateOgImage(params: OgImageParams): Promise<Response> {
-  const fonts = await getLivvicFont();
+  const fonts = await getFonts();
 
   const el =
     params.type === "state" ? (
@@ -59,7 +73,7 @@ export async function generateOgImage(params: OgImageParams): Promise<Response> 
           alignItems: "center",
           justifyContent: "center",
           background: `linear-gradient(180deg, ${BG_TOP} 0%, ${BG_BOTTOM} 100%)`,
-          fontFamily: "Livvic",
+          fontFamily: FONT_FAMILY,
           padding: 80,
         }}
       >
@@ -95,7 +109,7 @@ export async function generateOgImage(params: OgImageParams): Promise<Response> 
           alignItems: "center",
           justifyContent: "center",
           background: `linear-gradient(180deg, ${BG_TOP} 0%, ${BG_BOTTOM} 100%)`,
-          fontFamily: "Livvic",
+          fontFamily: FONT_FAMILY,
           padding: 80,
         }}
       >
