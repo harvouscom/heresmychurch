@@ -10,6 +10,8 @@ import { CloseButton } from "./ui/close-button";
 import { reportErrorsContact } from "../config/pendingAlerts";
 import { SeasonalReportMethodologyFaqDetails } from "./report/ReportFaqMethodologyContent";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
+import { HmcDialog, HmcDialogTitle } from "./ui/hmc-dialog";
+import { Button } from "./ui/button";
 
 const EMAIL = "hey@heresmychurch.com";
 
@@ -47,17 +49,7 @@ export function HelpModal({
   };
 
   return (
-    <div
-      className="absolute inset-0 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div className="absolute inset-0 backdrop-blur-sm" />
-
-      <div
-        className="relative w-full max-w-md rounded-2xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
-        style={{ backgroundColor: "#1E1040" }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <HmcDialog onClose={onClose}>
         <div className="relative flex flex-col items-center text-center px-6 pt-6 pb-4 border-b border-white/10 flex-shrink-0">
           <CloseButton
             onClick={onClose}
@@ -67,7 +59,7 @@ export function HelpModal({
           <div className="w-16 h-16 rounded-xl overflow-hidden mb-3">
             <img src={logoImg} alt="Here's My Church" className="w-full h-full object-cover" />
           </div>
-          <h2 className="text-white font-medium text-[22px] leading-tight">Need Help?</h2>
+          <HmcDialogTitle className="text-white font-medium text-[22px] leading-tight">Need Help?</HmcDialogTitle>
           <p className="text-white/60 text-sm leading-relaxed mt-3 text-pretty">
             Get in touch or check the answers below.
           </p>
@@ -317,22 +309,11 @@ export function HelpModal({
         </div>
 
         <div className="px-6 pb-5 flex-shrink-0">
-          <button
-            onClick={onClose}
-            className="w-full py-3 rounded-xl text-white text-sm font-medium transition-colors"
-            style={{ backgroundColor: "rgba(107, 33, 168, 0.9)" }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.backgroundColor = "rgba(107, 33, 168, 1)")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.backgroundColor = "rgba(107, 33, 168, 0.9)")
-            }
-          >
+          <Button variant="brand" size="block" onClick={onClose}>
             Close
-          </button>
+          </Button>
           <p className="text-white/25 text-caption text-center mt-1.5">Version {__APP_VERSION__}</p>
         </div>
-      </div>
-    </div>
+    </HmcDialog>
   );
 }

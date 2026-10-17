@@ -30,6 +30,7 @@ import { AddChurchForm } from "./AddChurchForm";
 import { FixedSizeList as List } from "react-window";
 import { matchQueryToChurch } from "./church-search-match";
 import { findCountyNameForPoint } from "./county-resolve";
+import { HmcDialog, HmcDialogTitle } from "./ui/hmc-dialog";
 
 type SortField = "name" | "city" | "address" | "denomination" | "attendance";
 type SortDir = "asc" | "desc";
@@ -339,20 +340,7 @@ export function ChurchListModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-    >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* Modal */}
-      <div
-        className="relative w-[95vw] max-w-[900px] max-h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-        style={{ backgroundColor: "#1A0E38" }}
-      >
+    <HmcDialog onClose={onClose} className="w-[95vw] max-w-[900px] bg-hmc-surface-sunken">
         {/* Header */}
         <div className="px-6 pt-5 pb-4 flex-shrink-0">
           <div className="flex items-center justify-between mb-4">
@@ -367,11 +355,11 @@ export function ChurchListModal({
                 <ChurchIcon size={18} className="text-white" />
               </div>
               <div>
-                <h2 className="text-white font-semibold text-base leading-tight">
+                <HmcDialogTitle className="text-white font-semibold text-base leading-tight">
                   Churches in {countyName
                     ? countyName
                     : stateName}
-                </h2>
+                </HmcDialogTitle>
                 <p className="text-white/40 text-xs mt-0.5">
                   {filteredChurches.length.toLocaleString()} of{" "}
                   {churches.length.toLocaleString()} churches
@@ -921,7 +909,6 @@ export function ChurchListModal({
             </button>
           </div>
         </div>
-      </div>
 
       {/* Add church modal */}
       {showAddChurch && (
@@ -940,6 +927,6 @@ export function ChurchListModal({
           }}
         />
       )}
-    </div>
+    </HmcDialog>
   );
 }

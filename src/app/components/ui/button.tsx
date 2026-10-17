@@ -19,12 +19,22 @@ const buttonVariants = cva(
         ghost:
           "inset-shadow-none shadow-none hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
         link: "inset-shadow-none shadow-none text-primary underline-offset-4 hover:underline",
+        // Here's My Church variants (dark map UI)
+        brand:
+          "bg-hmc-brand text-white hover:bg-[#7A2BBF] active:bg-hmc-brand-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]",
+        "brand-soft":
+          "bg-white/8 text-hmc-text hover:bg-white/12 active:bg-white/16",
+        "brand-ghost":
+          "text-hmc-text-muted hover:text-hmc-text hover:bg-white/6",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",
         sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
         lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
         icon: "size-9 rounded-md",
+        // Full-width modal footer action
+        block: "w-full h-11 rounded-menu px-4 text-sm",
+        pill: "h-8 rounded-full px-3.5 gap-1.5 text-sm has-[>svg]:px-3",
       },
     },
     defaultVariants: {

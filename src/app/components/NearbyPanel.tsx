@@ -7,6 +7,7 @@ import { spotlightMapHref } from "./url-utils";
 import { STATE_NAMES } from "./map-constants";
 import { haversineMiles, formatDistance } from "../lib/geo";
 import { getCountry } from "../config/countries";
+import { HmcDialog, HmcDialogTitle } from "./ui/hmc-dialog";
 
 const SESSION_LOC_KEY = "hmc_easter_loc";
 
@@ -114,16 +115,7 @@ export function NearbyPanel({ open, onClose, churches, onLocationResolved }: Nea
   if (!open) return null;
 
   return (
-    <div
-      className="absolute inset-0 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div className="absolute inset-0 backdrop-blur-sm bg-black/30" />
-
-      <div
-        className="relative w-full max-w-md rounded-2xl shadow-2xl overflow-hidden bg-white"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <HmcDialog onClose={onClose} tone="light">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-4 border-b border-stone-200/70">
           <div className="min-w-0">
@@ -131,9 +123,9 @@ export function NearbyPanel({ open, onClose, churches, onLocationResolved }: Nea
               <LocateFixed className="h-4 w-4" aria-hidden />
               Find nearby
             </div>
-            <h2 className="mt-2 text-xl font-bold text-stone-900 tracking-tight">
+            <HmcDialogTitle className="mt-2 text-xl font-bold text-stone-900 tracking-tight">
               Churches near you
-            </h2>
+            </HmcDialogTitle>
             <p className="mt-1.5 text-sm text-stone-500">
               Your location is only used for this session and is never saved.
             </p>
@@ -232,8 +224,7 @@ export function NearbyPanel({ open, onClose, churches, onLocationResolved }: Nea
             <ChurchList items={stateResults.map((c) => ({ c, label: c.city || STATE_NAMES[c.state] || c.state }))} />
           )}
         </div>
-      </div>
-    </div>
+    </HmcDialog>
   );
 }
 

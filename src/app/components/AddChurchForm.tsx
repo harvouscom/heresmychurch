@@ -24,6 +24,7 @@ import { ServiceTimesInput, normalizeServiceTimes } from "./ServiceTimesInput";
 import { normalizePhone } from "./ui/utils";
 import { CloseButton } from "./ui/close-button";
 import { resolveRegionByAbbrev } from "../config/countries";
+import { HmcDialog, HmcDialogTitle } from "./ui/hmc-dialog";
 
 /** Geocode an address to lat/lng using Nominatim (OpenStreetMap). Supports all HMC regions. */
 export async function geocodeAddress(
@@ -350,20 +351,7 @@ export function AddChurchForm({
     "text-caption uppercase tracking-wider text-white/40 font-semibold";
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center"
-    >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* Modal */}
-      <div
-        className="relative w-[95vw] max-w-[560px] max-h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-        style={{ backgroundColor: "#1A0E38" }}
-      >
+    <HmcDialog onClose={onClose} elevated className="w-[95vw] max-w-[560px] bg-hmc-surface-sunken">
         {/* Header */}
         <div className="px-5 pt-5 pb-4 border-b border-white/8 flex-shrink-0">
           <div className="flex items-start justify-between gap-3">
@@ -376,9 +364,9 @@ export function AddChurchForm({
                   Community Submissions
                 </span>
               </div>
-              <h2 className="text-white font-semibold text-base leading-tight">
+              <HmcDialogTitle className="text-white font-semibold text-base leading-tight">
                 Add a Church in {stateName}
-              </h2>
+              </HmcDialogTitle>
               <p className="text-white/40 text-caption mt-1 leading-relaxed">
                 Don&apos;t see your church? Add it below and it will appear on the map right away.
               </p>
@@ -758,7 +746,6 @@ export function AddChurchForm({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </HmcDialog>
   );
 }

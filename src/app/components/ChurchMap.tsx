@@ -30,6 +30,8 @@ import {
 import { getCountry, getRegion, resolveRegionByAbbrev } from "../config/countries";
 import { VerificationModal, NationalReviewModal } from "./VerificationModal";
 import { CloseButton } from "./ui/close-button";
+import { HmcDialog, HmcDialogTitle } from "./ui/hmc-dialog";
+import { Button } from "./ui/button";
 import { useActiveUsers } from "./hooks/useActiveUsers";
 import {
   LoadingOverlay,
@@ -2238,11 +2240,7 @@ function ReviewerLoginModal({ loading, error, onClose }: { loading: boolean; err
   }, [loading]);
 
   return (
-    <div
-      className="absolute inset-0 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div className="absolute inset-0 backdrop-blur-sm" />
+    <HmcDialog onClose={onClose} bare className="max-w-sm">
       <div
         className="relative w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden p-6 flex flex-col items-center text-center transition-transform duration-300 ease-out"
         style={{
@@ -2263,7 +2261,7 @@ function ReviewerLoginModal({ loading, error, onClose }: { loading: boolean; err
         </div>
         <div className="flex items-center justify-center gap-2 mb-4">
           <CheckCheck size={20} className="text-purple-400" />
-          <h2 className="text-white text-lg font-semibold">Reviewer Access</h2>
+          <HmcDialogTitle className="text-white text-lg font-semibold">Reviewer Access</HmcDialogTitle>
         </div>
         {loading ? (
           <>
@@ -2309,26 +2307,14 @@ function ReviewerLoginModal({ loading, error, onClose }: { loading: boolean; err
           </div>
         )}
       </div>
-    </div>
+    </HmcDialog>
   );
 }
 
 // --- About Modal ---
 function AboutModal({ onClose }: { onClose: () => void }) {
   return (
-    <div
-      className="absolute inset-0 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      {/* Backdrop */}
-      <div className="absolute inset-0 backdrop-blur-sm" />
-
-      {/* Modal */}
-      <div
-        className="relative w-full max-w-md rounded-2xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
-        style={{ backgroundColor: "#1E1040" }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <HmcDialog onClose={onClose}>
         {/* Header */}
         <div className="relative flex flex-col items-center text-center px-6 pt-6 pb-4 border-b border-white/10 flex-shrink-0">
           <CloseButton
@@ -2339,7 +2325,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
           <div className="w-16 h-16 rounded-xl overflow-hidden mb-3">
             <img src={logoImg} alt="Here's My Church" className="w-full h-full object-cover" />
           </div>
-          <h2 className="text-white font-medium text-[22px] leading-tight">Here's My Church</h2>
+          <HmcDialogTitle className="text-white font-medium text-[22px] leading-tight">Here's My Church</HmcDialogTitle>
           <p className="text-white/60 text-sm leading-relaxed mt-3 text-pretty">An interactive map of Christian churches worldwide — with the goal to be the place with the most accurate data.</p>
         </div>
 
@@ -2370,15 +2356,9 @@ function AboutModal({ onClose }: { onClose: () => void }) {
 
         {/* Footer button */}
         <div className="px-6 pb-5 flex-shrink-0">
-          <button
-            onClick={onClose}
-            className="w-full py-3 rounded-xl text-white text-sm font-medium transition-colors"
-            style={{ backgroundColor: "rgba(107, 33, 168, 0.9)" }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(107, 33, 168, 1)")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(107, 33, 168, 0.9)")}
-          >
+          <Button variant="brand" size="block" onClick={onClose}>
             Start Finding Churches
-          </button>
+          </Button>
           <p className="text-white/30 text-caption text-center mt-2.5 text-pretty">
             An open-source project by{" "}
             <a href="https://harvous.com/about" target="_blank" rel="noopener noreferrer" className="underline hover:text-white/50 transition-colors">Harvous</a>
@@ -2387,7 +2367,6 @@ function AboutModal({ onClose }: { onClose: () => void }) {
           </p>
           <p className="text-white/25 text-caption text-center mt-1.5">Version {__APP_VERSION__}</p>
         </div>
-      </div>
-    </div>
+    </HmcDialog>
   );
 }

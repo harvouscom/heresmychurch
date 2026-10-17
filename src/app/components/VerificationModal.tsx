@@ -18,6 +18,7 @@ import { fetchCommunityStats, type CommunityStats, type NationalReviewStatsRespo
 import { PlaceFlag } from "./PlaceFlag";
 import { STATE_NAMES } from "./map-constants";
 import { getCountry, getRegion } from "../config/countries";
+import { HmcDialog, HmcDialogTitle } from "./ui/hmc-dialog";
 
 // Green Community Impact block (national or state-scoped)
 function CommunityImpactCard({
@@ -115,18 +116,13 @@ export function VerificationModal({
     : stateName;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-
+    <HmcDialog onClose={onClose} bare className="max-w-lg">
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
         transition={{ duration: 0.2, ease: "easeOut" }}
-        className="relative w-full max-w-lg max-h-[80vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+        className="relative w-full max-w-lg max-h-[80vh] rounded-panel shadow-hmc-panel border border-hmc-border overflow-hidden flex flex-col"
         style={{ backgroundColor: "#1E1040" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -137,9 +133,9 @@ export function VerificationModal({
               <AlertTriangle size={18} className="text-white" />
             </div>
             <div>
-              <h2 className="text-white font-semibold text-lg leading-tight">
+              <HmcDialogTitle className="text-white font-semibold text-lg leading-tight">
                 Churches Needing Review
-              </h2>
+              </HmcDialogTitle>
               <p className="text-white/40 text-xs mt-0.5">
                 {headerSubtitle} &middot; {incompleteTotal} church{incompleteTotal !== 1 ? "es" : ""} need review
               </p>
@@ -169,7 +165,7 @@ export function VerificationModal({
           </p>
         </div>
       </motion.div>
-    </div>
+    </HmcDialog>
   );
 }
 
@@ -353,18 +349,13 @@ export function NationalReviewModal({
   }, [search, stateEntries, countryCode]);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-
+    <HmcDialog onClose={onClose} bare className="max-w-lg">
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
         transition={{ duration: 0.2, ease: "easeOut" }}
-        className="relative w-full max-w-lg max-h-[80vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+        className="relative w-full max-w-lg max-h-[80vh] rounded-panel shadow-hmc-panel border border-hmc-border overflow-hidden flex flex-col"
         style={{ backgroundColor: "#1E1040" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -374,9 +365,9 @@ export function NationalReviewModal({
               <AlertTriangle size={18} className="text-white" />
             </div>
             <div>
-              <h2 className="text-white font-semibold text-lg leading-tight">
+              <HmcDialogTitle className="text-white font-semibold text-lg leading-tight">
                 {regionMany.charAt(0).toUpperCase() + regionMany.slice(1)} Needing Review
-              </h2>
+              </HmcDialogTitle>
               <p className="text-white/40 text-xs mt-0.5">
                 {stats
                   ? `${stats.totalNeedsReview.toLocaleString()} church${stats.totalNeedsReview !== 1 ? "es" : ""} need review (${stats.percentage}%)`
@@ -464,6 +455,6 @@ export function NationalReviewModal({
           </p>
         </div>
       </motion.div>
-    </div>
+    </HmcDialog>
   );
 }

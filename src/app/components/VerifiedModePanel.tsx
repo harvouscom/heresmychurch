@@ -1,5 +1,5 @@
 import { CheckCircle2, Sparkles } from "lucide-react";
-import { CloseButton } from "./ui/close-button";
+import { MapPopover } from "./ui/map-popover";
 
 export interface VerifiedModePanelProps {
   open: boolean;
@@ -17,18 +17,12 @@ export function VerifiedModePanel({
   if (!open) return null;
 
   return (
-    <div
-      className="absolute left-[58px] bottom-6 z-[35] rounded-xl shadow-2xl w-[260px]"
-      style={{ backgroundColor: "rgba(30, 16, 64, 0.96)" }}
+    <MapPopover
+      title="Verified mode"
+      icon={<Sparkles size={14} className="text-purple-400" />}
+      onClose={onClose}
+      padded={false}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-white/10">
-        <div className="flex items-center gap-2">
-          <Sparkles size={14} className="text-purple-400" />
-          <span className="text-sm font-semibold text-white">Verified mode</span>
-        </div>
-        <CloseButton onClick={onClose} size="md" />
-      </div>
 
       {/* Count badge */}
       <div className="px-4 py-3 border-b border-white/10">
@@ -71,6 +65,6 @@ export function VerifiedModePanel({
           Exit verified mode
         </button>
       </div>
-    </div>
+    </MapPopover>
   );
 }
