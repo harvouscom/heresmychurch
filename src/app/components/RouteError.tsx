@@ -17,10 +17,7 @@ export function RouteError() {
 
   return (
     <div
-      className="flex items-center justify-center min-h-screen"
-      style={{
-        backgroundColor: "#1A0E38",
-      }}
+      className="flex items-center justify-center min-h-screen bg-hmc-surface-sunken"
     >
       <div className="flex flex-col items-center gap-5 px-8 py-10 rounded-2xl max-w-md text-center">
         <div className="w-16 h-16 rounded-2xl overflow-hidden flex items-center justify-center">

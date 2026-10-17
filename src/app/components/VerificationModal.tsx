@@ -122,8 +122,7 @@ export function VerificationModal({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
         transition={{ duration: 0.2, ease: "easeOut" }}
-        className="relative w-full max-w-lg max-h-[80vh] rounded-panel shadow-hmc-panel border border-hmc-border overflow-hidden flex flex-col"
-        style={{ backgroundColor: "#1E1040" }}
+        className="relative w-full max-w-lg max-h-[80vh] rounded-panel shadow-hmc-panel border border-hmc-border overflow-hidden flex flex-col bg-hmc-surface"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -355,8 +354,7 @@ export function NationalReviewModal({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
         transition={{ duration: 0.2, ease: "easeOut" }}
-        className="relative w-full max-w-lg max-h-[80vh] rounded-panel shadow-hmc-panel border border-hmc-border overflow-hidden flex flex-col"
-        style={{ backgroundColor: "#1E1040" }}
+        className="relative w-full max-w-lg max-h-[80vh] rounded-panel shadow-hmc-panel border border-hmc-border overflow-hidden flex flex-col bg-hmc-surface"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-white/8 flex-shrink-0">

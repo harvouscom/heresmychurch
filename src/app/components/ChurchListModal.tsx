@@ -485,8 +485,7 @@ export function ChurchListModal({
 
               {showDenomDropdown && (
                 <div
-                  className="absolute right-0 top-full mt-2 w-64 rounded-xl shadow-2xl border border-white/10 p-3 z-50 max-h-[50vh] overflow-y-auto"
-                  style={{ backgroundColor: "#231450" }}
+                  className="absolute right-0 top-full mt-2 w-64 rounded-xl shadow-hmc-panel border border-white/10 p-3 z-50 max-h-[50vh] overflow-y-auto bg-hmc-surface-raised"
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">
@@ -554,8 +553,7 @@ export function ChurchListModal({
 
               {showSizeDropdown && (
                 <div
-                  className="absolute right-0 top-full mt-2 w-56 rounded-xl shadow-2xl border border-white/10 p-3 z-50"
-                  style={{ backgroundColor: "#231450" }}
+                  className="absolute right-0 top-full mt-2 w-56 rounded-xl shadow-hmc-panel border border-white/10 p-3 z-50 bg-hmc-surface-raised"
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">
@@ -629,8 +627,7 @@ export function ChurchListModal({
 
               {showReactionDropdown && (
                 <div
-                  className="absolute right-0 top-full mt-2 w-52 rounded-xl shadow-2xl border border-white/10 p-3 z-50"
-                  style={{ backgroundColor: "#231450" }}
+                  className="absolute right-0 top-full mt-2 w-52 rounded-xl shadow-hmc-panel border border-white/10 p-3 z-50 bg-hmc-surface-raised"
                 >
                   <span className="text-xs font-semibold text-white/60 uppercase tracking-wider block mb-2">
                     Community reaction

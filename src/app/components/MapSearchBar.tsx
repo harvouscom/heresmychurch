@@ -473,8 +473,7 @@ export function MapSearchBar({
             onExpand?.();
             setTimeout(() => inputRef.current?.focus(), 0);
           }}
-          className="mx-auto flex items-center gap-2 pl-5 pr-[32px] py-3 rounded-full shadow-lg transition-all hover:shadow-xl backdrop-blur-md"
-          style={{ backgroundColor: "rgba(30, 16, 64, 0.92)" }}
+          className="mx-auto flex items-center gap-2 pl-5 pr-[32px] py-3 rounded-full shadow-hmc-menu transition-all hover:shadow-hmc-menu backdrop-blur-md bg-hmc-surface-glass backdrop-blur-md"
         >
           <Search size={17} className="text-purple-400" />
           <span className="text-white text-sm font-medium">
@@ -487,8 +486,7 @@ export function MapSearchBar({
       {showStateDropdown && showPlaceFilter && (
         <div
           ref={stateDropdownRef}
-          className="mb-2 rounded-xl shadow-2xl overflow-hidden max-h-[40vh] overflow-y-auto"
-          style={{ backgroundColor: "rgba(30, 16, 64, 0.97)" }}
+          className="mb-2 rounded-xl shadow-hmc-panel overflow-hidden max-h-[40vh] overflow-y-auto bg-hmc-surface-glass backdrop-blur-md"
         >
           <div className="px-3 py-2 text-caption font-medium text-white/30 uppercase tracking-wider border-b border-white/5">
             {isWorld ? "Filter by country" : "Filter by " + regionNounOne}
@@ -549,8 +547,7 @@ export function MapSearchBar({
       {/* Results dropdown — rendered above the input */}
       {showDropdown && !showStateDropdown && resultsDropdownVisible && (
         <div
-          className="mb-2 rounded-xl shadow-2xl overflow-hidden max-h-[50vh] overflow-y-auto"
-          style={{ backgroundColor: "rgba(30, 16, 64, 0.97)" }}
+          className="mb-2 rounded-panel border border-hmc-border shadow-hmc-menu overflow-hidden max-h-[50vh] overflow-y-auto bg-hmc-surface-glass backdrop-blur-md p-1 animate-in fade-in-0 slide-in-from-bottom-1 duration-150"
         >
           {/* State view: local results */}
           {focusedState && (
@@ -594,8 +591,8 @@ export function MapSearchBar({
                   {localResults.map((ch, i) => (
                     <button
                       key={ch.id}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                        i === selectedIndex ? "bg-white/10" : "hover:bg-white/5"
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-row text-left transition-colors ${
+                        i === selectedIndex ? "bg-white/10" : "hover:bg-white/6"
                       }`}
                       onMouseEnter={() => setSelectedIndex(i)}
                       onClick={() => handleSelectLocal(ch)}
@@ -687,8 +684,8 @@ export function MapSearchBar({
                   {remoteResults.map((r, i) => (
                     <button
                       key={`${r.state}-${r.id}`}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                        i === selectedIndex ? "bg-white/10" : "hover:bg-white/5"
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-row text-left transition-colors ${
+                        i === selectedIndex ? "bg-white/10" : "hover:bg-white/6"
                       }`}
                       onMouseEnter={() => setSelectedIndex(i)}
                       onClick={() => handleSelectRemote(r)}
@@ -755,10 +752,9 @@ export function MapSearchBar({
 
       {/* Search input */}
       <div
-        className={`flex items-center gap-2.5 rounded-full shadow-lg px-4 py-3 transition-all backdrop-blur-md ${
-          isFocused ? "ring-2 ring-purple-500/40 shadow-xl" : ""
+        className={`flex items-center gap-2.5 rounded-full px-4 py-3 transition-all bg-hmc-surface-glass backdrop-blur-md border shadow-hmc-pill ${
+          isFocused ? "border-hmc-brand-soft/50 ring-4 ring-hmc-brand-soft/15" : "border-hmc-border"
         }`}
-        style={{ backgroundColor: "rgba(30, 16, 64, 0.92)", "--tw-inset-shadow": "inset 0 1px 0 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 0 rgba(0, 0, 0, 0.1)" } as React.CSSProperties}
       >
         {/* Place filter chip — country on world view, region on country view */}
         {showPlaceFilter && (

@@ -2112,15 +2112,23 @@ function HeaderPill({
     ? `${filteredCount.toLocaleString()} churches*`
     : `${totalChurches.toLocaleString()} churches*`;
   return (
-    <div className="rounded-full shadow-lg transition-shadow hover:shadow-xl cursor-pointer w-auto max-w-full">
+    <div className="rounded-full shadow-hmc-pill transition-shadow hover:shadow-hmc-menu cursor-pointer w-auto max-w-full">
       <div
-        className="flex flex-col items-center rounded-full w-full min-w-0 overflow-hidden"
-        style={{ backgroundColor: "rgba(30, 16, 64, 0.92)" }}
+        className="flex flex-col items-center rounded-full w-full min-w-0 overflow-hidden bg-hmc-surface-glass backdrop-blur-md border border-hmc-border transition-colors hover:border-hmc-border-strong"
       >
       {/* Main row — toggles summary */}
       <div
         onClick={onToggle}
-        className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-5 py-2.5 w-full min-w-0"
+        role="button"
+        tabIndex={0}
+        aria-expanded={showSummary}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+        className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-5 py-2.5 w-full min-w-0 rounded-full"
       >
         <span className="relative flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center text-purple-300">
           <ChurchIcon
@@ -2242,10 +2250,8 @@ function ReviewerLoginModal({ loading, error, onClose }: { loading: boolean; err
   return (
     <HmcDialog onClose={onClose} bare className="max-w-sm">
       <div
-        className="relative w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden p-6 flex flex-col items-center text-center transition-transform duration-300 ease-out"
+        className="relative w-full max-w-sm rounded-panel bg-hmc-surface border border-hmc-border shadow-hmc-panel overflow-hidden p-6 flex flex-col items-center text-center transition-transform duration-300 ease-out"
         style={{
-          backgroundColor: "#1E1040",
-          boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), inset 0 -1px 0 0 rgba(0, 0, 0, 0.2)",
           ...(loading
             ? { animation: "reviewerCardTilt 3s cubic-bezier(0.37, 0, 0.63, 1) infinite" }
             : { transform: "none" }),

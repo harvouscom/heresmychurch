@@ -151,11 +151,7 @@ export function ReviewPill({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.97 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="relative mt-2 z-[60] rounded-2xl shadow-2xl overflow-hidden w-[min(400px,calc(100vw-3.5rem))] max-h-[70vh] flex flex-col border border-purple-500/20"
-            style={{
-              backgroundColor: "rgba(30, 16, 64, 0.97)",
-              boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), inset 0 -1px 0 0 rgba(0, 0, 0, 0.2)",
-            }}
+            className="relative mt-2 z-[60] rounded-panel shadow-hmc-menu bg-hmc-surface-glass backdrop-blur-md overflow-hidden w-[min(400px,calc(100vw-3.5rem))] max-h-[70vh] flex flex-col border border-hmc-border"
           >
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-purple-500/20 flex-shrink-0">
               <span className="flex items-center gap-2 text-xs font-medium text-white uppercase tracking-widest">
@@ -171,8 +167,7 @@ export function ReviewPill({
             <div className="overflow-y-auto flex-1 min-h-0 flex flex-col">
               {/* Tabs — sticky so they stay visible when scrolling */}
               <div
-                className="sticky top-0 z-10 flex px-5 pt-2 pb-2 gap-2 flex-shrink-0"
-                style={{ backgroundColor: "rgba(30, 16, 64, 0.97)" }}
+                className="sticky top-0 z-10 flex px-5 pt-2 pb-2 gap-2 flex-shrink-0 bg-hmc-surface-glass backdrop-blur-md"
               >
                 <button
                   type="button"
