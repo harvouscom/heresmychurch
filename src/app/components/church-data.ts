@@ -211,7 +211,7 @@ export interface Tier1Completeness {
 
 /**
  * Non-empty website string that looks linkable (http(s), www., or domain with a dot).
- * Keep in sync with `hasWebsiteField` in `supabase/functions/make-server-283d8046/index.ts`.
+ * Keep in sync with `hasWebsiteField` in `supabase/functions/make-server-283d8046/app.ts`.
  */
 export function hasUsableWebsite(website: string | undefined): boolean {
   const w = (website || "").trim();

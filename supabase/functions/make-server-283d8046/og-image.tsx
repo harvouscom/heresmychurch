@@ -15,13 +15,18 @@ let cachedFont: { name: string; data: ArrayBuffer; weight: number; style: "norma
 
 async function getLivvicFont(): Promise<{ name: string; data: ArrayBuffer; weight: number; style: "normal" }[]> {
   if (cachedFont) return cachedFont;
-  // Livvic 400 and 600 from Google Fonts (woff2)
+  // Livvic 400 and 600 from Google Fonts. TTF: satori can't parse woff2, and the old v14
+  // woff2 URLs now return an HTML error page (broke every OG image). Keep in sync with api/og-image.ts.
   const urls = [
-    "https://fonts.gstatic.com/s/livvic/v14/rnCq-x1l2izCb9JZkFPYe8HVSo2.woff2",
-    "https://fonts.gstatic.com/s/livvic/v14/rnCt-x1l2izCb9JZkFPkSdOSOdQ.woff2",
+    "https://fonts.gstatic.com/s/livvic/v15/rnCp-x1S2hzjrlfnbw.ttf",
+    "https://fonts.gstatic.com/s/livvic/v15/rnCq-x1S2hzjrlfft8cesg.ttf",
   ];
   const weights = [400, 600];
-  const buffers = await Promise.all(urls.map((u) => fetch(u).then((r) => r.arrayBuffer())));
+  const buffers = await Promise.all(urls.map(async (u) => {
+    const r = await fetch(u);
+    if (!r.ok) throw new Error(`Font fetch failed: ${r.status} ${u}`);
+    return r.arrayBuffer();
+  }));
   cachedFont = buffers.map((data, i) => ({
     name: "Livvic",
     data,

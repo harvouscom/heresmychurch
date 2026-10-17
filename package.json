@@ -14,7 +14,10 @@
     "publish:static": "node scripts/publish-static.mjs",
     "cleanup-blocked": "node scripts/cleanup-blocked-denominations.mjs",
     "deploy": "pnpm run build && wrangler deploy",
-    "preview:cf": "pnpm run build && wrangler dev"
+    "preview:cf": "pnpm run build && wrangler dev",
+    "deploy:api": "wrangler deploy -c api/wrangler.jsonc",
+    "dev:api": "wrangler dev -c api/wrangler.jsonc --port 8790",
+    "parity:api": "node scripts/api-parity.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -96,9 +99,12 @@
     "@cloudflare/workers-types": "^5.20261015.1",
     "@tailwindcss/vite": "4.1.12",
     "@vitejs/plugin-react": "4.7.0",
+    "aws4fetch": "1.0.20",
+    "hono": "^4.13.13",
     "supabase": "^2.78.1",
     "tailwindcss": "4.1.12",
     "vite": "6.3.5",
+    "workers-og": "^0.0.27",
     "wrangler": "^4.151.0"
   },
   "peerDependencies": {

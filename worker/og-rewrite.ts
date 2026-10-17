@@ -7,13 +7,15 @@
  * wrapper (netlify/edge-functions/og-rewrite.ts) both call rewriteForBots().
  *
  * Optional env (bot requests only; defaults below match utils/supabase/info.tsx):
- *   SUPABASE_FUNCTIONS_BASE_URL - e.g. https://PROJECT.supabase.co/functions/v1/make-server-283d8046
+ *   HMC_API_BASE_URL - API base, e.g. https://api.heresmychurch.com
+ *   SUPABASE_FUNCTIONS_BASE_URL - legacy name for the same (Supabase edge function URL)
  *   SUPABASE_ANON_KEY - Supabase anon key for API calls
  */
 import { INTL_COUNTRY_META } from "./lib/intl-country-meta.generated.ts";
 import { US_METROS_FOR_SEO } from "./lib/us-metros.generated.ts";
 
 export type OgRewriteEnv = {
+  HMC_API_BASE_URL?: string;
   SUPABASE_FUNCTIONS_BASE_URL?: string;
   SUPABASE_ANON_KEY?: string;
 };
@@ -320,7 +322,7 @@ export async function rewriteForBots(
   const path = url.pathname;
   const pathParts = path.split("/").filter(Boolean); // ["state", "CA"] or ["state", "CA", "16692500"]
 
-  const apiBase = (env.SUPABASE_FUNCTIONS_BASE_URL || DEFAULT_SUPABASE_FUNCTIONS_BASE_URL).replace(
+  const apiBase = (env.HMC_API_BASE_URL || env.SUPABASE_FUNCTIONS_BASE_URL || DEFAULT_SUPABASE_FUNCTIONS_BASE_URL).replace(
     /\/$/,
     "",
   );

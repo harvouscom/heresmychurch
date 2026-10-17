@@ -8,6 +8,7 @@
  * the flag so search falls back to the KV scan rather than serving stale rows.
  */
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
+import { env } from "./runtime.ts";
 import * as kv from "./kv_store.tsx";
 
 const READY_KEY = "church-search:ready";
@@ -16,7 +17,7 @@ const READY_TTL_MS = 60_000;
 let _client: ReturnType<typeof createClient> | null = null;
 function client() {
   if (!_client) {
-    _client = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    _client = createClient(env("SUPABASE_URL")!, env("SUPABASE_SERVICE_ROLE_KEY")!);
   }
   return _client;
 }
