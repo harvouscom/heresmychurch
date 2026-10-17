@@ -17,7 +17,8 @@ Cloudflare's CDN, so page loads don't touch Postgres:
   - deleting `calibration:{ST}` → that region
   - `churches:meta` → `states.json`
 
-  The edge function rebuilds those files in the background (`EdgeRuntime.waitUntil`) about 1.5s after the write.
+  The API rebuilds those files in the background (`waitUntil`) about 1.5s after the write. On the Worker it writes
+  through the `HMC_DATA` R2 binding; the Supabase fallback uses the S3 keys (`R2_*` secrets).
 - **Daily.** `.github/workflows/publish-static.yml` runs `scripts/publish-static.mjs`. It republishes everything,
   which catches changes the mapping can't see (for example home-campus summaries read from other regions).
 - **In the browser.** After a tab writes (populate, add, suggest, confirm), it reads from the API for 2 minutes,
