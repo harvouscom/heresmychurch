@@ -61,7 +61,7 @@ Then check https://data.heresmychurch.com/states.json and
 https://data.heresmychurch.com/churches/TX.json.
 
 ### 5. Point the site at it
-1. In Netlify, add the site environment variable `VITE_HMC_DATA_BASE_URL=https://data.heresmychurch.com`
+1. In Cloudflare (Workers → heresmychurch → Settings → Build → Variables), set `VITE_HMC_DATA_BASE_URL=https://data.heresmychurch.com`
    and redeploy.
 2. In GitHub, add the repo secret `MODERATOR_KEY` so the daily workflow can run.
    It reuses `SUPABASE_FUNCTION_URL` and `SUPABASE_ANON_KEY`.

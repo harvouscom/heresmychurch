@@ -9,7 +9,7 @@ import { RootLayout } from "./RootLayout";
 // /:countryCode                → Country overview (e.g. /US, /CA)
 // /:countryCode/:regionCode    → Region view (e.g. /US/TX, /CA/PE)
 // /:countryCode/:region/:seg   → Church / county deep link
-// Legacy (redirected in ChurchMapPage + Netlify):
+// Legacy (redirected in ChurchMapPage + the site Worker):
 //   /state/:abbrev…  → /US/:abbrev…
 //   /country/:cc…    → /:cc…
 // /metro                       → U.S. metro directory index (SEO)
