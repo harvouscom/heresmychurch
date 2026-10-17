@@ -1,4 +1,4 @@
-import { CloseButton } from "./ui/close-button";
+import { MapPopover } from "./ui/map-popover";
 import { sizeCategories } from "./church-data";
 import type { StateInfo } from "./church-data";
 import { STATE_COUNT_TIERS } from "./map-constants";
@@ -42,14 +42,7 @@ export function MapLegend({
   if (!showLegend) return null;
 
   return (
-    <div
-      className="absolute left-[58px] bottom-6 z-[35] rounded-xl shadow-2xl p-4 w-[260px] max-h-[70vh] overflow-y-auto"
-      style={{ backgroundColor: "rgba(30, 16, 64, 0.96)" }}
-    >
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-semibold text-white">Map Key</span>
-        <CloseButton onClick={toggle} size="md" />
-      </div>
+    <MapPopover title="Map Key" onClose={toggle}>
 
       <span className="text-xs font-semibold text-purple-300 uppercase tracking-wider block mb-2">
         {focusedState
@@ -74,7 +67,7 @@ export function MapLegend({
           }
         />
       )}
-    </div>
+    </MapPopover>
   );
 }
 

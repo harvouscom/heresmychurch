@@ -5,6 +5,7 @@ import {
   fetchAuditByState,
   type AuditLogEntry,
 } from "./api";
+import { HmcDialog, HmcDialogTitle } from "./ui/hmc-dialog";
 
 function formatTimeAgo(createdAt: string): string {
   const ts = new Date(createdAt).getTime();
@@ -95,19 +96,10 @@ export function AuditModal({
   }, [moderatorKey, scope, focusedStateAbbrev]);
 
   return (
-    <div
-      className="absolute inset-0 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div className="absolute inset-0 backdrop-blur-sm" />
-      <div
-        className="relative w-full max-w-md rounded-2xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
-        style={{ backgroundColor: "#1E1040" }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <HmcDialog onClose={onClose}>
         <div className="relative flex flex-col items-center text-center px-6 pt-6 pb-4 border-b border-white/10 flex-shrink-0">
           <CloseButton onClick={onClose} size="md" className="absolute top-4 right-4" />
-          <h2 className="text-white font-medium text-[22px] leading-tight">Change history</h2>
+          <HmcDialogTitle className="text-white font-medium text-[22px] leading-tight">Change history</HmcDialogTitle>
           <p className="text-white/60 text-sm leading-relaxed mt-2 text-pretty">
             Recent changes to church data for transparency and accuracy.
           </p>
@@ -209,7 +201,6 @@ export function AuditModal({
             </ul>
           )}
         </div>
-      </div>
-    </div>
+    </HmcDialog>
   );
 }

@@ -1,6 +1,7 @@
 import { LocateFixed, Sparkles } from "lucide-react";
 import { Button } from "../ui/button";
 import { CloseButton } from "../ui/close-button";
+import { HmcDialog, HmcDialogTitle } from "../ui/hmc-dialog";
 
 interface Easter2026SpecialReportBlurbModalProps {
   onClose: () => void;
@@ -28,22 +29,16 @@ export function Easter2026SpecialReportBlurbModal({ onClose }: Easter2026Special
   };
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 backdrop-blur-sm bg-black/30" />
-
-      <div
-        className="relative w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden bg-white"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <HmcDialog onClose={onClose} tone="light" className="max-w-lg">
         <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-4 border-b border-stone-200/70">
           <div className="min-w-0">
             <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-purple-700">
               <Sparkles className="h-4 w-4" aria-hidden />
               Special report
             </div>
-            <h2 className="mt-2 text-xl font-bold text-stone-900 tracking-tight">
+            <HmcDialogTitle className="mt-2 text-xl font-bold text-stone-900 tracking-tight">
               Easter 2026: Service times across the map
-            </h2>
+            </HmcDialogTitle>
             <p className="mt-2 text-sm text-stone-600 text-pretty">
               Lots of people are looking for a church for Easter. We pulled together churches across all states that
               currently have service times listed — and you can quickly see the closest verified listings near you
@@ -72,8 +67,7 @@ export function Easter2026SpecialReportBlurbModal({ onClose }: Easter2026Special
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+    </HmcDialog>
   );
 }
 

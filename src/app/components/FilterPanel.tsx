@@ -9,7 +9,7 @@ import {
   sizeCategories,
   DENOMINATION_GROUPS,
 } from "./church-data";
-import { CloseButton } from "./ui/close-button";
+import { MapPopover } from "./ui/map-popover";
 
 interface FilterPanelProps {
   // Verified
@@ -67,14 +67,7 @@ export function FilterPanel({
   const [showVerifiedDetails, setShowVerifiedDetails] = useState(false);
 
   return (
-    <div
-      className="absolute left-[58px] bottom-6 z-[35] rounded-xl shadow-2xl p-4 w-[260px] max-h-[70vh] overflow-y-auto"
-      style={{ backgroundColor: "rgba(30, 16, 64, 0.96)" }}
-    >
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-semibold text-white">Filters</span>
-        <CloseButton onClick={onClose} size="md" />
-      </div>
+    <MapPopover title="Filters" onClose={onClose}>
 
       {/* Verified filter */}
       <button
@@ -219,7 +212,7 @@ export function FilterPanel({
           churchCount={churchCount}
         />
       )}
-    </div>
+    </MapPopover>
   );
 }
 
