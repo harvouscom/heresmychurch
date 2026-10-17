@@ -1,13 +1,13 @@
 # Public / partner API
 
-We already have an API: the Supabase Edge Function (`make-server-283d8046`). The frontend calls it via `src/app/components/api.ts` with the public anon key. This doc covers the **versioned partner surface** (Harvous-first) and the longer-term roadmap for a broader public API.
+We already have an API: the Hono app served at `https://api.heresmychurch.com` by the Cloudflare Worker `hmc-api` (the Supabase Edge Function `make-server-283d8046` runs the same code as a fallback). The frontend calls it via `src/app/components/api.ts`. This doc covers the **versioned partner surface** (Harvous-first) and the longer-term roadmap for a broader public API.
 
 Billing: [polar-api-billing.md](./polar-api-billing.md). Product sequencing (richer data / claim before selling hard): [claimable-listings-and-traction.md](./claimable-listings-and-traction.md).
 
 ## Current state (site API)
 
-- **Base URL:** `https://<projectId>.supabase.co/functions/v1/make-server-283d8046`
-- **Auth:** Public anon key (same as the main site). Anyone with the key can call the same endpoints.
+- **Base URL:** `https://api.heresmychurch.com` (fallback: `https://<projectId>.supabase.co/functions/v1/make-server-283d8046`)
+- **Auth:** None on the Worker for public routes; the Supabase fallback needs the public anon key. Anyone can call the same endpoints.
 - **Read endpoints:** states, churches by state, search, denominations, suggestions, pending churches, community stats, reactions, population, review-stats.
 - **Write endpoints:** add church, verify pending church, confirm church data, submit suggestion, submit reaction; admin-only: populate state, refresh-attendance, enrich-regrid, cleanup, rebuild search index, etc.
 
@@ -22,13 +22,12 @@ Lean, state-scoped church **reference** search for server-to-server use. First c
 ### Base URL
 
 ```
-https://<projectId>.supabase.co/functions/v1/make-server-283d8046/v1
+https://api.heresmychurch.com/v1
 ```
 
-All `/v1/*` routes require:
+(Fallback: `https://<projectId>.supabase.co/functions/v1/make-server-283d8046/v1`, which additionally needs Supabase gateway auth: `Authorization: Bearer <anon key>` + `apikey`.)
 
-1. Supabase gateway auth as usual (`Authorization: Bearer <anon or service key>` + `apikey` header), **and**
-2. Partner key: `x-partner-key: <PARTNER_API_KEY>`
+All `/v1/*` routes require the partner key: `x-partner-key: <PARTNER_API_KEY>`.
 
 ### Secrets
 
@@ -37,7 +36,7 @@ All `/v1/*` routes require:
 | `PARTNER_API_KEY` | Preferred. Shared secret for `/v1/*`. |
 | `HARVOUS_API_KEY` | Accepted as fallback if `PARTNER_API_KEY` is unset. |
 
-Set on the edge function via Supabase secrets. If neither is set, `/v1/*` returns `503 Partner API not configured`.
+Set on the `hmc-api` Worker (`wrangler secret put -c api/wrangler.jsonc PARTNER_API_KEY`) and on the Supabase fallback (Supabase secrets). If neither is set, `/v1/*` returns `503 Partner API not configured`.
 
 ### Rate limit
 
@@ -170,22 +169,24 @@ Do all HMC calls from the **Harvous backend** only. Never put `PARTNER_API_KEY` 
 
 #### Step 1 — Configure secrets on Harvous
 
-Add to Harvous server env (e.g. Railway / `.env` used by the API):
+Harvous reads these (`server/utils/hmc-partner.ts`); they live in Fly secrets (app `harvous`) and the local `.env`:
 
 | Harvous env var | Value |
 |-----------------|--------|
-| `HMC_BASE_URL` | `https://epufchwxofsyuictfufy.supabase.co/functions/v1/make-server-283d8046` |
-| `HMC_ANON_KEY` | Here's My Church Supabase anon (publishable) key |
-| `HMC_PARTNER_API_KEY` | Same value as HMC edge secret `PARTNER_API_KEY` |
+| `HERESMYCHURCH_API_BASE` | `https://api.heresmychurch.com/v1` (must end in `/v1`; community writes use the same base without `/v1`) |
+| `HERESMYCHURCH_ANON_KEY` | Here's My Church Supabase anon (publishable) key. Only needed by the Supabase fallback, but Harvous's config check requires it |
+| `HERESMYCHURCH_PARTNER_API_KEY` | Same value as the HMC `PARTNER_API_KEY` secret |
+
+Rollback: set `HERESMYCHURCH_API_BASE` back to `https://epufchwxofsyuictfufy.supabase.co/functions/v1/make-server-283d8046/v1`.
 
 Smoke-test from a shell before coding UI:
 
 ```bash
 curl -sS \
-  -H "Authorization: Bearer $HMC_ANON_KEY" \
-  -H "apikey: $HMC_ANON_KEY" \
-  -H "x-partner-key: $HMC_PARTNER_API_KEY" \
-  "$HMC_BASE_URL/v1/churches/search?q=Grace&state=TX&limit=5"
+  -H "Authorization: Bearer $HERESMYCHURCH_ANON_KEY" \
+  -H "apikey: $HERESMYCHURCH_ANON_KEY" \
+  -H "x-partner-key: $HERESMYCHURCH_PARTNER_API_KEY" \
+  "$HERESMYCHURCH_API_BASE/churches/search?q=Grace&state=TX&limit=5"
 ```
 
 Expect `200` and a `results` array. `401` → wrong partner key. `503` → partner key not set on HMC.
@@ -194,11 +195,11 @@ Expect `200` and a `results` array. `401` → wrong partner key. `503` → partn
 
 Create a server-only helper (e.g. `server/utils/hmc-client.ts`) that:
 
-1. Builds URLs under `$HMC_BASE_URL/v1/...`
+1. Builds URLs under `$HERESMYCHURCH_API_BASE/...`
 2. Always sends:
-   - `Authorization: Bearer $HMC_ANON_KEY`
-   - `apikey: $HMC_ANON_KEY`
-   - `x-partner-key: $HMC_PARTNER_API_KEY`
+   - `Authorization: Bearer $HERESMYCHURCH_ANON_KEY`
+   - `apikey: $HERESMYCHURCH_ANON_KEY`
+   - `x-partner-key: $HERESMYCHURCH_PARTNER_API_KEY`
    - `Content-Type: application/json` on POST
 3. Exposes typed methods:
    - `searchChurches({ q, state, limit })`
@@ -269,12 +270,12 @@ Example proxy call:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $HMC_ANON_KEY" \
-  -H "apikey: $HMC_ANON_KEY" \
-  -H "x-partner-key: $HMC_PARTNER_API_KEY" \
+  -H "Authorization: Bearer $HERESMYCHURCH_ANON_KEY" \
+  -H "apikey: $HERESMYCHURCH_ANON_KEY" \
+  -H "x-partner-key: $HERESMYCHURCH_PARTNER_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"field":"pastorName","value":"Jane Doe"}' \
-  "$HMC_BASE_URL/v1/churches/TX-123/suggestions"
+  "$HERESMYCHURCH_API_BASE/churches/TX-123/suggestions"
 ```
 
 #### Step 7 — Confirm freshness (“still correct”)
@@ -318,7 +319,7 @@ When a church creates a Clerk org on Harvous:
 - [ ] Sensitive suggest (e.g. `name`) returns `needsModeration: true`; by-id name unchanged until mod approve
 - [ ] Confirm returns success; second confirm within 24h returns `alreadyConfirmed`
 - [ ] `GET /v1/churches/changes?since=` returns watermarked events; after a field apply, the churchId appears
-- [ ] Browser network tab never shows `x-partner-key` or `HMC_PARTNER_API_KEY`
+- [ ] Browser network tab never shows `x-partner-key` or `HERESMYCHURCH_PARTNER_API_KEY`
 
 ### Deferred (not in v1)
 

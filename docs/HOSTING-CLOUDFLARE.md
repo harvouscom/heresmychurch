@@ -1,7 +1,7 @@
 # Hosting on Cloudflare
 
 heresmychurch.com is served by a Cloudflare Worker with static assets (`wrangler.jsonc`),
-replacing Netlify. The API is still the Supabase edge function (moving it is a separate phase).
+replacing Netlify. The API runs on a second Worker, `hmc-api` (api.heresmychurch.com), described below.
 
 ## What runs where
 

@@ -23,7 +23,7 @@ This doc explains how **Here's My Church** is built: what it does, how the front
 | Layer | Technology |
 |-------|------------|
 | **Frontend** | Vite + React 18, React Router 7, Tailwind v4, Radix UI, MapLibre GL + d3-geo |
-| **Backend** | Single Supabase Edge Function (Hono) — `make-server-283d8046`. No Next.js or other API routes. |
+| **Backend** | One Hono app (`supabase/functions/make-server-283d8046/app.ts`) served by the Cloudflare Worker `hmc-api` at `https://api.heresmychurch.com` (primary) and by the Supabase Edge Function `make-server-283d8046` (fallback, same code). See [HOSTING-CLOUDFLARE.md](HOSTING-CLOUDFLARE.md). |
 | **Data** | One Supabase table used by the edge function: `kv_store_283d8046` (key/value JSON). Church and state data is served from this KV layer (populated by the server from OSM, Census, etc.). |
 | **Realtime** | Supabase Realtime (presence on `active-users` channel) for “who’s viewing this state.” |
 | **Hosting** | Cloudflare Worker with static assets: SPA from `dist/`, plus geo-inject and OG meta rewrite in `worker/` (see [HOSTING-CLOUDFLARE.md](HOSTING-CLOUDFLARE.md)). Netlify is being retired. |
@@ -112,8 +112,9 @@ Central hook used by ChurchMap: [src/app/components/useChurchMapData.ts](src/app
 
 All server calls go through [src/app/components/api.ts](src/app/components/api.ts):
 
-- **Base URL:** `https://{projectId}.supabase.co/functions/v1/make-server-283d8046`
-- **Auth:** `Authorization: Bearer {publicAnonKey}` (Supabase anon key). Moderator routes also send `Moderator-Key` header.
+- **Base URL:** `VITE_HMC_API_BASE_URL` (production: `https://api.heresmychurch.com`). Unset, it falls back to `https://{projectId}.supabase.co/functions/v1/make-server-283d8046` (dev uses the Vite proxy).
+- **Auth:** none for the Worker. Against the Supabase fallback, `Authorization: Bearer {publicAnonKey}` + `apikey` (the Supabase gateway requires them). Moderator routes send the moderator key (`?key=` or `x-moderator-key`).
+- **Static reads first:** `states.json` and `churches/{REGION}.json` come from R2 (`VITE_HMC_DATA_BASE_URL`, see [STATIC-FILES-R2.md](STATIC-FILES-R2.md)), falling back to the API.
 - **Helpers:** `fetchWithTimeout`, `fetchWithRetry` for reliability.
 
 **API groups and main functions:**
@@ -151,9 +152,9 @@ Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurc
 
 ---
 
-## 7. Backend (edge function)
+## 7. Backend (Hono app on the Worker + Supabase fallback)
 
-**Single Hono app:** [supabase/functions/make-server-283d8046/index.ts](supabase/functions/make-server-283d8046/index.ts).
+**Single Hono app:** [supabase/functions/make-server-283d8046/app.ts](supabase/functions/make-server-283d8046/app.ts), platform-neutral via `runtime.ts` (`env()`, `waitUntil()`, OG renderer hook). Entry points: `api/index.ts` (Cloudflare Worker `hmc-api`) and `supabase/functions/make-server-283d8046/index.ts` (Supabase/Deno).
 
 **Route groups:**
 
@@ -208,7 +209,9 @@ Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurc
 
 **Supabase:**
 
-- Deploy the edge function: `supabase functions deploy make-server-283d8046` (or `npx supabase functions deploy make-server-283d8046` if `supabase` is not in PATH). See [.cursor/rules/supabase-deploy.mdc](.cursor/rules/supabase-deploy.mdc).
+- Deploy the API Worker: `pnpm run deploy:api` (`wrangler deploy -c api/wrangler.jsonc`).
+- Deploy the Supabase fallback with the same code: `pnpm run deploy:make-server` (or `npx supabase functions deploy make-server-283d8046`). See [.cursor/rules/supabase-deploy.mdc](.cursor/rules/supabase-deploy.mdc).
+- Compare the two: `pnpm run parity:api`.
 
 **Scripts:**
 
@@ -224,7 +227,7 @@ Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurc
 
 ### Overview
 
-The Supabase edge function `make-server-283d8046` is responsible for all automated X posts:
+The API (`hmc-api` Worker; same code as the Supabase function) is responsible for all automated X posts. Note: the X API keys are not set on the Worker (auto-posting is paused; see HOSTING-CLOUDFLARE.md), so tweet routes currently skip:
 
 - New churches added (queued in `twitter:church-queue`).
 - Deploy/app updates (queued in `twitter:deploy-queue`).
@@ -259,7 +262,7 @@ Use this when you change tweet text, milestone thresholds, or queue behavior and
 
 Typical use:
 
-1. Deploy updated edge function code.
+1. Deploy updated API code (`pnpm run deploy:api`).
 2. Call `POST /twitter/admin/reset` once (with the same secret used for other Twitter endpoints).
 3. Optionally call `GET /twitter/status` to confirm queues are empty and milestone state is reset.
 
