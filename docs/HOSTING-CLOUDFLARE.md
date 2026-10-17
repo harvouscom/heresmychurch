@@ -54,10 +54,22 @@ The database stays on Supabase Postgres (supabase-js over HTTP), as does Realtim
 Commands: `pnpm run dev:api` (local, :8790), `pnpm run deploy:api`,
 `pnpm run parity:api [base]` (compares read-only responses with the Supabase function).
 
-Secrets (`wrangler secret put -c api/wrangler.jsonc NAME`): SUPABASE_SERVICE_ROLE_KEY,
-MODERATOR_KEY, PARTNER_API_KEY, GOOGLE_MAPS_API_KEY, TWITTER_API_KEY, TWITTER_API_SECRET,
-TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET, TWITTER_WEBHOOK_SECRET, R2_ACCESS_KEY_ID,
-R2_SECRET_ACCESS_KEY. Plain vars live in `api/wrangler.jsonc`.
+Secrets set on `hmc-api` (`wrangler secret put -c api/wrangler.jsonc NAME`):
+SUPABASE_SERVICE_ROLE_KEY, MODERATOR_KEY, PARTNER_API_KEY, TWITTER_WEBHOOK_SECRET.
+Plain vars live in `api/wrangler.jsonc`. R2 writes use the `HMC_DATA` bucket binding, so the
+Worker needs no `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` (the Supabase function still uses them).
+
+### Deliberately not configured on the Worker (Oct 2026)
+
+These were left out when the API moved; the routes fail softly without them.
+
+| Secret | Why skipped | Effect without it | To turn back on |
+|---|---|---|---|
+| `GOOGLE_MAPS_API_KEY` | Google Places enrichment is no longer used | `POST /admin/enrich-google/:state` returns an "API key missing" error; nothing else uses it | Copy the key from Google Cloud → Credentials, then `wrangler secret put -c api/wrangler.jsonc GOOGLE_MAPS_API_KEY` |
+| `TWITTER_API_KEY`, `TWITTER_API_SECRET`, `TWITTER_ACCESS_TOKEN`, `TWITTER_ACCESS_TOKEN_SECRET` | Auto-posting to X paused | Tweet routes reply "No Twitter credentials" and post nothing; the `tweet-schedule` workflow still runs and simply skips | Copy the four values from the X developer portal and `wrangler secret put` each one (`TWITTER_WEBHOOK_SECRET` is already set) |
+| `REGRID_TOKEN` | Unused anywhere in the code | None | — |
+
+The Supabase function still holds its old copies of these until it is retired.
 
 Callers switch by config, each reversible: `VITE_HMC_API_BASE_URL` (frontend build),
 `HMC_API_BASE_URL` (site Worker og-rewrite), the `SUPABASE_FUNCTION_URL` GitHub secret

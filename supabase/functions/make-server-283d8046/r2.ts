@@ -25,12 +25,28 @@ function client(): AwsClient {
   return _client;
 }
 
+// On Workers the bucket comes as a native R2 binding (no S3 keys needed); the entry point
+// registers it. Minimal shape so this file needs no Workers types.
+type R2BucketBinding = {
+  put(key: string, value: string, options?: { httpMetadata?: { contentType?: string; cacheControl?: string } }): Promise<unknown>;
+};
+let bucketBinding: R2BucketBinding | null = null;
+export function setR2Binding(binding: R2BucketBinding | null): void {
+  bucketBinding = binding;
+}
+
 export function r2Enabled(): boolean {
-  return !!(ACCOUNT_ID() && ACCESS_KEY_ID() && SECRET_ACCESS_KEY() && BUCKET());
+  return !!bucketBinding || !!(ACCOUNT_ID() && ACCESS_KEY_ID() && SECRET_ACCESS_KEY() && BUCKET());
 }
 
 /** Upload `value` as JSON at `path` (e.g. "churches/TX.json"). Throws on failure. */
 export async function r2PutJson(path: string, value: unknown, cacheControl: string): Promise<void> {
+  if (bucketBinding) {
+    await bucketBinding.put(path, JSON.stringify(value), {
+      httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl },
+    });
+    return;
+  }
   const url = `https://${ACCOUNT_ID()}.r2.cloudflarestorage.com/${BUCKET()}/${path}`;
   const res = await client().fetch(url, {
     method: "PUT",

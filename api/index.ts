@@ -7,12 +7,15 @@
  */
 import app from "../supabase/functions/make-server-283d8046/app.ts";
 import { setEnv, setOgImageRenderer, setWaitUntil } from "../supabase/functions/make-server-283d8046/runtime.ts";
+import { setR2Binding } from "../supabase/functions/make-server-283d8046/r2.ts";
 import { generateOgImage } from "./og-image.ts";
 
 const PREFIX = "/make-server-283d8046";
 
 interface Env {
   [name: string]: unknown;
+  /** hmc-data bucket (static files); replaces the S3 keys the Supabase function uses. */
+  HMC_DATA?: R2Bucket;
 }
 
 // og-image.tsx is Deno-only (esm.sh React + og_edge); Workers use workers-og.
@@ -25,6 +28,7 @@ export default {
       return typeof v === "string" ? v : undefined;
     });
     setWaitUntil((p) => ctx.waitUntil(p));
+    setR2Binding(env.HMC_DATA ?? null);
 
     // Routes are mounted under /make-server-283d8046 (the Supabase function name);
     // accept bare paths too, so api.heresmychurch.com/churches/TX works.
