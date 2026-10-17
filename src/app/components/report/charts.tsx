@@ -13,6 +13,7 @@ import {
 import { COUNTIES_GEO_URL, GEO_URL, STATE_TO_FIPS } from "../map-constants";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { ReportSectionVisibleContext } from "./report-section-visible-context";
+import { BRAND, CHOROPLETH_RANGE, DENOMINATION_COLORS, HOVER_STROKE, NEUTRAL } from "./palette";
 
 // ── In view: follow report section animation when inside `<Section>`, else own observer ──
 function useInView(ref: React.RefObject<HTMLElement | SVGElement | null>, margin = "-30px") {
@@ -122,13 +123,13 @@ const STAT_COLORS = {
   purple: {
     value: "text-purple-700",
     label: "text-purple-900",
-    card: "bg-stone-50",
+    card: "bg-hmc-card-light",
     sub: "text-stone-500",
   },
   pink: {
     value: "text-pink-600",
     label: "text-pink-900",
-    card: "bg-stone-50",
+    card: "bg-hmc-card-light",
     sub: "text-stone-500",
   },
   /** Community involvement — matches app convention (green) */
@@ -199,7 +200,7 @@ function useTapOutside(
 export function HorizontalBarChart({
   data,
   maxValue,
-  color = "#A855F7",
+  color = BRAND.soft,
   height = 28,
   showPct,
 }: {
@@ -300,13 +301,7 @@ export function TreemapChart({
   width?: number;
   height?: number;
 }) {
-  const colors = [
-    "#4C1D95", "#6B21A8", "#7C3AED", "#8B5CF6", "#A855F7",
-    "#C084FC", "#D8B4FE", "#E9D5FF", "#F3E8FF", "#FAF5FF",
-    "#EDE9FE", "#DDD6FE", "#C4B5FD", "#A78BFA", "#818CF8",
-    "#6366F1", "#4F46E5", "#4338CA", "#3730A3", "#312E81",
-    "#1E1B4B", "#7E22CE",
-  ];
+  const colors = DENOMINATION_COLORS;
 
   const rects = useMemo(() => {
     const total = data.reduce((s, d) => s + d.count, 0);
@@ -489,7 +484,7 @@ const STATE_NAMES: Record<string, string> = {
 export function ChoroplethMap({
   values,
   label,
-  colorRange = ["#F3E8FF", "#4C1D95"],
+  colorRange = CHOROPLETH_RANGE,
   details,
 }: {
   values: Record<string, number>;
@@ -576,8 +571,8 @@ export function ChoroplethMap({
                 <Geography
                   key={geo.rsmKey}
                   geography={geo}
-                  fill={val != null && val > 0 ? scale(val) : "#E7E5E0"}
-                  stroke={isHovered ? "#7C3AED" : "#fff"}
+                  fill={val != null && val > 0 ? scale(val) : NEUTRAL.noData}
+                  stroke={isHovered ? HOVER_STROKE : "#fff"}
                   strokeWidth={isHovered ? 1.5 : 0.5}
                   onMouseEnter={(e: React.MouseEvent) => {
                     setHoveredId(geo.id);
@@ -676,7 +671,7 @@ export function CountyChoroplethMap({
   stateAbbrev,
   values,
   label,
-  colorRange = ["#F3E8FF", "#4C1D95"],
+  colorRange = CHOROPLETH_RANGE,
   details,
 }: {
   stateAbbrev: string;
@@ -779,7 +774,7 @@ export function CountyChoroplethMap({
           fips,
           name,
           d,
-          fill: fillVal > 0 ? scale(fillVal) : "#E7E5E0",
+          fill: fillVal > 0 ? scale(fillVal) : NEUTRAL.noData,
           value: val ?? 0,
         };
       })
@@ -841,7 +836,7 @@ export function CountyChoroplethMap({
           )}
         </Tooltip>
       )}
-      <div className="w-full overflow-hidden rounded-lg border border-stone-200/60 bg-stone-50/40">
+      <div className="w-full overflow-hidden rounded-lg border border-stone-200/60 bg-hmc-card-light/40">
         {!topo ? (
           <div
             className="flex w-full items-center justify-center text-sm text-stone-400 animate-pulse"
@@ -870,7 +865,7 @@ export function CountyChoroplethMap({
                   key={row.fips}
                   d={row.d}
                   fill={row.fill}
-                  stroke={isHovered ? "#7C3AED" : "#fff"}
+                  stroke={isHovered ? HOVER_STROKE : "#fff"}
                   strokeWidth={isHovered ? 1.5 / (mapSize.w / 800) : 0.5}
                   vectorEffect="non-scaling-stroke"
                   className="transition-[fill,filter] duration-150"

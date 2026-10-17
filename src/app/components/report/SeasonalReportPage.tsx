@@ -82,6 +82,7 @@ import {
   CircleHelp,
 } from "lucide-react";
 import logoImg from "../../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
+import { BRAND } from "./palette";
 
 type LucideIcon = React.ComponentType<{ className?: string }>;
 
@@ -442,7 +443,7 @@ function TrendingSection({
       />
       <div className="space-y-4">
         {!hasContent && (
-          <div className="rounded-xl bg-stone-50 px-5 py-4 ring-1 ring-stone-100">
+          <div className="rounded-xl bg-hmc-card-light px-5 py-4 ring-1 ring-hmc-line">
             <h3 className="mb-2 text-lg font-semibold text-stone-900">What to expect</h3>
             <p className="text-pretty text-sm leading-relaxed text-stone-700/80">
               {!changes
@@ -452,7 +453,7 @@ function TrendingSection({
           </div>
         )}
         {growing.length > 0 && (
-          <div className="rounded-xl bg-stone-50 px-5 py-4 ring-1 ring-stone-100">
+          <div className="rounded-xl bg-hmc-card-light px-5 py-4 ring-1 ring-hmc-line">
             <h3 className="mb-3 text-lg font-semibold text-stone-900">Fastest-Growing States</h3>
             <div className="space-y-2.5">
               {growing.map((s, i) => (
@@ -474,7 +475,7 @@ function TrendingSection({
         )}
 
         {(gainers.length > 0 || losers.length > 0) && (
-          <div className="rounded-xl bg-stone-50 px-5 py-4 ring-1 ring-stone-100">
+          <div className="rounded-xl bg-hmc-card-light px-5 py-4 ring-1 ring-hmc-line">
             <h3 className="mb-3 text-lg font-semibold text-stone-900">Denomination Share Shifts</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
@@ -504,7 +505,7 @@ function TrendingSection({
         )}
 
         {movers.length > 0 && (
-          <div className="rounded-xl bg-stone-50 px-5 py-4 ring-1 ring-stone-100">
+          <div className="rounded-xl bg-hmc-card-light px-5 py-4 ring-1 ring-hmc-line">
             <h3 className="mb-3 text-lg font-semibold text-stone-900">Data Quality Movers</h3>
             <div className="space-y-2.5">
               {movers.map((s, i) => (
@@ -567,7 +568,7 @@ function DataQualityBreakdownTable({
       </p>
       <div className="max-h-[min(420px,55vh)] overflow-auto rounded-xl border border-stone-200/60">
         <table className="w-full text-sm">
-          <thead className="sticky top-0 z-10 border-b border-stone-200/60 bg-stone-50">
+          <thead className="sticky top-0 z-10 border-b border-stone-200/60 bg-hmc-card-light">
             <tr>
               <th className="px-4 py-2.5 text-left font-semibold text-stone-700/80">{kind === "county" ? "County" : "State"}</th>
               <th className="px-4 py-2.5 text-right font-semibold text-stone-700/80">Churches</th>
@@ -579,7 +580,7 @@ function DataQualityBreakdownTable({
             {rows.map((row, i) => (
               <tr
                 key={row.id}
-                className={`border-b border-stone-100 ${i % 2 === 1 ? "bg-stone-50/50" : ""}`}
+                className={`border-b border-stone-100 ${i % 2 === 1 ? "bg-hmc-card-light/50" : ""}`}
               >
                 <td className="px-4 py-2">
                   <span className="inline-flex items-center gap-2 font-medium text-stone-800">
@@ -678,7 +679,7 @@ function DenominationBreakdownByRegionTable({
             .sort((a, b) => b.spread - a.spread)
             .slice(0, 6)
             .map((r) => (
-              <div key={r.id} className="rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-700">
+              <div key={r.id} className="rounded-lg bg-hmc-card-light px-3 py-2 text-sm text-stone-700">
                 <span className="inline-flex items-center gap-1.5 font-medium text-stone-900">
                   {kind === "state" ? <PlaceFlag abbrev={r.id} size="sm" /> : null}
                   {kind === "county" ? (regionLabels?.[r.id] ?? r.id) : r.id}
@@ -884,7 +885,7 @@ function Takeaways({ report: r }: { report: SeasonalReport }) {
             className={`group flex flex-col gap-3 rounded-xl p-5 transition-colors duration-200 sm:flex-row sm:gap-4 ${
               community
                 ? "bg-green-50/50 hover:bg-green-50/80"
-                : "bg-stone-50 hover:bg-purple-50/50"
+                : "bg-hmc-card-light hover:bg-purple-50/50"
             }`}
           >
             <div
@@ -993,7 +994,7 @@ function DirectoryComparison({ report }: { report: SeasonalReport }) {
           </thead>
           <tbody>
             {/* Coverage row — dynamic data */}
-            <tr className="border-b border-stone-100 group hover:bg-stone-50 transition-colors">
+            <tr className="border-b border-stone-100 group hover:bg-hmc-card-light transition-colors">
               <td className="py-3 px-2">
                 <div className="font-medium text-stone-700">Est. US churches represented</div>
                 <div className="text-xs text-stone-400 mt-0.5">Out of ~380,000 estimated US churches</div>
@@ -1004,7 +1005,7 @@ function DirectoryComparison({ report }: { report: SeasonalReport }) {
               <td className="py-3 px-2"><div className="flex items-center justify-center"><span className="text-xs font-medium text-stone-500 tabular-nums">~38k</span></div></td>
             </tr>
             {COMPARISON_FEATURES.map((row) => (
-              <tr key={row.feature} className="border-b border-stone-100 group hover:bg-stone-50 transition-colors">
+              <tr key={row.feature} className="border-b border-stone-100 group hover:bg-hmc-card-light transition-colors">
                 <td className="py-3 px-2">
                   <div className="font-medium text-stone-700">{row.feature}</div>
                   {row.hmcNote && (
@@ -1063,7 +1064,7 @@ function StateVsOtherStatesComparison({ report }: { report: SeasonalReport }) {
             {p.churchesPer10k > 0 ? `${p.churchesPer10k} per 10k` : "—"}
           </div>
         </div>
-        <div className="rounded-xl bg-stone-50 p-5 text-center ring-1 ring-stone-200/80">
+        <div className="rounded-xl bg-hmc-card-light p-5 text-center ring-1 ring-stone-200/80">
           <div className="text-2xl font-bold text-stone-800 tabular-nums">{p.pctOfUsMappedChurches}%</div>
           <div className="text-sm text-stone-600 mt-1">Of all US churches on HMC</div>
           <div className="text-xs text-stone-500 mt-0.5 tabular-nums">
@@ -1077,7 +1078,7 @@ function StateVsOtherStatesComparison({ report }: { report: SeasonalReport }) {
         <div className="overflow-x-auto rounded-xl border border-stone-200/60">
           <table className="w-full min-w-[520px] text-sm">
             <thead>
-              <tr className="border-b border-stone-200/80 bg-stone-50">
+              <tr className="border-b border-stone-200/80 bg-hmc-card-light">
                 <th className="px-4 py-3 text-left font-semibold text-stone-700">Metric</th>
                 <th className="px-4 py-3 text-right font-semibold text-violet-800">{stateLabel}</th>
                 <th className="px-4 py-3 text-right font-semibold text-stone-600">Typical state (median)</th>
@@ -1149,7 +1150,7 @@ function StateVsOtherStatesComparison({ report }: { report: SeasonalReport }) {
               <Link
                 key={s.abbrev}
                 to={`/report/state/${encodeURIComponent(s.abbrev)}/${encodeURIComponent(slug)}`}
-                className="inline-flex items-center gap-1.5 rounded-full border border-stone-200/60 bg-stone-50/80 px-2.5 py-1 text-xs font-medium text-stone-700 transition-colors hover:border-violet-200 hover:bg-violet-50/40"
+                className="inline-flex items-center gap-1.5 rounded-full border border-stone-200/60 bg-hmc-card-light/80 px-2.5 py-1 text-xs font-medium text-stone-700 transition-colors hover:border-violet-200 hover:bg-violet-50/40"
               >
                 <PlaceFlag abbrev={s.abbrev} size="sm" />
                 {s.name}
@@ -1187,7 +1188,7 @@ function StateVsOtherStatesComparison({ report }: { report: SeasonalReport }) {
               <Link
                 key={`l-${s.abbrev}`}
                 to={`/report/state/${encodeURIComponent(s.abbrev)}/${encodeURIComponent(slug)}`}
-                className="inline-flex items-center gap-1.5 rounded-full border border-stone-200/60 bg-stone-50/80 px-2.5 py-1 text-xs font-medium text-stone-700 transition-colors hover:border-violet-200 hover:bg-violet-50/40"
+                className="inline-flex items-center gap-1.5 rounded-full border border-stone-200/60 bg-hmc-card-light/80 px-2.5 py-1 text-xs font-medium text-stone-700 transition-colors hover:border-violet-200 hover:bg-violet-50/40"
               >
                 <PlaceFlag abbrev={s.abbrev} size="sm" />
                 {s.name}
@@ -1790,7 +1791,7 @@ export function SeasonalReportPage() {
                 dq.pctWithServiceTimes != null) && (
                 <div className="mt-6">
                   <h3 className="mb-3 text-lg font-semibold text-stone-900">Discoverability</h3>
-                  <div className="rounded-xl bg-stone-50 px-5 py-4 ring-1 ring-stone-100">
+                  <div className="rounded-xl bg-hmc-card-light px-5 py-4 ring-1 ring-hmc-line">
                     <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-base">
                       {dq.pctWithWebsite != null && (
                         <span className="inline-flex items-center gap-1.5 text-stone-700">
@@ -1826,7 +1827,7 @@ export function SeasonalReportPage() {
                 dq.pctVerifiedLast90Days != null) && (
                 <div className="mt-6">
                   <h3 className="mb-3 text-lg font-semibold text-stone-900">Detail & confidence</h3>
-                  <div className="rounded-xl bg-stone-50 px-5 py-4 ring-1 ring-stone-100">
+                  <div className="rounded-xl bg-hmc-card-light px-5 py-4 ring-1 ring-hmc-line">
                     <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-base">
                       {dq.campusCount != null && (
                         <span className="inline-flex items-center gap-1.5 text-stone-700">
@@ -1891,7 +1892,7 @@ export function SeasonalReportPage() {
                       pct: m.pct,
                     }))}
                     showPct
-                    color="#9333EA"
+                    color={BRAND.purple600}
                   />
                 </div>
               )}
@@ -1925,7 +1926,7 @@ export function SeasonalReportPage() {
                     pct: f.pct,
                   }))}
                   showPct
-                  color="#EC4899"
+                  color={BRAND.pink}
                 />
               </div>
               <Insight eyebrow="The Gap" color="pink">
@@ -1966,7 +1967,7 @@ export function SeasonalReportPage() {
                   label="churches per 10k people"
                 />
               ) : gd.mostChurched.length === 0 ? (
-                <div className="rounded-xl border border-stone-200/70 bg-stone-50/70 px-4 py-4 text-pretty text-sm text-stone-600">
+                <div className="rounded-xl border border-stone-200/70 bg-hmc-card-light/70 px-4 py-4 text-pretty text-sm text-stone-600">
                   Population-based density isn&apos;t available for this geography yet. Rankings below still show mapped church counts.
                 </div>
               ) : null}
@@ -1982,7 +1983,7 @@ export function SeasonalReportPage() {
                       label: s.name,
                       value: s.churchesPer10k,
                     }))}
-                    color="#6B21A8"
+                    color={BRAND.brand}
                   />
                 </div>
                 <div>
@@ -1996,7 +1997,7 @@ export function SeasonalReportPage() {
                       label: s.name,
                       value: s.churchesPer10k,
                     }))}
-                    color="#C084FC"
+                    color={BRAND.softer}
                   />
                 </div>
               </div>
@@ -2026,7 +2027,7 @@ export function SeasonalReportPage() {
                   pct: d.pct,
                 }))}
                 showPct
-                color="#7C3AED"
+                color={BRAND.violet}
               />
 
               {dn.regionalPatterns.length > 0 && (
@@ -2042,7 +2043,7 @@ export function SeasonalReportPage() {
                     {dn.regionalPatterns.slice(0, 8).map((p) => {
                       const multiplier = p.nationalPct > 0 ? Math.round(p.regionalPct / p.nationalPct) : 0;
                       return (
-                        <div key={p.denomination} className="rounded-xl bg-stone-50 px-4 py-3.5 ring-1 ring-stone-100">
+                        <div key={p.denomination} className="rounded-xl bg-hmc-card-light px-4 py-3.5 ring-1 ring-hmc-line">
                           <div className="flex items-baseline justify-between gap-2">
                             <span className="text-sm font-semibold text-stone-900">{p.denomination}</span>
                             {multiplier >= 2 && (
@@ -2120,7 +2121,7 @@ export function SeasonalReportPage() {
                       label: l.language,
                       value: l.count,
                     }))}
-                    color="#8B5CF6"
+                    color={BRAND.violetSoft}
                   />
                 </div>
               )}
@@ -2140,7 +2141,7 @@ export function SeasonalReportPage() {
                       pct: s.pct,
                     }))}
                     showPct
-                    color="#A855F7"
+                    color={BRAND.soft}
                   />
                 </div>
                 );
@@ -2197,7 +2198,7 @@ export function SeasonalReportPage() {
                     {sp.largest.slice(0, 5).map((c, i) => (
                       <div
                         key={`${c.name}-${c.state}-${i}`}
-                        className="flex items-start gap-3 rounded-xl bg-stone-50 p-4"
+                        className="flex items-start gap-3 rounded-xl bg-hmc-card-light p-4"
                       >
                         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-purple-100/60 text-sm font-bold text-purple-700">
                           {i + 1}
@@ -2227,7 +2228,7 @@ export function SeasonalReportPage() {
                     {sp.smallest.slice(0, 5).map((c, i) => (
                       <div
                         key={`${c.name}-${c.state}-${i}`}
-                        className="flex items-start gap-3 rounded-xl bg-stone-50 p-4"
+                        className="flex items-start gap-3 rounded-xl bg-hmc-card-light p-4"
                       >
                         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-purple-100/60 text-sm font-bold text-purple-700">
                           {i + 1}
@@ -2299,7 +2300,7 @@ export function SeasonalReportPage() {
                     <Link
                       key={state.abbrev}
                       to={href}
-                      className="rounded-xl bg-stone-50 p-3 ring-1 ring-stone-100 transition-colors hover:bg-purple-50/60"
+                      className="rounded-xl bg-hmc-card-light p-3 ring-1 ring-hmc-line transition-colors hover:bg-purple-50/60"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="inline-flex items-center gap-2 font-medium text-stone-900">
@@ -2345,7 +2346,7 @@ export function SeasonalReportPage() {
               ) : isUsReport(r) ? (
                 <DirectoryComparison report={r} />
               ) : null}
-              <div className="mt-10 rounded-xl bg-stone-50 p-5">
+              <div className="mt-10 rounded-xl bg-hmc-card-light p-5">
                 <h3 className="text-sm font-semibold text-stone-700 mb-2">Our Data Sources</h3>
                 <p className="text-pretty text-sm text-stone-500 leading-relaxed">
                   Church data sourced from OpenStreetMap
@@ -2366,7 +2367,7 @@ export function SeasonalReportPage() {
                 action={!isExcerptMode ? renderShareAction("contribute") : undefined}
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div className="rounded-xl bg-stone-50 p-5 ring-1 ring-stone-100">
+                <div className="rounded-xl bg-hmc-card-light p-5 ring-1 ring-hmc-line">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100/60 mb-3">
                     <SearchCheck className="h-[18px] w-[18px] text-purple-700" />
                   </div>
@@ -2375,7 +2376,7 @@ export function SeasonalReportPage() {
                     Find your church on the map and verify the info is correct — address, service times, denomination.
                   </p>
                 </div>
-                <div className="rounded-xl bg-stone-50 p-5 ring-1 ring-stone-100">
+                <div className="rounded-xl bg-hmc-card-light p-5 ring-1 ring-hmc-line">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100/60 mb-3">
                     <Church className="h-[18px] w-[18px] text-purple-700" />
                   </div>
@@ -2384,7 +2385,7 @@ export function SeasonalReportPage() {
                     Know a church that isn't on the map? Add it in under a minute — no account needed.
                   </p>
                 </div>
-                <div className="rounded-xl bg-stone-50 p-5 ring-1 ring-stone-100">
+                <div className="rounded-xl bg-hmc-card-light p-5 ring-1 ring-hmc-line">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100/60 mb-3">
                     <Globe className="h-[18px] w-[18px] text-purple-700" />
                   </div>
@@ -2653,7 +2654,7 @@ function StateRankingsTable({
 
   if (!data.length) {
     return (
-      <div className="rounded-xl border border-stone-200/60 bg-stone-50/70 px-4 py-8 text-center text-pretty text-sm text-stone-600">
+      <div className="rounded-xl border border-stone-200/60 bg-hmc-card-light/70 px-4 py-8 text-center text-pretty text-sm text-stone-600">
         {kind === "county" ? (
           <>
             No county rankings yet. This usually means churches need latitude/longitude on file, or the report cache predates county rollups. Try reloading with{" "}
@@ -2698,7 +2699,7 @@ function StateRankingsTable({
     <div className="max-h-[min(420px,55vh)] overflow-auto rounded-xl border border-stone-200/60">
       <table className="w-full text-sm">
         <thead className="sticky top-0 z-10">
-          <tr className="border-b border-stone-200/60 bg-stone-50">
+          <tr className="border-b border-stone-200/60 bg-hmc-card-light">
             {columns.map((col) => (
               <th
                 key={col.key}
@@ -2723,7 +2724,7 @@ function StateRankingsTable({
           {sorted.map((row, i) => (
             <tr
               key={row.abbrev}
-              className={`border-b border-stone-200/40 ${i % 2 === 0 ? "" : "bg-stone-50/50"} hover:bg-purple-50/30 transition-colors`}
+              className={`border-b border-stone-200/40 ${i % 2 === 0 ? "" : "bg-hmc-card-light/50"} hover:bg-purple-50/30 transition-colors`}
             >
               <td className="px-4 py-2.5 font-medium text-stone-800">
                 <span className="inline-flex items-center gap-2">
