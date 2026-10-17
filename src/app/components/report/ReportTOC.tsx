@@ -24,6 +24,7 @@ import {
   type ReportSection,
 } from "./useReportScrollspy";
 import { CloseButton } from "../ui/close-button";
+import { BRAND, NEUTRAL } from "./palette";
 
 const ICON_MAP: Record<IconName, React.ComponentType<{ className?: string }>> = {
   MapPin,
@@ -108,7 +109,7 @@ export function ReportTOC({
                     className={`w-full flex items-center gap-2.5 px-4 py-2 text-left transition-colors ${
                       isActive
                         ? "text-purple-700"
-                        : "text-stone-500 hover:text-stone-700 hover:bg-stone-50"
+                        : "text-stone-500 hover:text-stone-700 hover:bg-hmc-card-light"
                     }`}
                   >
                     <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-purple-600" : "text-stone-300"}`} />
@@ -134,9 +135,9 @@ export function ReportTOC({
         {/* Progress ring */}
         <div className="relative h-5 w-5 shrink-0">
           <svg className="h-5 w-5 -rotate-90" viewBox="0 0 20 20">
-            <circle cx="10" cy="10" r="8" fill="none" stroke="#D6D3D1" strokeWidth="2" />
+            <circle cx="10" cy="10" r="8" fill="none" stroke={NEUTRAL.track} strokeWidth="2" />
             <circle
-              cx="10" cy="10" r="8" fill="none" stroke="#8B5CF6" strokeWidth="2"
+              cx="10" cy="10" r="8" fill="none" stroke={BRAND.violetSoft} strokeWidth="2"
               strokeDasharray={`${scrollProgress * 50.27} 50.27`}
               strokeLinecap="round"
               className="transition-all duration-300"

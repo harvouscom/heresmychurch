@@ -57,6 +57,12 @@
   --hmc-border: rgba(255, 255, 255, 0.08);
   --hmc-border-strong: rgba(255, 255, 255, 0.14);
 
+  /* Light pages (reports, metro, nearby): cream paper with soft stone cards */
+  --hmc-paper: #F5F0E8;            /* same as --background */
+  --hmc-card-light: #FAFAF9;       /* stone-50 */
+  --hmc-line: #F5F5F4;             /* stone-100 hairline ring */
+  --hmc-line-strong: #E7E5E4;      /* stone-200 borders */
+
   /* Elevation */
   --hmc-shadow-pill: 0 1px 2px rgba(17, 8, 40, 0.25), 0 6px 16px -4px rgba(17, 8, 40, 0.35);
   --hmc-shadow-panel: 0 2px 6px rgba(17, 8, 40, 0.18), 0 18px 40px -12px rgba(17, 8, 40, 0.45);
@@ -163,6 +169,10 @@
   --color-hmc-text-subtle: var(--hmc-text-subtle);
   --color-hmc-border: var(--hmc-border);
   --color-hmc-border-strong: var(--hmc-border-strong);
+  --color-hmc-paper: var(--hmc-paper);
+  --color-hmc-card-light: var(--hmc-card-light);
+  --color-hmc-line: var(--hmc-line);
+  --color-hmc-line-strong: var(--hmc-line-strong);
 
   --shadow-hmc-pill: var(--hmc-shadow-pill);
   --shadow-hmc-panel: var(--hmc-shadow-panel);
