@@ -63,7 +63,7 @@ import type { ChurchClickTarget } from "./ChurchDetailPanel";
 import { fetchNationalReviewStats, fetchModeratorPending, fetchSpecialReportEaster2026 } from "./api";
 import type { SpecialReportEaster2026Church } from "./api";
 import type { NationalReviewStatsResponse, ModeratorPendingResponse } from "./api";
-import { useIsMobile } from "./ui/use-mobile";
+import { useIsMobile, useIsPhone } from "./ui/use-mobile";
 import { PendingAlertsPill } from "./PendingAlertsPill";
 import { ThreeDotLoader } from "./ThreeDotLoader";
 import { AnnouncementsPill } from "./AnnouncementsPill";
@@ -157,6 +157,9 @@ export function ChurchMap({
   navigateToStateOnly,
 }: ChurchMapProps) {
   const isMobile = useIsMobile();
+  // Phones get a full-width bottom sheet; tablets/narrow windows a floating card
+  // in the bottom-right corner; desktop a full-height panel on the right.
+  const isPhone = useIsPhone();
   const isWorld = viewLevel === "world";
 
   // Country mode. useChurchMapData is US-shaped end to end — it looks regions up
@@ -952,6 +955,7 @@ export function ChurchMap({
         isLocalhost={isLocalhost}
         searchCollapsed={effectiveSearchCollapsed}
         isMobile={isMobile}
+        isPhone={isPhone}
         churchesToShowOnMap={churchesToShowOnMap}
         onStateViewSearchResultsChange={setStateViewSearchResultIds}
         verifiedChurches={verifiedChurches}
@@ -1121,15 +1125,18 @@ export function ChurchMap({
             // whenever a window resize crossed the breakpoint.
             key="church-detail-panel"
             className={`overflow-hidden absolute z-40 ${
-              isMobile ? "bottom-0 left-0 right-0" : "top-0 right-0 bottom-0"
+              isPhone ? "bottom-0 left-0 right-0" : isMobile ? "bottom-0 right-0" : "top-0 right-0 bottom-0"
             }`}
-            style={isMobile ? { height: "55vh" } : undefined}
+            style={isMobile ? { height: "55vh", width: isPhone ? undefined : DETAIL_PANEL_WIDTH } : undefined}
             initial={isMobile ? { y: "100%" } : { width: 0, height: "100%" }}
             animate={isMobile ? { y: 0 } : { width: DETAIL_PANEL_WIDTH, height: "100%" }}
             exit={isMobile ? { y: "100%" } : { width: 0, height: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
           >
-            <div className="pr-4 pb-4 pt-0 pl-4 md:pl-0 md:pt-4 md:pr-4 md:pb-4" style={{ width: isMobile ? "100%" : DETAIL_PANEL_WIDTH, height: isMobile ? "55vh" : "100%" }}>
+            <div
+              className={isPhone ? "px-4 pb-4" : isMobile ? "pr-4 pb-4 pl-0" : "pt-4 pr-4 pb-4 pl-0"}
+              style={{ width: isPhone ? "100%" : DETAIL_PANEL_WIDTH, height: isMobile ? "55vh" : "100%" }}
+            >
               <ChurchDetailPanel
                 church={selectedChurch}
                 resolvedCountyName={resolvedCountyForSelectedChurch}
@@ -1279,6 +1286,7 @@ function MapArea({
   isLocalhost,
   searchCollapsed,
   isMobile,
+  isPhone,
   churchesToShowOnMap,
   onStateViewSearchResultsChange,
   verifiedChurches,
@@ -1361,6 +1369,7 @@ function MapArea({
   isLocalhost: boolean;
   searchCollapsed: boolean;
   isMobile: boolean;
+  isPhone: boolean;
   churchesToShowOnMap: Church[];
   onStateViewSearchResultsChange: (churchIds: Set<string> | null) => void;
   verifiedChurches: Church[] | null;
@@ -1384,9 +1393,10 @@ function MapArea({
   // Snapshot once when the detail panel opens — don't recompute every resize
   // pixel (that broke MapLibreCanvas memo and churned padding props).
   const hasSelectedChurch = !!selectedChurch;
+  // Phone bottom sheet covers the bottom 55vh; keep that clear of the camera.
   const mobileDetailBottomPad = useMemo(
-    () => (isMobile && hasSelectedChurch ? Math.round(window.innerHeight * 0.55) : 0),
-    [isMobile, hasSelectedChurch],
+    () => (isPhone && hasSelectedChurch ? Math.round(window.innerHeight * 0.55) : 0),
+    [isPhone, hasSelectedChurch],
   );
   const isWorld = viewLevel === "world";
   const isIntl = !isWorld && countryCode !== "US";
@@ -1496,7 +1506,14 @@ function MapArea({
 
       <div className="flex-1 relative min-h-0">
       {/* Top row: header pill only (secondary controls moved to bottom-left cluster); z-40 so summary stacks above All states + MapControls (z-30). pointer-events-none so click-outside hits the catcher. */}
-      <div className="absolute top-4 left-4 right-4 z-40 flex flex-row items-center justify-center animate-in fade-in duration-300 pointer-events-none">
+      {/* Hidden while a church card is open: the state count competes with the card (and
+          overlaps it below the md breakpoint). Fades back when the card closes. */}
+      <div
+        aria-hidden={selectedChurch ? true : undefined}
+        className={`absolute top-4 left-4 right-4 z-40 flex flex-row items-center justify-center animate-in fade-in duration-300 pointer-events-none transition-[opacity,transform,visibility] ${
+          selectedChurch ? "opacity-0 -translate-y-2 invisible" : "opacity-100 translate-y-0 visible"
+        }`}
+      >
         <div className="flex flex-col items-center justify-center min-w-0 max-w-full pointer-events-auto overflow-visible" ref={d.summaryRef}>
           {moderatorKey && moderationMode ? (
             <>
@@ -1688,10 +1705,10 @@ function MapArea({
       <MapLibreCanvas
         apiRef={mapLibreApi}
         onMoveEnd={handleMapMoveEnd}
-        // On mobile the detail panel covers the bottom 55vh, so keep that much
-        // clear of the camera and the pin stays visible above it.
+        // Keep the selected church's dot clear of the card: phones pad the bottom
+        // (full-width sheet); tablets and desktop pad the right (card width).
         bottomPadding={mobileDetailBottomPad}
-        rightPadding={!isMobile && selectedChurch ? DETAIL_PANEL_WIDTH : 0}
+        rightPadding={!isPhone && selectedChurch ? DETAIL_PANEL_WIDTH : 0}
         viewLevel={viewLevel}
         countryCode={countryCode}
         countries={worldCountries}
@@ -2112,15 +2129,23 @@ function HeaderPill({
     ? `${filteredCount.toLocaleString()} churches*`
     : `${totalChurches.toLocaleString()} churches*`;
   return (
-    <div className="rounded-full shadow-lg transition-shadow hover:shadow-xl cursor-pointer w-auto max-w-full">
+    <div className="rounded-full shadow-hmc-pill transition-shadow hover:shadow-hmc-menu cursor-pointer w-auto max-w-full">
       <div
-        className="flex flex-col items-center rounded-full w-full min-w-0 overflow-hidden"
-        style={{ backgroundColor: "rgba(30, 16, 64, 0.92)" }}
+        className="flex flex-col items-center rounded-full w-full min-w-0 overflow-hidden bg-hmc-surface-glass backdrop-blur-md border border-hmc-border transition-colors hover:border-hmc-border-strong"
       >
       {/* Main row — toggles summary */}
       <div
         onClick={onToggle}
-        className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-5 py-2.5 w-full min-w-0"
+        role="button"
+        tabIndex={0}
+        aria-expanded={showSummary}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+        className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-5 py-2.5 w-full min-w-0 rounded-full"
       >
         <span className="relative flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center text-purple-300">
           <ChurchIcon
@@ -2242,10 +2267,8 @@ function ReviewerLoginModal({ loading, error, onClose }: { loading: boolean; err
   return (
     <HmcDialog onClose={onClose} bare className="max-w-sm">
       <div
-        className="relative w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden p-6 flex flex-col items-center text-center transition-transform duration-300 ease-out"
+        className="relative w-full max-w-sm rounded-panel bg-hmc-surface border border-hmc-border shadow-hmc-panel overflow-hidden p-6 flex flex-col items-center text-center transition-transform duration-300 ease-out"
         style={{
-          backgroundColor: "#1E1040",
-          boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), inset 0 -1px 0 0 rgba(0, 0, 0, 0.2)",
           ...(loading
             ? { animation: "reviewerCardTilt 3s cubic-bezier(0.37, 0, 0.63, 1) infinite" }
             : { transform: "none" }),

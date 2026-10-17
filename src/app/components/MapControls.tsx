@@ -75,33 +75,48 @@ export function MapControls({
   const iconSize = compact ? 14 : 16;
   const gapClass = compact ? "gap-1.5" : "gap-2";
 
+  /** Round map control: glass when idle, brand purple when its panel is open. */
+  const controlClass = (active = false) =>
+    [
+      sizeClass,
+      "rounded-full flex items-center justify-center shrink-0 border shadow-hmc-pill backdrop-blur-md transition-colors",
+      "disabled:opacity-30 disabled:cursor-not-allowed",
+      active
+        ? "bg-hmc-brand border-hmc-brand text-white"
+        : "bg-hmc-surface-glass border-hmc-border text-hmc-lilac hover:bg-hmc-surface-raised hover:text-white",
+    ].join(" ");
+
   return (
     <div className={`flex flex-col ${gapClass}`}>
       {/* Always visible: zoom + refresh */}
       <button
+        type="button"
         onClick={onZoomIn}
         disabled={zoomInDisabled}
-        className={`${sizeClass} rounded-full flex items-center justify-center shadow-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed`}
-        style={{ backgroundColor: "rgba(30,16,64,0.9)" }}
+        title="Zoom in"
+        aria-label="Zoom in"
+        className={controlClass()}
       >
-        <ZoomIn size={iconSize} color="#C9A0DC" />
+        <ZoomIn size={iconSize} />
       </button>
       <button
+        type="button"
         onClick={onZoomOut}
         disabled={zoomOutDisabled}
-        className={`${sizeClass} rounded-full flex items-center justify-center shadow-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed`}
-        style={{ backgroundColor: "rgba(30,16,64,0.9)" }}
+        title="Zoom out"
+        aria-label="Zoom out"
+        className={controlClass()}
       >
-        <ZoomOut size={iconSize} color="#C9A0DC" />
+        <ZoomOut size={iconSize} />
       </button>
       <button
+        type="button"
         onClick={onResetView}
         title="Reset view"
         aria-label="Reset view"
-        className={`${sizeClass} rounded-full flex items-center justify-center shadow-md transition-colors`}
-        style={{ backgroundColor: "rgba(30,16,64,0.9)" }}
+        className={controlClass()}
       >
-        <RotateCcw size={iconSize} color="#C9A0DC" />
+        <RotateCcw size={iconSize} />
       </button>
 
       {/* More trigger: expand/collapse extra controls; chevron rotates like header pill / filters */}
@@ -112,14 +127,10 @@ export function MapControls({
         aria-controls="map-controls-more"
         aria-label={moreOpen ? "Close map options" : "More map options"}
         title={moreOpen ? "Close options" : "More options"}
-        className={`${sizeClass} rounded-full flex items-center justify-center shadow-md transition-colors`}
-        style={{
-          backgroundColor: moreOpen ? "#6B21A8" : "rgba(30,16,64,0.9)",
-        }}
+        className={controlClass(moreOpen)}
       >
         <ChevronUp
           size={iconSize}
-          color={moreOpen ? "#fff" : "#C9A0DC"}
           className={`transition-transform duration-200 ${moreOpen ? "rotate-180" : ""}`}
         />
       </button>
@@ -138,57 +149,41 @@ export function MapControls({
           >
             {focusedState && (
               <button
+                type="button"
                 onClick={onToggleFilter}
-                className={`${sizeClass} rounded-full flex items-center justify-center shadow-md transition-colors shrink-0`}
-                style={{
-                  backgroundColor: showFilterPanel
-                    ? "#6B21A8"
-                    : "rgba(30,16,64,0.9)",
-                }}
+                title="Filters"
+                aria-label="Filters"
+                aria-pressed={showFilterPanel}
+                className={controlClass(showFilterPanel)}
               >
-                <Filter size={iconSize} color={showFilterPanel ? "#fff" : "#C9A0DC"} />
+                <Filter size={iconSize} />
               </button>
             )}
             <button
+              type="button"
               onClick={onToggleLegend}
               title="Map Key"
               aria-label="Map Key"
-              className={`${sizeClass} rounded-full flex items-center justify-center shadow-md transition-colors shrink-0`}
-              style={{
-                backgroundColor: showLegend
-                  ? "#6B21A8"
-                  : "rgba(30,16,64,0.9)",
-              }}
+              aria-pressed={showLegend}
+              className={controlClass(showLegend)}
             >
-              <Key size={iconSize} color={showLegend ? "#fff" : "#C9A0DC"} />
+              <Key size={iconSize} />
             </button>
-            <button
-              onClick={onShowAbout}
-              title="About"
-              aria-label="About"
-              className={`${sizeClass} rounded-full flex items-center justify-center shadow-md transition-colors shrink-0`}
-              style={{ backgroundColor: "rgba(30,16,64,0.9)" }}
-            >
-              <Info size={iconSize} color="#C9A0DC" />
+            <button type="button" onClick={onShowAbout} title="About" aria-label="About" className={controlClass()}>
+              <Info size={iconSize} />
             </button>
-            <button
-              onClick={onShowHelp}
-              title="Help"
-              aria-label="Help"
-              className={`${sizeClass} rounded-full flex items-center justify-center shadow-md transition-colors shrink-0`}
-              style={{ backgroundColor: "rgba(30,16,64,0.9)" }}
-            >
-              <CircleHelp size={iconSize} color="#C9A0DC" />
+            <button type="button" onClick={onShowHelp} title="Help" aria-label="Help" className={controlClass()}>
+              <CircleHelp size={iconSize} />
             </button>
             {showAuditButton && onShowAudit && (
               <button
+                type="button"
                 onClick={onShowAudit}
                 title="Change history"
                 aria-label="Change history"
-                className={`${sizeClass} rounded-full flex items-center justify-center shadow-md transition-colors shrink-0`}
-                style={{ backgroundColor: "rgba(30,16,64,0.9)" }}
+                className={controlClass()}
               >
-                <ScrollText size={iconSize} color="#C9A0DC" />
+                <ScrollText size={iconSize} />
               </button>
             )}
           </motion.div>

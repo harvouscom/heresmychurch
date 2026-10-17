@@ -311,8 +311,7 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
             </button>
             {showPresets && (
               <div
-                className="absolute left-0 bottom-full mb-1 rounded-lg shadow-xl border border-white/10 p-1.5 z-50 w-[180px]"
-                style={{ backgroundColor: "rgba(30, 16, 64, 0.98)" }}
+                className="absolute left-0 bottom-full mb-1 rounded-lg shadow-xl border border-white/10 p-1.5 z-50 w-[180px] bg-hmc-surface-glass backdrop-blur-md"
               >
                 {PRESETS.map((preset) => (
                   <button

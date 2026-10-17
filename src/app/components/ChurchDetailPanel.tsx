@@ -475,10 +475,7 @@ export function ChurchDetailPanel({
 
   return (
     <div
-      className="h-full flex flex-col overflow-hidden rounded-[20px]"
-      style={{
-        backgroundColor: "#1E1040",
-      }}
+      className="h-full flex flex-col overflow-hidden rounded-panel bg-hmc-surface"
     >
       {/* Header */}
       <div className="flex-shrink-0 px-5 pt-5 pb-4 border-b border-white/10">

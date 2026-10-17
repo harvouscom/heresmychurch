@@ -21,8 +21,7 @@ export function LoadingOverlay({
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 backdrop-blur-sm">
       <div
-        className="flex flex-col items-center gap-3 px-8 py-6 rounded-2xl shadow-2xl text-white"
-        style={{ backgroundColor: "rgba(30, 16, 64, 0.95)" }}
+        className="flex flex-col items-center gap-3 px-8 py-6 rounded-panel shadow-hmc-panel text-white bg-hmc-surface-glass backdrop-blur-md"
       >
         <ThreeDotLoader size={28} />
         <span className="text-sm font-medium">
@@ -70,8 +69,7 @@ export function ErrorOverlay({
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div
-        className="flex flex-col items-center gap-4 px-8 py-6 rounded-2xl shadow-2xl pointer-events-auto max-w-[340px]"
-        style={{ backgroundColor: "rgba(30, 16, 64, 0.95)" }}
+        className="flex flex-col items-center gap-4 px-8 py-6 rounded-panel shadow-hmc-panel pointer-events-auto max-w-[340px] bg-hmc-surface-glass backdrop-blur-md"
       >
         <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
           <X size={20} className="text-red-400" />
@@ -87,7 +85,7 @@ export function ErrorOverlay({
         <div className="flex flex-wrap gap-3 justify-center">
           <button
             onClick={onRetry}
-            className="px-5 py-2 rounded-full text-white text-sm font-medium shadow-lg hover:shadow-xl transition-all"
+            className="px-5 py-2 rounded-full text-white text-sm font-medium shadow-hmc-menu hover:shadow-hmc-menu transition-all"
             style={{
               background:
                 "linear-gradient(135deg, #6B21A8 0%, #A855F7 100%)",
@@ -125,7 +123,7 @@ export function ErrorBanner({
   return (
     <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20">
       <div
-        className="flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg text-xs"
+        className="flex items-center gap-3 px-5 py-3 rounded-xl shadow-hmc-menu text-xs"
         style={{ backgroundColor: "rgba(180, 40, 60, 0.9)" }}
       >
         <span className="text-white">{error}</span>
@@ -173,20 +171,18 @@ export function StateTooltip({
   const title = info?.name || hoveredState;
   return (
     <div
-      className={`fixed z-[60] rounded-xl shadow-xl px-4 py-3 ${interactive ? "" : "pointer-events-none"}`}
+      className={`fixed z-[var(--z-tooltips)] rounded-menu px-4 py-3 bg-hmc-surface-glass backdrop-blur-md border border-hmc-border shadow-hmc-menu ${interactive ? "" : "pointer-events-none"}`}
       style={{
         left: tooltipPos.x + 16,
         top: tooltipPos.y - 40,
         minWidth: 160,
-        backgroundColor: "rgba(30, 16, 64, 0.96)",
       }}
     >
       {pinned && onClose && (
         <CloseButton
           onClick={onClose}
           size="md"
-          className="absolute -right-4 -top-4 shadow-md transition-colors"
-          style={{ backgroundColor: "rgba(30, 16, 64, 0.9)" }}
+          className="absolute -right-4 -top-4 shadow-hmc-pill transition-colors bg-hmc-surface-glass backdrop-blur-md"
         />
       )}
       <div className="flex items-center gap-2 text-sm font-semibold text-white">
@@ -245,20 +241,18 @@ export function CountyTooltip({
   const interactive = pinned && (onViewCounty || onClose);
   return (
     <div
-      className={`fixed z-[60] rounded-xl shadow-xl px-4 py-3 ${interactive ? "" : "pointer-events-none"}`}
+      className={`fixed z-[var(--z-tooltips)] rounded-menu px-4 py-3 bg-hmc-surface-glass backdrop-blur-md border border-hmc-border shadow-hmc-menu ${interactive ? "" : "pointer-events-none"}`}
       style={{
         left: tooltipPos.x + 16,
         top: tooltipPos.y - 40,
         minWidth: 160,
-        backgroundColor: "rgba(30, 16, 64, 0.96)",
       }}
     >
       {pinned && onClose && (
         <CloseButton
           onClick={onClose}
           size="md"
-          className="absolute -right-4 -top-4 shadow-md transition-colors"
-          style={{ backgroundColor: "rgba(30, 16, 64, 0.9)" }}
+          className="absolute -right-4 -top-4 shadow-hmc-pill transition-colors bg-hmc-surface-glass backdrop-blur-md"
         />
       )}
       {data.name && (
@@ -308,20 +302,18 @@ export function ChurchTooltip({
   const interactive = pinned && (onViewChurch || onClose);
   return (
     <div
-      className={`fixed z-[60] rounded-xl shadow-xl px-4 py-3 max-w-[300px] ${interactive ? "" : "pointer-events-none"}`}
+      className={`fixed z-[60] rounded-xl shadow-hmc-menu px-4 py-3 max-w-[300px] ${interactive ? "" : "pointer-events-none"}`}
       style={{
         left: tooltipPos.x + 16,
         top: tooltipPos.y - 70,
         minWidth: 160,
-        backgroundColor: "rgba(30, 16, 64, 0.96)",
       }}
     >
       {pinned && onClose && (
         <CloseButton
           onClick={onClose}
           size="md"
-          className="absolute -right-4 -top-4 shadow-md transition-colors"
-          style={{ backgroundColor: "rgba(30, 16, 64, 0.9)" }}
+          className="absolute -right-4 -top-4 shadow-hmc-pill transition-colors bg-hmc-surface-glass backdrop-blur-md"
         />
       )}
       <div className="text-sm font-semibold text-white">
