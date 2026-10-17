@@ -193,13 +193,13 @@ export function SummaryPanel({
 
         {/* Disclaimer + data source footer */}
         <div className="pt-2 border-t border-white/5 space-y-1.5 text-pretty">
-          <p className="text-white/30 text-[10px] text-center leading-relaxed italic">
+          <p className="text-white/30 text-caption text-center leading-relaxed italic">
             * Not all churches may be represented yet — our goal is for every church to be included.{" "}
             {focusedState
               ? "Find your church or add it below!"
               : `Click any ${regionNoun.one} to find or add your church!`}
           </p>
-          <p className="text-white/20 text-[10px] text-center leading-relaxed">
+          <p className="text-white/20 text-caption text-center leading-relaxed">
             Church data and building footprints from OpenStreetMap via Overpass API{" "}&middot;{" "}
             {countryCode === "US"
               ? <>Cross-referenced with The Association of Religion Data Archives (ARDA){" "}&middot;{" "}Population from U.S. Census Bureau{" "}&middot;{" "}</>
@@ -285,7 +285,7 @@ export function SummaryPanel({
           <Link
             to="/reports"
             onClick={onClose}
-            className="w-full py-2 rounded-xl text-[11px] font-semibold text-white/70 hover:text-purple-200 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer flex items-center justify-center"
+            className="w-full py-2 rounded-xl text-caption font-semibold text-white/70 hover:text-purple-200 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer flex items-center justify-center"
             role="button"
           >
             All reports
@@ -358,7 +358,7 @@ function CountySummaryContent({
 
       {stats && stats.topDenoms.length > 0 && (
         <div>
-          <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-medium block mb-1.5">
+          <span className="text-caption uppercase tracking-widest text-purple-400/70 font-medium block mb-1.5">
             Top Denominations
           </span>
           <div className="space-y-0.5">
@@ -366,7 +366,7 @@ function CountySummaryContent({
               const pct = churchCount > 0 ? (count / churchCount) * 100 : 0;
               return (
                 <div key={label} className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/4">
-                  <span className="text-white text-[11px] font-medium truncate min-w-0 flex-1">{label}</span>
+                  <span className="text-white text-caption font-medium truncate min-w-0 flex-1">{label}</span>
                   <div className="w-16 h-1 rounded-full bg-white/8 overflow-hidden flex-shrink-0">
                     <div
                       className="h-full rounded-full"
@@ -376,7 +376,7 @@ function CountySummaryContent({
                       }}
                     />
                   </div>
-                  <span className="text-white/40 text-[10px] flex-shrink-0 w-8 text-right">{pct < 1 ? "<1" : Math.round(pct)}%</span>
+                  <span className="text-white/40 text-caption flex-shrink-0 w-8 text-right">{pct < 1 ? "<1" : Math.round(pct)}%</span>
                 </div>
               );
             })}
@@ -386,7 +386,7 @@ function CountySummaryContent({
 
       {stats && stats.topSizes.some((s) => s.count > 0) && (
         <div>
-          <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-medium block mb-2">
+          <span className="text-caption uppercase tracking-widest text-purple-400/70 font-medium block mb-2">
             By Attendance Size
           </span>
           <div className="space-y-1">
@@ -447,10 +447,10 @@ function StateSummaryContent({
       {/* Admin-2 ranking by churches per capita */}
       {countyStats && countyStats.sortedByPerCapita.length > 0 && (
         <div>
-          <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-medium block mb-1.5">
+          <span className="text-caption uppercase tracking-widest text-purple-400/70 font-medium block mb-1.5">
             {admin2Heading}
           </span>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-caption">
             <div>
               <div className="text-white/50 mb-0.5">Most</div>
               {countyStats.sortedByPerCapita.slice(0, 5).map((c, i) => (
@@ -473,7 +473,7 @@ function StateSummaryContent({
 
       {/* Top denominations */}
       <div>
-        <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-medium block mb-1.5">
+        <span className="text-caption uppercase tracking-widest text-purple-400/70 font-medium block mb-1.5">
           Top Denominations
         </span>
         <div className="space-y-0.5">
@@ -481,7 +481,7 @@ function StateSummaryContent({
             const pct = churchCount > 0 ? (count / churchCount) * 100 : 0;
             return (
               <div key={label} className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/4">
-                <span className="text-white text-[11px] font-medium truncate min-w-0 flex-1">{label}</span>
+                <span className="text-white text-caption font-medium truncate min-w-0 flex-1">{label}</span>
                 <div className="w-16 h-1 rounded-full bg-white/8 overflow-hidden flex-shrink-0">
                   <div
                     className="h-full rounded-full"
@@ -491,7 +491,7 @@ function StateSummaryContent({
                     }}
                   />
                 </div>
-                <span className="text-white/40 text-[10px] flex-shrink-0 w-8 text-right">{pct < 1 ? "<1" : Math.round(pct)}%</span>
+                <span className="text-white/40 text-caption flex-shrink-0 w-8 text-right">{pct < 1 ? "<1" : Math.round(pct)}%</span>
               </div>
             );
           })}
@@ -500,7 +500,7 @@ function StateSummaryContent({
 
       {/* Size breakdown */}
       <div>
-        <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-medium block mb-2">
+        <span className="text-caption uppercase tracking-widest text-purple-400/70 font-medium block mb-2">
           By Attendance Size
         </span>
         <div className="space-y-1">
@@ -577,7 +577,7 @@ function NationalSummaryContent({
       {/* Top 3 regions by church count — podium style */}
       {stats.topStates.length > 0 && (
         <div>
-          <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-medium block mb-2">
+          <span className="text-caption uppercase tracking-widest text-purple-400/70 font-medium block mb-2">
             Most Churches
           </span>
           <div className="flex flex-wrap gap-1.5">
@@ -591,7 +591,7 @@ function NationalSummaryContent({
                   <span className="text-white text-[13px] font-semibold group-hover:text-purple-300 transition-colors block truncate mt-1 w-full">
                     {st.name}
                   </span>
-                  <span className="text-white/45 text-[10px] tabular-nums block mt-0.5">
+                  <span className="text-white/45 text-caption tabular-nums block mt-0.5">
                     {st.churchCount.toLocaleString()}
                   </span>
                 </button>
@@ -610,7 +610,7 @@ function NationalSummaryContent({
       {/* Unloaded regions hint */}
       {stats.unpopulated > 0 && (
         <div className="rounded-lg bg-purple-900/20 border border-purple-500/10 px-3 py-2.5">
-          <p className="text-white/40 text-[11px] leading-relaxed text-center">
+          <p className="text-white/40 text-caption leading-relaxed text-center">
             {stats.unpopulated} {stats.unpopulated === 1 ? regionOne : regionLabel} remaining — click any {regionOne} to fetch its data from OpenStreetMap
           </p>
         </div>
@@ -651,11 +651,11 @@ function NationalPreviousReportsExpand({
               key={r.slug}
               to={`/report/${r.slug}`}
               onClick={onNavigate}
-              className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12px] text-white/70 hover:text-white hover:bg-white/8 transition-colors"
+              className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-label text-white/70 hover:text-white hover:bg-white/8 transition-colors"
             >
               <BarChart3 size={11} className="text-indigo-400/70 shrink-0" />
               <span className="min-w-0 truncate">{r.title}</span>
-              <span className="ml-auto shrink-0 text-[10px] text-white/35 tabular-nums">
+              <span className="ml-auto shrink-0 text-caption text-white/35 tabular-nums">
                 {r.totalChurches.toLocaleString()}
               </span>
             </Link>
@@ -676,7 +676,7 @@ function CommunityStatsCard({ stateAbbrev }: { stateAbbrev?: string }) {
     <div className="rounded-xl bg-green-500/5 border border-green-500/10 px-4 py-3.5">
       <div className="flex items-center gap-2 mb-2">
         <ShieldCheck size={12} className="text-green-400 flex-shrink-0" />
-        <span className="text-[10px] uppercase tracking-widest text-green-400/70 font-medium block">Community Impact</span>
+        <span className="text-caption uppercase tracking-widest text-green-400/70 font-medium block">Community Impact</span>
       </div>
       <div className="flex items-center gap-x-4 gap-y-2 text-sm flex-wrap">
         {stats.totalCorrections > 0 && (
@@ -709,7 +709,7 @@ function FactsList({
 
   return (
     <div>
-      <span className="text-[10px] uppercase tracking-widest text-purple-400/70 font-medium block mb-2">
+      <span className="text-caption uppercase tracking-widest text-purple-400/70 font-medium block mb-2">
         Interesting Finds
       </span>
       <div className="space-y-1.5">
@@ -732,7 +732,7 @@ function FactsList({
                   <IconComp size={14} className="text-purple-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span className="text-white/50 text-[10px] uppercase tracking-wide font-medium block">
+                  <span className="text-white/50 text-caption uppercase tracking-wide font-medium block">
                     {fact.label}
                   </span>
                   <div className="flex items-center justify-between mt-0.5 gap-2">
@@ -749,7 +749,7 @@ function FactsList({
                       </span>
                     </span>
                     {fact.secondary ? (
-                      <span className="text-white/55 text-[11px] font-medium flex-shrink-0">
+                      <span className="text-white/55 text-caption font-medium flex-shrink-0">
                         {fact.secondary}
                       </span>
                     ) : null}

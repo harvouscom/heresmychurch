@@ -158,10 +158,10 @@ export function AuditModal({
                 >
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-1">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-[10px] font-medium uppercase tracking-wider">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-caption font-medium uppercase tracking-wider">
                         {actionLabel(entry.action)}
                       </span>
-                      <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium text-white/70 bg-white/10 border border-white/10">
+                      <span className="inline-flex px-2 py-0.5 rounded-full text-caption font-medium text-white/70 bg-white/10 border border-white/10">
                         {entry.source.replace(/_/g, " ")}
                       </span>
                     </div>

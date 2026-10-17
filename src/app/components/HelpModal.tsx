@@ -74,7 +74,7 @@ export function HelpModal({
         </div>
 
         <div className="px-6 py-5 overflow-y-auto flex-1 min-h-0">
-          <p className="text-white/40 text-[11px] uppercase tracking-wider font-medium mb-3">
+          <p className="text-white/40 text-caption uppercase tracking-wider font-medium mb-3">
             Contact & report
           </p>
           <div className="flex flex-wrap gap-2 mb-5">
@@ -144,7 +144,7 @@ export function HelpModal({
             </a>
           </div>
 
-          <p className="text-white/40 text-[11px] uppercase tracking-wider font-medium mb-3">
+          <p className="text-white/40 text-caption uppercase tracking-wider font-medium mb-3">
             Common questions
           </p>
           <Accordion type="single" collapsible className="border-white/10">
@@ -330,7 +330,7 @@ export function HelpModal({
           >
             Close
           </button>
-          <p className="text-white/25 text-[10px] text-center mt-1.5">Version {__APP_VERSION__}</p>
+          <p className="text-white/25 text-caption text-center mt-1.5">Version {__APP_VERSION__}</p>
         </div>
       </div>
     </div>

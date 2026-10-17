@@ -1,1 +1,12 @@
-@import url('https://fonts.googleapis.com/css2?family=Livvic:wght@400;500;600;700&family=Crimson+Pro:ital,wght@0,400;0,500;1,400;1,500&display=swap');
+/*
+ * Google Sans Flex, self-hosted (same file as Harvous). One variable font: wght 1–1000,
+ * opsz, and ROND (0 = square, 100 = rounded). Titles use the rounded axis; see theme.css.
+ */
+@font-face {
+  font-family: "Google Sans Flex";
+  src: url("/fonts/google-sans-flex/GoogleSansFlex-opsz-wght-ROND.woff2") format("woff2-variations"),
+    url("/fonts/google-sans-flex/GoogleSansFlex-opsz-wght-ROND.woff2") format("woff2");
+  font-weight: 1 1000;
+  font-style: normal;
+  font-display: swap;
+}

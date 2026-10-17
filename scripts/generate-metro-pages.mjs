@@ -171,7 +171,7 @@ async function main() {
         return `<h2 style="font-size:1.1rem;margin:1.25rem 0 0.5rem">${escapeHtml(STATE_NAMES[region] || region)}</h2><ul style="margin:0;padding-left:1.25rem">${items}</ul>`;
       })
       .join("");
-    const article = `<article class="hmc-metro-index-seo" style="padding:1.5rem;font-family:system-ui,sans-serif;max-width:42rem;line-height:1.5;color:#1c1917">
+    const article = `<article class="hmc-metro-index-seo" style="padding:1.5rem;font-family:'Google Sans Flex',system-ui,sans-serif;max-width:42rem;line-height:1.5;color:#1c1917">
 <h1 style="font-size:1.5rem;margin:0 0 0.75rem">Churches by metro area</h1>
 <p style="margin:0 0 1rem;color:#44403c;font-size:0.9375rem">${escapeHtml(description)}</p>
 ${sections}
@@ -227,7 +227,7 @@ ${sections}
       })
       .join("");
 
-    const article = `<article class="hmc-metro-seo" style="padding:1.5rem;font-family:system-ui,sans-serif;max-width:42rem;line-height:1.5;color:#1c1917">
+    const article = `<article class="hmc-metro-seo" style="padding:1.5rem;font-family:'Google Sans Flex',system-ui,sans-serif;max-width:42rem;line-height:1.5;color:#1c1917">
 <h1 style="font-size:1.5rem;margin:0 0 0.75rem">Churches in ${escapeHtml(metro.name)}, ${escapeHtml(metro.region)}</h1>
 <p style="margin:0 0 1rem;color:#44403c;font-size:0.9375rem">${escapeHtml(description)}</p>
 ${items ? `<ul style="margin:0;padding-left:1.25rem">${items}</ul>` : "<p>No churches mapped in this area yet.</p>"}

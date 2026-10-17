@@ -146,7 +146,7 @@ export function AddressInput({ value, onChange, compact }: AddressInputProps) {
   return (
     <div className={`flex flex-col ${gap}`}>
       <div>
-        <label className="block text-[10px] text-white/40 font-medium mb-1">Street address</label>
+        <label className="block text-caption text-white/40 font-medium mb-1">Street address</label>
         <input
           type="text"
           value={street}
@@ -157,7 +157,7 @@ export function AddressInput({ value, onChange, compact }: AddressInputProps) {
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="block text-[10px] text-white/40 font-medium mb-1">City</label>
+          <label className="block text-caption text-white/40 font-medium mb-1">City</label>
           <input
             type="text"
             value={city}
@@ -167,7 +167,7 @@ export function AddressInput({ value, onChange, compact }: AddressInputProps) {
           />
         </div>
         <div>
-          <label className="block text-[10px] text-white/40 font-medium mb-1">State</label>
+          <label className="block text-caption text-white/40 font-medium mb-1">State</label>
           <select
             value={stateAbbrev}
             onChange={(e) => setStateAbbrev(e.target.value)}

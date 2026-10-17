@@ -347,12 +347,11 @@ export function AddChurchForm({
   const inputClass =
     "w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/20";
   const labelClass =
-    "text-[10px] uppercase tracking-wider text-white/40 font-semibold";
+    "text-caption uppercase tracking-wider text-white/40 font-semibold";
 
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center"
-      style={{ fontFamily: "'Livvic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" }}
     >
       {/* Backdrop */}
       <div
@@ -373,14 +372,14 @@ export function AddChurchForm({
                 <div className="w-5 h-5 rounded-full bg-purple-500/20 flex items-center justify-center">
                   <Plus size={10} className="text-purple-400" />
                 </div>
-                <span className="text-[10px] uppercase tracking-wider text-purple-400/70 font-semibold">
+                <span className="text-caption uppercase tracking-wider text-purple-400/70 font-semibold">
                   Community Submissions
                 </span>
               </div>
               <h2 className="text-white font-semibold text-base leading-tight">
                 Add a Church in {stateName}
               </h2>
-              <p className="text-white/40 text-[11px] mt-1 leading-relaxed">
+              <p className="text-white/40 text-caption mt-1 leading-relaxed">
                 Don&apos;t see your church? Add it below and it will appear on the map right away.
               </p>
             </div>
@@ -533,7 +532,7 @@ export function AddChurchForm({
                   />
                 </div>
               </div>
-              <p className="text-[10px] text-white/40 -mt-1">
+              <p className="text-caption text-white/40 -mt-1">
                 We&apos;ll look up the location from this address to place the church on the map.
               </p>
 
@@ -639,7 +638,7 @@ export function AddChurchForm({
                         <button
                           key={lang}
                           onClick={() => toggleLanguage(lang)}
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-all border ${
+                          className={`px-2.5 py-1 rounded-full text-caption font-medium transition-all border ${
                             selectedLanguages.has(lang)
                               ? "bg-purple-500/30 border-purple-500/50 text-purple-300"
                               : "bg-white/5 border-white/8 text-white/40 hover:text-white/60 hover:border-white/15"
@@ -667,7 +666,7 @@ export function AddChurchForm({
                         <button
                           key={ministry}
                           onClick={() => toggleMinistry(ministry)}
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-all border ${
+                          className={`px-2.5 py-1 rounded-full text-caption font-medium transition-all border ${
                             selectedMinistries.has(ministry)
                               ? "bg-purple-500/30 border-purple-500/50 text-purple-300"
                               : "bg-white/5 border-white/8 text-white/40 hover:text-white/60 hover:border-white/15"
@@ -752,7 +751,7 @@ export function AddChurchForm({
               </button>
 
               {/* Info note */}
-              <p className="text-white/20 text-[10px] leading-relaxed text-center pt-1">
+              <p className="text-white/20 text-caption leading-relaxed text-center pt-1">
                 Your church will appear on the map immediately. Anyone can
                 suggest corrections to keep the info accurate.
               </p>

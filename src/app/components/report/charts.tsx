@@ -171,7 +171,7 @@ export function StatCard({
         <div className={`block w-full text-xs ${c.sub}`}>{sub}</div>
       )}
       {hint != null && hint !== "" && (
-        <div className="block w-full text-[11px] text-stone-400 mt-1 text-pretty">{hint}</div>
+        <div className="block w-full text-caption text-stone-400 mt-1 text-pretty">{hint}</div>
       )}
     </div>
   );

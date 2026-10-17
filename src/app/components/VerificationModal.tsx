@@ -38,7 +38,7 @@ function CommunityImpactCard({
     <div className={`rounded-xl bg-green-500/5 border border-green-500/10 px-4 py-3.5 ${className}`.trim()}>
       <div className="flex items-center gap-2 mb-2">
         <ShieldCheck size={12} className="text-green-400 flex-shrink-0" />
-        <span className="text-[10px] uppercase tracking-widest text-green-400/70 font-medium block">Community Impact</span>
+        <span className="text-caption uppercase tracking-widest text-green-400/70 font-medium block">Community Impact</span>
       </div>
       <div className="flex items-center gap-x-4 gap-y-2 text-sm flex-wrap">
         {stats.totalCorrections > 0 && (
@@ -56,7 +56,7 @@ function CommunityImpactCard({
       </div>
       {trending.length > 0 && (
         <div className="mt-3 pt-3 border-t border-green-500/10">
-          <span className="text-[10px] uppercase tracking-widest text-green-400/60 font-medium block mb-2">
+          <span className="text-caption uppercase tracking-widest text-green-400/60 font-medium block mb-2">
             Trending (30 days)
           </span>
           <ul className="space-y-1.5">
@@ -164,7 +164,7 @@ export function VerificationModal({
 
         {/* Footer */}
         <div className="flex-shrink-0 px-5 py-3 border-t border-white/6 text-pretty">
-          <p className="text-white/25 text-[10px] text-center leading-relaxed">
+          <p className="text-white/25 text-caption text-center leading-relaxed">
             Complete = name + street address. Click a church to update its info.
           </p>
         </div>
@@ -266,7 +266,7 @@ function IncompleteChurchesList({
                         {ch.name}
                       </h3>
                       {ch.city && (
-                        <span className="text-white/25 text-[10px] flex items-center gap-0.5 flex-shrink-0">
+                        <span className="text-white/25 text-caption flex items-center gap-0.5 flex-shrink-0">
                           <MapPin size={8} />
                           {ch.city}
                         </span>
@@ -276,7 +276,7 @@ function IncompleteChurchesList({
                       {missing.map((field) => (
                         <span
                           key={field}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-pink-500/8 border border-pink-500/15 text-white text-[10px] font-medium"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-pink-500/8 border border-pink-500/15 text-white text-caption font-medium"
                         >
                           <AlertTriangle size={8} className="flex-shrink-0" />
                           {field}
@@ -292,7 +292,7 @@ function IncompleteChurchesList({
             );
           })}
           {!isSearching && churches.length > DISPLAY_CAP && (
-            <div className="text-white/40 text-[10px] text-center leading-relaxed mt-2">
+            <div className="text-white/40 text-caption text-center leading-relaxed mt-2">
               Showing {DISPLAY_CAP} of {churches.length} churches needing review. Use search to find a specific church.
             </div>
           )}
@@ -459,7 +459,7 @@ export function NationalReviewModal({
         </div>
 
         <div className="flex-shrink-0 px-5 py-3 border-t border-white/6 text-pretty">
-          <p className="text-white/25 text-[10px] text-center leading-relaxed">
+          <p className="text-white/25 text-caption text-center leading-relaxed">
             Click a {regionOne} to open its churches needing review. Complete = name + street address.
           </p>
         </div>

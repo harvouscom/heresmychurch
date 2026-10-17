@@ -5,7 +5,7 @@ import { AppErrorBoundary } from "./components/ErrorBoundary";
 export default function App() {
   return (
     <AppErrorBoundary>
-      <div className="size-full" style={{ fontFamily: "'Livvic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" }}>
+      <div className="size-full">
         <RouterProvider router={router} />
       </div>
     </AppErrorBoundary>
