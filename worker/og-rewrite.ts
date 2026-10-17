@@ -295,7 +295,8 @@ function buildChurchSeoArticle(
       `<p style="margin:0 0 0.5rem;font-size:0.9375rem;color:#44403c">${escapeHtml(denom)}</p>`,
     );
   }
-  if (church.website) {
+  // Only real web links: stored data predates URL validation, so never emit javascript:/data: hrefs.
+  if (church.website && /^https?:\/\//i.test(String(church.website).trim())) {
     lines.push(
       `<p style="margin:0 0 0.5rem;font-size:0.9375rem"><a href="${escapeAttr(String(church.website))}">Church website</a></p>`,
     );

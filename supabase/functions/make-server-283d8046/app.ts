@@ -828,6 +828,10 @@ async function searchChurchesInState(qRaw:string,st:string,limit:number):Promise
 
 // ── App ──
 const app=new Hono();
+
+// Anything that escapes a handler: log it, return generic JSON (no internal error text).
+app.onError((err,c)=>{console.error(`Unhandled ${c.req.method} ${c.req.path}:`,err);return c.json({error:SERVER_ERROR_MSG},500);});
+app.notFound((c)=>c.json({error:"Not found"},404));
 app.use(
   "/*",
   cors({
@@ -846,6 +850,23 @@ app.use(
     maxAge: 86400,
   }),
 );
+
+// Malformed JSON bodies are a client error (400), not a 500 with a raw SyntaxError.
+app.use("*",async(c,next)=>{
+  const m=c.req.method;
+  if((m==="POST"||m==="PUT"||m==="PATCH")&&(c.req.header("content-type")||"").includes("application/json")){
+    const text=await c.req.raw.clone().text();
+    if(text.trim()){try{JSON.parse(text);}catch{return c.json({error:"Invalid JSON body"},400);}}
+  }
+  await next();
+});
+
+const SERVER_ERROR_MSG="Something went wrong. Please try again.";
+// Log the real error server-side; never send internal error text to clients.
+function serverError(c:any,e:unknown){
+  console.error(`${c.req.method} ${c.req.path} failed:`,e);
+  return c.json({error:SERVER_ERROR_MSG},500);
+}
 
 const P="/make-server-283d8046";
 
@@ -934,7 +955,7 @@ app.get(`${P}/churches/states`,async(c)=>{
     // Counts change only on populate/add; let browsers reuse a recent copy and refresh in the background.
     c.header("Cache-Control","public, max-age=60, stale-while-revalidate=600");
     return c.json(body);
-  }catch(e){return c.json({states:[],totalChurches:0,populatedStates:0,error:`${e}`},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({states:[],totalChurches:0,populatedStates:0,error:SERVER_ERROR_MSG},500);}
 });
 
 // World choropleth: one row per supported country with church totals.
@@ -990,7 +1011,7 @@ app.get(`${P}/churches/countries`,async(c)=>{
       populatedRegions:v.populatedRegions,
     })).sort((a,b)=>a.name.localeCompare(b.name));
     return c.json({countries,totalChurches:countries.reduce((a,x)=>a+x.churchCount,0)});
-  }catch(e){return c.json({countries:[],totalChurches:0,error:`${e}`},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({countries:[],totalChurches:0,error:SERVER_ERROR_MSG},500);}
 });
 
 // Regions of a non-US country, shaped like /churches/states so the map can
@@ -1005,7 +1026,7 @@ app.get(`${P}/churches/regions/:country`,async(c)=>{
       .sort((a,b)=>a.name.localeCompare(b.name));
     if(!regions.length)return c.json({error:`No regions for country ${cc}`,regions:[],totalChurches:0},404);
     return c.json({country:cc,regions,totalChurches:regions.reduce((a,r)=>a+r.churchCount,0),populatedRegions:regions.filter(r=>r.isPopulated).length});
-  }catch(e){return c.json({regions:[],totalChurches:0,error:`${e}`},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({regions:[],totalChurches:0,error:SERVER_ERROR_MSG},500);}
 });
 
 /** Human-readable place for search results when address/city are incomplete. */
@@ -1144,7 +1165,7 @@ app.get(`${P}/churches/search`,async(c)=>{
     }
     const results=candidates.slice(0,limit).map(({score,...r})=>r);
     return c.json({results,query:rawQ,statesSearched:target.length,stateFilter:target.length<pop.length?target:undefined});
-  }catch(e){return c.json({results:[],query:rawQ,error:`${e}`},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({results:[],query:rawQ,error:SERVER_ERROR_MSG},500);}
 });
 
 // ── Partner API (/v1) — Harvous-first lean church reference search ──
@@ -1195,7 +1216,7 @@ app.get(`${P}/v1/churches/search`,async(c)=>{
     const results=await searchChurchesInState(rawQ,st,limit);
     c.header("Cache-Control","private, max-age=30");
     return c.json({results,query:rawQ});
-  }catch(e){return c.json({results:[],query:c.req.query("q")||"",error:`${e}`},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({results:[],query:c.req.query("q")||"",error:SERVER_ERROR_MSG},500);}
 });
 
 app.get(`${P}/v1/churches/by-id/:id`,async(c)=>{
@@ -1206,7 +1227,7 @@ app.get(`${P}/v1/churches/by-id/:id`,async(c)=>{
     if(!church)return c.json({church:null,error:"Church not found"},404);
     c.header("Cache-Control","private, max-age=60");
     return c.json({church});
-  }catch(e){return c.json({church:null,error:`${e}`},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({church:null,error:SERVER_ERROR_MSG},500);}
 });
 
 /** Max lookback for partner change feed (protects edge + audit table). */
@@ -1252,7 +1273,7 @@ app.get(`${P}/v1/churches/changes`,async(c)=>{
     const hasMore=rows.length>=limit;
     c.header("Cache-Control","private, max-age=15");
     return c.json({changes,nextSince,hasMore});
-  }catch(e){return c.json({error:`${e}`,changes:[],nextSince:null,hasMore:false},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({error:SERVER_ERROR_MSG,changes:[],nextSince:null,hasMore:false},500);}
 });
 
 const PARTNER_ACTOR_KEY="partner:harvous";
@@ -1266,7 +1287,7 @@ app.get(`${P}/v1/churches/:id/suggestions`,async(c)=>{
     const subs=Array.isArray(data.submissions)?data.submissions:[];
     const{fields}=getSuggestionsStatusForChurch(subs);
     return c.json({churchId:id,fields});
-  }catch(e){return c.json({error:`${e}`,fields:{}},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({error:SERVER_ERROR_MSG,fields:{}},500);}
 });
 
 app.post(`${P}/v1/churches/:id/suggestions`,async(c)=>{
@@ -1291,7 +1312,7 @@ app.post(`${P}/v1/churches/:id/suggestions`,async(c)=>{
     };
     if(result.needsModeration)payload.needsModeration=true;
     return c.json(payload);
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 app.post(`${P}/v1/churches/:id/confirm`,async(c)=>{
@@ -1302,7 +1323,7 @@ app.post(`${P}/v1/churches/:id/confirm`,async(c)=>{
     if(!result.ok)return c.json({error:result.error},result.status);
     if(result.alreadyConfirmed)return c.json({success:true,alreadyConfirmed:true,totalConfirmations:result.totalConfirmations});
     return c.json({success:true,totalConfirmations:result.totalConfirmations});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 app.get(`${P}/v1/churches/:state/:shortId`,async(c)=>{
@@ -1314,7 +1335,7 @@ app.get(`${P}/v1/churches/:state/:shortId`,async(c)=>{
     if(!church)return c.json({church:null,error:"Church not found"},404);
     c.header("Cache-Control","private, max-age=60");
     return c.json({church});
-  }catch(e){return c.json({church:null,error:`${e}`},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({church:null,error:SERVER_ERROR_MSG},500);}
 });
 
 async function getApprovedCorrectionsForState(st:string):Promise<Record<string,Record<string,string>>>{
@@ -1782,7 +1803,7 @@ app.get(`${P}/special-report/easter-2026`,async(c)=>{
     try{await kv.set(SPECIAL_EASTER_2026_CACHE_KEY,{...result,_cachedAt:Date.now()});}catch(_){}
     return c.json(result);
   }catch(e){
-    return c.json({error:`${e}`},500);
+    return serverError(c,e);
   }
 });
 
@@ -1804,7 +1825,7 @@ app.get(`${P}/churches/:state/church/:shortId`,async(c)=>{
     });
     if(!church)return c.json({church:null,error:"Church not found"},404);
     return c.json({church,state:{abbrev:gS(st).a,name:gS(st).n,lat:gS(st).la,lng:gS(st).lo}});
-  }catch(e){return c.json({church:null,error:String(e)},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({church:null,error:SERVER_ERROR_MSG},500);}
 });
 
 // Body of GET /churches/:state (stored list plus corrections, enrichment, calibration and
@@ -1831,7 +1852,7 @@ app.get(`${P}/churches/:state`,async(c)=>{
     const body=await buildRegionPayload(st);
     if(!body)return c.json({error:`Unknown state: ${st}`},400);
     return c.json(body);
-  }catch(e){return c.json({churches:[],error:`${e}`},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({churches:[],error:SERVER_ERROR_MSG},500);}
 });
 
 /**
@@ -1927,7 +1948,7 @@ app.post(`${P}/churches/populate-cell/:state`,async(c)=>{
       total=staged.length;
     }
     return c.json({fetched:els.length,truncated,added,staged:total});
-  }catch(e){console.log(`populate-cell error:${e}`);return c.json({error:`${e}`},500);}
+  }catch(e){console.log(`populate-cell error:${e}`);return serverError(c,e);}
 });
 
 app.post(`${P}/churches/populate-finalize/:state`,async(c)=>{
@@ -1941,7 +1962,7 @@ app.post(`${P}/churches/populate-finalize/:state`,async(c)=>{
     const r=await finalizePopulate(st,staged,ex,true);
     await kv.del(STAGE(st));
     return c.json({message:`Populated ${r.count} churches for ${info.n}`,count:r.count,communityPreserved:r.communityPreserved,ardaEnriched:r.ardaEnriched});
-  }catch(e){console.log(`populate-finalize error:${e}`);return c.json({error:`${e}`},500);}
+  }catch(e){console.log(`populate-finalize error:${e}`);return serverError(c,e);}
 });
 
 app.post(`${P}/churches/populate/:state`,async(c)=>{
@@ -1976,7 +1997,7 @@ app.post(`${P}/churches/populate/:state`,async(c)=>{
     }
     await kv.set(POPULATE_LOCK(st),{startedAt:Date.now(),finishedAt:Date.now()});
     return c.json({message:`Populated ${r.count} churches for ${info.n}`,count:r.count,communityPreserved:r.communityPreserved,state:{abbrev:info.a,name:info.n,lat:info.la,lng:info.lo},ardaEnriched:r.ardaEnriched});
-  }catch(e){console.log(`Populate error:${e}`);return c.json({error:`${e}`},500);}
+  }catch(e){console.log(`Populate error:${e}`);return serverError(c,e);}
 });
 
 app.get(`${P}/churches/denominations/all`,async(c)=>{
@@ -1986,7 +2007,7 @@ app.get(`${P}/churches/denominations/all`,async(c)=>{
     const dc:Record<string,number>={};
     for(const{cc,abbrev:s}of ps){const ch=await getChurches(s,cc);if(Array.isArray(ch))for(const x of ch){dc[x.denomination||"Unknown"]=(dc[x.denomination||"Unknown"]||0)+1;}}
     return c.json({denominations:Object.entries(dc).sort((a,b)=>b[1]-a[1]).map(([name,count])=>({name,count}))});
-  }catch(e){return c.json({denominations:[],error:`${e}`},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({denominations:[],error:SERVER_ERROR_MSG},500);}
 });
 
 app.post(`${P}/churches/search/rebuild-index`,async(c)=>{
@@ -1997,7 +2018,7 @@ app.post(`${P}/churches/search/rebuild-index`,async(c)=>{
     let n=0;for(const{cc,abbrev:s}of ps){const ch=await getChurches(s,cc);if(Array.isArray(ch)&&ch.length){await writeIdx(s,ch);n++;}}
     await invalidateReviewStatsCache();
     return c.json({message:`Rebuilt indexes for ${n} states`,rebuilt:n});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 // Backfill the church_search table from the KV search indexes, a few regions per
@@ -2032,7 +2053,7 @@ app.post(`${P}/churches/search/backfill`,async(c)=>{
       if(!failedSince){await setSearchTableReady(true);ready=true;}
     }
     return c.json({synced,failed,next:done?null:next,total:ps.length,startedAt,ready});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 app.post(`${P}/admin/refresh-attendance`,async(c)=>{
@@ -2059,7 +2080,7 @@ app.post(`${P}/admin/refresh-attendance`,async(c)=>{
     }
     await invalidateReviewStatsCache();
     return c.json({message:`Refreshed attendance for ${refreshed} state(s).`,refreshed});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 // (Regrid enrichment endpoints removed; attendance is derived from OSM geometry and heuristics only.)
@@ -2223,7 +2244,7 @@ app.post(`${P}/admin/enrich-google/:state`,async(c)=>{
       apiCalls:counters,
       sample,
     });
-  }catch(e){console.log(`enrich-google error:${e}`);return c.json({error:`${e}`},500);}
+  }catch(e){console.log(`enrich-google error:${e}`);return serverError(c,e);}
 });
 
 app.get(`${P}/population`,async(c)=>{
@@ -2242,7 +2263,7 @@ app.post(`${P}/admin/cleanup-dc`,async(c)=>{
     if(d>0){void recordChurchAudit({state:"DC",action:"dc_removed",new_value:{deleted:d},source:"admin_dc_remove",actor_type:"system"});}
     await invalidateReviewStatsCache();
     return c.json({message:`DC cleanup done. ${d} removed.`,deleted:d});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
@@ -2269,7 +2290,7 @@ app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
     if(meta){meta.stateCounts=sc;meta.lastBlockedCleanup=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
     await invalidateReviewStatsCache();
     return c.json({message:`Cleanup complete. Removed ${removedTotal} churches across ${cleanedStates} states.`,removed:removedTotal,states:cleanedStates});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 app.post(`${P}/admin/migrate-denominations`,async(c)=>{
@@ -2311,7 +2332,7 @@ app.post(`${P}/admin/migrate-denominations`,async(c)=>{
     }
     await invalidateReviewStatsCache();
     return c.json({message:`Migration complete. Updated ${updatedChurches} churches across ${updatedStates} states.`,updatedStates,updatedChurches});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 app.post(`${P}/admin/remove-churches-by-name`,async(c)=>{
@@ -2349,7 +2370,7 @@ app.post(`${P}/admin/remove-churches-by-name`,async(c)=>{
     if(removedMain>0||removedPending>0){void recordChurchAudit({state:"ALL",action:"remove_by_name",new_value:{name,removedMain,removedPending},source:"admin_remove_name",actor_type:"system"});}
     await invalidateReviewStatsCache();
     return c.json({message:`Removed ${removedMain} church(es) from main list and ${removedPending} from pending.`,removedMain,removedPending});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 // ── Community routes ──
@@ -2367,7 +2388,12 @@ const SENSITIVE_FIELDS=["name","website","address","reportClosed","reportDuplica
 const REMOVAL_REPORT_FIELDS=new Set(["reportClosed","reportDuplicate","reportOutOfScope"]);
 const TRANSFERRED_ON_RELOCATE=["website","serviceTimes","languages","ministries","pastorName","phone","email"] as const;
 const moderatorKey=()=>env("MODERATOR_KEY")||"";
-function cip(c:any):string{return c.req.header("cf-connecting-ip")||c.req.header("x-forwarded-for")?.split(",")[0]?.trim()||c.req.header("x-real-ip")||"unknown";}
+// Client IP for rate limits and vote dedupe. cf-connecting-ip is set by Cloudflare, so trust it
+// only on the Worker (HMC_RUNTIME=worker); on Supabase anyone could send that header.
+function cip(c:any):string{
+  const cfIp=env("HMC_RUNTIME")==="worker"?c.req.header("cf-connecting-ip"):undefined;
+  return cfIp||c.req.header("x-forwarded-for")?.split(",")[0]?.trim()||c.req.header("x-real-ip")||"unknown";
+}
 function checkModKey(c:any):boolean{const k=new URL(c.req.url).searchParams.get("key")||c.req.header("x-moderator-key")||"";const mk=moderatorKey();return!!mk&&k===mk;}
 function getModKey(c:any):string{return new URL(c.req.url).searchParams.get("key")||c.req.header("x-moderator-key")||"";}
 function inReviewKVKey(modKey:string):string{let h=0;for(let i=0;i<modKey.length;i++)h=((h<<5)-h+modKey.charCodeAt(i))|0;return`moderate:in-review:${Math.abs(h).toString(36)}`;}
@@ -2575,7 +2601,13 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>,a
   }
   return {updated:false};
 }
-async function runDeferredIndexAndStats(st:string,churches:any[],churchId:string,corrections:Record<string,any>):Promise<void>{
+// Registered with waitUntil (callers fire and forget), so Workers finish it after the response.
+function runDeferredIndexAndStats(st:string,churches:any[],churchId:string,corrections:Record<string,any>):Promise<void>{
+  const p=runDeferredIndexAndStatsNow(st,churches,churchId,corrections);
+  waitUntil(p);
+  return p;
+}
+async function runDeferredIndexAndStatsNow(st:string,churches:any[],churchId:string,corrections:Record<string,any>):Promise<void>{
   await writeIdx(st,churches);
   try{await kv.del(`calibration:${st}`);}catch(_){}
   const statsKey="community:stats";const stats=(await kv.get(statsKey))||{totalCorrections:0,churchesImproved:[],totalConfirmations:0,corrections:[]};
@@ -2593,6 +2625,40 @@ type SuggestionSubmitErr={ok:false;status:number;error:string};
 type SuggestionSubmitResult=SuggestionSubmitOk|SuggestionSubmitErr;
 
 /** Shared suggest path for site + partner /v1. Same VF, consensus, sensitive-field moderation rules. */
+// ── Input hygiene for public write routes ──
+const FIELD_MAX_LEN:Record<string,number>={name:120,pastorName:120,email:254,website:300,address:300,denomination:80,languages:500,ministries:500,serviceTimes:500,phone:40};
+const DEFAULT_FIELD_MAX=500;
+const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/** http(s) URL or null; adds https:// when the scheme is missing, rejects javascript:/data: etc. */
+function normalizeWebsite(raw:unknown):string|null{
+  const s=String(raw??"").trim();
+  if(!s)return "";
+  const withScheme=/^[a-z][a-z0-9+.-]*:/i.test(s)?s:`https://${s}`;
+  try{
+    const u=new URL(withScheme);
+    if(u.protocol!=="http:"&&u.protocol!=="https:")return null;
+    if(!u.hostname.includes("."))return null;
+    return u.toString();
+  }catch{return null;}
+}
+/** Array of short strings (languages/ministries), or undefined. */
+function cleanStringList(v:unknown,maxItems=20,maxLen=60):string[]|undefined{
+  if(!Array.isArray(v))return undefined;
+  const out=v.filter((x)=>typeof x==="string").map((x)=>x.trim().slice(0,maxLen)).filter(Boolean).slice(0,maxItems);
+  return out.length?out:undefined;
+}
+/** Fixed-window per-IP limit backed by KV. Returns false when over the limit. */
+async function ipRateLimit(bucket:string,ip:string,limit:number,windowMs:number):Promise<boolean>{
+  const key=`ratelimit:${bucket}:${ip}`;
+  const raw=await kv.get(key);const now=Date.now();
+  const data=(!raw||(now-(raw.windowStart||0))>windowMs)?{count:1,windowStart:now}:{count:(raw.count||0)+1,windowStart:raw.windowStart||now};
+  if(data.count>limit)return false;
+  await kv.set(key,data);
+  return true;
+}
+const SUGGESTION_RATE_LIMIT=60;            // per IP per hour
+const SUGGESTION_WINDOW_MS=60*60*1000;
+
 async function submitSuggestionCore(opts:{churchId:string;field:string;value:unknown;actorKey:string;auditSource:string}):Promise<SuggestionSubmitResult>{
   const{churchId,field,value,actorKey,auditSource}=opts;
   if(!churchId||!field)return{ok:false,status:400,error:"Missing fields"};
@@ -2603,6 +2669,11 @@ async function submitSuggestionCore(opts:{churchId:string;field:string;value:unk
   if(field==="homeCampusId"){const v=String(value).trim();if(v&&!stateFromChurchId(v))return{ok:false,status:400,error:"Invalid church ID format"};}
   let storeValue=String(value).trim();
   if(!storeValue&&field!=="homeCampusId")return{ok:false,status:400,error:"Value is required"};
+  if(!regionFromChurchId(churchId))return{ok:false,status:400,error:"Invalid church ID"};
+  const maxLen=FIELD_MAX_LEN[field]??(field==="reportRelocated"?600:DEFAULT_FIELD_MAX);
+  if(storeValue.length>maxLen)return{ok:false,status:400,error:`Value is too long (max ${maxLen} characters)`};
+  if(field==="website"){const w=normalizeWebsite(storeValue);if(w===null)return{ok:false,status:400,error:"Website must be an http(s) link"};storeValue=w;}
+  if(field==="email"&&!EMAIL_RE.test(storeValue))return{ok:false,status:400,error:"Invalid email address"};
   if(field==="reportClosed"){storeValue="closed";}
   if(field==="reportOutOfScope"){storeValue="out_of_scope";}
   if(field==="reportDuplicate"){if(!stateFromChurchId(storeValue))return{ok:false,status:400,error:"Invalid church ID format"};if(storeValue===churchId)return{ok:false,status:400,error:"Cannot report self as duplicate"};}
@@ -2708,13 +2779,15 @@ async function confirmChurchCore(opts:{churchId:string;actorKey:string;auditSour
 app.post(`${P}/suggestions`,async(c)=>{
   try{
     const ip=cip(c);const{churchId,field,value}=await c.req.json();
+    if(typeof churchId!=="string"||typeof field!=="string")return c.json({error:"churchId and field are required"},400);
+    if(!(await ipRateLimit("suggestion",ip,SUGGESTION_RATE_LIMIT,SUGGESTION_WINDOW_MS)))return c.json({error:"Too many suggestions. Please try again later."},429);
     const result=await submitSuggestionCore({churchId,field,value,actorKey:ip,auditSource:"suggestion"});
     if(!result.ok)return c.json({error:result.error},result.status);
     if(result.needsModeration){
       return c.json({success:true,field:result.field,consensus:result.consensus,allFields:result.allFields,applied:false,needsModeration:true});
     }
     return c.json({success:true,field:result.field,consensus:result.consensus,allFields:result.allFields,applied:result.applied});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 app.get(`${P}/suggestions/approved/:state`,async(c)=>{
@@ -2735,7 +2808,7 @@ app.get(`${P}/suggestions/approved/:state`,async(c)=>{
       if(Object.keys(corr).length)approved[id]=corr;
     }
     return c.json({state:st,corrections:approved});
-  }catch(e){return c.json({state:c.req.param("state")?.toUpperCase()||"",corrections:{},error:`${e}`},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({state:c.req.param("state")?.toUpperCase()||"",corrections:{},error:SERVER_ERROR_MSG},500);}
 });
 
 app.get(`${P}/suggestions/pending/:state`,async(c)=>{
@@ -2757,7 +2830,7 @@ app.get(`${P}/suggestions/pending/:state`,async(c)=>{
       if(Object.keys(pf).length)pending.push({churchId:entry.churchId,fields:pf});
     }
     return c.json({state:st,pending});
-  }catch(e){return c.json({state:c.req.param("state")?.toUpperCase()||"",pending:[],error:`${e}`},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({state:c.req.param("state")?.toUpperCase()||"",pending:[],error:SERVER_ERROR_MSG},500);}
 });
 
 app.get(`${P}/suggestions/:churchId`,async(c)=>{
@@ -2767,7 +2840,7 @@ app.get(`${P}/suggestions/:churchId`,async(c)=>{
     const con=consensus(subs);const ip=cip(c),my:Record<string,string>={};
     for(const s of subs){if(s.ip===ip)my[s.field]=s.value;}
     return c.json({churchId:id,consensus:con,myVotes:my,totalSubmissions:subs.length});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 // ── Community-managed alerts (create/resolve by voting) ──
@@ -2781,7 +2854,7 @@ const alertsActiveHandler=async(c:any)=>{
     const list=Array.isArray(raw)?raw:[];
     const alerts=list.filter((a:any)=>!a.resolved).map((a:any)=>({id:a.id,shortLabel:a.shortLabel,description:a.description,resolved:!!a.resolved,createdAt:a.createdAt,source:a.source||"community"}));
     return c.json({alerts});
-  }catch(e){return c.json({alerts:[],error:String(e)},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({alerts:[],error:SERVER_ERROR_MSG},500);}
 };
 app.get(`${P}/alerts/active`,alertsActiveHandler);
 app.get("/alerts/active",alertsActiveHandler);
@@ -2804,7 +2877,7 @@ const alertsProposalsHandler=async(c:any)=>{
       return{alertId:p.alertId,votes:votes.length,needed:ALERT_THR,myVote,createdAt:p.createdAt};
     });
     return c.json({create,resolve});
-  }catch(e){return c.json({create:[],resolve:[],error:String(e)},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({create:[],resolve:[],error:SERVER_ERROR_MSG},500);}
 };
 app.get(`${P}/alerts/proposals`,alertsProposalsHandler);
 app.get("/alerts/proposals",alertsProposalsHandler);
@@ -2829,7 +2902,7 @@ const alertsProposalsCreateHandler=async(c:any)=>{
     if(proposal.votes.length>=ALERT_THR){createList.pop();await kv.set(ALERTS_PROPOSALS_CREATE_KEY,createList);await promoteCreateProposal(proposal,activeList);}
     const createOut=createList.map((p:any)=>({id:p.id,shortLabel:p.shortLabel,description:p.description,votes:p.votes?.length??0,needed:ALERT_THR,myVote:p.votes?.some((v:any)=>v.ip===ip),createdAt:p.createdAt}));
     return c.json({success:true,proposals:{create:createOut},promoted:proposal.votes.length>=ALERT_THR});
-  }catch(e){return c.json({error:String(e)},500);}
+  }catch(e){return serverError(c,e);}
 };
 app.post(`${P}/alerts/proposals/create`,alertsProposalsCreateHandler);
 app.post("/alerts/proposals/create",alertsProposalsCreateHandler);
@@ -2847,7 +2920,7 @@ const alertsProposalsVoteHandler=async(c:any)=>{
     const createOut=createList.map((x:any)=>({id:x.id,shortLabel:x.shortLabel,description:x.description,votes:x.votes?.length??0,needed:ALERT_THR,myVote:x.votes?.some((v:any)=>v.ip===ip),createdAt:x.createdAt}));
     const alerts=activeList.filter((a:any)=>!a.resolved).map((a:any)=>({id:a.id,shortLabel:a.shortLabel,description:a.description,resolved:!!a.resolved,createdAt:a.createdAt,source:a.source||"community"}));
     return c.json({success:true,proposals:{create:createOut},alerts,promoted:p.votes.length>=ALERT_THR});
-  }catch(e){return c.json({error:String(e)},500);}
+  }catch(e){return serverError(c,e);}
 };
 app.post(`${P}/alerts/proposals/create/:id/vote`,alertsProposalsVoteHandler);
 app.post("/alerts/proposals/create/:id/vote",alertsProposalsVoteHandler);
@@ -2866,7 +2939,7 @@ const alertsProposalsResolveHandler=async(c:any)=>{
     const alerts=activeList.filter((a:any)=>!a.resolved).map((a:any)=>({id:a.id,shortLabel:a.shortLabel,description:a.description,resolved:!!a.resolved,createdAt:a.createdAt,source:a.source||"community"}));
     const resolveOut=resolveList.map((x:any)=>({alertId:x.alertId,votes:x.votes?.length??0,needed:ALERT_THR,myVote:x.votes?.some((v:any)=>v.ip===ip),createdAt:x.createdAt}));
     return c.json({success:true,alerts,proposals:{resolve:resolveOut}});
-  }catch(e){return c.json({error:String(e)},500);}
+  }catch(e){return serverError(c,e);}
 };
 app.post(`${P}/alerts/proposals/resolve`,alertsProposalsResolveHandler);
 app.post("/alerts/proposals/resolve",alertsProposalsResolveHandler);
@@ -2874,8 +2947,17 @@ app.post("/alerts/proposals/resolve",alertsProposalsResolveHandler);
 app.post(`${P}/churches/add`,async(c)=>{
   try{
     const ip=cip(c);const b=await c.req.json();
-    const{name,address:addr,city:ci,state,lat,lng,denomination,attendance,website,serviceTimes,languages,ministries,pastorName,phone,email,confirmAdd}=b;
+    if(!b||typeof b!=="object")return c.json({error:"Invalid request body"},400);
+    const str=(v:unknown,max:number)=>(typeof v==="string"||typeof v==="number")?String(v).trim().slice(0,max):"";
+    const{name,state,lat,lng,attendance,serviceTimes,confirmAdd}=b;
+    const addr=str(b.address,300),ci=str(b.city,120),denomination=str(b.denomination,80),pastorName=str(b.pastorName,120),phone=str(b.phone,40);
+    const email=str(b.email,254);
+    if(email&&!EMAIL_RE.test(email))return c.json({error:"Invalid email address"},400);
+    const website=normalizeWebsite(str(b.website,300));
+    if(website===null)return c.json({error:"Website must be an http(s) link"},400);
+    const languages=cleanStringList(b.languages),ministries=cleanStringList(b.ministries);
     if(!name||typeof name!=="string"||name.trim().length<2)return c.json({error:"Name required"},400);
+    if(name.trim().length>120)return c.json({error:"Name is too long (max 120 characters)"},400);
     const st=String(state||"").toUpperCase().trim();
     if(!isValidRegion(st)||!gS(st))return c.json({error:"Invalid region"},400);
     const cc=regionCountry(st);
@@ -2917,7 +2999,7 @@ app.post(`${P}/churches/add`,async(c)=>{
     const existingShortIds=new Set((mainChurches as any[]).map((c:any)=>c.shortId||toShortId(c.id,c.state||st)));
     let shortId:string;do{shortId=Math.floor(10000000+Math.random()*90000000).toString();}while(existingShortIds.has(shortId));
     const store=(await getPending(st))||{churches:[]};
-    const dup=store.churches.find((ch:any)=>ch.name.trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs(ch.lat-pLat)<0.001&&Math.abs(ch.lng-pLng)<0.001);
+    const dup=store.churches.find((ch:any)=>String(ch.name||"").trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs(ch.lat-pLat)<0.001&&Math.abs(ch.lng-pLng)<0.001);
     if(dup){if(!dup.verifications.some((v:any)=>v.ip===ip)){dup.verifications.push({ip,timestamp:Date.now()});if(dup.verifications.length>=THR)dup.approved=true;await setPending(st,store);}return c.json({success:true,church:dup,isDuplicate:true});}
     const mainDup=Array.isArray(mainChurches)&&(mainChurches as any[]).find((ch:any)=>(ch.name||"").trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs((ch.lat||0)-pLat)<0.001&&Math.abs((ch.lng||0)-pLng)<0.001);
     if(mainDup){return c.json({success:true,isDuplicate:true,existingChurch:{id:mainDup.id,shortId:mainDup.shortId,name:mainDup.name,city:mainDup.city,state:mainDup.state||st}});}
@@ -2927,7 +3009,7 @@ app.post(`${P}/churches/add`,async(c)=>{
     const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,state:st,country:cc,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
     if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await setChurches(st,mainChurches);await writeIdx(st,mainChurches);await invalidateReviewStatsCache();await queueChurch(churchForMain);void recordChurchAudit({church_id:id,church_name:nc.name,church_city_state:[nc.city,st].filter(Boolean).join(", "),state:st,action:"church_added",new_value:{name:nc.name,city:nc.city,state:st,denomination:nc.denomination},source:"community_add"},{hashIp:ip});}
     return c.json({success:true,church:nc});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 app.get(`${P}/churches/pending/:state`,async(c)=>{
@@ -2936,7 +3018,7 @@ app.get(`${P}/churches/pending/:state`,async(c)=>{
     const store=(await getPending(st))||{churches:[]};
     const churches=Array.isArray(store.churches)?store.churches:[];
     return c.json({state:st,churches:churches.map((ch:any)=>({id:ch.id,name:ch.name,address:ch.address,city:ch.city,state:ch.state,lat:ch.lat,lng:ch.lng,denomination:ch.denomination,attendance:ch.attendance,website:ch.website,approved:ch.approved,verificationCount:Array.isArray(ch.verifications)?ch.verifications.length:0,needed:THR,myVerification:Array.isArray(ch.verifications)&&ch.verifications.some((v:any)=>v.ip===ip),submittedAt:ch.submittedAt}))});
-  }catch(e){return c.json({state:c.req.param("state")?.toUpperCase()||"",churches:[],error:`${e}`},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({state:c.req.param("state")?.toUpperCase()||"",churches:[],error:SERVER_ERROR_MSG},500);}
 });
 
 app.post(`${P}/churches/verify/:pendingId`,async(c)=>{
@@ -2951,7 +3033,7 @@ app.post(`${P}/churches/verify/:pendingId`,async(c)=>{
     ch.verifications.push({ip,timestamp:Date.now()});if(ch.verifications.length>=THR)ch.approved=true;
     await setPending(parts[1],store);
     return c.json({success:true,church:{...ch,verificationCount:ch.verifications.length,needed:THR,myVerification:true}});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 // ── Confirm data & Community stats ──
@@ -2969,7 +3051,7 @@ app.post(`${P}/churches/confirm/:churchId`,async(c)=>{
     if(!result.ok)return c.json({error:result.error},result.status);
     if(result.alreadyConfirmed)return c.json({success:true,alreadyConfirmed:true});
     return c.json({success:true,totalConfirmations:result.totalConfirmations});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 /** Top states by distinct churches with ≥1 applied correction in the last `days` (from corrections tail; list capped at 500). */
@@ -3007,7 +3089,7 @@ app.get(`${P}/community/stats`,async(c)=>{
       return c.json({totalCorrections:stateCorrections.length,churchesImproved:stateImproved.length,totalConfirmations:0,lastUpdated:stats.lastUpdated});
     }
     return c.json({totalCorrections:stats.totalCorrections||0,churchesImproved:improved.length,totalConfirmations:stats.totalConfirmations||0,lastUpdated:stats.lastUpdated,topStatesTrending30d:topStatesTrendingFromCorrections(corrections,30)});
-  }catch(e){return c.json({totalCorrections:0,churchesImproved:0,totalConfirmations:0,topStatesTrending30d:[],error:`${e}`},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({totalCorrections:0,churchesImproved:0,totalConfirmations:0,topStatesTrending30d:[],error:SERVER_ERROR_MSG},500);}
 });
 
 app.get(`${P}/community/history/:churchId`,async(c)=>{
@@ -3015,7 +3097,7 @@ app.get(`${P}/community/history/:churchId`,async(c)=>{
     const churchId=c.req.param("churchId");const stats=(await kv.get("community:stats"))||{corrections:[]};
     const history=Array.isArray(stats.corrections)?stats.corrections.filter((h:any)=>h.churchId===churchId):[];
     return c.json({churchId,history});
-  }catch(e){return c.json({churchId:c.req.param("churchId"),history:[],error:`${e}`},500);}
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({churchId:c.req.param("churchId"),history:[],error:SERVER_ERROR_MSG},500);}
 });
 
 // ── Monthly impact snapshots (reporting) ──
@@ -3096,7 +3178,7 @@ app.post(`${P}/internal/monthly-stats`,async(c)=>{
     const {error}=await sb.from(MONTHLY_SNAPSHOTS_TABLE).upsert(rows,{onConflict:"month,state_abbrev"});
     if(error)return c.json({error:error.message},500);
     return c.json({ok:true,month:monthDate,rows:rows.length});
-  }catch(e){return c.json({error:String(e)},500);}
+  }catch(e){return serverError(c,e);}
 });
 app.get(`${P}/monthly-stats`,async(c)=>{
   try{
@@ -3113,7 +3195,7 @@ app.get(`${P}/monthly-stats`,async(c)=>{
     const {data,error}=await q.limit(500);
     if(error)return c.json({error:error.message},500);
     return c.json({rows:data||[]});
-  }catch(e){return c.json({error:String(e)},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 // ── Moderator endpoints ──
@@ -3225,7 +3307,7 @@ const moderatePendingHandler=async(c:any)=>{
     const inReviewSuggestions=globalSugs.map((s:any)=>({churchId:s.churchId,field:s.field,byMe:s.modKeyHash===myHash}));
     const inReviewChurches=globalChs.map((c:any)=>({churchId:c.churchId,byMe:c.modKeyHash===myHash}));
     return c.json({pendingSuggestions,pendingChurches,pendingReverifyChurches,inReviewSuggestions,inReviewChurches});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 };
 app.get(`${P}/moderate/pending`,moderatePendingHandler);
 app.get("/moderate/pending",moderatePendingHandler);
@@ -3400,7 +3482,7 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
     const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);
     if(applied.updated&&applied.state&&applied.churches&&applied.corrections){void runDeferredIndexAndStats(applied.state,applied.churches,churchId,applied.corrections).catch(()=>{});}
     return c.json({success:true,applied:applied.updated,churchId,field,value:valueToApply});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 };
 app.post(`${P}/moderate/approve/suggestion`,moderateApproveSuggestionHandler);
 app.post("/moderate/approve/suggestion",moderateApproveSuggestionHandler);
@@ -3419,7 +3501,7 @@ const moderateRejectSuggestionHandler=async(c:any)=>{
     if(stRej&&isValidRegion(stRej)){void recordChurchAudit({church_id:churchId,state:stRej,action:"suggestion_rejected",field,new_value:rejectedVal,source:"moderate_reject"},{hashModKey:getModKey(c)});}
     const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);
     return c.json({success:true,churchId,field,rejected:true});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 };
 app.post(`${P}/moderate/reject/suggestion`,moderateRejectSuggestionHandler);
 app.post("/moderate/reject/suggestion",moderateRejectSuggestionHandler);
@@ -3446,7 +3528,7 @@ const moderateApproveChurchHandler=async(c:any)=>{
     }
     const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"church",churchId);
     return c.json({success:true,churchId,approved:true});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 };
 app.post(`${P}/moderate/approve/church`,moderateApproveChurchHandler);
 app.post("/moderate/approve/church",moderateApproveChurchHandler);
@@ -3464,7 +3546,7 @@ const moderateRejectChurchHandler=async(c:any)=>{
     void recordChurchAudit({church_id:churchId,state:st,action:"church_rejected",source:"moderate_reject"},{hashModKey:getModKey(c)});
     const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"church",churchId);
     return c.json({success:true,churchId,rejected:true});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 };
 app.post(`${P}/moderate/reject/church`,moderateRejectChurchHandler);
 
@@ -3517,7 +3599,7 @@ const moderateRegeocode=async(c:any)=>{
       if(stateChanged){await setChurches(st,churches);await writeIdx(st,churches);}
     }
     return c.json({success:true,suggestionsScanned:allSuggestions.length,addressCorrections:churchIds.length,statesChecked:[...byState.keys()],updated,failed,skipped,geocodeCalls,details});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 };
 app.post(`${P}/moderate/regeocode`,moderateRegeocode);
 
@@ -3552,7 +3634,7 @@ const moderateInReviewAddHandler=async(c:any)=>{
     }
     await kv.set(IN_REVIEW_GLOBAL_KEY,{suggestions:gSugs,churches:gChs});
     return c.json({success:true});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 };
 
 const moderateInReviewRemoveHandler=async(c:any)=>{
@@ -3565,7 +3647,7 @@ const moderateInReviewRemoveHandler=async(c:any)=>{
     if(type==="suggestion"&&field===undefined)return c.json({error:"Missing field for suggestion"},400);
     await removeFromInReviewKV(modKey,type,churchId,field);
     return c.json({success:true});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 };
 
 app.post(`${P}/moderate/in-review/add`,moderateInReviewAddHandler);
@@ -3581,7 +3663,7 @@ app.get(`${P}/audit/recent`,async(c)=>{
     const limit=Math.min(500,Math.max(1,parseInt(c.req.query("limit")||"200")||200));
     const entries=await queryAuditRecent(limit);
     return c.json({entries});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 app.get(`${P}/audit/state/:state`,async(c)=>{
   try{
@@ -3590,7 +3672,7 @@ app.get(`${P}/audit/state/:state`,async(c)=>{
     const limit=Math.min(500,Math.max(1,parseInt(c.req.query("limit")||"200")||200));
     const entries=await queryAuditByState(st,limit);
     return c.json({state:st,entries});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 app.get(`${P}/audit/church/:churchId`,async(c)=>{
   try{
@@ -3599,7 +3681,7 @@ app.get(`${P}/audit/church/:churchId`,async(c)=>{
     const limit=Math.min(500,Math.max(1,parseInt(c.req.query("limit")||"100")||100));
     const entries=await queryAuditByChurch(churchId,limit);
     return c.json({churchId,entries});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 // ── Church reactions (Netflix-style thumbs) ──
@@ -3612,6 +3694,32 @@ function reactionCounts(reactions: { reaction: string }[]) {
   return counts;
 }
 
+// Registered before /:churchId, which would otherwise match "bulk".
+app.get(`${P}/churches/reactions/bulk`, async (c) => {
+  try {
+    const st = c.req.query("state")?.toUpperCase();
+    if (!st || !isValidRegion(st)) return c.json({ error: "Missing or invalid state" }, 400);
+    const churches = await getChurches(st);
+    if (!Array.isArray(churches) || churches.length === 0) return c.json({ state: st, counts: {} });
+    const keys = churches.map((ch: any) => `reactions:${ch.id}`);
+    const BATCH = 200;
+    const counts: Record<string, { not_for_me: number; like: number; love: number }> = {};
+    for (let i = 0; i < keys.length; i += BATCH) {
+      const chunk = keys.slice(i, i + BATCH);
+      const values = await kv.mget(chunk);
+      for (let j = 0; j < chunk.length; j++) {
+        const churchId = chunk[j].replace(/^reactions:/, "");
+        const store = values[j];
+        const reactions = store?.reactions && Array.isArray(store.reactions) ? store.reactions : [];
+        counts[churchId] = reactionCounts(reactions);
+      }
+    }
+    return c.json({ state: st, counts });
+  } catch (e) {
+    console.error(`${c.req.method} ${c.req.path} failed:`, e);
+    return c.json({ state: c.req.query("state") ?? "", counts: {}, error: SERVER_ERROR_MSG }, 500);
+  }
+});
 app.get(`${P}/churches/reactions/:churchId`, async (c) => {
   try {
     const churchId = c.req.param("churchId");
@@ -3623,7 +3731,8 @@ app.get(`${P}/churches/reactions/:churchId`, async (c) => {
     const myReaction = myEntry ? myEntry.reaction : null;
     return c.json({ churchId, myReaction, counts: reactionCounts(reactions) });
   } catch (e) {
-    return c.json({ churchId: c.req.param("churchId"), myReaction: null, counts: { not_for_me: 0, like: 0, love: 0 }, error: `${e}` }, 500);
+    console.error(`${c.req.method} ${c.req.path} failed:`, e);
+    return c.json({ churchId: c.req.param("churchId"), myReaction: null, counts: { not_for_me: 0, like: 0, love: 0 }, error: SERVER_ERROR_MSG }, 500);
   }
 });
 
@@ -3649,34 +3758,11 @@ app.post(`${P}/churches/react/:churchId`, async (c) => {
     await kv.set(key, store);
     return c.json({ success: true, myReaction: isToggleOff ? null : reaction, counts: reactionCounts(withoutMe) });
   } catch (e) {
-    return c.json({ error: `${e}` }, 500);
+    console.error(`${c.req.method} ${c.req.path} failed:`, e);
+    return c.json({ error: SERVER_ERROR_MSG }, 500);
   }
 });
 
-app.get(`${P}/churches/reactions/bulk`, async (c) => {
-  try {
-    const st = c.req.query("state")?.toUpperCase();
-    if (!st || !isValidRegion(st)) return c.json({ error: "Missing or invalid state" }, 400);
-    const churches = await getChurches(st);
-    if (!Array.isArray(churches) || churches.length === 0) return c.json({ state: st, counts: {} });
-    const keys = churches.map((ch: any) => `reactions:${ch.id}`);
-    const BATCH = 200;
-    const counts: Record<string, { not_for_me: number; like: number; love: number }> = {};
-    for (let i = 0; i < keys.length; i += BATCH) {
-      const chunk = keys.slice(i, i + BATCH);
-      const values = await kv.mget(chunk);
-      for (let j = 0; j < chunk.length; j++) {
-        const churchId = chunk[j].replace(/^reactions:/, "");
-        const store = values[j];
-        const reactions = store?.reactions && Array.isArray(store.reactions) ? store.reactions : [];
-        counts[churchId] = reactionCounts(reactions);
-      }
-    }
-    return c.json({ state: st, counts });
-  } catch (e) {
-    return c.json({ state: c.req.query("state") ?? "", counts: {}, error: `${e}` }, 500);
-  }
-});
 
 // ── Twitter / X automated posting v2 ──
 const TWITTER_URL="https://api.twitter.com/2/tweets";
@@ -4309,7 +4395,7 @@ app.post(`${P}/twitter/scheduled`,async(c)=>{
       nowUtc: now.toISOString(),
       dayUtc: day,
     });
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 // Twitter queue deploy (called by GitHub Actions on push)
@@ -4320,7 +4406,7 @@ app.post(`${P}/twitter/queue-deploy`,async(c)=>{
     if(!secret||body.secret!==secret)return c.json({error:"Unauthorized"},401);
     await queueDeploy(body.message||"improvements");
     return c.json({success:true,queued:true});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 // Twitter status/debug route
@@ -4335,7 +4421,7 @@ app.get(`${P}/twitter/status`,async(c)=>{
     const churchQueue:any[]=(await kv.get("twitter:church-queue"))||[];
     const deployQueue:any[]=(await kv.get("twitter:deploy-queue"))||[];
     return c.json({recentTweets:log.slice(0,20),daily,milestones,queues:{churches:churchQueue.length,deploys:deployQueue.length}});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 // Twitter admin reset route — clears queues and milestone tracking state
@@ -4362,7 +4448,7 @@ app.post(`${P}/twitter/admin/reset`,async(c)=>{
     cleared.milestones=true;
 
     return c.json({success:true,cleared});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 // ── One-time migration: apply all pending corrections & merge pending churches ──
@@ -4406,7 +4492,7 @@ app.post(`${P}/migrate/apply-pending`,async(c)=>{
       await setPending(st,store);
     }
     return c.json({success:true,correctionsApplied,churchesMerged});
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 // ── Seasonal Report endpoint ──
@@ -5644,7 +5730,7 @@ app.get(`${P}/report/state/:stateAbbrev/:slug`,async(c)=>{
     const result=await generateAndCacheReport(slug,{type:"state",stateAbbrev},forceRefresh);
     if(!result.ok)return c.json({error:result.error},result.status);
     return c.json(result.report);
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 // Country / WORLD reports — /report/CA/spring-2026, /report/WORLD/spring-2026
@@ -5692,7 +5778,7 @@ app.get(`${P}/report/:country/:slug`,async(c)=>{
       if(country==="US")await kv.set(`report:US:${slug}`,report);
     }catch(_){}
     return c.json(report);
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 // Legacy US national — /report/launch-2026
@@ -5722,7 +5808,7 @@ app.get(`${P}/report/:slug`,async(c)=>{
       await kv.set(`report:US:${slug}`,report);
     }catch(_){}
     return c.json(report);
-  }catch(e){return c.json({error:`${e}`},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 // Cron / manual: generate one national or state seasonal report snapshot (GitHub Actions loops states).
@@ -5753,7 +5839,7 @@ app.post(`${P}/internal/reports/generate`,async(c)=>{
       out.results.push({scope:stateRaw,cached:r.cached,generatedAt:r.report?.generatedAt});
     }
     return c.json(out);
-  }catch(e){return c.json({error:String(e)},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 // ── Static files on Cloudflare R2 ──
@@ -5831,7 +5917,7 @@ app.post(`${P}/admin/publish-static`,async(c)=>{
     for(const t of targets){try{await publishTarget(t);published.push(t);}catch(e){failed.push({target:t,error:String(e)});}}
     const next=offset+limit<regions.length?offset+limit:null;
     return c.json({published,failed,next,total:regions.length});
-  }catch(e){return c.json({error:String(e)},500);}
+  }catch(e){return serverError(c,e);}
 });
 
 export default app;
