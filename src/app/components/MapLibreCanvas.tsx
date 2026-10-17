@@ -122,14 +122,83 @@ const streetFadeOut = (end: number) => [
 
 // Brand palette for the street layer. Raster basemaps ship as fixed bitmaps —
 // generic grey, impossible to recolor — so the streets are drawn from vector
-// tiles instead and styled here: cream land, white roads with soft purple
-// casing, light purple water, deep purple labels. Same palette as the
-// choropleth, so zooming in never leaves the app's visual language.
+// tiles instead (OpenMapTiles schema via CARTO) and styled here in the app's
+// palette: cream land, white roads with a soft lilac edge, light purple water.
+//
+// Roads follow a hierarchy so a residential grid stays quiet while the roads
+// you navigate by read clearly: major roads are wider with a visible casing,
+// minor streets are thin with only a hairline edge at close zoom, and paths /
+// rail are light dashes. Parks and buildings add gentle context up close.
 const WATER_FILL = "#E4D4F0";
+const PARK_FILL = "#E6EADB";        // muted sage: reads as "green space" without leaving the palette
+const BUILDING_FILL = "#EEE8DE";    // a shade darker than the cream land
 const ROAD_FILL = "#FFFFFF";
-const ROAD_CASING = "#D4B8E8";
-const LABEL_COLOR = "#6B21A8";
+const ROAD_CASING_MAJOR = "#D9C7EA";
+const ROAD_CASING_MINOR = "#E1D3EE";
+const PATH_COLOR = "#D5C6E4";
+const RAIL_COLOR = "#CDBDDD";
+const LABEL_COLOR = "#5B3B7A";      // softer than the brand purple so labels don't shout
+const LABEL_COLOR_PLACE = "#4C1D95";
 const LABEL_HALO = CREAM;
+
+const MAJOR_ROADS = ["motorway", "trunk", "primary"];
+const MID_ROADS = ["secondary", "tertiary"];
+const MINOR_ROADS = ["minor", "service", "raceway"];
+const PATHS = ["path", "track", "bridleway", "cycleway", "footway", "pedestrian", "steps"];
+const RAIL = ["rail", "transit"];
+
+const inClass = (classes: string[]) => ["in", ["get", "class"], ["literal", classes]];
+const notTunnel = ["!=", ["get", "brunnel"], "tunnel"];
+
+/** Exponential width ramp (MapLibre's usual 1.5 base) from [zoom, width] stops. */
+const widthRamp = (...stops: [number, number][]) => [
+  "interpolate", ["exponential", 1.5], ["zoom"],
+  ...stops.flat(),
+];
+
+function roadLayers(
+  id: string,
+  classes: string[],
+  fill: [number, number][],
+  casing: [number, number][] | null,
+  casingColor: string,
+  minzoom = 0,
+): StyleSpecification["layers"] {
+  const filter = ["all", inClass(classes), notTunnel] as never;
+  const layout = { "line-cap": "round", "line-join": "round" } as const;
+  const layers: StyleSpecification["layers"] = [];
+  if (casing) {
+    layers.push({
+      id: `${id}-casing`,
+      type: "line",
+      source: "streets",
+      "source-layer": "transportation",
+      minzoom,
+      filter,
+      layout,
+      paint: {
+        "line-color": casingColor,
+        "line-opacity": streetFadeIn as never,
+        "line-width": widthRamp(...casing) as never,
+      },
+    });
+  }
+  layers.push({
+    id,
+    type: "line",
+    source: "streets",
+    "source-layer": "transportation",
+    minzoom,
+    filter,
+    layout,
+    paint: {
+      "line-color": ROAD_FILL,
+      "line-opacity": streetFadeIn as never,
+      "line-width": widthRamp(...fill) as never,
+    },
+  });
+  return layers;
+}
 
 const BASEMAP_STYLE: StyleSpecification = {
   version: 8,
@@ -144,6 +213,28 @@ const BASEMAP_STYLE: StyleSpecification = {
   layers: [
     { id: "bg", type: "background", paint: { "background-color": CREAM } },
     {
+      id: "park",
+      type: "fill",
+      source: "streets",
+      "source-layer": "park",
+      paint: { "fill-color": PARK_FILL, "fill-opacity": streetFadeIn as never },
+    },
+    {
+      id: "landcover-green",
+      type: "fill",
+      source: "streets",
+      "source-layer": "landcover",
+      filter: inClass(["grass", "wood", "farmland"]) as never,
+      paint: {
+        "fill-color": PARK_FILL,
+        "fill-opacity": [
+          "interpolate", ["linear"], ["zoom"],
+          STREET_FADE_START, 0,
+          STREET_FADE_END, 0.6,
+        ] as never,
+      },
+    },
+    {
       id: "water",
       type: "fill",
       source: "streets",
@@ -151,58 +242,73 @@ const BASEMAP_STYLE: StyleSpecification = {
       paint: { "fill-color": WATER_FILL, "fill-opacity": streetFadeIn as never },
     },
     {
-      id: "road-casing",
-      type: "line",
+      id: "building",
+      type: "fill",
       source: "streets",
-      "source-layer": "transportation",
-      layout: { "line-cap": "round", "line-join": "round" },
+      "source-layer": "building",
+      minzoom: 14,
       paint: {
-        "line-color": ROAD_CASING,
-        "line-opacity": streetFadeIn as never,
-        "line-width": [
-          "interpolate", ["exponential", 1.5], ["zoom"],
-          10, 1.4,
-          14, 5,
-          18, 22,
-        ],
+        "fill-color": BUILDING_FILL,
+        "fill-opacity": ["interpolate", ["linear"], ["zoom"], 14, 0, 15.5, 0.75] as never,
       },
     },
     {
-      id: "road",
+      id: "path",
       type: "line",
       source: "streets",
       "source-layer": "transportation",
-      layout: { "line-cap": "round", "line-join": "round" },
+      minzoom: 14,
+      filter: inClass(PATHS) as never,
       paint: {
-        "line-color": ROAD_FILL,
+        "line-color": PATH_COLOR,
         "line-opacity": streetFadeIn as never,
-        "line-width": [
-          "interpolate", ["exponential", 1.5], ["zoom"],
-          10, 0.6,
-          14, 3,
-          18, 17,
-        ],
+        "line-width": widthRamp([14, 0.6], [18, 1.6]) as never,
+        "line-dasharray": [2, 1.5],
       },
     },
     {
-      id: "road-label",
-      type: "symbol",
+      id: "rail",
+      type: "line",
+      source: "streets",
+      "source-layer": "transportation",
+      minzoom: 12,
+      filter: ["all", inClass(RAIL), notTunnel] as never,
+      paint: {
+        "line-color": RAIL_COLOR,
+        "line-opacity": streetFadeIn as never,
+        "line-width": widthRamp([12, 0.6], [18, 1.8]) as never,
+        "line-dasharray": [3, 2],
+      },
+    },
+    // Minor streets: thin, hairline edge only once you're close.
+    ...roadLayers("road-minor", MINOR_ROADS, [[12, 0.4], [14, 1.4], [16, 4], [18, 10]], [[14, 2.2], [16, 5.2], [18, 12]], ROAD_CASING_MINOR, 12),
+    ...roadLayers("road-mid", MID_ROADS, [[10, 0.6], [14, 2.4], [16, 5.5], [18, 13]], [[10, 1.2], [14, 3.6], [16, 7], [18, 15.5]], ROAD_CASING_MINOR),
+    ...roadLayers("road-major", MAJOR_ROADS, [[8, 0.8], [12, 2.2], [14, 4], [16, 8], [18, 17]], [[8, 1.6], [12, 3.4], [14, 5.6], [16, 10], [18, 20]], ROAD_CASING_MAJOR),
+    // Street names: major/mid roads from z12, minor streets only once close (z15).
+    ...([
+      ["road-label", [...MAJOR_ROADS, ...MID_ROADS], 12, 11.5],
+      ["road-label-minor", MINOR_ROADS, 15, 10.5],
+    ] as const).map(([id, classes, minzoom, size]) => ({
+      id,
+      type: "symbol" as const,
       source: "streets",
       "source-layer": "transportation_name",
-      minzoom: 12,
+      minzoom,
+      filter: inClass([...classes]) as never,
       layout: {
-        "text-field": ["get", "name"],
+        "text-field": ["get", "name"] as never,
         "text-font": ["Open Sans Regular"],
-        "text-size": 11,
-        "symbol-placement": "line",
+        "text-size": size,
+        "text-letter-spacing": 0.02,
+        "symbol-placement": "line" as const,
       },
       paint: {
         "text-color": LABEL_COLOR,
         "text-halo-color": LABEL_HALO,
-        "text-halo-width": 1.2,
+        "text-halo-width": 1.5,
         "text-opacity": streetFadeIn as never,
       },
-    },
+    })),
     {
       id: "place-label",
       type: "symbol",
@@ -215,9 +321,9 @@ const BASEMAP_STYLE: StyleSpecification = {
         "text-size": 13,
       },
       paint: {
-        "text-color": LABEL_COLOR,
+        "text-color": LABEL_COLOR_PLACE,
         "text-halo-color": LABEL_HALO,
-        "text-halo-width": 1.4,
+        "text-halo-width": 1.5,
         "text-opacity": streetFadeIn as never,
       },
     },
