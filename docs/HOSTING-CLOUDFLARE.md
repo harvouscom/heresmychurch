@@ -36,3 +36,29 @@ Manual deploy: `pnpm run deploy`. Local: `pnpm run preview:cf` (wrangler dev on 
 
 Rollback to Netlify (until the Netlify site is deleted): remove the two Custom Domains, then
 re-add `A @ 75.2.60.5` and `CNAME www heresmychurch.netlify.app` (DNS only).
+
+## API Worker (`hmc-api`, api.heresmychurch.com)
+
+The API runs the same Hono app as the Supabase edge function:
+
+- `supabase/functions/make-server-283d8046/app.ts` — the app (platform-neutral)
+- `supabase/functions/make-server-283d8046/runtime.ts` — `env()`, `waitUntil()`, OG renderer hook
+- `supabase/functions/make-server-283d8046/index.ts` — Supabase (Deno) entry
+- `api/index.ts` + `api/wrangler.jsonc` — Worker entry; `alias` maps `npm:`/`jsr:` imports to npm packages
+- `api/og-image.ts` — OG images via `workers-og` (the Deno `og-image.tsx` uses esm.sh + og_edge)
+
+Read env only inside functions (never at module scope): Workers expose it per request.
+Routes keep the `/make-server-283d8046` prefix internally; the Worker accepts bare paths too.
+The database stays on Supabase Postgres (supabase-js over HTTP), as does Realtime presence.
+
+Commands: `pnpm run dev:api` (local, :8790), `pnpm run deploy:api`,
+`pnpm run parity:api [base]` (compares read-only responses with the Supabase function).
+
+Secrets (`wrangler secret put -c api/wrangler.jsonc NAME`): SUPABASE_SERVICE_ROLE_KEY,
+MODERATOR_KEY, PARTNER_API_KEY, GOOGLE_MAPS_API_KEY, TWITTER_API_KEY, TWITTER_API_SECRET,
+TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET, TWITTER_WEBHOOK_SECRET, R2_ACCESS_KEY_ID,
+R2_SECRET_ACCESS_KEY. Plain vars live in `api/wrangler.jsonc`.
+
+Callers switch by config, each reversible: `VITE_HMC_API_BASE_URL` (frontend build),
+`HMC_API_BASE_URL` (site Worker og-rewrite), the `SUPABASE_FUNCTION_URL` GitHub secret
+(cron workflows), and Harvous's `HERESMYCHURCH_API_BASE` (`https://api.heresmychurch.com/v1`).

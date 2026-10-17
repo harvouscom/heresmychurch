@@ -3,10 +3,16 @@ import type { Church, StateInfo } from "./church-data";
 import statesSnapshot from "../data/states-snapshot.json";
 import { POP as BUNDLED_POPULATIONS } from "../data/state-populations";
 
-/** In dev, use same-origin URL so Vite proxies to Supabase (avoids browser CORS). Production hits Supabase directly. */
-const BASE_URL = import.meta.env.DEV
-  ? "/functions/v1/make-server-283d8046"
-  : `https://${projectId}.supabase.co/functions/v1/make-server-283d8046`;
+/**
+ * API base. VITE_HMC_API_BASE_URL points at the Cloudflare Worker (https://api.heresmychurch.com);
+ * unset, it falls back to the Supabase edge function (in dev via the Vite proxy, avoiding CORS).
+ */
+const API_BASE_OVERRIDE = ((import.meta.env.VITE_HMC_API_BASE_URL as string | undefined) || "").replace(/\/$/, "");
+const USING_SUPABASE_API = !API_BASE_OVERRIDE;
+const BASE_URL = API_BASE_OVERRIDE
+  || (import.meta.env.DEV
+    ? "/functions/v1/make-server-283d8046"
+    : `https://${projectId}.supabase.co/functions/v1/make-server-283d8046`);
 
 /**
  * Public static copies of hot read endpoints, published to Cloudflare R2 by the edge
@@ -37,12 +43,15 @@ async function fetchStatic<T>(path: string, timeoutMs = 8000): Promise<T | null>
   }
 }
 
-const headers = {
-  "Content-Type": "application/json",
-  Authorization: `Bearer ${publicAnonKey}`,
-  /** Supabase Edge Functions expect this alongside Authorization (matches supabase-js). */
-  apikey: publicAnonKey,
-};
+const headers: Record<string, string> = USING_SUPABASE_API
+  ? {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${publicAnonKey}`,
+      /** Supabase Edge Functions expect this alongside Authorization (matches supabase-js). */
+      apikey: publicAnonKey,
+    }
+  : // The Worker API needs no Supabase gateway auth.
+    { "Content-Type": "application/json" };
 
 // Fetch with timeout via AbortController
 async function fetchWithTimeout(

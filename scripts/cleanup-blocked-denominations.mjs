@@ -18,7 +18,7 @@ const ANON_KEY =
 
 const MODERATOR_KEY = process.env.MODERATOR_KEY;
 
-const BASE_URL = `https://${PROJECT_ID}.supabase.co/functions/v1/make-server-283d8046`;
+const BASE_URL = (process.env.HMC_FUNCTIONS_BASE_URL || `https://${PROJECT_ID}.supabase.co/functions/v1/make-server-283d8046`).replace(/\/$/, "");
 const CLEANUP_PATH = "/admin/cleanup-blocked-denominations";
 
 async function main() {

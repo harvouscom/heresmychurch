@@ -9,7 +9,7 @@
  */
 const PROJECT_ID = "epufchwxofsyuictfufy";
 const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwdWZjaHd4b2ZzeXVpY3RmdWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5NzcxMTUsImV4cCI6MjA4ODU1MzExNX0.v11kHHpM1IsK6q81909CYkWgX5TdV8kJhCkNqSEs5QM";
-const BASE = `https://${PROJECT_ID}.supabase.co/functions/v1/make-server-283d8046`;
+const BASE = (process.env.HMC_FUNCTIONS_BASE_URL || `https://${PROJECT_ID}.supabase.co/functions/v1/make-server-283d8046`).replace(/\/$/, "");
 
 const NAMES_TO_CHECK = [
   "Eternity Church",

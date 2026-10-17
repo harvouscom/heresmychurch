@@ -1,12 +1,13 @@
 // Church change audit log — non-throwing; failures must not break mutations
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
+import { env } from "./runtime.ts";
 
 // Reuse a single client instance to avoid per-request connection overhead
 let _client: ReturnType<typeof createClient> | null = null;
 function getClient() {
   if (!_client) {
-    const url = Deno.env.get("SUPABASE_URL");
-    const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const url = env("SUPABASE_URL");
+    const key = env("SUPABASE_SERVICE_ROLE_KEY");
     if (!url || !key) throw new Error("Missing Supabase env");
     _client = createClient(url, key);
   }
