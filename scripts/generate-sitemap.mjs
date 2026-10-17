@@ -25,8 +25,7 @@ const PUBLIC = join(__dirname, "..", "public");
 const SITEMAPS_DIR = join(PUBLIC, "sitemaps");
 const STATES_SNAPSHOT = join(__dirname, "..", "src", "app", "data", "states-snapshot.json");
 
-const DEFAULT_API_BASE =
-  "https://epufchwxofsyuictfufy.supabase.co/functions/v1/make-server-283d8046";
+const DEFAULT_API_BASE = "https://api.heresmychurch.com";
 const DEFAULT_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwdWZjaHd4b2ZzeXVpY3RmdWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5NzcxMTUsImV4cCI6MjA4ODU1MzExNX0.v11kHHpM1IsK6q81909CYkWgX5TdV8kJhCkNqSEs5QM";
 

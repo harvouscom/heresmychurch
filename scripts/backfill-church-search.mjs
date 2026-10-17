@@ -17,7 +17,7 @@ const ANON_KEY =
 const MODERATOR_KEY = process.env.MODERATOR_KEY;
 const COUNT = Number(process.env.BACKFILL_COUNT ?? 8);
 
-const BASE_URL = (process.env.HMC_FUNCTIONS_BASE_URL || `https://${PROJECT_ID}.supabase.co/functions/v1/make-server-283d8046`).replace(/\/$/, "");
+const BASE_URL = (process.env.HMC_FUNCTIONS_BASE_URL || "https://api.heresmychurch.com").replace(/\/$/, "");
 
 async function main() {
   if (!MODERATOR_KEY) {
