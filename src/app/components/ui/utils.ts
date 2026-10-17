@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { parsePhoneNumberFromString } from "libphonenumber-js";
-import type { CountryCode } from "libphonenumber-js";
+import { parsePhoneNumberFromString } from "libphonenumber-js/min";
+import type { CountryCode } from "libphonenumber-js/min";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

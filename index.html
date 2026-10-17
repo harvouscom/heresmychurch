@@ -9,6 +9,12 @@
       <link rel="canonical" id="hmc-canonical-link" href="https://heresmychurch.com/" />
       <link rel="icon" type="image/png" href="/favicon.png" />
       <link rel="preload" href="/fonts/google-sans-flex/GoogleSansFlex-opsz-wght-ROND.woff2" as="font" type="font/woff2" crossorigin />
+      <!-- Warm up connections the map needs right away (static data, API, basemap, flags) -->
+      <link rel="preconnect" href="https://data.heresmychurch.com" crossorigin />
+      <link rel="preconnect" href="https://api.heresmychurch.com" crossorigin />
+      <link rel="dns-prefetch" href="https://tiles.basemaps.cartocdn.com" />
+      <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
+      <link rel="dns-prefetch" href="https://flagcdn.com" />
 
       <!-- Open Graph -->
       <meta property="og:type" content="website" />
