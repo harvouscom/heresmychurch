@@ -371,7 +371,8 @@ export function ChurchListModal({
 
           {/* State overview stats */}
           {stateStats && (
-            <div className="mb-4 rounded-xl border border-white/6 bg-white/[0.03] p-3.5">
+            // Hidden on small screens so the list itself gets the room.
+            <div className="hidden md:block mb-4 rounded-xl border border-white/6 bg-white/[0.03] p-3.5">
               <div className="flex flex-col sm:flex-row gap-4">
                 {/* Population stat */}
                 {statePopulation != null && statePopulation > 0 && (
@@ -440,9 +441,9 @@ export function ChurchListModal({
           )}
 
           {/* Search + Filters row */}
-          <div className="flex gap-2 items-center">
-            {/* Search */}
-            <div className="relative flex-1">
+          <div className="flex flex-wrap md:flex-nowrap gap-2 items-center">
+            {/* Search — full row on small screens, filters wrap beneath */}
+            <div className="relative flex-1 basis-full md:basis-auto">
               <Search
                 size={15}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30"
@@ -456,7 +457,9 @@ export function ChurchListModal({
               />
               {searchQuery && (
                 <button
+                  type="button"
                   onClick={() => setSearchQuery("")}
+                  aria-label="Clear search"
                   className="absolute right-3 top-1/2 -translate-y-1/2"
                 >
                   <X size={14} className="text-white/30 hover:text-white/60" />
@@ -744,8 +747,8 @@ export function ChurchListModal({
         </div>
 
         {/* Table header */}
-        <div className="flex-shrink-0 px-6 border-b border-white/6">
-          <div className="grid grid-cols-[1fr_100px_1fr_140px_100px] gap-3 py-2.5">
+        <div className="flex-shrink-0 px-4 md:px-6 border-b border-white/6">
+          <div className="grid grid-cols-[1fr_auto] md:grid-cols-[1fr_100px_1fr_140px_100px] gap-3 py-2.5">
             <button
               type="button"
               onClick={() => handleSort("name")}
@@ -757,7 +760,7 @@ export function ChurchListModal({
             <button
               type="button"
               onClick={() => handleSort("city")}
-              className="flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
+              className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
               style={{ boxShadow: "none" }}
             >
               City <SortIcon field="city" />
@@ -765,7 +768,7 @@ export function ChurchListModal({
             <button
               type="button"
               onClick={() => handleSort("address")}
-              className="flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
+              className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
               style={{ boxShadow: "none" }}
             >
               Address <SortIcon field="address" />
@@ -773,7 +776,7 @@ export function ChurchListModal({
             <button
               type="button"
               onClick={() => handleSort("denomination")}
-              className="flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
+              className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
               style={{ boxShadow: "none" }}
             >
               Denomination <SortIcon field="denomination" />
@@ -815,7 +818,7 @@ export function ChurchListModal({
                     <button
                       key={church.id}
                       onClick={() => onChurchClick?.(church)}
-                      className={`w-full text-left grid grid-cols-[1fr_100px_1fr_140px_100px] gap-3 px-6 py-3 transition-colors hover:bg-white/5 h-full ${
+                      className={`w-full text-left grid grid-cols-[1fr_auto] md:grid-cols-[1fr_100px_1fr_140px_100px] gap-3 px-4 md:px-6 py-3 transition-colors hover:bg-white/5 h-full ${
                         index !== filteredChurches.length - 1
                           ? "border-b border-white/4"
                           : ""
@@ -826,20 +829,26 @@ export function ChurchListModal({
                         <div className="text-sm text-white font-medium truncate">
                           {church.name}
                         </div>
+                        {/* Phones: city and denomination under the name instead of columns */}
+                        <div className="md:hidden text-xs text-white/55 truncate mt-0.5">
+                          {[church.city, church.denomination === "Other" || church.denomination === "Unknown" ? "Unspecified" : church.denomination]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </div>
                       </div>
 
                       {/* City */}
-                      <div className="text-xs text-white/50 self-center truncate">
+                      <div className="hidden md:block text-xs text-white/50 self-center truncate">
                         {church.city || "\u2014"}
                       </div>
 
                       {/* Address */}
-                      <div className="text-xs text-white/50 self-center truncate">
+                      <div className="hidden md:block text-xs text-white/50 self-center truncate">
                         {formatAddressWithCity(church.address, church.city) || getFallbackLocation(church, churchCountyById.get(church.id)) || ""}
                       </div>
 
                       {/* Denomination */}
-                      <div className="self-center">
+                      <div className="hidden md:block self-center">
                         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/5 text-xs text-white/50 max-w-full">
                           <span
                             className="w-1.5 h-1.5 rounded-full flex-shrink-0"
@@ -885,7 +894,7 @@ export function ChurchListModal({
         </div>
 
         {/* Footer */}
-        <div className="flex-shrink-0 px-6 py-3 border-t border-white/6 flex items-center justify-between">
+        <div className="flex-shrink-0 px-4 md:px-6 py-3 border-t border-white/6 flex items-center justify-between gap-2">
           <span className="text-xs text-white/25">
             Showing {filteredChurches.length.toLocaleString()} of{" "}
             {churches.length.toLocaleString()}
