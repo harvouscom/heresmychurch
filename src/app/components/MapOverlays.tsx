@@ -302,7 +302,7 @@ export function ChurchTooltip({
   const interactive = pinned && (onViewChurch || onClose);
   return (
     <div
-      className={`fixed z-[60] rounded-xl shadow-hmc-menu px-4 py-3 max-w-[300px] ${interactive ? "" : "pointer-events-none"}`}
+      className={`fixed z-[var(--z-tooltips)] rounded-menu px-4 py-3 max-w-[300px] bg-hmc-surface-glass backdrop-blur-md border border-hmc-border shadow-hmc-menu ${interactive ? "" : "pointer-events-none"}`}
       style={{
         left: tooltipPos.x + 16,
         top: tooltipPos.y - 70,
