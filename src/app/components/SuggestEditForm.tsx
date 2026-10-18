@@ -918,7 +918,7 @@ function MainCampusSearch({
         <p className="text-white/70 text-caption">No churches found. Try a different name or city.</p>
       )}
       {!loading && results.length > 0 && (
-        <p className="text-white/40 text-caption">{results.length} church{results.length === 1 ? "" : "es"} found</p>
+        <p className="text-white/60 text-caption">{results.length} church{results.length === 1 ? "" : "es"} found</p>
       )}
       <div className="max-h-60 overflow-y-auto space-y-1">
         {results.map((r, i) => {
@@ -936,7 +936,7 @@ function MainCampusSearch({
           return (
             <div key={r.id}>
               {showHeader && (
-                <p className="text-caption text-white/40 uppercase tracking-wider px-2.5 pt-2 pb-0.5">{tierLabel}</p>
+                <p className="text-caption text-white/60 uppercase tracking-wider px-2.5 pt-2 pb-0.5">{tierLabel}</p>
               )}
               <button
                 type="button"
@@ -1130,6 +1130,7 @@ function FieldCard({
                 <>
                   <EditInput
                     fieldKey={key}
+                    label={label}
                     type={type}
                     placeholder={placeholder}
                     values={values}
@@ -1179,6 +1180,7 @@ function FieldCard({
 // Renders the appropriate input control for a field type
 function EditInput({
   fieldKey,
+  label,
   type,
   placeholder,
   values,
@@ -1189,6 +1191,8 @@ function EditInput({
   setChipMinistries,
 }: {
   fieldKey: string;
+  /** Accessible name for the control (the field card's visible label). */
+  label?: string;
   type: string;
   placeholder: string;
   values: Record<string, string>;
@@ -1276,6 +1280,7 @@ function EditInput({
   if (type === "select") {
     return (
       <select
+        aria-label={label}
         value={values[fieldKey] || ""}
         onChange={(e) => setValues((v) => ({ ...v, [fieldKey]: e.target.value }))}
         className="w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors appearance-none"
@@ -1291,6 +1296,7 @@ function EditInput({
 
   return (
     <input
+      aria-label={label}
       type={type === "number" ? "number" : "text"}
       value={values[fieldKey] || ""}
       onChange={(e) => setValues((v) => ({ ...v, [fieldKey]: e.target.value }))}

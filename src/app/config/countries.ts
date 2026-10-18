@@ -72,7 +72,8 @@ export const WORLD_GEO_URL =
 
 /** World choropleth tiers (explored countries by total church count). */
 export const WORLD_COUNT_TIERS: CountTier[] = [
-  { label: "Coming soon", min: 0, max: 0, color: "#E8D5F5" },
+  // Neutral warm grey (not the lowest lilac) so "not covered yet" doesn't read as "few churches".
+  { label: "Coming soon", min: 0, max: 0, color: "#DCD5CB" },
   { label: "< 1,000", min: 1, max: 999, color: "#C9A0DC" },
   { label: "1,000–10,000", min: 1000, max: 9999, color: "#9B59C4" },
   { label: "10,000–50,000", min: 10000, max: 49999, color: "#6B21A8" },

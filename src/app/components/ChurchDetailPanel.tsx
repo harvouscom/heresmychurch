@@ -184,10 +184,10 @@ function ServiceTimesCard({
     <div className="rounded-xl p-3 bg-white/5 border border-white/5">
       <div className="flex items-center gap-2 mb-2">
         <Clock size={16} className="text-purple-400" />
-        <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
+        <span className="text-xs uppercase tracking-wider text-white/60 font-semibold">
           Service Times
           {tz && (
-            <span className="ml-1 normal-case tracking-normal text-white/25">({tz})</span>
+            <span className="ml-1 normal-case tracking-normal text-white/55">({tz})</span>
           )}
         </span>
         {grouped.length > 1 && (
@@ -250,7 +250,7 @@ function LanguageEstimateCard({ bilingualInfo }: { bilingualInfo: { probability:
       <div className="flex items-center gap-2">
         <Languages size={14} className="text-amber-400 flex-shrink-0" />
         <span className="text-xs text-white/50 font-medium">{label}</span>
-        <span className="text-white/40 text-xs font-semibold tabular-nums ml-auto">{pct}%</span>
+        <span className="text-white/60 text-xs font-semibold tabular-nums ml-auto">{pct}%</span>
         <span className={`text-caption px-1 py-px rounded font-semibold ${
           bilingualInfo.confirmed
             ? "bg-green-500/15 text-green-400/80"
@@ -574,7 +574,7 @@ export function ChurchDetailPanel({
             >
               <Globe size={14} />
               Website
-              <ExternalLink size={12} className="text-white/40" />
+              <ExternalLink size={12} className="text-white/60" />
             </a>
           ) : (
             <a
@@ -598,7 +598,7 @@ export function ChurchDetailPanel({
         {/* Reaction bar (Netflix-style thumbs) — above service times */}
         {!reactionsLoading && (
           <div className="flex flex-col gap-2">
-            <span className="text-caption uppercase tracking-wider text-white/40 font-semibold">
+            <span className="text-caption uppercase tracking-wider text-white/60 font-semibold">
               How do you feel about this church?
             </span>
             <div className="flex gap-2">
@@ -700,22 +700,22 @@ export function ChurchDetailPanel({
           <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/5">
             <div className="flex items-center gap-1.5 mb-1">
               <Users size={13} className="text-purple-400 flex-shrink-0" />
-              <span className="text-caption uppercase tracking-wider text-white/35 font-semibold">Attendance*</span>
+              <span className="text-caption uppercase tracking-wider text-white/60 font-semibold">Attendance*</span>
             </div>
             <div className="text-white text-base font-semibold">~{church.attendance.toLocaleString()}</div>
             <div className="flex items-center gap-1.5 mt-0.5">
               <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: sizeCat.color }} />
               <span className="text-white/50 text-xs">{sizeCat.label}</span>
             </div>
-            <div className="text-white/35 text-caption mt-1">* Estimated weekly number</div>
+            <div className="text-white/60 text-caption mt-1">* Estimated weekly number</div>
           </div>
           <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/5">
             <div className="flex items-center gap-1.5 mb-1">
               <ChurchIcon size={13} className="text-purple-400 flex-shrink-0" />
-              <span className="text-caption uppercase tracking-wider text-white/35 font-semibold">Denomination</span>
+              <span className="text-caption uppercase tracking-wider text-white/60 font-semibold">Denomination</span>
             </div>
             <div className="text-white text-base font-medium">{church.denomination === "Other" || church.denomination === "Unknown" ? "Unspecified" : church.denomination}</div>
-            <div className="text-white/40 text-xs mt-0.5">{sameDenomCount.toLocaleString()} similar in state</div>
+            <div className="text-white/60 text-xs mt-0.5">{sameDenomCount.toLocaleString()} similar in state</div>
           </div>
         </div>
 
@@ -754,7 +754,7 @@ export function ChurchDetailPanel({
           <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/5">
             <div className="flex items-center gap-2 mb-1.5">
               <Heart size={14} className="text-purple-400 flex-shrink-0" />
-              <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">Ministries</span>
+              <span className="text-xs uppercase tracking-wider text-white/60 font-semibold">Ministries</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {church.ministries.map((m) => (
@@ -771,7 +771,7 @@ export function ChurchDetailPanel({
           <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/5">
             <div className="flex items-center gap-2 mb-1.5">
               <User size={14} className="text-purple-400 flex-shrink-0" />
-              <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">Contact</span>
+              <span className="text-xs uppercase tracking-wider text-white/60 font-semibold">Contact</span>
             </div>
             <div className="space-y-1">
               {church.pastorName && (
@@ -874,7 +874,7 @@ export function ChurchDetailPanel({
           <div>
             <div className="flex items-center gap-2 mb-2">
               <Clock size={15} className="text-purple-400" />
-              <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
+              <span className="text-xs uppercase tracking-wider text-white/60 font-semibold">
                 Recent Changes
               </span>
             </div>
@@ -883,7 +883,7 @@ export function ChurchDetailPanel({
                 <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03]">
                   <Check size={12} className="text-green-400/60 flex-shrink-0" />
                   <span className="text-white/50 text-xs font-medium capitalize">{entry.field === "serviceTimes" ? "Service Times" : entry.field === "pastorName" ? "Pastor" : entry.field === "homeCampusId" ? "Link to main campus" : entry.field}</span>
-                  <span className="text-white/30 text-xs ml-auto">{formatTimeAgo(entry.appliedAt)}</span>
+                  <span className="text-white/55 text-xs ml-auto">{formatTimeAgo(entry.appliedAt)}</span>
                 </div>
               ))}
             </div>
@@ -895,7 +895,7 @@ export function ChurchDetailPanel({
           <div id="other-campuses">
             <div className="flex items-center gap-2 mb-3">
               <Building2 size={15} className="text-purple-400" />
-              <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
+              <span className="text-xs uppercase tracking-wider text-white/60 font-semibold">
                 Other Campuses
               </span>
             </div>
@@ -916,7 +916,7 @@ export function ChurchDetailPanel({
                       <div className="text-white text-sm font-medium truncate group-hover:text-purple-300 transition-colors">
                         {campus.name}
                       </div>
-                      <div className="text-white/40 text-xs mt-0.5">
+                      <div className="text-white/60 text-xs mt-0.5">
                         {campus.denomination === "Other" || campus.denomination === "Unknown" ? "Unspecified" : campus.denomination}
                         {campus.city ? ` \u00b7 ${campus.city}` : ""}
                       </div>
@@ -933,7 +933,7 @@ export function ChurchDetailPanel({
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Home size={15} className="text-purple-400" />
-              <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
+              <span className="text-xs uppercase tracking-wider text-white/60 font-semibold">
                 Main Campus
               </span>
             </div>
@@ -951,7 +951,7 @@ export function ChurchDetailPanel({
                     <div className="text-white text-sm font-medium truncate group-hover:text-purple-300 transition-colors">
                       {mainCampusSameState.name}
                     </div>
-                    <div className="text-white/40 text-xs mt-0.5">
+                    <div className="text-white/60 text-xs mt-0.5">
                       {mainCampusSameState.denomination === "Other" || mainCampusSameState.denomination === "Unknown" ? "Unspecified" : mainCampusSameState.denomination}
                       {mainCampusSameState.city ? ` \u00b7 ${mainCampusSameState.city}` : ""}
                     </div>
@@ -967,7 +967,7 @@ export function ChurchDetailPanel({
                     <div className="text-white text-sm font-medium truncate group-hover:text-purple-300 transition-colors">
                       {mainCampusCrossState.name}
                     </div>
-                    <div className="text-white/40 text-xs mt-0.5">
+                    <div className="text-white/60 text-xs mt-0.5">
                       {mainCampusCrossState.state}
                     </div>
                   </div>
@@ -982,7 +982,7 @@ export function ChurchDetailPanel({
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Navigation size={15} className="text-purple-400" />
-              <span className="text-xs uppercase tracking-wider text-white/40 font-semibold">
+              <span className="text-xs uppercase tracking-wider text-white/60 font-semibold">
                 Nearby Churches
               </span>
             </div>
@@ -1003,7 +1003,7 @@ export function ChurchDetailPanel({
                       <div className="text-white text-sm font-medium truncate group-hover:text-purple-300 transition-colors">
                         {nc.name}
                       </div>
-                      <div className="text-white/40 text-xs mt-0.5">
+                      <div className="text-white/60 text-xs mt-0.5">
                         {nc.denomination === "Other" || nc.denomination === "Unknown" ? "Unspecified" : nc.denomination}
                         {nc.city ? ` \u00b7 ${nc.city}` : ""}
                       </div>
@@ -1031,13 +1031,13 @@ export function ChurchDetailPanel({
 
         {/* Data source note */}
         <div className="pt-3 border-t border-white/5">
-          <p className="text-white/25 text-xs leading-relaxed text-center">
+          <p className="text-white/55 text-xs leading-relaxed text-center">
             Data sourced from OpenStreetMap. Attendance figures are estimates
             based on building footprint area, denomination averages, capacity
             data, and regional population scaling.
           </p>
           {church.lastVerified && (
-            <p className="text-white/30 text-xs mt-1 text-center flex items-center justify-center gap-1">
+            <p className="text-white/55 text-xs mt-1 text-center flex items-center justify-center gap-1">
               <ShieldCheck size={11} className="inline" />
               Last verified {formatTimeAgo(church.lastVerified)}
             </p>

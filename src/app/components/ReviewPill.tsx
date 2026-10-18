@@ -261,7 +261,7 @@ export function ReviewPill({
                                 {churchDisplayName}
                               </div>
                               {whereabouts && (
-                                <div className="text-white/40 text-xs mt-0.5">{whereabouts}</div>
+                                <div className="text-white/60 text-xs mt-0.5">{whereabouts}</div>
                               )}
                             </div>
                             {s.currentValue && (
@@ -394,7 +394,7 @@ export function ReviewPill({
                                 </span>
                               )}
                             </div>
-                            <p className="text-white/30 text-caption">
+                            <p className="text-white/55 text-caption">
                               Submitted {new Date(ch.submittedAt).toLocaleDateString()}
                             </p>
                             <div className="flex gap-2 pt-0.5 flex-wrap">
@@ -432,7 +432,7 @@ export function ReviewPill({
                   {/* Needing: Pins awaiting reverify after relocate */}
                   {pendingReverify.length > 0 && (
                     <div className="space-y-3">
-                      <p className="text-white/40 text-caption uppercase tracking-wider font-medium">Needs update (relocated)</p>
+                      <p className="text-white/60 text-caption uppercase tracking-wider font-medium">Needs update (relocated)</p>
                       {pendingReverify.map((ch) => (
                         <div key={ch.churchId} className="rounded-lg bg-white/4 hover:bg-white/8 transition-colors px-3.5 py-3 space-y-2">
                           <div className="flex items-center gap-2 flex-wrap">
@@ -461,7 +461,7 @@ export function ReviewPill({
                               </span>
                             )}
                           </div>
-                          <p className="text-white/40 text-xs">
+                          <p className="text-white/60 text-xs">
                             Previous congregation relocated. Open the church and update the name, or report closed / out of scope.
                           </p>
                         </div>
@@ -530,7 +530,7 @@ export function ReviewPill({
                                 {churchDisplayName}
                               </div>
                               {whereabouts && (
-                                <div className="text-white/40 text-xs mt-0.5">{whereabouts}</div>
+                                <div className="text-white/60 text-xs mt-0.5">{whereabouts}</div>
                               )}
                             </div>
                             {s.currentValue && (
@@ -671,7 +671,7 @@ onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.chur
                                 </span>
                               )}
                             </div>
-                            <p className="text-white/30 text-caption">
+                            <p className="text-white/55 text-caption">
                               Submitted {new Date(ch.submittedAt).toLocaleDateString()}
                             </p>
                             {isMine && (

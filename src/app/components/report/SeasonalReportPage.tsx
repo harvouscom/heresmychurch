@@ -2704,19 +2704,26 @@ function StateRankingsTable({
             {columns.map((col) => (
               <th
                 key={col.key}
-                onClick={() => toggleSort(col.key)}
-                className={`cursor-pointer select-none px-4 py-3 font-semibold text-stone-700/70 hover:text-stone-900 transition-colors ${
+                scope="col"
+                aria-sort={sortKey === col.key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+                className={`p-0 font-semibold text-stone-700/80 ${
                   col.align === "right" ? "text-right" : "text-left"
                 }`}
               >
-                <span className="inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => toggleSort(col.key)}
+                  className={`w-full px-4 py-3 select-none inline-flex items-center gap-1 hover:text-stone-900 transition-colors ${
+                    col.align === "right" ? "justify-end" : "justify-start"
+                  }`}
+                >
                   <span className={col.community ? "text-green-700/90" : undefined}>{col.label}</span>
                   {sortKey === col.key && (
-                    <span className={col.community ? "text-green-600" : "text-purple-500"}>
+                    <span aria-hidden="true" className={col.community ? "text-green-600" : "text-purple-500"}>
                       {sortDir === "asc" ? "\u2191" : "\u2193"}
                     </span>
                   )}
-                </span>
+                </button>
               </th>
             ))}
           </tr>

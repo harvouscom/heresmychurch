@@ -2167,9 +2167,14 @@ function HeaderPill({
   const showNationalReviewRow =
     (showReviewPercentage ?? (!focusedState && !placeLabel)) && !focusedState;
   const countryLabel = placeLabel ?? getCountry(countryCode)?.name ?? countryCode;
-  const readyCount = focusedState
-    ? `${filteredCount.toLocaleString()} churches*`
-    : `${totalChurches.toLocaleString()} churches*`;
+  // The asterisk footnotes the summary's "Not all churches may be represented yet".
+  const readyCount = (
+    <span title="Not every church is listed yet">
+      {(focusedState ? filteredCount : totalChurches).toLocaleString()} churches
+      <span aria-hidden="true">*</span>
+      <span className="sr-only"> (not every church is listed yet)</span>
+    </span>
+  );
   return (
     <div className="rounded-full shadow-hmc-pill transition-shadow hover:shadow-hmc-menu cursor-pointer w-auto max-w-full">
       <div
@@ -2232,18 +2237,20 @@ function HeaderPill({
         )}
         <ChevronDown
           size={16}
-          className={`text-white/40 transition-transform duration-200 flex-shrink-0 ${showSummary ? "rotate-180" : ""}`}
+          className={`text-white/60 transition-transform duration-200 flex-shrink-0 ${showSummary ? "rotate-180" : ""}`}
         />
       </div>
 
       {/* Review row — hide stale percentages while the main count is still loading */}
       {showLocalReviewRow && (
-        <div
+        <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             if (!showLoading) onShowVerification();
           }}
-          className={`flex items-center justify-center gap-1.5 w-full min-w-0 px-5 pb-1.5 -mt-1.5 transition-opacity ${
+          aria-disabled={showLoading || undefined}
+          className={`flex items-center justify-center gap-1.5 w-full min-w-0 px-5 pb-1.5 -mt-1.5 rounded-b-full transition-opacity ${
             showLoading ? "opacity-70 cursor-default" : "hover:opacity-80"
           }`}
         >
@@ -2257,12 +2264,13 @@ function HeaderPill({
               `${pendingReviewPercentage}% need review`
             )}
           </span>
-        </div>
+        </button>
       )}
       {showNationalReviewRow && (
-        <div
+        <button
+          type="button"
           onClick={(e) => { e.stopPropagation(); onShowNationalReviewModal(); }}
-          className="flex items-center justify-center gap-1.5 w-full min-w-0 px-5 pb-1.5 -mt-1.5 hover:opacity-80 transition-opacity"
+          className="flex items-center justify-center gap-1.5 w-full min-w-0 px-5 pb-1.5 -mt-1.5 rounded-b-full hover:opacity-80 transition-opacity"
         >
           <span className="text-pink-300 text-caption font-medium min-w-0 truncate inline-flex items-center gap-1">
             {nationalStatsMatch
@@ -2271,7 +2279,7 @@ function HeaderPill({
                 ? <><ThreeDotLoader size={10} className="bg-pink-300" /> <span>need review</span></>
                 : "—% need review"}
           </span>
-        </div>
+        </button>
       )}
       </div>
     </div>

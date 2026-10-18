@@ -76,7 +76,7 @@ export function FilterPanel({
         className="w-full flex items-center justify-between py-2 text-xs font-semibold text-purple-300 uppercase tracking-wider"
       >
         <span className="flex items-center gap-2">
-          <CheckCheck size={13} className={showVerified ? "text-purple-400" : "text-white/40"} />
+          <CheckCheck size={13} className={showVerified ? "text-purple-400" : "text-white/60"} />
           Verified
           {showVerified && (
             <span className="text-caption px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-medium normal-case tracking-normal">
@@ -86,7 +86,7 @@ export function FilterPanel({
         </span>
         <span className="flex items-center gap-2">
           {verifiedCount != null && (
-            <span className="text-xs text-white/30 tabular-nums">
+            <span className="text-xs text-white/55 tabular-nums">
               {verifiedCount.toLocaleString()}
             </span>
           )}
@@ -109,14 +109,14 @@ export function FilterPanel({
           </label>
 
           {verifiedCount != null && verifiedTotalCount != null && (
-            <div className="mt-1 text-caption text-white/40 px-2">
+            <div className="mt-1 text-caption text-white/60 px-2">
               <span className="tabular-nums">{verifiedCount.toLocaleString()}</span> of{" "}
               <span className="tabular-nums">{verifiedTotalCount.toLocaleString()}</span> churches verified
             </div>
           )}
 
           <div className="mt-2 px-2">
-            <p className="text-caption text-white/25 uppercase tracking-wider font-semibold mb-1">
+            <p className="text-caption text-white/55 uppercase tracking-wider font-semibold mb-1">
               Verified means
             </p>
             <div className="space-y-1">
@@ -255,7 +255,7 @@ function DenominationFilters({
               <span className="text-xs text-white/70">{label}</span>
             </div>
             {count > 0 && (
-              <span className="text-xs text-white/30">{count}</span>
+              <span className="text-xs text-white/55">{count}</span>
             )}
           </label>
         );
@@ -271,7 +271,7 @@ function DenominationFilters({
         >
           Select all
         </button>
-        <span className="text-white/20">|</span>
+        <span className="text-white/50">|</span>
         <button
           onClick={() => {
             labels.forEach((label) => {
@@ -313,7 +313,7 @@ function LanguageFilters({
           className="accent-purple-500 w-3.5 h-3.5"
         />
         <span className="text-xs text-white/70">All churches</span>
-        <span className="text-xs text-white/30 ml-auto">{churchCount}</span>
+        <span className="text-xs text-white/55 ml-auto">{churchCount}</span>
       </label>
 
       {/* Bilingual/multilingual */}
@@ -328,14 +328,14 @@ function LanguageFilters({
         <span className="text-xs text-white/70">
           Bilingual / multilingual
         </span>
-        <span className="text-xs text-white/30 ml-auto">{languageStats.bilingualCount}</span>
+        <span className="text-xs text-white/55 ml-auto">{languageStats.bilingualCount}</span>
       </label>
 
       {/* Per-language options */}
       {languageStats.sortedLangs.length > 0 && (
         <>
           <div className="h-px bg-white/5 mx-2 my-1" />
-          <p className="text-caption text-white/25 px-2 uppercase tracking-wider font-semibold">
+          <p className="text-caption text-white/55 px-2 uppercase tracking-wider font-semibold">
             By language{" "}
             {languageStats.sortedLangs.some(
               (l) => l.estimated > 0 && l.confirmed === 0
@@ -358,7 +358,7 @@ function LanguageFilters({
                 className="accent-blue-500 w-3.5 h-3.5"
               />
               <span className="text-xs text-white/70 flex-1 truncate">{lang}</span>
-              <span className="text-xs text-white/30 tabular-nums">
+              <span className="text-xs text-white/55 tabular-nums">
                 {total}
                 {estimated > 0 && confirmed < total && (
                   <span className="text-blue-400/40 text-caption ml-0.5">~</span>

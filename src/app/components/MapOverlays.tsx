@@ -343,7 +343,7 @@ export function ChurchTooltip({
           </span>
         </div>
       </div>
-      <div className="text-xs text-white/40 mt-1.5 flex items-center gap-1.5">
+      <div className="text-xs text-white/60 mt-1.5 flex items-center gap-1.5">
         <span
           className="inline-block w-1.5 h-1.5 rounded-full"
           style={{ backgroundColor: "#A855F7" }}

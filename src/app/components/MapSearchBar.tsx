@@ -3,7 +3,7 @@ import { Search, ChevronRight, MapPin, ChevronDown, ChevronUp, Plus } from "luci
 import { ThreeDotLoader } from "./ThreeDotLoader";
 import { geoAlbersUsa } from "d3-geo";
 import type { Church, StateInfo } from "./church-data";
-import { getFallbackLocation, formatAddressWithCity } from "./church-data";
+import { getFallbackLocation, displayLocationLabel, formatAddressWithCity } from "./church-data";
 import { searchChurches } from "./api";
 import type { CountrySummary, SearchResult } from "./api";
 import { getChurchUrlSegment } from "./url-utils";
@@ -496,7 +496,7 @@ export function MapSearchBar({
           ref={stateDropdownRef}
           className="mb-2 rounded-xl shadow-hmc-panel overflow-hidden max-h-[40vh] overflow-y-auto bg-hmc-surface-glass backdrop-blur-md"
         >
-          <div className="px-3 py-2 text-caption font-medium text-white/30 uppercase tracking-wider border-b border-white/5">
+          <div className="px-3 py-2 text-caption font-medium text-white/55 uppercase tracking-wider border-b border-white/5">
             {isWorld ? "Filter by country" : "Filter by " + regionNounOne}
           </div>
           <button
@@ -527,7 +527,7 @@ export function MapSearchBar({
                 >
                   <PlaceFlag abbrev={c.code} size="sm" />
                   <span className="flex-1 min-w-0 truncate">{c.name}</span>
-                  <span className="text-caption text-white/30 tabular-nums flex-shrink-0">
+                  <span className="text-caption text-white/55 tabular-nums flex-shrink-0">
                     {c.churchCount.toLocaleString()}
                   </span>
                 </button>
@@ -545,7 +545,7 @@ export function MapSearchBar({
                   }}
                 >
                   <PlaceFlag abbrev={s.abbrev} size="sm" />
-                  <span className="w-5 text-caption text-white/30 font-mono flex-shrink-0">{s.abbrev}</span>
+                  <span className="w-5 text-caption text-white/55 font-mono flex-shrink-0">{s.abbrev}</span>
                   <span className="min-w-0 truncate">{STATE_NAMES[s.abbrev] || s.name || s.abbrev}</span>
                 </button>
               ))}
@@ -562,7 +562,7 @@ export function MapSearchBar({
             <>
               {localResults.length === 0 ? (
                 <div className="px-4 py-4 text-center">
-                  <p className="text-xs text-white/40">
+                  <p className="text-xs text-white/60">
                     {isViewportSearchMode && !searchAllMode && localResultsRaw.length > 0
                       ? "No churches in view for \u201c" + query + "\u201d"
                       : `No churches found for \u201c${query}\u201d`}
@@ -610,16 +610,16 @@ export function MapSearchBar({
                           {ch.name}
                         </div>
                         {(ch.address || ch.city || getFallbackLocation(ch, localChurchCountyById.get(ch.id))) && (
-                          <div className="text-xs text-white/40 truncate">
+                          <div className="text-xs text-white/60 truncate">
                             {formatAddressWithCity(ch.address, ch.city) || getFallbackLocation(ch, localChurchCountyById.get(ch.id))}
                           </div>
                         )}
                       </div>
-                      <ChevronRight size={14} className="text-white/20 flex-shrink-0" />
+                      <ChevronRight size={14} className="text-white/50 flex-shrink-0" />
                     </button>
                   ))}
                   {localResults.length >= MAX_RESULTS_STATE_VIEW && (
-                    <div className="px-4 py-2 text-xs text-white/30 text-center border-t border-white/5">
+                    <div className="px-4 py-2 text-xs text-white/55 text-center border-t border-white/5">
                       Keep typing to narrow results…
                     </div>
                   )}
@@ -677,7 +677,7 @@ export function MapSearchBar({
                 </div>
               )}
               {remoteLoading && !remoteSearched ? (
-                <div className="px-4 py-3 flex items-center justify-center gap-2 text-white/40">
+                <div className="px-4 py-3 flex items-center justify-center gap-2 text-white/60">
                   <ThreeDotLoader size={14} />
                   <span className="text-xs">Searching…</span>
                 </div>
@@ -695,7 +695,7 @@ export function MapSearchBar({
                 </div>
               ) : remoteSearched && remoteResults.length === 0 ? (
                 <div className="px-4 py-4 text-center">
-                  <p className="text-xs text-white/40">
+                  <p className="text-xs text-white/60">
                     {!hasPopulated
                       ? (isWorld
                           ? "Countries are still loading…"
@@ -733,12 +733,12 @@ export function MapSearchBar({
                           {r.name}
                         </div>
                         {(r.address || r.city || r.state || r.country || getFallbackLocation(r, remoteChurchCountyByKey.get(`${r.state}-${r.id}`))) && (
-                          <div className="text-xs text-white/40 truncate inline-flex items-center gap-1.5 max-w-full">
+                          <div className="text-xs text-white/60 truncate inline-flex items-center gap-1.5 max-w-full">
                             {isWorld && r.country ? (
                               <PlaceFlag abbrev={r.country} size="sm" />
                             ) : null}
                             <span className="truncate">
-                              {r.locationLabel
+                              {displayLocationLabel(r.locationLabel)
                                 || formatAddressWithCity(r.address, r.city)
                                 || getFallbackLocation(
                                     r,
@@ -753,11 +753,11 @@ export function MapSearchBar({
                           </div>
                         )}
                       </div>
-                      <ChevronRight size={14} className="text-white/20 flex-shrink-0" />
+                      <ChevronRight size={14} className="text-white/50 flex-shrink-0" />
                     </button>
                   ))}
                   {remoteResults.length >= (activePlaceFilter ? MAX_RESULTS_STATE_SCOPED : MAX_RESULTS) && (
-                    <div className="px-4 py-2 text-xs text-white/30 text-center border-t border-white/5">
+                    <div className="px-4 py-2 text-xs text-white/55 text-center border-t border-white/5">
                       Keep typing to narrow results…
                     </div>
                   )}
@@ -804,7 +804,7 @@ export function MapSearchBar({
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 transition-colors max-w-[9.5rem] ${
               activePlaceFilter
                 ? "bg-purple-500/30 text-purple-200 hover:bg-purple-500/40"
-                : "bg-white/8 text-white/40 hover:bg-white/12 hover:text-white/60"
+                : "bg-white/8 text-white/60 hover:bg-white/12 hover:text-white/60"
             }`}
           >
             {isWorld && countryFilter ? (
@@ -835,7 +835,7 @@ export function MapSearchBar({
                   ? `Search in ${STATE_NAMES[stateFilter] || stateFilter}…`
                   : "Find a church…"
           }
-          className="flex-1 bg-transparent text-white text-[15px] placeholder:text-white outline-none min-w-0"
+          className="flex-1 bg-transparent text-white text-[15px] placeholder:text-white/75 outline-none min-w-0"
         />
         {query.trim().length > 0 && (
           <button

@@ -27,7 +27,7 @@ export function VerifiedModePanel({
       {/* Count badge */}
       <div className="px-4 py-3 border-b border-white/10">
         {verifiedChurchCount == null ? (
-          <div className="flex items-center gap-2 text-xs text-white/40">
+          <div className="flex items-center gap-2 text-xs text-white/60">
             <span className="inline-block w-16 h-3 rounded bg-white/10 animate-pulse" />
             loading…
           </div>
@@ -60,7 +60,7 @@ export function VerifiedModePanel({
         <button
           type="button"
           onClick={onExitVerifiedMode}
-          className="w-full text-xs text-white/40 hover:text-white/70 transition-colors text-left"
+          className="w-full text-xs text-white/60 hover:text-white/70 transition-colors text-left"
         >
           Exit verified mode
         </button>

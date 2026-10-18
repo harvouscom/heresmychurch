@@ -135,7 +135,7 @@ export function VerificationModal({
               <HmcDialogTitle className="text-white font-semibold text-lg leading-tight">
                 Churches Needing Review
               </HmcDialogTitle>
-              <p className="text-white/40 text-xs mt-0.5">
+              <p className="text-white/60 text-xs mt-0.5">
                 {headerSubtitle} &middot; {incompleteTotal} church{incompleteTotal !== 1 ? "es" : ""} need review
               </p>
             </div>
@@ -159,7 +159,7 @@ export function VerificationModal({
 
         {/* Footer */}
         <div className="flex-shrink-0 px-5 py-3 border-t border-white/6 text-pretty">
-          <p className="text-white/25 text-caption text-center leading-relaxed">
+          <p className="text-white/55 text-caption text-center leading-relaxed">
             Complete = name + street address. Click a church to update its info.
           </p>
         </div>
@@ -201,8 +201,8 @@ function IncompleteChurchesList({
     return (
       <div className="flex flex-col items-center justify-center py-12 gap-3">
         <CheckCircle2 size={32} className="text-green-400/40" />
-        <p className="text-white/40 text-sm font-medium">All caught up!</p>
-        <p className="text-white/25 text-xs text-center max-w-[240px]">
+        <p className="text-white/60 text-sm font-medium">All caught up!</p>
+        <p className="text-white/55 text-xs text-center max-w-[240px]">
           No churches are missing critical information in this {scopeLabel}.
         </p>
       </div>
@@ -213,19 +213,19 @@ function IncompleteChurchesList({
     <div className="space-y-2">
       {/* Search input */}
       <div className="relative mb-3">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/55" />
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search churches needing review..."
-          className="w-full pl-9 pr-3 py-2 rounded-full bg-white/[0.05] border border-white/8 text-white text-xs placeholder:text-white/25 focus:outline-none focus:border-purple-500/40 transition-colors"
+          className="w-full pl-9 pr-3 py-2 rounded-full bg-white/[0.05] border border-white/8 text-white text-xs placeholder:text-white/45 focus:outline-none focus:border-purple-500/40 transition-colors"
         />
       </div>
 
       {displayed.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-10 gap-3">
-          <p className="text-white/40 text-xs">
+          <p className="text-white/60 text-xs">
             No churches needing review found for &ldquo;{search}&rdquo;
           </p>
           {onAddChurch && (
@@ -247,9 +247,11 @@ function IncompleteChurchesList({
             if (t1.missingAddress) missing.push("Address");
 
             return (
-              <div
+              <button
+                type="button"
+                disabled={!onChurchClick}
                 key={ch.id}
-                className={`rounded-xl bg-white/[0.03] border border-white/6 px-3.5 py-2.5 ${
+                className={`w-full text-left rounded-xl bg-white/[0.03] border border-white/6 px-3.5 py-2.5 disabled:cursor-default ${
                   onChurchClick ? "cursor-pointer hover:bg-white/[0.05] transition-colors group" : ""
                 }`}
                 onClick={() => onChurchClick && onChurchClick(ch)}
@@ -261,7 +263,7 @@ function IncompleteChurchesList({
                         {ch.name}
                       </h3>
                       {ch.city && (
-                        <span className="text-white/25 text-caption flex items-center gap-0.5 flex-shrink-0">
+                        <span className="text-white/55 text-caption flex items-center gap-0.5 flex-shrink-0">
                           <MapPin size={8} />
                           {ch.city}
                         </span>
@@ -280,14 +282,14 @@ function IncompleteChurchesList({
                     </div>
                   </div>
                   {onChurchClick && (
-                    <ChevronRight size={14} className="text-white/20 flex-shrink-0 group-hover:text-white/40 transition-colors" />
+                    <ChevronRight size={14} className="text-white/50 flex-shrink-0 group-hover:text-white/60 transition-colors" />
                   )}
                 </div>
-              </div>
+              </button>
             );
           })}
           {!isSearching && churches.length > DISPLAY_CAP && (
-            <div className="text-white/40 text-caption text-center leading-relaxed mt-2">
+            <div className="text-white/60 text-caption text-center leading-relaxed mt-2">
               Showing {DISPLAY_CAP} of {churches.length} churches needing review. Use search to find a specific church.
             </div>
           )}
@@ -366,7 +368,7 @@ export function NationalReviewModal({
               <HmcDialogTitle className="text-white font-semibold text-lg leading-tight">
                 {regionMany.charAt(0).toUpperCase() + regionMany.slice(1)} Needing Review
               </HmcDialogTitle>
-              <p className="text-white/40 text-xs mt-0.5">
+              <p className="text-white/60 text-xs mt-0.5">
                 {stats
                   ? `${stats.totalNeedsReview.toLocaleString()} church${stats.totalNeedsReview !== 1 ? "es" : ""} need review (${stats.percentage}%)`
                   : "Review stats could not be loaded."}
@@ -383,7 +385,7 @@ export function NationalReviewModal({
               <p className="text-white/60 text-sm font-medium text-center max-w-[260px]">
                 Review stats could not be loaded. The review-stats API may not be deployed yet, or there was a network error.
               </p>
-              <p className="text-white/40 text-xs text-center max-w-[260px]">
+              <p className="text-white/60 text-xs text-center max-w-[260px]">
                 You can still open any {regionOne} and use its &ldquo;need review&rdquo; pill to see churches needing review there.
               </p>
             </div>
@@ -393,26 +395,26 @@ export function NationalReviewModal({
 
               <div className="space-y-2">
                 <div className="relative mb-3">
-                  <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+                  <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/55" />
                   <input
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder={`Search ${regionMany}...`}
-                    className="w-full pl-10 pr-3 py-3 rounded-full bg-white/[0.05] border border-white/8 text-white text-[15px] placeholder:text-white/25 focus:outline-none focus:border-purple-500/40 transition-colors"
+                    className="w-full pl-10 pr-3 py-3 rounded-full bg-white/[0.05] border border-white/8 text-white text-[15px] placeholder:text-white/45 focus:outline-none focus:border-purple-500/40 transition-colors"
                   />
                 </div>
 
                 {stateEntries.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 gap-3">
                 <CheckCircle2 size={32} className="text-green-400/40" />
-                <p className="text-white/40 text-sm font-medium">All caught up!</p>
-                <p className="text-white/25 text-xs text-center max-w-[240px]">
+                <p className="text-white/60 text-sm font-medium">All caught up!</p>
+                <p className="text-white/55 text-xs text-center max-w-[240px]">
                   No {regionMany} have churches missing critical information.
                 </p>
               </div>
             ) : filtered.length === 0 ? (
-              <p className="text-white/40 text-xs py-6 text-center">
+              <p className="text-white/60 text-xs py-6 text-center">
                 No {regionMany} found for &ldquo;{search}&rdquo;
               </p>
             ) : (
@@ -420,9 +422,10 @@ export function NationalReviewModal({
                 const name = regionName(abbrev);
                 const pct = s.total > 0 ? Math.round((s.needsReview / s.total) * 1000) / 10 : 0;
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={abbrev}
-                    className="rounded-xl bg-white/[0.03] border border-white/6 px-3.5 py-2.5 cursor-pointer hover:bg-white/[0.05] transition-colors group flex items-center gap-3"
+                    className="w-full text-left rounded-xl bg-white/[0.03] border border-white/6 px-3.5 py-2.5 cursor-pointer hover:bg-white/[0.05] transition-colors group flex items-center gap-3"
                     onClick={() => {
                       onClose();
                       onSelectState(abbrev);
@@ -433,12 +436,12 @@ export function NationalReviewModal({
                       <span className="text-white font-medium truncate group-hover:text-purple-300 transition-colors">
                         {name}
                       </span>
-                      <span className="text-white/40 whitespace-nowrap">
+                      <span className="text-white/60 whitespace-nowrap">
                         {pct}% need review
                       </span>
                     </div>
-                    <ChevronRight size={14} className="text-white/20 flex-shrink-0 group-hover:text-white/40 transition-colors" />
-                  </div>
+                    <ChevronRight size={14} className="text-white/50 flex-shrink-0 group-hover:text-white/60 transition-colors" />
+                  </button>
                 );
               })
             )}
@@ -448,7 +451,7 @@ export function NationalReviewModal({
         </div>
 
         <div className="flex-shrink-0 px-5 py-3 border-t border-white/6 text-pretty">
-          <p className="text-white/25 text-caption text-center leading-relaxed">
+          <p className="text-white/55 text-caption text-center leading-relaxed">
             Click a {regionOne} to open its churches needing review. Complete = name + street address.
           </p>
         </div>

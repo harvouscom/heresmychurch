@@ -192,13 +192,13 @@ export function SummaryPanel({
 
         {/* Disclaimer + data source footer */}
         <div className="pt-2 border-t border-white/5 space-y-1.5 text-pretty">
-          <p className="text-white/30 text-caption text-center leading-relaxed italic">
+          <p className="text-white/55 text-caption text-center leading-relaxed italic">
             * Not all churches may be represented yet — our goal is for every church to be included.{" "}
             {focusedState
               ? "Find your church or add it below!"
               : `Click any ${regionNoun.one} to find or add your church!`}
           </p>
-          <p className="text-white/20 text-caption text-center leading-relaxed">
+          <p className="text-white/50 text-caption text-center leading-relaxed">
             Church data and building footprints from OpenStreetMap via Overpass API{" "}&middot;{" "}
             {countryCode === "US"
               ? <>Cross-referenced with The Association of Religion Data Archives (ARDA){" "}&middot;{" "}Population from U.S. Census Bureau{" "}&middot;{" "}</>
@@ -212,7 +212,7 @@ export function SummaryPanel({
               href="https://carto.com/attributions"
               target="_blank"
               rel="noopener noreferrer"
-              className="underline hover:text-white/40"
+              className="underline hover:text-white/60"
             >
               &copy; CARTO
             </a>{" "}
@@ -221,7 +221,7 @@ export function SummaryPanel({
               href="https://www.openstreetmap.org/copyright"
               target="_blank"
               rel="noopener noreferrer"
-              className="underline hover:text-white/40"
+              className="underline hover:text-white/60"
             >
               &copy; OpenStreetMap
             </a>{" "}
@@ -375,7 +375,7 @@ function CountySummaryContent({
                       }}
                     />
                   </div>
-                  <span className="text-white/40 text-caption flex-shrink-0 w-8 text-right">{pct < 1 ? "<1" : Math.round(pct)}%</span>
+                  <span className="text-white/60 text-caption flex-shrink-0 w-8 text-right">{pct < 1 ? "<1" : Math.round(pct)}%</span>
                 </div>
               );
             })}
@@ -396,7 +396,7 @@ function CountySummaryContent({
                   style={{ backgroundColor: s.color }}
                 />
                 <span className="text-white/70 text-xs flex-1">{s.label}</span>
-                <span className="text-white/40 text-xs font-medium">{s.count.toLocaleString()}</span>
+                <span className="text-white/60 text-xs font-medium">{s.count.toLocaleString()}</span>
               </div>
             ))}
           </div>
@@ -490,7 +490,7 @@ function StateSummaryContent({
                     }}
                   />
                 </div>
-                <span className="text-white/40 text-caption flex-shrink-0 w-8 text-right">{pct < 1 ? "<1" : Math.round(pct)}%</span>
+                <span className="text-white/60 text-caption flex-shrink-0 w-8 text-right">{pct < 1 ? "<1" : Math.round(pct)}%</span>
               </div>
             );
           })}
@@ -510,7 +510,7 @@ function StateSummaryContent({
                 style={{ backgroundColor: s.color }}
               />
               <span className="text-white/70 text-xs flex-1">{s.label}</span>
-              <span className="text-white/40 text-xs font-medium">{s.count.toLocaleString()}</span>
+              <span className="text-white/60 text-xs font-medium">{s.count.toLocaleString()}</span>
             </div>
           ))}
         </div>
@@ -609,7 +609,7 @@ function NationalSummaryContent({
       {/* Unloaded regions hint */}
       {stats.unpopulated > 0 && (
         <div className="rounded-lg bg-purple-900/20 border border-purple-500/10 px-3 py-2.5">
-          <p className="text-white/40 text-caption leading-relaxed text-center">
+          <p className="text-white/60 text-caption leading-relaxed text-center">
             {stats.unpopulated} {stats.unpopulated === 1 ? regionOne : regionLabel} remaining — click any {regionOne} to fetch its data from OpenStreetMap
           </p>
         </div>
@@ -654,7 +654,7 @@ function NationalPreviousReportsExpand({
             >
               <BarChart3 size={11} className="text-indigo-400/70 shrink-0" />
               <span className="min-w-0 truncate">{r.title}</span>
-              <span className="ml-auto shrink-0 text-caption text-white/35 tabular-nums">
+              <span className="ml-auto shrink-0 text-caption text-white/60 tabular-nums">
                 {r.totalChurches.toLocaleString()}
               </span>
             </Link>
