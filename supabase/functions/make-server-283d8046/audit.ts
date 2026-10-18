@@ -1,6 +1,6 @@
 // Church change audit log — non-throwing; failures must not break mutations
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
-import { env } from "./runtime.ts";
+import { env, waitUntil } from "./runtime.ts";
 
 // Reuse a single client instance to avoid per-request connection overhead
 let _client: ReturnType<typeof createClient> | null = null;
@@ -36,7 +36,18 @@ function hashForAudit(s: string): string {
   return Math.abs(h).toString(36);
 }
 
-export async function recordChurchAudit(
+/** Insert an audit row. Registered with waitUntil so fire-and-forget callers
+ *  (`void recordChurchAudit(...)`) aren't cut off after the response on Workers. */
+export function recordChurchAudit(
+  entry: AuditEntry,
+  opts?: { hashIp?: string; hashModKey?: string }
+): Promise<void> {
+  const p = recordChurchAuditNow(entry, opts);
+  waitUntil(p);
+  return p;
+}
+
+async function recordChurchAuditNow(
   entry: AuditEntry,
   opts?: { hashIp?: string; hashModKey?: string }
 ): Promise<void> {
