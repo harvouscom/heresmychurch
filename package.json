@@ -17,7 +17,8 @@
     "preview:cf": "pnpm run build && wrangler dev",
     "deploy:api": "wrangler deploy -c api/wrangler.jsonc",
     "dev:api": "wrangler dev -c api/wrangler.jsonc --port 8790",
-    "parity:api": "node scripts/api-parity.mjs"
+    "parity:api": "node scripts/api-parity.mjs",
+    "contract:api": "node scripts/api-contract.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
