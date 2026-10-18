@@ -158,7 +158,7 @@ export function AuditModal({
                         {entry.source.replace(/_/g, " ")}
                       </span>
                     </div>
-                    <span className="text-white/40 text-xs">
+                    <span className="text-white/60 text-xs">
                       {formatTimeAgo(entry.created_at)}
                     </span>
                   </div>
@@ -172,7 +172,7 @@ export function AuditModal({
                         ))}
                       </div>
                       {(entry.church_city_state || (entry.church_id && entry.state && entry.state !== "ALL")) && (
-                        <div className="text-white/40 text-xs mt-0.5">
+                        <div className="text-white/60 text-xs mt-0.5">
                           {entry.church_city_state || entry.state}
                         </div>
                       )}

@@ -91,7 +91,7 @@ function AttendanceLegend({
             }}
           />
           <span className="text-xs text-white/60">{cat.label}</span>
-          <span className="text-xs text-white/30 ml-auto pl-3">
+          <span className="text-xs text-white/55 ml-auto pl-3">
             {(() => {
               const count = sizeCounts[cat.label] || 0;
               if (filteredChurchCount === 0 || count === 0) return "0%";
@@ -132,7 +132,7 @@ function StateLegend({
             />
             <span className="text-xs text-white/60">{tier.label}</span>
             {count > 0 && (
-              <span className="text-xs text-white/30 ml-auto pl-3">
+              <span className="text-xs text-white/55 ml-auto pl-3">
                 {count}
               </span>
             )}

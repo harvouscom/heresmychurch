@@ -309,7 +309,7 @@ export function ChurchListModal({
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field)
-      return <ArrowUpDown size={12} className="text-white/20" />;
+      return <ArrowUpDown size={12} className="text-white/50" />;
     return sortDir === "asc" ? (
       <ArrowUp size={12} className="text-purple-400" />
     ) : (
@@ -320,6 +320,12 @@ export function ChurchListModal({
   const allDenomsSelected =
     selectedDenominations.size === DENOMINATION_GROUPS.length;
   const allSizesSelected = selectedSizes.size === sizeCategories.length;
+
+  const resetFilters = () => {
+    setSelectedDenominations(new Set(DENOMINATION_GROUPS.map((g) => g.label)));
+    setSelectedSizes(new Set(sizeCategories.map((c) => c.label)));
+    setSelectedReactionFilter("any");
+  };
 
   const activeFilterCount =
     (allDenomsSelected ? 0 : 1) +
@@ -360,7 +366,7 @@ export function ChurchListModal({
                     ? countyName
                     : stateName}
                 </HmcDialogTitle>
-                <p className="text-white/40 text-xs mt-0.5">
+                <p className="text-white/60 text-xs mt-0.5">
                   {filteredChurches.length.toLocaleString()} of{" "}
                   {churches.length.toLocaleString()} churches
                 </p>
@@ -381,7 +387,7 @@ export function ChurchListModal({
                       <MapPin size={15} className="text-purple-400" />
                     </div>
                     <div>
-                      <p className="text-xs text-white/35 uppercase tracking-wider leading-none">
+                      <p className="text-xs text-white/60 uppercase tracking-wider leading-none">
                         Est. Population
                       </p>
                       <p className="text-lg font-semibold text-white leading-tight mt-0.5">
@@ -397,7 +403,7 @@ export function ChurchListModal({
                     <Users size={15} className="text-purple-400" />
                   </div>
                   <div>
-                    <p className="text-xs text-white/35 uppercase tracking-wider leading-none">
+                    <p className="text-xs text-white/60 uppercase tracking-wider leading-none">
                       Median Attendance
                     </p>
                     <p className="text-lg font-semibold text-white leading-tight mt-0.5">
@@ -408,10 +414,10 @@ export function ChurchListModal({
 
                 {/* Top denominations */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-white/35 uppercase tracking-wider mb-2">
+                  <p className="text-xs text-white/60 uppercase tracking-wider mb-2">
                     Top Denominations
                     {stateStats.otherPct > 0 && (
-                      <span className="normal-case tracking-normal text-white/20 ml-1.5">
+                      <span className="normal-case tracking-normal text-white/50 ml-1.5">
                         · {stateStats.otherPct}% unidentified
                       </span>
                     )}
@@ -446,14 +452,14 @@ export function ChurchListModal({
             <div className="relative flex-1 basis-full md:basis-auto">
               <Search
                 size={15}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-white/55"
               />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search by name, city, denomination, or address..."
-                className="w-full bg-white/6 text-white text-sm rounded-xl pl-10 pr-4 py-2.5 placeholder:text-white/25 border border-white/8 focus:outline-none focus:border-purple-500/50 transition-colors"
+                className="w-full bg-white/6 text-white text-sm rounded-xl pl-10 pr-4 py-2.5 placeholder:text-white/45 border border-white/8 focus:outline-none focus:border-purple-500/50 transition-colors"
               />
               {searchQuery && (
                 <button
@@ -462,7 +468,7 @@ export function ChurchListModal({
                   aria-label="Clear search"
                   className="absolute right-3 top-1/2 -translate-y-1/2"
                 >
-                  <X size={14} className="text-white/30 hover:text-white/60" />
+                  <X size={14} className="text-white/55 hover:text-white/60" />
                 </button>
               )}
             </div>
@@ -527,7 +533,7 @@ export function ChurchListModal({
                             {group.label}
                           </span>
                         </div>
-                        <span className="text-xs text-white/25">{count}</span>
+                        <span className="text-xs text-white/55">{count}</span>
                       </label>
                     );
                   })}
@@ -601,7 +607,7 @@ export function ChurchListModal({
                             {cat.label}
                           </span>
                         </div>
-                        <span className="text-xs text-white/25">{count}</span>
+                        <span className="text-xs text-white/55">{count}</span>
                       </label>
                     );
                   })}
@@ -670,7 +676,7 @@ export function ChurchListModal({
                         <span className="text-xs text-white/70">{label}</span>
                       </div>
                       {value !== "any" && (
-                        <span className="text-xs text-white/25">
+                        <span className="text-xs text-white/55">
                           {reactionFilterCounts[value]}
                         </span>
                       )}
@@ -729,16 +735,9 @@ export function ChurchListModal({
                 </span>
               )}
               <button
-                onClick={() => {
-                  setSelectedDenominations(
-                    new Set(DENOMINATION_GROUPS.map((g) => g.label))
-                  );
-                  setSelectedSizes(
-                    new Set(sizeCategories.map((c) => c.label))
-                  );
-                  setSelectedReactionFilter("any");
-                }}
-                className="text-xs text-white/30 hover:text-white/50 ml-1"
+                type="button"
+                onClick={resetFilters}
+                className="text-xs text-white/60 hover:text-white ml-1"
               >
                 Reset all
               </button>
@@ -752,7 +751,7 @@ export function ChurchListModal({
             <button
               type="button"
               onClick={() => handleSort("name")}
-              className="flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
+              className="flex items-center gap-1.5 text-xs font-semibold text-white/60 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
               style={{ boxShadow: "none" }}
             >
               Church Name <SortIcon field="name" />
@@ -760,7 +759,7 @@ export function ChurchListModal({
             <button
               type="button"
               onClick={() => handleSort("city")}
-              className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
+              className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-white/60 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
               style={{ boxShadow: "none" }}
             >
               City <SortIcon field="city" />
@@ -768,7 +767,7 @@ export function ChurchListModal({
             <button
               type="button"
               onClick={() => handleSort("address")}
-              className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
+              className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-white/60 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
               style={{ boxShadow: "none" }}
             >
               Address <SortIcon field="address" />
@@ -776,7 +775,7 @@ export function ChurchListModal({
             <button
               type="button"
               onClick={() => handleSort("denomination")}
-              className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
+              className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-white/60 uppercase tracking-wider hover:text-white/60 transition-colors text-left"
               style={{ boxShadow: "none" }}
             >
               Denomination <SortIcon field="denomination" />
@@ -784,7 +783,7 @@ export function ChurchListModal({
             <button
               type="button"
               onClick={() => handleSort("attendance")}
-              className="flex items-center gap-1.5 text-xs font-semibold text-white/40 uppercase tracking-wider hover:text-white/60 transition-colors text-right justify-end"
+              className="flex items-center gap-1.5 text-xs font-semibold text-white/60 uppercase tracking-wider hover:text-white/60 transition-colors text-right justify-end"
               style={{ boxShadow: "none" }}
             >
               Attendance <SortIcon field="attendance" />
@@ -796,11 +795,23 @@ export function ChurchListModal({
         <div className="flex-1 overflow-hidden min-h-0" ref={listContainerRef}>
           {filteredChurches.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Search size={32} className="text-white/15 mb-3" />
-              <p className="text-white/40 text-sm">No churches found</p>
-              <p className="text-white/20 text-xs mt-1">
-                Try adjusting your search or filters
+              <Search size={32} className="text-white/50 mb-3" />
+              <p className="text-white/70 text-sm">No churches found</p>
+              <p className="text-white/55 text-xs mt-1">
+                Try a different search{activeFilterCount > 0 ? " or clear your filters" : ""}.
               </p>
+              {(activeFilterCount > 0 || searchQuery) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetFilters();
+                    setSearchQuery("");
+                  }}
+                  className="mt-3 px-3.5 py-1.5 coarse:min-h-10 rounded-full bg-purple-500/20 text-purple-200 text-xs font-medium hover:bg-purple-500/30 transition-colors"
+                >
+                  Clear search and filters
+                </button>
+              )}
             </div>
           ) : (
             <List
@@ -870,7 +881,7 @@ export function ChurchListModal({
                           ) : dominant === "like" ? (
                             <ThumbsUp size={12} className="text-green-400/80 flex-shrink-0" />
                           ) : dominant === "mixed" ? (
-                            <ThumbsDown size={12} className="text-white/30 flex-shrink-0" />
+                            <ThumbsDown size={12} className="text-white/55 flex-shrink-0" />
                           ) : null;
                         })()}
                         <span className="text-sm text-white/70 tabular-nums">
@@ -895,7 +906,7 @@ export function ChurchListModal({
 
         {/* Footer */}
         <div className="flex-shrink-0 px-4 md:px-6 py-3 border-t border-white/6 flex items-center justify-between gap-2">
-          <span className="text-xs text-white/25">
+          <span className="text-xs text-white/55">
             Showing {filteredChurches.length.toLocaleString()} of{" "}
             {churches.length.toLocaleString()}
           </span>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   X,
   Plus,
@@ -166,6 +166,7 @@ export function AddChurchForm({
   onSelectChurch,
   onChurchAdded,
 }: AddChurchFormProps) {
+  const fieldId = useId();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
@@ -363,9 +364,9 @@ export function AddChurchForm({
   };
 
   const inputClass =
-    "w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/20";
+    "w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/45";
   const labelClass =
-    "text-caption uppercase tracking-wider text-white/40 font-semibold";
+    "text-caption uppercase tracking-wider text-white/60 font-semibold";
 
   return (
     <HmcDialog onClose={requestClose} closeOnBackdrop={!isDirty} elevated className="w-[95vw] max-w-[560px] bg-hmc-surface-sunken">
@@ -384,7 +385,7 @@ export function AddChurchForm({
               <HmcDialogTitle className="text-white font-semibold text-base leading-tight">
                 Add a Church in {stateName}
               </HmcDialogTitle>
-              <p className="text-white/40 text-caption mt-1 leading-relaxed">
+              <p className="text-white/60 text-caption mt-1 leading-relaxed">
                 Don&apos;t see your church? Add it below and it will appear on the map right away.
               </p>
             </div>
@@ -458,7 +459,7 @@ export function AddChurchForm({
                         </p>
                       )}
                       {ch.denomination && (
-                        <p className="text-white/40 text-xs">{ch.denomination}</p>
+                        <p className="text-white/60 text-xs">{ch.denomination}</p>
                       )}
                     </div>
                     <button
@@ -512,9 +513,9 @@ export function AddChurchForm({
               <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                 <div className="flex items-center gap-2 mb-2">
                   <ChurchIcon size={13} className="text-purple-400" />
-                  <span className={labelClass}>Church Name *</span>
+                  <label htmlFor={`${fieldId}-church-name`} className={labelClass}>Church name *</label>
                 </div>
-                <input
+                <input id={`${fieldId}-church-name`} aria-required="true"
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -528,9 +529,9 @@ export function AddChurchForm({
                 <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                   <div className="flex items-center gap-2 mb-2">
                     <MapPin size={13} className="text-purple-400" />
-                    <span className={labelClass}>Street address *</span>
+                    <label htmlFor={`${fieldId}-street-address`} className={labelClass}>Street address *</label>
                   </div>
-                  <input
+                  <input id={`${fieldId}-street-address`} aria-required="true"
                     type="text"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
@@ -541,9 +542,9 @@ export function AddChurchForm({
                 <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                   <div className="flex items-center gap-2 mb-2">
                     <MapPin size={13} className="text-purple-400" />
-                    <span className={labelClass}>City *</span>
+                    <label htmlFor={`${fieldId}-city`} className={labelClass}>City *</label>
                   </div>
-                  <input
+                  <input id={`${fieldId}-city`} aria-required="true"
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
@@ -552,7 +553,7 @@ export function AddChurchForm({
                   />
                 </div>
               </div>
-              <p className="text-caption text-white/40 -mt-1">
+              <p className="text-caption text-white/60 -mt-1">
                 We&apos;ll look up the location from this address to place the church on the map.
               </p>
 
@@ -561,9 +562,9 @@ export function AddChurchForm({
                 <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                   <div className="flex items-center gap-2 mb-2">
                     <ChurchIcon size={13} className="text-purple-400" />
-                    <span className={labelClass}>Denomination</span>
+                    <label htmlFor={`${fieldId}-denomination`} className={labelClass}>Denomination</label>
                   </div>
-                  <select
+                  <select id={`${fieldId}-denomination`}
                     value={denomination}
                     onChange={(e) => setDenomination(e.target.value)}
                     className={`${inputClass} appearance-none`}
@@ -590,9 +591,9 @@ export function AddChurchForm({
                 <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                   <div className="flex items-center gap-2 mb-2">
                     <Users size={13} className="text-purple-400" />
-                    <span className={labelClass}>Attendance</span>
+                    <label htmlFor={`${fieldId}-attendance`} className={labelClass}>Attendance</label>
                   </div>
-                  <input
+                  <input id={`${fieldId}-attendance`}
                     type="number"
                     value={attendance}
                     onChange={(e) => setAttendance(e.target.value)}
@@ -608,9 +609,9 @@ export function AddChurchForm({
               <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                 <div className="flex items-center gap-2 mb-2">
                   <Globe size={13} className="text-purple-400" />
-                  <span className={labelClass}>Website</span>
+                  <label htmlFor={`${fieldId}-website`} className={labelClass}>Website</label>
                 </div>
-                <input
+                <input id={`${fieldId}-website`}
                   type="text"
                   value={website}
                   onChange={(e) => setWebsite(e.target.value)}
@@ -622,7 +623,7 @@ export function AddChurchForm({
               {/* Extended fields toggle */}
               <button
                 onClick={() => setShowExtended(!showExtended)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/10 hover:border-purple-500/30 hover:bg-white/[0.02] transition-all text-white/40 hover:text-white/60 text-xs"
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/10 hover:border-purple-500/30 hover:bg-white/[0.02] transition-all text-white/60 hover:text-white/60 text-xs"
               >
                 {showExtended ? "Hide" : "Add"} Service Details, Languages & More
                 <ChevronDown
@@ -637,7 +638,7 @@ export function AddChurchForm({
                   <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                     <div className="flex items-center gap-2 mb-2">
                       <Clock size={13} className="text-purple-400" />
-                      <span className={labelClass}>Service Times</span>
+                      <span className={labelClass}>Service times</span>
                     </div>
                     <ServiceTimesInput
                       value={serviceTimes}
@@ -661,7 +662,7 @@ export function AddChurchForm({
                           className={`px-2.5 py-1 rounded-full text-caption font-medium transition-all border ${
                             selectedLanguages.has(lang)
                               ? "bg-purple-500/30 border-purple-500/50 text-purple-300"
-                              : "bg-white/5 border-white/8 text-white/40 hover:text-white/60 hover:border-white/15"
+                              : "bg-white/5 border-white/8 text-white/60 hover:text-white/60 hover:border-white/15"
                           }`}
                         >
                           {selectedLanguages.has(lang) && (
@@ -689,7 +690,7 @@ export function AddChurchForm({
                           className={`px-2.5 py-1 rounded-full text-caption font-medium transition-all border ${
                             selectedMinistries.has(ministry)
                               ? "bg-purple-500/30 border-purple-500/50 text-purple-300"
-                              : "bg-white/5 border-white/8 text-white/40 hover:text-white/60 hover:border-white/15"
+                              : "bg-white/5 border-white/8 text-white/60 hover:text-white/60 hover:border-white/15"
                           }`}
                         >
                           {selectedMinistries.has(ministry) && (
@@ -705,9 +706,9 @@ export function AddChurchForm({
                   <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                     <div className="flex items-center gap-2 mb-2">
                       <User size={13} className="text-purple-400" />
-                      <span className={labelClass}>Lead Pastor</span>
+                      <label htmlFor={`${fieldId}-lead-pastor`} className={labelClass}>Lead pastor</label>
                     </div>
-                    <input
+                    <input id={`${fieldId}-lead-pastor`}
                       type="text"
                       value={pastorName}
                       onChange={(e) => setPastorName(e.target.value)}
@@ -720,9 +721,9 @@ export function AddChurchForm({
                     <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                       <div className="flex items-center gap-2 mb-2">
                         <Phone size={13} className="text-purple-400" />
-                        <span className={labelClass}>Phone</span>
+                        <label htmlFor={`${fieldId}-phone`} className={labelClass}>Phone</label>
                       </div>
-                      <input
+                      <input id={`${fieldId}-phone`}
                         type="tel"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
@@ -733,9 +734,9 @@ export function AddChurchForm({
                     <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
                       <div className="flex items-center gap-2 mb-2">
                         <Mail size={13} className="text-purple-400" />
-                        <span className={labelClass}>Email</span>
+                        <label htmlFor={`${fieldId}-email`} className={labelClass}>Email</label>
                       </div>
-                      <input
+                      <input id={`${fieldId}-email`}
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
@@ -771,7 +772,7 @@ export function AddChurchForm({
               </button>
 
               {/* Info note */}
-              <p className="text-white/20 text-caption leading-relaxed text-center pt-1">
+              <p className="text-white/50 text-caption leading-relaxed text-center pt-1">
                 Your church will appear on the map immediately. Anyone can
                 suggest corrections to keep the info accurate.
               </p>

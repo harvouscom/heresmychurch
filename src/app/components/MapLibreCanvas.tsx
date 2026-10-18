@@ -333,6 +333,8 @@ const BASEMAP_STYLE: StyleSpecification = {
 // Continental-US default view (Web Mercator zoom 0–22, not the old 1–500 scale).
 export const US_DEFAULT_CENTER: [number, number] = [-98.5, 39.5];
 export const US_DEFAULT_ZOOM = 3.4;
+// Camera moves pass `essential: false` so MapLibre jumps instead of flying when the OS
+// asks to reduce motion.
 /** Continental US. On narrow screens the tuned zoom above crops the coasts, so the
  *  national frame zooms out (never in) until these bounds fit the viewport. */
 const CONUS_BOUNDS: [[number, number], [number, number]] = [[-124.8, 24.4], [-66.9, 49.4]];
@@ -1776,7 +1778,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       zoom,
       padding: paddingRef.current,
       duration: transitionMs,
-      essential: true,
+      essential: false,
     });
     // fitToFocusedState is config, not a trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1825,7 +1827,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       pendingMinZoomRef.current =
         target?.zoom != null ? Math.max(0, target.zoom - ZOOM_OUT_ALLOWANCE) : null;
       if (!target) return;
-      map.flyTo({ ...target, padding: paddingRef.current, duration: transitionMs, essential: true });
+      map.flyTo({ ...target, padding: paddingRef.current, duration: transitionMs, essential: false });
     };
 
     const apply = async () => {
@@ -1836,7 +1838,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
           zoom: CHURCH_VIEW_ZOOM,
           padding: paddingRef.current,
           duration: transitionMs,
-          essential: true,
+          essential: false,
         });
         return;
       }
@@ -1881,7 +1883,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
           zoom: WORLD_ZOOM,
           padding: paddingRef.current,
           duration: transitionMs,
-          essential: true,
+          essential: false,
         });
         return;
       }
@@ -1905,7 +1907,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
             frameZoom - COUNTRY_ZOOM_OUT_DELTA - COUNTRY_ZOOM_OUT_FLOOR_EXTRA,
           );
           if (crosses || !target) map.fitBounds(cb, { padding: paddingRef.current, duration: transitionMs });
-          else map.flyTo({ ...target, padding: paddingRef.current, duration: transitionMs, essential: true });
+          else map.flyTo({ ...target, padding: paddingRef.current, duration: transitionMs, essential: false });
           return;
         }
       }
@@ -1922,7 +1924,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
         zoom: usZoom,
         padding: paddingRef.current,
         duration: transitionMs,
-        essential: true,
+        essential: false,
       });
     };
 

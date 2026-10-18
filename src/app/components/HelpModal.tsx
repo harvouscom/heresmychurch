@@ -66,7 +66,7 @@ export function HelpModal({
         </div>
 
         <div className="px-6 py-5 overflow-y-auto flex-1 min-h-0">
-          <p className="text-white/40 text-caption uppercase tracking-wider font-medium mb-3">
+          <p className="text-white/60 text-caption uppercase tracking-wider font-medium mb-3">
             Contact & report
           </p>
           <div className="flex flex-wrap gap-2 mb-5">
@@ -84,7 +84,7 @@ export function HelpModal({
                 type="button"
                 onClick={handleCopyEmail}
                 aria-label="Copy email"
-                className="flex-shrink-0 p-0.5 rounded hover:bg-white/10 transition-colors text-white/40 hover:text-white/70"
+                className="flex-shrink-0 p-0.5 rounded hover:bg-white/10 transition-colors text-white/60 hover:text-white/70"
               >
                 {copiedEmail ? (
                   <Check size={12} aria-hidden />
@@ -132,16 +132,16 @@ export function HelpModal({
             >
               <Shield size={14} className="flex-shrink-0" />
               Privacy policy
-              <ExternalLink size={12} className="text-white/40 flex-shrink-0" aria-hidden />
+              <ExternalLink size={12} className="text-white/60 flex-shrink-0" aria-hidden />
             </a>
           </div>
 
-          <p className="text-white/40 text-caption uppercase tracking-wider font-medium mb-3">
+          <p className="text-white/60 text-caption uppercase tracking-wider font-medium mb-3">
             Common questions
           </p>
           <Accordion type="single" collapsible className="border-white/10">
             <AccordionItem value="this-project" className="border-white/10">
-              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/60">
                 What is this project?
               </AccordionTrigger>
               <AccordionContent className="text-white/70 space-y-2">
@@ -159,7 +159,7 @@ export function HelpModal({
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="goals" className="border-white/10">
-              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/60">
                 What are the goals?
               </AccordionTrigger>
               <AccordionContent className="text-white/70">
@@ -169,7 +169,7 @@ export function HelpModal({
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="data-source" className="border-white/10">
-              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/60">
                 Where does the data come from?
               </AccordionTrigger>
               <AccordionContent className="text-white/70">
@@ -182,7 +182,7 @@ export function HelpModal({
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="methodology-numbers" className="border-white/10">
-              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/60">
                 How are the numbers calculated and presented?
               </AccordionTrigger>
               <AccordionContent className="text-white/70 text-sm leading-relaxed">
@@ -190,7 +190,7 @@ export function HelpModal({
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="add-church" className="border-white/10">
-              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/60">
                 How do I add a church?
               </AccordionTrigger>
               <AccordionContent className="text-white/70 space-y-2">
@@ -206,7 +206,7 @@ export function HelpModal({
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="suggest-edit" className="border-white/10">
-              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/60">
                 How do I suggest an edit or correct information?
               </AccordionTrigger>
               <AccordionContent className="text-white/70">
@@ -216,7 +216,7 @@ export function HelpModal({
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="how-we-compare" className="border-white/10">
-              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/60">
                 How does HMC compare to other directories?
               </AccordionTrigger>
               <AccordionContent className="text-white/70 space-y-3">
@@ -260,7 +260,7 @@ export function HelpModal({
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="data-updates" className="border-white/10">
-              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/60">
                 How often is the data updated?
               </AccordionTrigger>
               <AccordionContent className="text-white/70">
@@ -270,7 +270,7 @@ export function HelpModal({
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="open-source" className="border-white/10">
-              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/60">
                 Is this open source?
               </AccordionTrigger>
               <AccordionContent className="text-white/70">
@@ -296,7 +296,7 @@ export function HelpModal({
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="expand-coverage" className="border-white/10">
-              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/40">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/60">
                 Will coverage keep expanding?
               </AccordionTrigger>
               <AccordionContent className="text-white/70">
@@ -312,7 +312,7 @@ export function HelpModal({
           <Button variant="brand" size="block" onClick={onClose}>
             Close
           </Button>
-          <p className="text-white/25 text-caption text-center mt-1.5">Version {__APP_VERSION__}</p>
+          <p className="text-white/55 text-caption text-center mt-1.5">Version {__APP_VERSION__}</p>
         </div>
     </HmcDialog>
   );

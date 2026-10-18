@@ -120,8 +120,8 @@ export function hasUsableEmail(email: string | undefined): boolean {
 
 /**
  * Returns a fallback location string when a church has no complete address/city,
- * e.g. "Somewhere in Polk, Iowa" when `countyName` is resolved from coordinates.
- * Without a county name, uses the region only: "Somewhere in Iowa".
+ * e.g. "Address unknown · Polk, Iowa" when `countyName` is resolved from coordinates.
+ * Without a county name, uses the region only: "Address unknown · Iowa".
  * Returns null if city is present (caller should use city as fallback) or state is unknown.
  *
  * Pass `regionName` for intl regions (or any non-US display name) so labels are not
@@ -146,12 +146,20 @@ export function getFallbackLocation(
     stateAbbrev;
   const cn = (countyName ?? "").trim();
   if (cn) {
-    return `Somewhere in ${cn}, ${resolvedName}`;
+    return `${UNKNOWN_ADDRESS_PREFIX}${cn}, ${resolvedName}`;
   }
-  return `Somewhere in ${resolvedName}`;
+  return `${UNKNOWN_ADDRESS_PREFIX}${resolvedName}`;
 }
 
-const SOMEWHERE_IN_PREFIX = /^Somewhere in /i;
+/** Shown before the county/region when a church has no street address or city. */
+export const UNKNOWN_ADDRESS_PREFIX = "Address unknown \u00b7 ";
+// Older copy (still sent by the search API's locationLabel) used "Somewhere in ".
+const SOMEWHERE_IN_PREFIX = /^(Somewhere in |Address unknown \u00b7 )/i;
+
+/** Normalise a server location label to the current "Address unknown · …" wording. */
+export function displayLocationLabel(label: string | null | undefined): string {
+  return (label ?? "").replace(/^Somewhere in /i, UNKNOWN_ADDRESS_PREFIX);
+}
 
 /**
  * Compact location string for external search (e.g. Google) when pairing with church name.

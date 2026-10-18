@@ -1,4 +1,4 @@
-import { Plus, Clock } from "lucide-react";
+import { Plus, Clock, X } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import {
   SERVICE_DAYS,
@@ -182,8 +182,8 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
     : "bg-white/8 rounded-lg px-2 py-1.5 text-white text-caption border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors appearance-none cursor-pointer";
 
   const inputClass = compact
-    ? "bg-white/5 rounded px-2 py-1 text-caption text-white/90 border border-white/5 focus:border-purple-500/30 focus:outline-none transition-colors placeholder:text-white/40"
-    : "bg-white/5 rounded-lg px-2 py-1.5 text-caption text-white/90 border border-white/5 focus:border-purple-500/30 focus:outline-none transition-colors placeholder:text-white/40";
+    ? "bg-white/5 rounded px-2 py-1 text-caption text-white/90 border border-white/5 focus:border-purple-500/30 focus:outline-none transition-colors placeholder:text-white/60"
+    : "bg-white/5 rounded-lg px-2 py-1.5 text-caption text-white/90 border border-white/5 focus:border-purple-500/30 focus:outline-none transition-colors placeholder:text-white/60";
 
   const amPmClass = compact
     ? "px-2 py-1 text-caption font-semibold transition-colors"
@@ -225,7 +225,7 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
               ))}
             </select>
 
-            <span className="text-white/30 text-xs font-bold">:</span>
+            <span className="text-white/55 text-xs font-bold">:</span>
 
             <select
               value={entry.minute}
@@ -249,7 +249,7 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
                 className={`${amPmClass} coarse:min-h-10 coarse:min-w-10 ${
                   entry.period === "AM"
                     ? "bg-purple-500/40 text-white"
-                    : "bg-white/5 text-white/30 hover:text-white/50"
+                    : "bg-white/5 text-white/55 hover:text-white/50"
                 }`}
               >
                 AM
@@ -261,7 +261,7 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
                 className={`${amPmClass} coarse:min-h-10 coarse:min-w-10 ${
                   entry.period === "PM"
                     ? "bg-purple-500/40 text-white"
-                    : "bg-white/5 text-white/30 hover:text-white/50"
+                    : "bg-white/5 text-white/55 hover:text-white/50"
                 }`}
               >
                 PM
@@ -273,13 +273,25 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
             type="text"
             value={entry.label}
             onChange={(e) => updateEntry(entry.id, "label", e.target.value)}
-            placeholder="Optional label (e.g. Spanish, Youth) to differentiate"
+            placeholder="Label, e.g. Spanish (optional)"
+            aria-label="Service label (optional)"
             maxLength={20}
             className={`${inputClass} w-full`}
           />
 
-          <div className={`leading-relaxed text-white/60 ${compact ? "text-caption" : "text-caption"}`}>
-            Stored as: <span className="text-white/90 font-mono">{formatEntryStored(entry)}</span>
+          <div className="flex items-center justify-between gap-2 leading-relaxed text-white/60 text-caption">
+            <span>
+              Stored as: <span className="text-white/90 font-mono">{formatEntryStored(entry)}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => removeEntry(entry.id)}
+              aria-label={`Remove the ${formatEntryStored(entry)} service`}
+              className="flex-shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 coarse:min-h-10 text-caption font-medium text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <X size={12} />
+              Remove
+            </button>
           </div>
         </div>
       ))}
@@ -294,22 +306,13 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
           Add service
         </button>
 
-        {entries.length > 0 && (
-          <button
-            type="button"
-            onClick={() => removeEntry(entries[entries.length - 1].id)}
-            className="px-3 py-1.5 coarse:min-h-10 rounded-lg text-caption font-medium text-white/65 hover:bg-white/5 transition-colors"
-          >
-            Remove
-          </button>
-        )}
 
         {entries.length === 0 && (
           <div className="relative">
             <button
               type="button"
               onClick={() => setShowPresets(!showPresets)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-caption font-medium text-white/30 hover:text-white/50 bg-white/5 hover:bg-white/8 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-caption font-medium text-white/55 hover:text-white/50 bg-white/5 hover:bg-white/8 transition-colors"
             >
               <Clock size={11} />
               Quick presets
@@ -326,7 +329,7 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
                     className="w-full text-left px-2.5 py-1.5 rounded-md text-caption text-white/60 hover:text-white hover:bg-white/8 transition-colors"
                   >
                     {preset.label}
-                    <span className="block text-caption text-white/25 mt-0.5">
+                    <span className="block text-caption text-white/55 mt-0.5">
                       {preset.entries
                         .map((e) => `${e.day} ${e.hour}:${e.minute.padStart(2, "0")} ${e.period}`)
                         .join(", ")}

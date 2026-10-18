@@ -307,14 +307,14 @@ export function PendingAlertsPill({
                         placeholder="Brief summary"
                         value={proposeShortLabel}
                         onChange={(e) => setProposeShortLabel(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-lg text-label text-white placeholder:text-white/40 bg-white/10 border border-amber-500/20"
+                        className="w-full px-3 py-1.5 rounded-lg text-label text-white placeholder:text-white/60 bg-white/10 border border-amber-500/20"
                       />
                       <textarea
                         placeholder="What happened? (optional details)"
                         value={proposeDescription}
                         onChange={(e) => setProposeDescription(e.target.value)}
                         rows={2}
-                        className="w-full px-3 py-1.5 rounded-lg text-label text-white placeholder:text-white/40 bg-white/10 border border-amber-500/20 resize-none"
+                        className="w-full px-3 py-1.5 rounded-lg text-label text-white placeholder:text-white/60 bg-white/10 border border-amber-500/20 resize-none"
                       />
                       <button
                         type="button"
