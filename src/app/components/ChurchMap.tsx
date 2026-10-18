@@ -3,7 +3,6 @@ import {
   Church as ChurchIcon,
   ArrowLeft,
   ChevronDown,
-  Check,
   CheckCheck,
 } from "lucide-react";
 import type { Church, StateInfo } from "./church-data";
@@ -11,6 +10,7 @@ import { churchMeetsVerifiedListingCriteria, churchNeedsReview } from "./church-
 import { MapSearchBar } from "./MapSearchBar";
 import { ChurchDetailPanel } from "./ChurchDetailPanel";
 import { SummaryPanel } from "./SummaryPanel";
+import { WelcomeModal } from "./WelcomeModal";
 import type { SummaryStats } from "./SummaryPanel";
 import { FilterPanel } from "./FilterPanel";
 import { MapLegend } from "./MapLegend";
@@ -1677,7 +1677,20 @@ function MapArea({
       {showAbout && (moderatorKey && !moderationMode ? (
         <ReviewerLoginModal loading={moderationLoading} error={moderationError} onClose={onDismissAbout} />
       ) : showAbout ? (
-        <AboutModal onClose={onDismissAbout} />
+        <WelcomeModal
+          onClose={onDismissAbout}
+          stats={
+            isWorld
+              ? {
+                  churches: worldCountries.reduce((a, c) => a + (c.churchCount || 0), 0),
+                  places: worldCountries.filter((c) => (c.churchCount || 0) > 0).length,
+                  placeLabel: "countries",
+                }
+              : countryCode === "US"
+                ? { churches: d.totalChurches, places: d.states.filter((s) => s.isPopulated).length, placeLabel: "states" }
+                : { churches: intlRegions.reduce((a, r) => a + r.churchCount, 0), places: intlRegions.length, placeLabel: "regions" }
+          }
+        />
       ) : null)}
 
       {/* Help Modal */}
@@ -2334,66 +2347,6 @@ function ReviewerLoginModal({ loading, error, onClose }: { loading: boolean; err
           </div>
         )}
       </div>
-    </HmcDialog>
-  );
-}
-
-// --- About Modal ---
-function AboutModal({ onClose }: { onClose: () => void }) {
-  return (
-    <HmcDialog onClose={onClose}>
-        {/* Header */}
-        <div className="relative flex flex-col items-center text-center px-6 pt-6 pb-4 border-b border-white/10 flex-shrink-0">
-          <CloseButton
-            onClick={onClose}
-            size="md"
-            className="absolute top-4 right-4"
-          />
-          <div className="w-16 h-16 rounded-xl overflow-hidden mb-3">
-            <img src={logoImg} alt="Here's My Church" className="w-full h-full object-cover" />
-          </div>
-          <HmcDialogTitle className="text-white font-medium text-[22px] leading-tight">Here's My Church</HmcDialogTitle>
-          <p className="text-white/60 text-sm leading-relaxed mt-3 text-pretty">An interactive map of Christian churches worldwide — with the goal to be the place with the most accurate data.</p>
-        </div>
-
-        {/* Content */}
-        <div className="px-6 py-5 overflow-y-auto flex-1 min-h-0">
-          <div className="flex items-center justify-center gap-2 mb-4 px-3 py-2 rounded-lg bg-white/5">
-            <span className="text-purple-300 text-xs">{"\u2726"}</span>
-            <p className="text-white/60 text-xs text-pretty">100% free open-sourced project with crowd-sourced data</p>
-          </div>
-          <p className="text-white/40 text-caption uppercase tracking-wider font-medium mb-3">What you can do</p>
-          <ul className="space-y-2.5">
-            {[
-              "Browse Christian churches by country and region",
-              "Search and filter by name, denomination, size, or language",
-              "View church info like address, website, and service times",
-              "Easily add a church and make any corrections",
-              "Update church info from any church in review",
-            ].map((item, i) => (
-              <li key={i} className="flex items-start gap-2.5">
-                <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-purple-500/20 flex items-center justify-center">
-                  <Check size={10} className="text-purple-300" />
-                </span>
-                <span className="text-white/70 text-sm leading-snug">{item}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* Footer button */}
-        <div className="px-6 pb-5 flex-shrink-0">
-          <Button variant="brand" size="block" onClick={onClose}>
-            Start Finding Churches
-          </Button>
-          <p className="text-white/30 text-caption text-center mt-2.5 text-pretty">
-            An open-source project by{" "}
-            <a href="https://harvous.com/about" target="_blank" rel="noopener noreferrer" className="underline hover:text-white/50 transition-colors">Harvous</a>
-            . Need help?{" "}
-            <a href="mailto:hey@heresmychurch.com" className="underline hover:text-white/50 transition-colors">hey@heresmychurch.com</a>
-          </p>
-          <p className="text-white/25 text-caption text-center mt-1.5">Version {__APP_VERSION__}</p>
-        </div>
     </HmcDialog>
   );
 }

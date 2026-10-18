@@ -62,3 +62,24 @@
 .animate-pin-drop {
   animation: pin-drop 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
 }
+
+/* Welcome modal: CSS (compositor) animations so they still run while the map loads data. */
+@keyframes hmc-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes hmc-dot-pop {
+  from { opacity: 0; transform: scale(0); }
+  to { transform: scale(1); }
+}
+@keyframes hmc-ping {
+  from { opacity: 0.7; transform: scale(1); }
+  to { opacity: 0; transform: scale(4); }
+}
+.animate-hmc-rise { animation: hmc-rise 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-hmc-dot-pop { transform-box: fill-box; transform-origin: center; animation: hmc-dot-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.animate-hmc-ping { transform-box: fill-box; transform-origin: center; animation: hmc-ping 2.4s ease-out infinite both; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-hmc-rise, .animate-hmc-dot-pop { animation: none; }
+  .animate-hmc-ping { display: none; }
+}
