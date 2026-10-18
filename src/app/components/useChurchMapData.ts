@@ -189,6 +189,23 @@ export function useChurchMapData({
     churchLookupTriedKey: null as string | null,
   });
 
+  // US county shapes (~840 KB) are only needed once a state is open, so fetch them
+  // then instead of on every page load (the national and world views never use them).
+  useEffect(() => {
+    if (!focusedState || countyFeatures?.size) return;
+    let cancelled = false;
+    loadAdmin2Features("US")
+      .then((countyMap) => {
+        if (cancelled) return;
+        setCountyFeatures(countyMap);
+        console.log(`[ChurchMap] Loaded admin-2 features for ${countyMap.size} US counties`);
+      })
+      .catch((err) =>
+        console.warn("[ChurchMap] Failed to load US county geography:", err)
+      );
+    return () => { cancelled = true; };
+  }, [focusedState]);
+
   // Keep ref in sync (no useEffect needed — direct assignment every render)
   refs.current.focusedState = focusedState;
   if (states.length > 0) refs.current.statesLoaded = true;
@@ -773,15 +790,6 @@ export function useChurchMapData({
       })
       .catch((err) =>
         console.warn("[ChurchMap] Failed to load topojson for polygon filtering:", err)
-      );
-
-    loadAdmin2Features("US")
-      .then((countyMap) => {
-        setCountyFeatures(countyMap);
-        console.log(`[ChurchMap] Loaded admin-2 features for ${countyMap.size} US counties`);
-      })
-      .catch((err) =>
-        console.warn("[ChurchMap] Failed to load US county geography:", err)
       );
 
     fetchStatePopulations()

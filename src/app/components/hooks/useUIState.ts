@@ -81,6 +81,8 @@ function uiReducer(state: UIState, action: UIAction): UIState {
     case "SET_PREVIEW_COUNTY_PINNED":
       return state.previewCountyPinned === action.value ? state : { ...state, previewCountyPinned: action.value };
     case "SET_TOOLTIP_POS":
+      // Same position → same state object, so React skips the re-render.
+      if (state.tooltipPos.x === action.value.x && state.tooltipPos.y === action.value.y) return state;
       return { ...state, tooltipPos: action.value };
     case "SET_SHOW_FILTER_PANEL": {
       const v = typeof action.value === "function" ? action.value(state.showFilterPanel) : action.value;
@@ -223,13 +225,24 @@ export function useUIState(focusedState: string | null) {
   const setShowLegend = (v: boolean) => dispatch({ type: "SET_SHOW_LEGEND", value: v });
   const toggleSize = (label: string) => dispatch({ type: "TOGGLE_SIZE", label });
   const toggleDenom = (label: string) => dispatch({ type: "TOGGLE_DENOM", label });
+  // Tooltip follow: coalesce mousemoves to one state update per animation frame. Each
+  // update re-renders the whole map tree, and raw mousemove can fire several times a frame.
+  const pendingPosRef = useRef<{ x: number; y: number } | null>(null);
+  const rafRef = useRef<number | null>(null);
+  useEffect(() => () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current); }, []);
   const handleMouseMove = (e: React.MouseEvent) => {
     // Don't move the tooltip when a preview is pinned, so the View church/state button stays clickable
     if (!s.previewPinned && !s.previewStatePinned && !s.previewCountyPinned) {
       // Only update position when a hover tooltip is actually shown, so it doesn't chase the cursor when no tooltip is visible
       const hasHover = s.hoveredState != null || s.hoveredChurch != null || s.hoveredCounty != null;
       if (hasHover) {
-        dispatch({ type: "SET_TOOLTIP_POS", value: { x: e.clientX, y: e.clientY } });
+        pendingPosRef.current = { x: e.clientX, y: e.clientY };
+        if (rafRef.current == null) {
+          rafRef.current = requestAnimationFrame(() => {
+            rafRef.current = null;
+            if (pendingPosRef.current) dispatch({ type: "SET_TOOLTIP_POS", value: pendingPosRef.current });
+          });
+        }
       }
     }
   };

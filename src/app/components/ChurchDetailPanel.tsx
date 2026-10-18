@@ -34,7 +34,7 @@ import {
 import { ThreeDotLoader } from "./ThreeDotLoader";
 import { useState, useMemo, useEffect, useRef, useOptimistic, useTransition } from "react";
 import { motion } from "motion/react";
-import { SuggestEditForm } from "./SuggestEditForm";
+
 import { CloseButton } from "./ui/close-button";
 import { groupServiceTimesByDay, parseServiceTimesForDisplay } from "./ServiceTimesInput";
 import { formatFullAddress } from "./AddressInput";
@@ -45,6 +45,9 @@ import { confirmChurchData, fetchCorrectionHistory, fetchReactions, submitReacti
 import type { CorrectionHistoryEntry, ReactionType, ReactionCounts, PendingSuggestionItem } from "./api";
 import { haversineMiles, formatDistance, timezoneLabelForPoint } from "../lib/geo";
 import { getCountry } from "../config/countries";
+import { lazyComponent } from "./ui/lazy-component";
+
+const SuggestEditForm = lazyComponent(() => import("./SuggestEditForm").then((m) => m.SuggestEditForm));
 /** Church or minimal summary for cross-state main campus link; both have state and shortId for navigation. */
 export type ChurchClickTarget = Church | HomeCampusSummary;
 

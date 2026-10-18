@@ -8,17 +8,13 @@ import {
 } from "lucide-react";
 import type { Church, StateInfo } from "./church-data";
 import { churchMeetsVerifiedListingCriteria, churchNeedsReview } from "./church-data";
-import { ChurchListModal } from "./ChurchListModal";
 import { MapSearchBar } from "./MapSearchBar";
 import { ChurchDetailPanel } from "./ChurchDetailPanel";
-import { AddChurchForm } from "./AddChurchForm";
 import { SummaryPanel } from "./SummaryPanel";
 import type { SummaryStats } from "./SummaryPanel";
 import { FilterPanel } from "./FilterPanel";
 import { MapLegend } from "./MapLegend";
 import { MapControls } from "./MapControls";
-import { HelpModal } from "./HelpModal";
-import { AuditModal } from "./AuditModal";
 import { MapLibreCanvas, type MapLibreHandle } from "./MapLibreCanvas";
 import {
   fetchRegions,
@@ -28,7 +24,6 @@ import {
   type CountrySummary,
 } from "./api";
 import { getCountry, getRegion, resolveRegionByAbbrev } from "../config/countries";
-import { VerificationModal, NationalReviewModal } from "./VerificationModal";
 import { CloseButton } from "./ui/close-button";
 import { HmcDialog, HmcDialogTitle } from "./ui/hmc-dialog";
 import { Button } from "./ui/button";
@@ -67,7 +62,6 @@ import { useIsMobile, useIsPhone } from "./ui/use-mobile";
 import { PendingAlertsPill } from "./PendingAlertsPill";
 import { ThreeDotLoader } from "./ThreeDotLoader";
 import { AnnouncementsPill } from "./AnnouncementsPill";
-import { ReviewPill } from "./ReviewPill";
 
 type ModerationPendingData = Pick<
   ModeratorPendingResponse,
@@ -77,6 +71,16 @@ import { reportIssueEnabled } from "../config/pendingAlerts";
 import { useReducer, useEffect, useMemo, useState, useCallback, useRef } from "react";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 import { Easter2026SpecialReportBlurbModal } from "./special-report/Easter2026SpecialReportBlurbModal";
+import { lazyComponent } from "./ui/lazy-component";
+
+// Rarely used UI, split out of the main bundle (see ui/lazy-component.tsx).
+const ChurchListModal = lazyComponent(() => import("./ChurchListModal").then((m) => m.ChurchListModal));
+const AddChurchForm = lazyComponent(() => import("./AddChurchForm").then((m) => m.AddChurchForm));
+const HelpModal = lazyComponent(() => import("./HelpModal").then((m) => m.HelpModal));
+const AuditModal = lazyComponent(() => import("./AuditModal").then((m) => m.AuditModal));
+const VerificationModal = lazyComponent(() => import("./VerificationModal").then((m) => m.VerificationModal));
+const NationalReviewModal = lazyComponent(() => import("./VerificationModal").then((m) => m.NationalReviewModal));
+const ReviewPill = lazyComponent(() => import("./ReviewPill").then((m) => m.ReviewPill));
 /** Set to true to temporarily hide All States button, Map Key, and action controls (zoom/filter). */
 const HIDE_MAP_UI = false;
 
