@@ -200,7 +200,8 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
             <select
               value={entry.day}
               onChange={(e) => updateEntry(entry.id, "day", e.target.value)}
-              className={selectClass}
+              aria-label="Day"
+              className={`${selectClass} coarse:min-h-10`}
               style={{ minWidth: compact ? 52 : 60 }}
             >
               {DAYS.map((d) => (
@@ -213,7 +214,8 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
             <select
               value={entry.hour}
               onChange={(e) => updateEntry(entry.id, "hour", e.target.value)}
-              className={selectClass}
+              aria-label="Hour"
+              className={`${selectClass} coarse:min-h-10`}
               style={{ minWidth: compact ? 38 : 44 }}
             >
               {HOURS.map((h) => (
@@ -228,7 +230,8 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
             <select
               value={entry.minute}
               onChange={(e) => updateEntry(entry.id, "minute", e.target.value)}
-              className={selectClass}
+              aria-label="Minute"
+              className={`${selectClass} coarse:min-h-10`}
               style={{ minWidth: compact ? 38 : 44 }}
             >
               {MINUTES.map((m) => (
@@ -242,7 +245,8 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
               <button
                 type="button"
                 onClick={() => updateEntry(entry.id, "period", "AM")}
-                className={`${amPmClass} ${
+                aria-pressed={entry.period === "AM"}
+                className={`${amPmClass} coarse:min-h-10 coarse:min-w-10 ${
                   entry.period === "AM"
                     ? "bg-purple-500/40 text-white"
                     : "bg-white/5 text-white/30 hover:text-white/50"
@@ -253,7 +257,8 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
               <button
                 type="button"
                 onClick={() => updateEntry(entry.id, "period", "PM")}
-                className={`${amPmClass} ${
+                aria-pressed={entry.period === "PM"}
+                className={`${amPmClass} coarse:min-h-10 coarse:min-w-10 ${
                   entry.period === "PM"
                     ? "bg-purple-500/40 text-white"
                     : "bg-white/5 text-white/30 hover:text-white/50"
@@ -283,7 +288,7 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
         <button
           type="button"
           onClick={addEntry}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-caption font-medium text-purple-300 hover:text-purple-200 bg-purple-500/10 hover:bg-purple-500/20 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 coarse:min-h-10 rounded-lg text-caption font-medium text-purple-300 hover:text-purple-200 bg-purple-500/10 hover:bg-purple-500/20 transition-colors"
         >
           <Plus size={11} />
           Add service
@@ -293,7 +298,7 @@ export function ServiceTimesInput({ value, onChange, compact }: ServiceTimesInpu
           <button
             type="button"
             onClick={() => removeEntry(entries[entries.length - 1].id)}
-            className="px-3 py-1.5 rounded-lg text-caption font-medium text-white/65 hover:bg-white/5 transition-colors"
+            className="px-3 py-1.5 coarse:min-h-10 rounded-lg text-caption font-medium text-white/65 hover:bg-white/5 transition-colors"
           >
             Remove
           </button>

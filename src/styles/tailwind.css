@@ -3,6 +3,9 @@
 
 @import 'tw-animate-css';
 
+/* Touch screens (phones/tablets): use for larger tap targets without changing desktop. */
+@custom-variant coarse (@media (pointer: coarse));
+
 @theme {
   --breakpoint-md: 990px;
 
@@ -82,4 +85,14 @@
 @media (prefers-reduced-motion: reduce) {
   .animate-hmc-rise, .animate-hmc-dot-pop { animation: none; }
   .animate-hmc-ping { display: none; }
+}
+
+/* iOS Safari zooms the page when a field under 16px is focused. On touch screens,
+   give every form control 16px text (desktop keeps the compact sizes). */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
 }

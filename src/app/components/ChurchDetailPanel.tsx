@@ -81,6 +81,8 @@ interface ChurchDetailPanelProps {
   onChurchClick: (target: ChurchClickTarget) => void;
   externalShowEditForm?: boolean;
   onEditFormClosed?: () => void;
+  /** Fires when the correction form opens/closes (the phone sheet grows to fit it). */
+  onEditFormOpenChange?: (open: boolean) => void;
   onChurchUpdated?: () => void;
   moderationMode?: boolean;
   moderationPending?: { pendingSuggestions: import("./api").PendingSuggestionItem[] } | null;
@@ -275,6 +277,7 @@ export function ChurchDetailPanel({
   onChurchClick,
   externalShowEditForm,
   onEditFormClosed,
+  onEditFormOpenChange,
   onChurchUpdated,
   moderationMode,
   moderationPending,
@@ -285,6 +288,10 @@ export function ChurchDetailPanel({
 }: ChurchDetailPanelProps) {
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
+  useEffect(() => {
+    onEditFormOpenChange?.(showEditForm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEditForm]);
   const [editFocusField, setEditFocusField] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(false);

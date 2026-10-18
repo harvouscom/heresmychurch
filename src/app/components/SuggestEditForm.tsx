@@ -1095,7 +1095,7 @@ function FieldCard({
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={onStartEdit}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/12 text-purple-300 text-caption font-medium hover:bg-purple-500/20 transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 coarse:min-h-10 coarse:px-4 rounded-lg bg-purple-500/12 text-purple-300 text-caption font-medium hover:bg-purple-500/20 transition-colors cursor-pointer"
               >
                 <Pencil size={10} />
                 {empty ? "Add" : "Edit"}

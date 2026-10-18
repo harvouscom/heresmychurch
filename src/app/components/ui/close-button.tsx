@@ -36,7 +36,7 @@ export function CloseButton({
       aria-label={ariaLabel}
       className={cn(
         "relative rounded-full flex items-center justify-center hover:bg-white/10 active:bg-white/20 transition-colors flex-shrink-0",
-        "after:absolute after:inset-[-6px] after:content-['']",
+        "after:absolute after:inset-[-6px] after:content-[''] coarse:after:inset-[-8px]",
         sizeClasses[size],
         className
       )}

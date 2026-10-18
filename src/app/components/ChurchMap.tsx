@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useDragControls } from "motion/react";
 import {
   Church as ChurchIcon,
   ArrowLeft,
@@ -262,6 +262,26 @@ export function ChurchMap({
   );
   const mapCountyStats = countryCode === "US" ? (d.countyStats ?? null) : intlCountyStats;
   const mapFocusedCounty = countryCode === "US" ? (d.focusedCounty ?? null) : intlFocusedAdmin2;
+
+  // Phone bottom sheet: drag handle to dismiss; grows when the correction form is open.
+  const sheetDrag = useDragControls();
+  const [detailEditOpen, setDetailEditOpen] = useState(false);
+  const sheetHeight = isPhone && detailEditOpen ? "90dvh" : "55dvh";
+  const closeChurchDetail = () => {
+    if (isIntl) {
+      if (routeStateAbbrev) {
+        if (mapFocusedCounty) navigateToCounty(routeStateAbbrev, mapFocusedCounty);
+        else navigateToState(routeStateAbbrev);
+      } else {
+        navigateToCountry(countryCode);
+      }
+      return;
+    }
+    if (d.focusedState) {
+      if (d.focusedCounty) navigateToCounty(d.focusedState, d.focusedCounty);
+      else navigateToState(d.focusedState);
+    } else navigateToNational();
+  };
   const mapCountyFeatures =
     countryCode === "US" ? d.countyFeatures : intlAdmin2Features;
 
@@ -1131,35 +1151,39 @@ export function ChurchMap({
             className={`overflow-hidden absolute z-40 ${
               isPhone ? "bottom-0 left-0 right-0" : isMobile ? "bottom-0 right-0" : "top-0 right-0 bottom-0"
             }`}
-            style={isMobile ? { height: "55vh", width: isPhone ? undefined : DETAIL_PANEL_WIDTH } : undefined}
+            style={isMobile ? { height: sheetHeight, width: isPhone ? undefined : DETAIL_PANEL_WIDTH } : undefined}
             initial={isMobile ? { y: "100%" } : { width: 0, height: "100%" }}
             animate={isMobile ? { y: 0 } : { width: DETAIL_PANEL_WIDTH, height: "100%" }}
             exit={isMobile ? { y: "100%" } : { width: 0, height: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
+            // Phones: drag the handle down to dismiss the sheet.
+            drag={isPhone ? "y" : false}
+            dragControls={sheetDrag}
+            dragListener={false}
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0, bottom: 0.7 }}
+            onDragEnd={(_, info) => {
+              if (info.offset.y > 110 || info.velocity.y > 650) closeChurchDetail();
+            }}
           >
+            {isPhone && (
+              <div
+                className="absolute left-1/2 top-0 z-10 flex h-7 w-32 -translate-x-1/2 cursor-grab touch-none items-start justify-center pt-2 active:cursor-grabbing"
+                onPointerDown={(e) => sheetDrag.start(e)}
+                aria-hidden="true"
+              >
+                <span className="h-1 w-10 rounded-full bg-white/35" />
+              </div>
+            )}
             <div
               className={isPhone ? "px-4 pb-4" : isMobile ? "pr-4 pb-4 pl-0" : "pt-4 pr-4 pb-4 pl-0"}
-              style={{ width: isPhone ? "100%" : DETAIL_PANEL_WIDTH, height: isMobile ? "55vh" : "100%" }}
+              style={{ width: isPhone ? "100%" : DETAIL_PANEL_WIDTH, height: isMobile ? sheetHeight : "100%" }}
             >
               <ChurchDetailPanel
                 church={selectedChurch}
                 resolvedCountyName={resolvedCountyForSelectedChurch}
                 allChurches={isIntl ? intlChurches : d.filteredChurches}
-                onClose={() => {
-                  if (isIntl) {
-                    if (routeStateAbbrev) {
-                      if (mapFocusedCounty) navigateToCounty(routeStateAbbrev, mapFocusedCounty);
-                      else navigateToState(routeStateAbbrev);
-                    } else {
-                      navigateToCountry(countryCode);
-                    }
-                    return;
-                  }
-                  if (d.focusedState) {
-                    if (d.focusedCounty) navigateToCounty(d.focusedState, d.focusedCounty);
-                    else navigateToState(d.focusedState);
-                  } else navigateToNational();
-                }}
+                onClose={closeChurchDetail}
                 onChurchClick={(target: ChurchClickTarget) => {
                   const state = target.state;
                   const shortId = "shortId" in target && target.shortId
@@ -1168,6 +1192,7 @@ export function ChurchMap({
                   if (state) navigateToChurchWithContext(state, shortId);
                 }}
                 externalShowEditForm={local.forceEditForm}
+                onEditFormOpenChange={setDetailEditOpen}
                 onEditFormClosed={() => localDispatch({ type: "SET", key: "forceEditForm", value: false })}
                 onChurchUpdated={isIntl ? undefined : d.refetchCurrentStateChurches}
                 moderationMode={local.moderationMode}

@@ -333,6 +333,40 @@ const BASEMAP_STYLE: StyleSpecification = {
 // Continental-US default view (Web Mercator zoom 0–22, not the old 1–500 scale).
 export const US_DEFAULT_CENTER: [number, number] = [-98.5, 39.5];
 export const US_DEFAULT_ZOOM = 3.4;
+/** Continental US. On narrow screens the tuned zoom above crops the coasts, so the
+ *  national frame zooms out (never in) until these bounds fit the viewport. */
+const CONUS_BOUNDS: [[number, number], [number, number]] = [[-124.8, 24.4], [-66.9, 49.4]];
+
+type Padding = { top: number; bottom: number; left: number; right: number };
+
+/**
+ * Center/zoom that fit `bounds` inside `padding`, ignoring whatever padding the map
+ * transform still holds from an earlier flyTo. MapLibre adds the transform's padding
+ * on top of the requested one (camera_helper: edgePadding + padding), so after the
+ * phone sheet closed, a state fit still reserved the sheet's 55% and framed the
+ * state in the top of the screen. Pass the result to flyTo/easeTo WITH `padding`.
+ */
+function cameraFor(map: MaplibreMap, bounds: [[number, number], [number, number]], padding: Padding) {
+  const stale = map.getPadding();
+  const delta = {
+    top: padding.top - stale.top,
+    bottom: padding.bottom - stale.bottom,
+    left: padding.left - stale.left,
+    right: padding.right - stale.right,
+  };
+  const zoom = map.cameraForBounds(bounds, { padding: delta })?.zoom;
+  if (zoom == null) return null;
+  // Web Mercator midpoint (a plain latitude average drifts for tall regions).
+  const y = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+  const midY = (y(bounds[0][1]) + y(bounds[1][1])) / 2;
+  const lat = ((2 * Math.atan(Math.exp(midY)) - Math.PI / 2) * 180) / Math.PI;
+  const lng = (bounds[0][0] + bounds[1][0]) / 2;
+  return { center: [lng, lat] as [number, number], zoom: Math.min(zoom, map.getMaxZoom()) };
+}
+
+function usFrameZoom(map: MaplibreMap, padding: Padding): number {
+  return Math.min(US_DEFAULT_ZOOM, cameraFor(map, CONUS_BOUNDS, padding)?.zoom ?? US_DEFAULT_ZOOM);
+}
 /** World choropleth framing — keep in sync with the camera effect. */
 const WORLD_CENTER: [number, number] = [0, 20];
 const WORLD_ZOOM = 1.35;
@@ -1459,6 +1493,10 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     // drive the map through apiRef. MapLibre's default pair would duplicate them
     // in the opposite corner and in someone else's visual style.
     mapRef.current = map;
+    if (viewLevel !== "world" && startZoom === US_DEFAULT_ZOOM) {
+      // Phones: start with the whole continental US in view.
+      map.jumpTo({ zoom: usFrameZoom(map, paddingRef.current) });
+    }
 
     /** True while the container is being resized — map.resize() fires moveend
      *  with a new viewport aspect, which must NOT count as a user zoom-out
@@ -1783,10 +1821,11 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     const fit = (bounds: [[number, number], [number, number]]) => {
       programmaticMoveRef.current = true;
       map.setMinZoom(0);
-      const target = map.cameraForBounds(bounds, { padding: paddingRef.current });
+      const target = cameraFor(map, bounds, paddingRef.current);
       pendingMinZoomRef.current =
         target?.zoom != null ? Math.max(0, target.zoom - ZOOM_OUT_ALLOWANCE) : null;
-      map.fitBounds(bounds, { padding: paddingRef.current, duration: transitionMs });
+      if (!target) return;
+      map.flyTo({ ...target, padding: paddingRef.current, duration: transitionMs, essential: true });
     };
 
     const apply = async () => {
@@ -1854,27 +1893,33 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
         if (cb) {
           programmaticMoveRef.current = true;
           map.setMinZoom(0);
-          const target = map.cameraForBounds(cb, { padding: paddingRef.current });
+          // Antimeridian-crossing extents (west > east) keep MapLibre's own fit.
+          const crosses = cb[0][0] > cb[1][0];
+          const target = crosses
+            ? map.cameraForBounds(cb, { padding: paddingRef.current })
+            : cameraFor(map, cb, paddingRef.current);
           const frameZoom = target?.zoom ?? map.getZoom();
           countryFrameZoomRef.current = frameZoom;
           pendingMinZoomRef.current = Math.max(
             0.5,
             frameZoom - COUNTRY_ZOOM_OUT_DELTA - COUNTRY_ZOOM_OUT_FLOOR_EXTRA,
           );
-          map.fitBounds(cb, { padding: paddingRef.current, duration: transitionMs });
+          if (crosses || !target) map.fitBounds(cb, { padding: paddingRef.current, duration: transitionMs });
+          else map.flyTo({ ...target, padding: paddingRef.current, duration: transitionMs, essential: true });
           return;
         }
       }
-      countryFrameZoomRef.current = US_DEFAULT_ZOOM;
+      const usZoom = usFrameZoom(map, paddingRef.current);
+      countryFrameZoomRef.current = usZoom;
       programmaticMoveRef.current = true;
       map.setMinZoom(0);
       pendingMinZoomRef.current = Math.max(
         0.5,
-        US_DEFAULT_ZOOM - COUNTRY_ZOOM_OUT_DELTA - COUNTRY_ZOOM_OUT_FLOOR_EXTRA,
+        usZoom - COUNTRY_ZOOM_OUT_DELTA - COUNTRY_ZOOM_OUT_FLOOR_EXTRA,
       );
       map.flyTo({
         center: US_DEFAULT_CENTER,
-        zoom: US_DEFAULT_ZOOM,
+        zoom: usZoom,
         padding: paddingRef.current,
         duration: transitionMs,
         essential: true,

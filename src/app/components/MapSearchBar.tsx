@@ -658,6 +658,24 @@ export function MapSearchBar({
           {/* National view: remote results */}
           {isNational && (
             <>
+              {activePlaceFilter && query.trim().length >= 2 && (
+                // Scope can be set automatically from the visitor's location; say so.
+                <div className="flex items-center justify-between gap-2 px-3 py-1.5 mb-1 rounded-lg bg-white/5 text-caption">
+                  <span className="text-white/60 truncate">
+                    Searching {isWorld ? placeFilterLabel : (STATE_NAMES[stateFilter!] || stateFilter)} only
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isWorld) setCountryFilter(null);
+                      else setStateFilter(null);
+                    }}
+                    className="flex-shrink-0 font-medium text-purple-300 hover:text-purple-200 coarse:py-2"
+                  >
+                    {isWorld ? "Search worldwide" : `Search all of ${getCountry(countryCode)?.name ?? "the country"}`}
+                  </button>
+                </div>
+              )}
               {remoteLoading && !remoteSearched ? (
                 <div className="px-4 py-3 flex items-center justify-center gap-2 text-white/40">
                   <ThreeDotLoader size={14} />
@@ -779,7 +797,10 @@ export function MapSearchBar({
         {/* Place filter chip — country on world view, region on country view */}
         {showPlaceFilter && (
           <button
+            type="button"
             onClick={() => setShowStateDropdown((v) => !v)}
+            aria-label={activePlaceFilter ? `Search scope: ${placeFilterLabel}. Change scope` : "Choose where to search"}
+            aria-expanded={showStateDropdown}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 transition-colors max-w-[9.5rem] ${
               activePlaceFilter
                 ? "bg-purple-500/30 text-purple-200 hover:bg-purple-500/40"
@@ -820,7 +841,7 @@ export function MapSearchBar({
           <button
             type="button"
             aria-label={resultsDropdownVisible ? "Hide results" : "Show results"}
-            className="rounded-full flex items-center justify-center hover:bg-white/10 transition-colors flex-shrink-0 w-6 h-6"
+            className="rounded-full flex items-center justify-center hover:bg-white/10 transition-colors flex-shrink-0 w-6 h-6 coarse:w-10 coarse:h-10 coarse:-my-2"
             onClick={() => setResultsDropdownVisible((v) => !v)}
           >
             {resultsDropdownVisible ? (
