@@ -14,6 +14,7 @@ import {
 import type { PendingSuggestionItem, PendingChurchItem, PendingReverifyChurchItem, InReviewSuggestionItem, InReviewChurchItem } from "./api";
 import { CloseButton } from "./ui/close-button";
 import { formatModerationDisplayValue } from "./formatModerationValue";
+import { friendlyError } from "../lib/friendly-error";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Church Name",
@@ -98,7 +99,7 @@ export function ReviewPill({
       return true;
     } catch (err: any) {
       if (optimisticKey) setOptimisticRemoved((prev) => { const n = new Set(prev); n.delete(optimisticKey); return n; });
-      setError(err.message || "Action failed");
+      setError(friendlyError(err));
       return false;
     } finally {
       setActionLoading(null);

@@ -6,6 +6,7 @@ import {
   type AuditLogEntry,
 } from "./api";
 import { HmcDialog, HmcDialogTitle } from "./ui/hmc-dialog";
+import { friendlyError } from "../lib/friendly-error";
 
 function formatTimeAgo(createdAt: string): string {
   const ts = new Date(createdAt).getTime();
@@ -91,7 +92,7 @@ export function AuditModal({
       : fetchAuditRecent(moderatorKey, 200);
     promise
       .then((data) => setEntries(data.entries))
-      .catch((e) => setError(e.message ?? "Failed to load audit log"))
+      .catch((e) => setError(friendlyError(e)))
       .finally(() => setLoading(false));
   }, [moderatorKey, scope, focusedStateAbbrev]);
 

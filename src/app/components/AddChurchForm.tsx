@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   X,
   Plus,
@@ -25,6 +25,8 @@ import { normalizePhone } from "./ui/utils";
 import { CloseButton } from "./ui/close-button";
 import { resolveRegionByAbbrev } from "../config/countries";
 import { HmcDialog, HmcDialogTitle } from "./ui/hmc-dialog";
+import { friendlyError } from "../lib/friendly-error";
+import { toast } from "sonner";
 
 /** Geocode an address to lat/lng using Nominatim (OpenStreetMap). Supports all HMC regions. */
 export async function geocodeAddress(
@@ -166,7 +168,10 @@ export function AddChurchForm({
 }: AddChurchFormProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [error]);
   const [showExtended, setShowExtended] = useState(false);
   const [similarMatches, setSimilarMatches] = useState<Church[]>([]);
   const [showSimilarWarning, setShowSimilarWarning] = useState(false);
@@ -191,7 +196,6 @@ export function AddChurchForm({
   const submitToApi = async (parsedLat: number, parsedLng: number, confirmAdd = false) => {
     setSubmitting(true);
     setError(null);
-    setSuccess(null);
 
     try {
       const result = await addChurch({
@@ -240,12 +244,15 @@ export function AddChurchForm({
       const state = church?.state ?? stateAbbrev;
       const shortId = church?.shortId;
 
+      const addedName = name.trim();
       if (result.isDuplicate) {
-        setSuccess("This church was already submitted!");
+        toast.info("This church is already on the map", { description: addedName });
       } else if (result.needsModeration) {
-        setSuccess("Church submitted for review! It will appear on the map once approved.");
+        toast.success("Thanks! Your church was sent for review", {
+          description: "It will appear on the map once it's approved.",
+        });
       } else {
-        setSuccess("Church added to the map!");
+        toast.success(`${addedName} was added to the map`, { description: "Thanks for helping keep it complete." });
       }
 
       setName("");
@@ -265,13 +272,12 @@ export function AddChurchForm({
       setShowSimilarWarning(false);
       setSimilarMatches([]);
 
+      onClose();
       if (shortId && state && onChurchAdded && !result.needsModeration) {
-        onClose();
         onChurchAdded(state, shortId);
       }
-      setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
-      setError(err.message || "Failed to submit church");
+      setError(friendlyError(err));
     } finally {
       setSubmitting(false);
     }
@@ -345,13 +351,24 @@ export function AddChurchForm({
     });
   };
 
+  // Unsaved-changes guard: closing a half-filled form asks first instead of losing input.
+  const isDirty =
+    !!(name.trim() || address.trim() || city.trim() || denomination || attendance || website.trim() ||
+      serviceTimes.trim() || pastorName.trim() || phone.trim() || email.trim() ||
+      selectedLanguages.size || selectedMinistries.size);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const requestClose = () => {
+    if (isDirty && !submitting) setConfirmDiscard(true);
+    else onClose();
+  };
+
   const inputClass =
     "w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/20";
   const labelClass =
     "text-caption uppercase tracking-wider text-white/40 font-semibold";
 
   return (
-    <HmcDialog onClose={onClose} elevated className="w-[95vw] max-w-[560px] bg-hmc-surface-sunken">
+    <HmcDialog onClose={requestClose} closeOnBackdrop={!isDirty} elevated className="w-[95vw] max-w-[560px] bg-hmc-surface-sunken">
         {/* Header */}
         <div className="px-5 pt-5 pb-4 border-b border-white/8 flex-shrink-0">
           <div className="flex items-start justify-between gap-3">
@@ -371,29 +388,44 @@ export function AddChurchForm({
                 Don&apos;t see your church? Add it below and it will appear on the map right away.
               </p>
             </div>
-            <CloseButton onClick={onClose} size="md" />
+            <CloseButton onClick={requestClose} size="md" />
           </div>
 
         </div>
 
+        {confirmDiscard && (
+          <div role="alertdialog" aria-label="Discard this church?" className="flex flex-wrap items-center gap-2 px-5 py-3 bg-amber-500/10 border-b border-amber-500/20">
+            <p className="text-amber-100 text-xs font-medium flex-1 min-w-[10rem]">Discard this church? What you&apos;ve entered will be lost.</p>
+            <button
+              type="button"
+              autoFocus
+              onClick={() => setConfirmDiscard(false)}
+              className="px-3 py-1.5 rounded-full text-xs font-medium text-white/80 border border-white/15 hover:bg-white/5"
+            >
+              Keep editing
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-full text-xs font-medium text-white bg-red-500/80 hover:bg-red-500"
+            >
+              Discard
+            </button>
+          </div>
+        )}
+
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
-          {/* Success banner */}
-          {success && (
-            <div className="flex items-center gap-2 rounded-lg p-3 bg-green-500/10 border border-green-500/20 mb-4">
-              <Check size={14} className="text-green-400 flex-shrink-0" />
-              <p className="text-green-300/80 text-xs">{success}</p>
-            </div>
-          )}
-
           {/* Error banner */}
           {error && (
-            <div className="flex items-center gap-2 rounded-lg p-3 bg-red-500/10 border border-red-500/20 mb-4">
+            <div ref={errorRef} role="alert" className="flex items-center gap-2 rounded-lg p-3 bg-red-500/10 border border-red-500/20 mb-4">
               <AlertCircle size={14} className="text-red-400 flex-shrink-0" />
-              <p className="text-red-300/80 text-xs">{error}</p>
+              <p className="text-red-200 text-xs">{error}</p>
               <button
+                type="button"
                 onClick={() => setError(null)}
-                className="ml-auto flex-shrink-0"
+                aria-label="Dismiss error"
+                className="ml-auto flex-shrink-0 p-1 -m-1"
               >
                 <X size={12} className="text-red-400/50" />
               </button>
