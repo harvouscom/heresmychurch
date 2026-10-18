@@ -66,13 +66,21 @@ export const mset = async (keys: string[], values: any[]): Promise<void> => {
 };
 
 // Gets multiple key-value pairs from the database. Returns values in the same order as input keys; missing keys yield null.
+// Chunked: a long `in (...)` list can pass PostgREST's 1,000-row cap and the URL length limit.
+const MGET_CHUNK = 200;
 export const mget = async (keys: string[]): Promise<any[]> => {
   const supabase = client()
-  const { data, error } = await supabase.from("kv_store_283d8046").select("key, value").in("key", keys);
-  if (error) {
-    throw new Error(error.message);
+  const map = new Map<string, any>();
+  for (let i = 0; i < keys.length; i += MGET_CHUNK) {
+    const { data, error } = await supabase
+      .from("kv_store_283d8046")
+      .select("key, value")
+      .in("key", keys.slice(i, i + MGET_CHUNK));
+    if (error) {
+      throw new Error(error.message);
+    }
+    for (const d of data ?? []) map.set(d.key, d.value);
   }
-  const map = new Map((data ?? []).map((d) => [d.key, d.value]));
   return keys.map((k) => map.get(k) ?? null);
 };
 
@@ -86,11 +94,24 @@ export const mdel = async (keys: string[]): Promise<void> => {
 };
 
 // Search for key-value pairs by prefix.
+// PostgREST caps a response at 1,000 rows (Supabase default max-rows), so a single
+// select silently drops everything past that. Page through by key instead.
+const PREFIX_PAGE_SIZE = 1000;
 export const getByPrefix = async (prefix: string): Promise<any[]> => {
   const supabase = client()
-  const { data, error } = await supabase.from("kv_store_283d8046").select("key, value").like("key", prefix + "%");
-  if (error) {
-    throw new Error(error.message);
+  const out: any[] = [];
+  for (let from = 0; ; from += PREFIX_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("kv_store_283d8046")
+      .select("key, value")
+      .like("key", prefix + "%")
+      .order("key")
+      .range(from, from + PREFIX_PAGE_SIZE - 1);
+    if (error) {
+      throw new Error(error.message);
+    }
+    for (const d of data ?? []) out.push(d.value);
+    if (!data || data.length < PREFIX_PAGE_SIZE) break;
   }
-  return data?.map((d) => d.value) ?? [];
+  return out;
 };
