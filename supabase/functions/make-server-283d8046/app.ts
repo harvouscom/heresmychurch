@@ -877,19 +877,28 @@ const META_FETCH_TIMEOUT=4_000;
 const META_FAIL_BACKOFF=30_000;
 let _metaFailUntil=0;
 let _metaReadInFlight:Promise<any>|null=null;
+let _metaReadStartedAt=0;
 function readMetaForReaders(){
   // Concurrent readers share one DB read, so a recovering DB isn't hit by a burst.
-  if(!_metaReadInFlight){
+  // On Workers, a request's fetches and timers are cancelled when that request ends (e.g. the
+  // visitor navigates away), so a read it started may never settle; every later request in the
+  // isolate then awaited it forever (0ms CPU, no logs, client timeout). Keep the read alive with
+  // waitUntil, and never join a read that is already past its own timeout.
+  const dead=_metaReadInFlight&&Date.now()-_metaReadStartedAt>META_FETCH_TIMEOUT+1_000;
+  if(!_metaReadInFlight||dead){
     let timer:number|undefined;
-    _metaReadInFlight=Promise.race([
+    _metaReadStartedAt=Date.now();
+    const p:Promise<any>=Promise.race([
       kv.get("churches:meta"),
       new Promise<never>((_,rej)=>{timer=setTimeout(()=>rej(new Error("churches:meta read timed out")),META_FETCH_TIMEOUT);}),
     ]).then(
       (m)=>{_metaCache={data:m,ts:Date.now()};_metaFailUntil=0;return m;},
       (e)=>{_metaFailUntil=Date.now()+META_FAIL_BACKOFF;throw e;},
-    ).finally(()=>{clearTimeout(timer);_metaReadInFlight=null;});
+    ).finally(()=>{clearTimeout(timer);if(_metaReadInFlight===p)_metaReadInFlight=null;});
+    _metaReadInFlight=p;
+    waitUntil(p);
   }
-  return _metaReadInFlight;
+  return _metaReadInFlight!;
 }
 // When the DB is slow or down, readers get the last good copy instead of failing every endpoint,
 // and skip the DB entirely for META_FAIL_BACKOFF after a failed read.
