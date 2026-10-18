@@ -46,6 +46,8 @@ import type { CorrectionHistoryEntry, ReactionType, ReactionCounts, PendingSugge
 import { haversineMiles, formatDistance, timezoneLabelForPoint } from "../lib/geo";
 import { getCountry } from "../config/countries";
 import { lazyComponent } from "./ui/lazy-component";
+import { toast } from "sonner";
+import { friendlyError } from "../lib/friendly-error";
 
 const SuggestEditForm = lazyComponent(() => import("./SuggestEditForm").then((m) => m.SuggestEditForm));
 /** Church or minimal summary for cross-state main campus link; both have state and shortId for navigation. */
@@ -365,9 +367,13 @@ export function ChurchDetailPanel({
 
   const handleCopyAddress = () => {
     if (fullAddress) {
-      navigator.clipboard.writeText(fullAddress);
-      setCopiedAddress(true);
-      setTimeout(() => setCopiedAddress(false), 2000);
+      navigator.clipboard.writeText(fullAddress).then(
+        () => {
+          setCopiedAddress(true);
+          setTimeout(() => setCopiedAddress(false), 2000);
+        },
+        () => toast.error("Couldn't copy the address"),
+      );
     }
   };
 
@@ -433,6 +439,7 @@ export function ChurchDetailPanel({
       setTimeout(() => setConfirmed(false), 3000);
     } catch (err) {
       console.error("Failed to confirm:", err);
+      toast.error("Couldn't save your confirmation", { description: friendlyError(err) });
     } finally {
       setConfirming(false);
     }

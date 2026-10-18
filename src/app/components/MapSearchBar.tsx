@@ -14,6 +14,7 @@ import { matchQueryToChurch } from "./church-search-match";
 import { findCountyNameForPoint } from "./county-resolve";
 import { getCountry } from "../config/countries";
 import { PlaceFlag } from "./PlaceFlag";
+import { friendlyError } from "../lib/friendly-error";
 
 const VIEWPORT_ZOOM_THRESHOLD = 1.5;
 
@@ -104,6 +105,10 @@ export function MapSearchBar({
   const [remoteResults, setRemoteResults] = useState<SearchResult[]>([]);
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [remoteSearched, setRemoteSearched] = useState(false);
+  /** Friendly message when the server search failed (shown instead of "No churches found"). */
+  const [remoteError, setRemoteError] = useState<string | null>(null);
+  /** Bumped by "Try again" to re-run the server search for the same query. */
+  const [retryNonce, setRetryNonce] = useState(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
   const searchVersionRef = useRef(0);
 
@@ -320,6 +325,7 @@ export function MapSearchBar({
       setRemoteResults([]);
       setRemoteSearched(false);
       setRemoteLoading(false);
+      setRemoteError(null);
       return;
     }
 
@@ -348,12 +354,14 @@ export function MapSearchBar({
         );
         if (searchVersionRef.current !== version) return;
         setRemoteResults(data.results);
+        setRemoteError(null);
         setRemoteSearched(true);
       } catch (err) {
         if (controller.signal.aborted) return;
         console.error("[MapSearchBar] Search failed:", err);
         if (searchVersionRef.current !== version) return;
         setRemoteResults([]);
+        setRemoteError(friendlyError(err));
         setRemoteSearched(true);
       } finally {
         if (searchVersionRef.current === version) {
@@ -366,7 +374,7 @@ export function MapSearchBar({
       if (debounceRef.current) clearTimeout(debounceRef.current);
       controller.abort();
     };
-  }, [query, focusedState, stateFilter, countryFilter, countryCode, isWorld]);
+  }, [query, focusedState, stateFilter, countryFilter, countryCode, isWorld, retryNonce]);
 
   // Reset selected index when results change
   const resultCount = focusedState ? localResults.length : remoteResults.length;
@@ -556,7 +564,7 @@ export function MapSearchBar({
                 <div className="px-4 py-4 text-center">
                   <p className="text-xs text-white/40">
                     {isViewportSearchMode && !searchAllMode && localResultsRaw.length > 0
-                      ? "No churches in view for \u201c" + query + "\u201c"
+                      ? "No churches in view for \u201c" + query + "\u201d"
                       : `No churches found for \u201c${query}\u201d`}
                   </p>
                   {isViewportSearchMode && !searchAllMode && localResultsRaw.length > 0 && (
@@ -654,6 +662,18 @@ export function MapSearchBar({
                 <div className="px-4 py-3 flex items-center justify-center gap-2 text-white/40">
                   <ThreeDotLoader size={14} />
                   <span className="text-xs">Searching…</span>
+                </div>
+              ) : remoteSearched && remoteError ? (
+                <div className="px-4 py-4 text-center" role="alert">
+                  <p className="text-xs text-white/70">Couldn&rsquo;t search right now.</p>
+                  <p className="text-caption text-white/50 mt-1 text-pretty">{remoteError}</p>
+                  <button
+                    type="button"
+                    onClick={() => setRetryNonce((n) => n + 1)}
+                    className="mt-2.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-purple-500/20 text-purple-300 text-xs font-medium hover:bg-purple-500/30 transition-colors"
+                  >
+                    Try again
+                  </button>
                 </div>
               ) : remoteSearched && remoteResults.length === 0 ? (
                 <div className="px-4 py-4 text-center">

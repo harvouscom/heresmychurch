@@ -36,6 +36,7 @@ import {
 import { useLoadingOverlay } from "./hooks/useLoadingOverlay";
 import { useUIState } from "./hooks/useUIState";
 import { useChurchFilters } from "./hooks/useChurchFilters";
+import { friendlyError } from "../lib/friendly-error";
 
 interface UseChurchMapDataArgs {
   routeStateAbbrev: string | null;
@@ -382,7 +383,7 @@ export function useChurchMapData({
       const result = await populateState(stateAbbrev);
       if (isStale()) return;
       if (result.error) {
-        setError(result.error);
+        setError(friendlyError(result.error));
         setLoadingStateName("");
         overlay.setForceLoadingVisible(false);
         setPopulating(false);
@@ -404,7 +405,7 @@ export function useChurchMapData({
       if (isStale()) return;
       console.error(`Failed to load churches for ${stateAbbrev}:`, err);
       setError(
-        `Failed to load churches for ${stateInfo.name}. This might be due to API rate limits -- try again in a moment.`
+        `We couldn't load churches in ${stateInfo.name}. ${friendlyError(err)}`
       );
       setLoadingStateName("");
       overlay.setForceLoadingVisible(false);
@@ -634,7 +635,7 @@ export function useChurchMapData({
         const result = await populateState(stateAbbrev);
         if (isStale()) return;
         if (result.error) {
-          setError(result.error);
+          setError(friendlyError(result.error));
           setFocusedState(stateAbbrev);
           setFocusedStateName(stateInfo.name);
           moveToView([stateInfo.lng, stateInfo.lat], getStateZoom(stateAbbrev));
@@ -675,7 +676,7 @@ export function useChurchMapData({
         console.warn(`Background population failed for ${stateAbbrev}:`, e);
         if (!isStale()) {
           setError(
-            `Failed to load churches for ${stateInfo.name}. This might be due to API rate limits -- try again in a moment.`
+            `We couldn't load churches in ${stateInfo.name}. ${friendlyError(e)}`
           );
         }
       } finally {
@@ -689,7 +690,7 @@ export function useChurchMapData({
       if (isStale()) return;
       console.error(`Failed to load churches for ${stateAbbrev}:`, err);
       setError(
-        `Failed to load churches for ${stateInfo.name}. This might be due to API rate limits -- try again in a moment.`
+        `We couldn't load churches in ${stateInfo.name}. ${friendlyError(err)}`
       );
       setLoading(false);
       setPopulating(false);
@@ -767,7 +768,7 @@ export function useChurchMapData({
       })
       .catch((err) => {
         console.error("[ChurchMap] Failed to load states:", err);
-        setError("Failed to load state data. Please refresh the page.");
+        setError("We couldn't load the map data. Please refresh the page.");
       });
 
     fetch(GEO_URL)
@@ -1047,7 +1048,7 @@ export function useChurchMapData({
     try {
       const result = await populateState(focusedState);
       if (result.error) {
-        setError(result.error);
+        setError(friendlyError(result.error));
         return;
       }
 
@@ -1060,7 +1061,7 @@ export function useChurchMapData({
     } catch (err) {
       console.error(`Failed to populate ${focusedState}:`, err);
       setError(
-        `Failed to populate churches. The Overpass API may be rate-limited -- please wait a moment and try again.`
+        `We couldn't load these churches. ${friendlyError(err)}`
       );
     } finally {
       setPopulating(false);

@@ -29,6 +29,8 @@ import { normalizePhone } from "./ui/utils";
 import { CloseButton } from "./ui/close-button";
 import { STATE_NAMES, STATE_NEIGHBORS } from "./map-constants";
 import { matchQueryToChurch } from "./church-search-match";
+import { friendlyError } from "../lib/friendly-error";
+import { toast } from "sonner";
 
 function normalizeStateAbbrev(churchState: string | undefined, churchId: string): string {
   const s = (churchState ?? "").trim();
@@ -149,6 +151,8 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
   const [submitted, setSubmitted] = useState<Set<string>>(new Set());
   const [pendingModeration, setPendingModeration] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  /** Field whose submit produced `error`, so the message shows inside that field's card. */
+  const [errorField, setErrorField] = useState<string | null>(null);
   const [showReportClosedConfirm, setShowReportClosedConfirm] = useState(false);
   const [showReportOutOfScopeConfirm, setShowReportOutOfScopeConfirm] = useState(false);
   const [showDuplicatePicker, setShowDuplicatePicker] = useState(false);
@@ -199,6 +203,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
 
     setSubmitting(field);
     setError(null);
+    setErrorField(field);
 
     // For address, geocode so map pin and nearby list stay correct
     if (field === "address") {
@@ -228,11 +233,16 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
         next.delete(field);
         return next;
       });
+      const fieldLabel = FIELD_CONFIG.find((c) => c.key === field)?.label ?? "Your change";
       if (result.needsModeration) {
         setPendingModeration((prev) => new Set([...prev, field]));
         onPendingSubmitted?.();
+        toast.success("Thanks! Sent for review", { description: `${fieldLabel} will update once it's approved.` });
       } else {
         onChurchUpdated?.();
+        toast.success(result.applied ? `${fieldLabel} updated` : "Thanks! Your suggestion was recorded", {
+          description: result.applied ? "Thanks for keeping this church's info accurate." : undefined,
+        });
       }
 
       setTimeout(() => {
@@ -243,13 +253,23 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
         });
       }, 2000);
     } catch (err: any) {
-      setError(err.message || "Failed to submit suggestion");
+      setError(friendlyError(err));
     } finally {
       setSubmitting(null);
     }
   };
 
   const emptyCount = FIELD_CONFIG.filter(f => isFieldEmpty(church, f.key) && !isOptionalField(f.key)).length;
+
+  // Unsaved-changes guard: an open field edit with a changed, unsubmitted value.
+  const hasUnsavedEdit = Array.from(editingFields).some(
+    (f) => (values[f] ?? "").trim() !== getCurrentValue(church, f as EditableField).trim()
+  );
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const requestClose = () => {
+    if (hasUnsavedEdit && !submitting) setConfirmDiscard(true);
+    else onClose();
+  };
 
   return (
     <div
@@ -276,9 +296,29 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
               )}
             </p>
           </div>
-          <CloseButton onClick={onClose} size="md" />
+          <CloseButton onClick={requestClose} size="md" />
         </div>
       </div>
+      {confirmDiscard && (
+        <div role="alertdialog" aria-label="Discard your changes?" className="flex-shrink-0 flex flex-wrap items-center gap-2 px-5 py-3 bg-amber-500/10 border-b border-amber-500/20">
+          <p className="text-amber-100 text-xs font-medium flex-1 min-w-[10rem]">You have a change you haven&apos;t submitted. Discard it?</p>
+          <button
+            type="button"
+            autoFocus
+            onClick={() => setConfirmDiscard(false)}
+            className="px-3 py-1.5 rounded-full text-xs font-medium text-white/80 border border-white/15 hover:bg-white/5"
+          >
+            Keep editing
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 rounded-full text-xs font-medium text-white bg-red-500/80 hover:bg-red-500"
+          >
+            Discard
+          </button>
+        </div>
+      )}
 
       {/* Form fields */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
@@ -292,6 +332,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
                 submitting={submitting}
                 submitted={submitted}
                 pendingModeration={effectivePending}
+                error={errorField === fieldConfig.key ? error : null}
                 isEditing={editingFields.has(fieldConfig.key)}
                 onStartEdit={() => {
                   setEditingFields(prev => new Set(prev).add(fieldConfig.key));
@@ -336,6 +377,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
                 submitting={submitting}
                 submitted={submitted}
                 pendingModeration={effectivePending}
+                error={errorField === fieldConfig.key ? error : null}
                 isEditing={editingFields.has(fieldConfig.key)}
                 onStartEdit={() => {
                   setEditingFields(prev => new Set(prev).add(fieldConfig.key));
@@ -360,8 +402,8 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
               />
             ))}
 
-            {error && (
-              <div className="flex items-center gap-2 rounded-lg p-3 bg-red-500/10 border border-red-500/20">
+            {error && !FIELD_CONFIG.some((f) => f.key === errorField) && (
+              <div role="alert" className="flex items-center gap-2 rounded-lg p-3 bg-red-500/10 border border-red-500/20">
                 <AlertCircle size={14} className="text-red-400 flex-shrink-0" />
                 <p className="text-red-300/80 text-xs">{error}</p>
               </div>
@@ -410,14 +452,14 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
                       onClick={async () => {
                         setShowReportClosedConfirm(false);
                         setSubmitting("reportClosed");
-                        setError(null);
+                        setError(null); setErrorField(null);
                         try {
                           const result = await submitSuggestion(church.id, "reportClosed", "closed");
                           setPendingModeration((prev) => new Set([...prev, "reportClosed"]));
                           onPendingSubmitted?.();
                           if (!result.needsModeration) onChurchUpdated?.();
                         } catch (err: any) {
-                          setError(err.message ?? "Failed to submit report");
+                          setError(friendlyError(err));
                         } finally {
                           setSubmitting(null);
                         }
@@ -474,14 +516,14 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
                       onClick={async () => {
                         setShowReportOutOfScopeConfirm(false);
                         setSubmitting("reportOutOfScope");
-                        setError(null);
+                        setError(null); setErrorField(null);
                         try {
                           const result = await submitSuggestion(church.id, "reportOutOfScope", "out_of_scope");
                           setPendingModeration((prev) => new Set([...prev, "reportOutOfScope"]));
                           onPendingSubmitted?.();
                           if (!result.needsModeration) onChurchUpdated?.();
                         } catch (err: any) {
-                          setError(err.message ?? "Failed to submit report");
+                          setError(friendlyError(err));
                         } finally {
                           setSubmitting(null);
                         }
@@ -545,14 +587,14 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
                         setShowDuplicateConfirm(false);
                         setSelectedCanonicalChurchId(null);
                         setSubmitting("reportDuplicate");
-                        setError(null);
+                        setError(null); setErrorField(null);
                         try {
                           const result = await submitSuggestion(church.id, "reportDuplicate", canonicalId);
                           setPendingModeration((prev) => new Set([...prev, "reportDuplicate"]));
                           onPendingSubmitted?.();
                           if (!result.needsModeration) onChurchUpdated?.();
                         } catch (err: any) {
-                          setError(err.message ?? "Failed to submit report");
+                          setError(friendlyError(err));
                         } finally {
                           setSubmitting(null);
                         }
@@ -628,7 +670,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
                         let val = relocateAddress.trim();
                         setShowRelocateConfirm(false);
                         setSubmitting("reportRelocated");
-                        setError(null);
+                        setError(null); setErrorField(null);
                         try {
                           const parts = parseAddressValue(val);
                           if (parts.address && parts.city && parts.state) {
@@ -648,7 +690,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
                           onPendingSubmitted?.();
                           if (!result.needsModeration) onChurchUpdated?.();
                         } catch (err: any) {
-                          setError(err.message ?? "Failed to submit report");
+                          setError(friendlyError(err));
                         } finally {
                           setSubmitting(null);
                         }
@@ -692,7 +734,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
                           setError("New address must be in the same state as this church");
                           return;
                         }
-                        setError(null);
+                        setError(null); setErrorField(null);
                         setShowRelocateConfirm(true);
                       }}
                       className="flex-1 px-3 py-2 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-500 transition-colors"
@@ -848,7 +890,7 @@ function MainCampusSearch({
         .catch((err) => {
           // If server fails, we still have local results
           if (!local.length) {
-            setError(err?.message || "Search failed");
+            setError(friendlyError(err));
             setResults([]);
           }
         })
@@ -947,6 +989,7 @@ function FieldCard({
   submitting,
   submitted,
   pendingModeration,
+  error,
   isEditing,
   onStartEdit,
   onCancelEdit,
@@ -965,6 +1008,8 @@ function FieldCard({
   submitting: string | null;
   submitted: Set<string>;
   pendingModeration: Set<string>;
+  /** Error from submitting this field, shown inside the card. */
+  error?: string | null;
   isEditing: boolean;
   onStartEdit: () => void;
   onCancelEdit: () => void;
@@ -1119,6 +1164,12 @@ function FieldCard({
             </div>
           )}
         </>
+      )}
+      {error && (
+        <div role="alert" className="mt-2.5 flex items-start gap-2 rounded-lg px-3 py-2 bg-red-500/10 border border-red-500/20">
+          <AlertCircle size={13} className="text-red-400 flex-shrink-0 mt-px" />
+          <p className="text-red-200 text-xs leading-snug">{error}</p>
+        </div>
       )}
     </div>
   );

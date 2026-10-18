@@ -83,6 +83,7 @@ import {
 } from "lucide-react";
 import logoImg from "../../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 import { BRAND } from "./palette";
+import { friendlyError } from "../../lib/friendly-error";
 
 type LucideIcon = React.ComponentType<{ className?: string }>;
 
@@ -1368,7 +1369,7 @@ export function SeasonalReportPage() {
           : fetchReport(slug);
     loadReport
       .then(setReport)
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(friendlyError(e)))
       .finally(() => setLoading(false));
   }, [slug, isStateScopeRoute, normalizedStateAbbrev, routeCountryCode]);
 

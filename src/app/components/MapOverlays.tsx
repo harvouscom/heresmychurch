@@ -21,6 +21,8 @@ export function LoadingOverlay({
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 backdrop-blur-sm">
       <div
+        role="status"
+        aria-live="polite"
         className="flex flex-col items-center gap-3 px-8 py-6 rounded-panel shadow-hmc-panel text-white bg-hmc-surface-glass backdrop-blur-md"
       >
         <ThreeDotLoader size={28} />
@@ -29,7 +31,7 @@ export function LoadingOverlay({
             ? `Loading churches in ${loadingStateName}...`
             : `Loading churches...`}
         </span>
-        <div className="mt-2 pt-3 border-t border-white/10 max-w-[280px] text-center relative overflow-hidden" style={{ minHeight: 72 }}>
+        <div aria-hidden="true" className="mt-2 pt-3 border-t border-white/10 max-w-[280px] text-center relative overflow-hidden" style={{ minHeight: 72 }}>
           <AnimatePresence mode="wait">
             {sayingIndex !== null && (
               <motion.div
@@ -69,6 +71,7 @@ export function ErrorOverlay({
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div
+        role="alert"
         className="flex flex-col items-center gap-4 px-8 py-6 rounded-panel shadow-hmc-panel pointer-events-auto max-w-[340px] bg-hmc-surface-glass backdrop-blur-md"
       >
         <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
@@ -78,7 +81,7 @@ export function ErrorOverlay({
           <div className="text-white font-semibold text-sm">
             Couldn't load {focusedStateName}
           </div>
-          <div className="text-white/50 text-xs mt-1.5 leading-relaxed">
+          <div className="text-white/70 text-xs mt-1.5 leading-relaxed text-pretty">
             {error}
           </div>
         </div>
@@ -91,13 +94,13 @@ export function ErrorOverlay({
                 "linear-gradient(135deg, #6B21A8 0%, #A855F7 100%)",
             }}
           >
-            Try Again
+            Try again
           </button>
           <button
             onClick={onGoBack}
             className="px-5 py-2 rounded-full text-white/60 text-sm border border-white/15 hover:bg-white/5 transition-all"
           >
-            Go Back
+            Go back
           </button>
           <a
             href={`mailto:${CONTACT_EMAIL}`}
@@ -123,13 +126,16 @@ export function ErrorBanner({
   return (
     <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20">
       <div
-        className="flex items-center gap-3 px-5 py-3 rounded-xl shadow-hmc-menu text-xs"
-        style={{ backgroundColor: "rgba(180, 40, 60, 0.9)" }}
+        role="alert"
+        className="flex items-center gap-3 px-5 py-3 rounded-xl shadow-hmc-menu text-xs max-w-[min(92vw,480px)]"
+        style={{ backgroundColor: "rgba(180, 40, 60, 0.92)" }}
       >
-        <span className="text-white">{error}</span>
+        <span className="text-white text-pretty">{error}</span>
         <button
+          type="button"
           onClick={onDismiss}
-          className="text-white/60 hover:text-white"
+          aria-label="Dismiss"
+          className="text-white/70 hover:text-white p-1 -m-1 flex-shrink-0"
         >
           <X size={14} />
         </button>

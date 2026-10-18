@@ -15,6 +15,7 @@ import type {
   CommunityAlert,
 } from "./api";
 import { CloseButton } from "./ui/close-button";
+import { friendlyError } from "../lib/friendly-error";
 
 type AlertItem = {
   id: string;
@@ -76,7 +77,7 @@ export function PendingAlertsPill({
       setCreateProposals(proposalsRes.create);
       setResolveProposals(proposalsRes.resolve);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(friendlyError(e));
       setCommunityAlerts([]);
       setCreateProposals([]);
       setResolveProposals([]);
@@ -100,7 +101,7 @@ export function PendingAlertsPill({
       setProposeDescription("");
       await loadAlertsAndProposals();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send");
+      setError(friendlyError(e));
     } finally {
       setSubmittingPropose(false);
     }
@@ -114,7 +115,7 @@ export function PendingAlertsPill({
       setCreateProposals(res.proposals.create);
       setResolveProposals(res.proposals.resolve);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to vote");
+      setError(friendlyError(e));
     } finally {
       setVotingId(null);
     }
@@ -127,7 +128,7 @@ export function PendingAlertsPill({
       setCommunityAlerts(res.alerts);
       setResolveProposals(res.proposals.resolve);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to vote");
+      setError(friendlyError(e));
     } finally {
       setVotingId(null);
     }
