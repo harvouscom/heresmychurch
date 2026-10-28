@@ -97,6 +97,32 @@ This is a strong candidate for the AI for Church Hackathon (Outreach or Operatio
 - Extension of existing HMC work; new pieces (SDK, widgets, ranking improvements, reference demo) are built inside the window.
 - Easy to demo in a 5-minute video (see demo ideas below).
 
+### Refined hackathon scope (tight, improves HMC now)
+
+Focus on three pieces that can be finished and demoed in the build window while directly improving Here's My Church:
+
+1. **Improved church lookup**  
+   Type-ahead search that uses AI only for fuzzy matching and ranking (favor complete, fresh, recently confirmed listings). This makes the existing HMC experience better immediately.
+
+2. **Structured autofill + stable IDs**  
+   A clean response shape (name, address, service times, website, denomination, HMC ID, freshness signals) that any app can use. Document it simply.
+
+3. **“Select your church” widget + suggest-update flow**  
+   A drop-in component (React or web component) that searches, selects, and autofills. Include a lightweight “this looks out of date — suggest an update” path that feeds HMC’s existing human-reviewed suggestion pipeline.  
+   This is the piece that both helps HMC get better data and gives other builders something concrete to use.
+
+Skip a full public API key system, billing, rate limits, and broad partner onboarding for the hackathon. Those are post-hackathon. The demo can be: search widget in a sample form → autofill → suggest a correction → show it landing in HMC’s review queue.
+
+### Longer-term paid product path
+
+Once the lookup + structured data + contribution loop works well, the natural paid layer is:
+- Higher rate limits or commercial use
+- Extra fields or fresher signals
+- Dedicated support or SLA
+- Optional premium widgets or bulk endpoints
+
+Keep a generous free tier for non-profits, open-source projects, and small churches. The hackathon version proves the value and the data-improvement loop; the paid version comes after real usage appears.
+
 ## Showing it off (demo ideas)
 
 1. **Reference church-app settings screen**  
