@@ -89,10 +89,12 @@ A small React (or framework-agnostic) component can wrap the search + select flo
 
 ## Hackathon angle (AI for Church)
 
-This is a strong candidate for the AI for Church Hackathon (Outreach or Operations track):
+**Track:** Open Track  
+This is a platform/infrastructure idea that serves the Church by improving shared church data across tools. It does not fit neatly into Discipleship, Operations, Outreach, or Care, so Open Track is the accurate choice.
+
+**AI usage:** Cloudflare AI only, for smarter search and suggestions (fuzzy matching, ranking by relevance + data completeness/freshness, and optional difference detection for “suggest update” prompts). AI does not generate church facts or act as a chatbot/agent. This meets the requirement that the project features AI while remaining a practical tool rather than an AI product. It also supports the “Responsible and faithful use of AI” criterion in Open Track.
 
 - Clear ministry impact: reduces friction and improves shared church data across tools.
-- AI is central but responsible (matching/ranking + optional difference detection).
 - Practical proof-of-concept: public (or partner) API surface + SDK method + one reference integration (mock church-app settings screen that does typeahead → autofill → suggest update).
 - Extension of existing HMC work; new pieces (SDK, widgets, ranking improvements, reference demo) are built inside the window.
 - Easy to demo in a 5-minute video (see demo ideas below).
@@ -102,7 +104,7 @@ This is a strong candidate for the AI for Church Hackathon (Outreach or Operatio
 Focus on three pieces that can be finished and demoed in the build window while directly improving Here's My Church:
 
 1. **Improved church lookup**  
-   Type-ahead search that uses AI only for fuzzy matching and ranking (favor complete, fresh, recently confirmed listings). This makes the existing HMC experience better immediately.
+   Type-ahead search that uses Cloudflare AI only for fuzzy matching and ranking (favor complete, fresh, recently confirmed listings). This makes the existing HMC experience better immediately.
 
 2. **Structured autofill + stable IDs**  
    A clean response shape (name, address, service times, website, denomination, HMC ID, freshness signals) that any app can use. Document it simply.
