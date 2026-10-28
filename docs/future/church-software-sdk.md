@@ -125,6 +125,38 @@ Once the lookup + structured data + contribution loop works well, the natural pa
 
 Keep a generous free tier for non-profits, open-source projects, and small churches. The hackathon version proves the value and the data-improvement loop; the paid version comes after real usage appears.
 
+## Target tools (potential adopters)
+
+These are examples of church software that already ask for church details or maintain directories. Likelihood of free vs. paid HMC API usage is a rough estimate based on typical volume and commercial nature.
+
+| Tool | Category | Most likely HMC API usage |
+|------|----------|---------------------------|
+| Planning Center | ChMS | Paid (high volume, commercial) |
+| Breeze (Tithely Church Management) | ChMS | Paid |
+| Rock RMS | ChMS | Free (open source) / Paid for commercial hosts |
+| ChurchTrac | ChMS | Free or low paid |
+| ChMeetings | ChMS | Free |
+| Churchteams | ChMS | Paid |
+| Realm (ACS) | ChMS | Paid |
+| Gracely | ChMS | Free |
+| One Church Software | ChMS | Free or low paid |
+| Text In Church | ChMS / Comms | Paid |
+| Tithe.ly Sites | Website | Paid |
+| Nucleus | Website | Paid |
+| The Church Co | Website | Paid |
+| Subsplash | Website / App | Paid |
+| ChurchSpring | Website | Paid |
+| Sharefaith | Website / Media | Paid |
+| Clover Sites | Website | Paid |
+| Pushpay | Giving | Paid |
+| Givelify | Giving | Paid |
+| RallyUp | Fundraising / Events | Paid |
+| ChurchGather | Events / Bulletin | Free or low paid |
+| Planning Center Groups | Groups | Paid |
+| GroupVitals | Groups | Paid |
+| Tithely Groups | Groups | Paid |
+| Faith.tools | Directory | Free |
+
 ## Showing it off (demo ideas)
 
 1. **Reference church-app settings screen**  
