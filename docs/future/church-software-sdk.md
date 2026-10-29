@@ -53,6 +53,15 @@ Consumers treat optional fields as nullable and handle missing data gracefully.
 - Optional: detect differences between what the consuming app has stored and what HMC currently has, then surface a "suggest update" prompt.
 - All writes remain human-reviewed on the HMC side (sensitive fields require moderation; non-sensitive can auto-apply after consensus, same as the site).
 
+**Review bottleneck note:** Human review is the current limiting factor. Once other tools send suggestions via the SDK, the queue can grow faster than reviewers can clear it. Longer-term options to loosen this without dropping review:
+- Auto-apply low-risk updates (confirmations, formatting, high-confidence matches from strong sources) after a short delay or consensus.
+- Keep sensitive fields (pastor name, contact info, beliefs) in the full review queue.
+- Rank the queue by confidence and source quality so reviewers focus on what needs judgment.
+- Contributor trust levels — proven sources can have lower-risk updates auto-apply or skip to lighter review.
+- Batch/diff views and community confirmations to speed up clearing pending items.
+
+For the hackathon, suggestions can still land in the existing review queue. The scaling approaches above are post-hackathon.
+
 ### 4. Widgets / embeddable components (optional but high-leverage)
 - "Select your church" typeahead component.
 - Compact church card.
@@ -189,6 +198,7 @@ These are examples of church software that already ask for church details or mai
 - Widget packaging (npm package, script embed, iframe).
 - Reference implementation location (separate small repo, or demo page in this repo).
 - How aggressively to surface "suggest update" prompts without annoying users.
+- Scaling the review queue as contributions come in from more tools (see note under Contribution / update path).
 
 ## References
 
