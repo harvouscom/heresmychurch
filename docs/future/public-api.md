@@ -123,6 +123,45 @@ Pollable change feed for partners that denormalize church snapshots (name / city
 
 `Cache-Control: private, max-age=15`
 
+#### `GET /v1/churches/:id/profile`
+
+The one richer read: the lean ref plus the listing fields a partner shows a member. Fetch it per church (a member's church, a church being registered), never per search hit — search and by-id stay lean.
+
+Every optional field is present and `null` (or `[]`) when HMC has nothing, so "not collected" never looks like a missing key.
+
+```json
+{
+  "church": {
+    "id": "TX-123456", "shortId": "01234567", "name": "Grace Community Church",
+    "city": "Austin", "state": "TX", "country": "US", "lat": 30.27, "lng": -97.74,
+    "serviceTimes": {
+      "raw": "Sun 9:00 AM; Sun 11:00 AM (Traditional); Wed 7:00 PM",
+      "slots": [
+        { "dayOfWeek": 0, "startTime": "09:00", "label": null },
+        { "dayOfWeek": 0, "startTime": "11:00", "label": "Traditional" },
+        { "dayOfWeek": 3, "startTime": "19:00", "label": null }
+      ],
+      "parsed": true
+    },
+    "website": "https://grace.example", "phone": "(512) 555-0100", "email": null,
+    "pastorName": "Jane Doe", "languages": ["English"], "ministries": ["Kids", "Youth"],
+    "attendanceEstimate": 350,
+    "homeCampus": null,
+    "campuses": [{ "id": "TX-789", "name": "Grace North", "shortId": "07890000" }],
+    "listingStatus": null,
+    "lastVerified": 1722000000000
+  }
+}
+```
+
+- `serviceTimes` is `null` when nothing is stored or the value is a placeholder (`TBD`, `see website`, …).
+- `slots` uses the same grammar as storage normalization (`service-times.ts`): `dayOfWeek` 0 = Sunday, `startTime` 24h `HH:MM` on the church's wall clock (HMC stores no timezone; the partner supplies one). One slot per day + time. A string that does not parse comes back with `parsed: false` and `slots: []` — show `raw` as text.
+- `attendanceEstimate` is an estimate (ARDA/heuristics unless corrected). Treat it as a size hint, not a count.
+- `campuses` lists campuses in the **same region** only (v1); `homeCampus` resolves across regions.
+- `404` `{ "church": null, "error": "Church not found" }` for an unknown id.
+
+`Cache-Control: private, max-age=300`
+
 #### `GET /v1/churches/:state/:shortId`
 
 Resolve a picked result by state + 8-digit `shortId` (or full id / numeric segment).
@@ -133,7 +172,7 @@ Resolve a picked result by state + 8-digit `shortId` (or full id / numeric segme
 
 ### Writes (same review rules as the site)
 
-Partner writes never mutate `churches:{ST}` directly. They reuse the site suggestion + confirm pipeline.
+Partner writes reuse the site suggestion + confirm pipeline. **Non-sensitive fields apply to `churches:{ST}` immediately** (consensus `THR=1`, so one partner submission is enough); sensitive fields wait in `suggestions:{id}` for a moderator.
 
 | Method | Path | Behavior |
 |--------|------|----------|
@@ -141,9 +180,9 @@ Partner writes never mutate `churches:{ST}` directly. They reuse the site sugges
 | `GET` | `/v1/churches/:id/suggestions` | Pending/approved vote status per field (`needsModeration` for sensitive). |
 | `POST` | `/v1/churches/:id/confirm` | Bumps `lastVerified` only (anti-staleness). No field merge, no search-index rewrite. |
 
-**Valid `field` values:** `name`, `website`, `address`, `reportClosed`, `reportDuplicate`, `attendance`, `denomination`, `serviceTimes`, `languages`, `ministries`, `pastorName`, `phone`, `email`, `homeCampusId`
+**Valid `field` values:** `name`, `website`, `address`, `reportClosed`, `reportDuplicate`, `reportOutOfScope`, `reportRelocated`, `attendance`, `denomination`, `serviceTimes`, `languages`, `ministries`, `pastorName`, `phone`, `email`, `homeCampusId`
 
-**Sensitive (moderator required — never auto-applied):** `name`, `website`, `address`, `reportClosed`, `reportDuplicate`, `homeCampusId`
+**Sensitive (moderator required — never auto-applied):** `name`, `website`, `address`, `reportClosed`, `reportDuplicate`, `reportOutOfScope`, `reportRelocated`, `homeCampusId`
 
 **Non-sensitive:** auto-apply after consensus (`THR=1`, unique actor). Partner submissions use actor key `partner:harvous` (24h dedupe per field).
 
@@ -320,6 +359,31 @@ When a church creates a Clerk org on Harvous:
 - [ ] Confirm returns success; second confirm within 24h returns `alreadyConfirmed`
 - [ ] `GET /v1/churches/changes?since=` returns watermarked events; after a field apply, the churchId appears
 - [ ] Browser network tab never shows `x-partner-key` or `HERESMYCHURCH_PARTNER_API_KEY`
+
+### Trusted write-back (hackathon — not built)
+
+Today a partner is just another anonymous actor: `partner:harvous` gets exactly the rules an IP gets. That is right for a member suggesting a fix, and wrong for a church editing its own listing through a partner that has verified it. This is the contract sketch to build against; nothing below exists yet.
+
+**Fix first — the consensus tie-break.** With `THR=1`, `consensus()` picks the most-voted value and on a tie keeps the one seen first, i.e. the *older* submission. A partner correcting a stale community value ties 1–1 and loses, while the suggest response still says `applied: true`. Any trusted path needs "newest wins on a tie" (or the trusted actor outranks), and `applied` must mean the stored value now equals what was sent.
+
+**Claim, attested by the partner.**
+
+| Method | Path | Behavior |
+|--------|------|----------|
+| `POST` | `/v1/churches/:id/claim` | Body `{ "partnerChurchRef", "verifiedBy", "verifiedAt" }`. The partner asserts it verified this organization as this church (Harvous: a concierge-approved church with a Clerk org). Stores `claim:{id}` with the partner and ref; idempotent per partner. |
+| `DELETE` | `/v1/churches/:id/claim` | The partner withdraws its attestation (church left, offboarded). |
+| `GET` | `/v1/churches/:id/claim` | Who has claimed it, when — for the partner to reconcile. |
+
+**Writes as the church.** A claimed listing accepts writes with an actor of `church:{id}` (the partner sends `x-acting-for-church: {id}`; the server checks the claim belongs to this partner key):
+
+- Non-sensitive fields (`serviceTimes`, `languages`, `ministries`, `pastorName`, `phone`, `email`, `denomination`, `attendance`) apply immediately and **outrank** community consensus.
+- `website` and `address` also apply immediately for a claimed church (the reason claim exists).
+- `name`, `homeCampusId` and every lifecycle report (`reportClosed` / `Duplicate` / `OutOfScope` / `Relocated`) **stay moderated**, claim or not.
+- Each applied write records provenance `updatedBy: "church"` → an **Updated by the church** badge on the listing, distinct from completeness "Verified" and from "Confirmed".
+
+**Feeding partners back.** `changes` gains the provenance on each row so a partner can tell its own church's edit from a community one and skip the re-fetch. Outbound webhooks stay deferred.
+
+**Harvous's side** (for whoever builds it): staff-edited `ChurchServiceTimes` become `serviceTimes` writes as the church; the claim is posted when a church is approved and withdrawn on offboarding.
 
 ### Deferred (not in v1)
 

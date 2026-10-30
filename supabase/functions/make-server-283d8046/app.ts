@@ -19,7 +19,7 @@ import {
 } from "./google-places-enrichment.ts";
 
 import { INTL_REGIONS } from "./regions-intl.ts";
-import { normalizeServiceTimes } from "./service-times.ts";
+import { normalizeServiceTimes, parseServiceTimesToSlots, type ServiceTimeSlot } from "./service-times.ts";
 import {
   regionCountry,
   churchesKey,
@@ -1335,6 +1335,18 @@ app.post(`${P}/v1/churches/:id/confirm`,async(c)=>{
   }catch(e){return serverError(c,e);}
 });
 
+// Before /:state/:shortId, or "profile" would be read as a shortId.
+app.get(`${P}/v1/churches/:id/profile`,async(c)=>{
+  try{
+    const id=decodeURIComponent(c.req.param("id")||"");
+    if(!id)return c.json({church:null,error:"Missing id"},400);
+    const found=await findChurchRecordById(id);
+    if(!found)return c.json({church:null,error:"Church not found"},404);
+    c.header("Cache-Control","private, max-age=300");
+    return c.json({church:await buildPartnerChurchProfile(found)});
+  }catch(e){console.error(`${c.req.method} ${c.req.path} failed:`,e);return c.json({church:null,error:SERVER_ERROR_MSG},500);}
+});
+
 app.get(`${P}/v1/churches/:state/:shortId`,async(c)=>{
   try{
     const st=normalizePartnerState(c.req.param("state")||"");
@@ -1444,7 +1456,12 @@ async function findChurchLeanByStateShortId(st:string,segment:string):Promise<Le
   return toLeanChurchRef(church,realSt,false);
 }
 
-async function findChurchLeanById(id:string):Promise<LeanChurchRef|null>{
+/**
+ * The stored record for an HMC id, with the region it was found in and that region's full list
+ * (partner profile reads campuses out of it). KV only — no pending-suggestion overlay, same as
+ * every partner resolve.
+ */
+async function findChurchRecordById(id:string):Promise<{church:any;st:string;list:any[]}|null>{
   const decoded=decodeURIComponent(id);
   const parsed=stateFromChurchId(decoded);
   const st=parsed?normalizePartnerState(parsed):null;
@@ -1461,7 +1478,7 @@ async function findChurchLeanById(id:string):Promise<LeanChurchRef|null>{
       if(ch.some((c:any)=>c.id===decoded)){
         const withShort=addShortIdsUnique(ch,st);
         const church=withShort.find((c:any)=>c.id===decoded);
-        if(church)return toLeanChurchRef(church,st,false);
+        if(church)return{church,st,list:withShort};
       }
       // Parsed state was authoritative and loaded: don't re-read it in the fallback scan.
       triedSt=st;
@@ -1480,9 +1497,74 @@ async function findChurchLeanById(id:string):Promise<LeanChurchRef|null>{
     if(!ch.some((c:any)=>c.id===decoded))continue;
     const withShort=addShortIdsUnique(ch,realSt);
     const found=withShort.find((c:any)=>c.id===decoded);
-    if(found)return toLeanChurchRef(found,realSt,false);
+    if(found)return{church:found,st:realSt,list:withShort};
   }
   return null;
+}
+
+async function findChurchLeanById(id:string):Promise<LeanChurchRef|null>{
+  const found=await findChurchRecordById(id);
+  return found?toLeanChurchRef(found.church,found.st,false):null;
+}
+
+/**
+ * Partner profile: the lean ref plus the listing fields a partner shows a member — service
+ * times (raw and structured), contact, ministries, languages, campus links. Lean refs stay lean
+ * (search, by-id); this is the one richer read, fetched per church rather than per search hit.
+ * Every optional field is null when HMC has nothing, so "not collected" and "empty" read alike.
+ */
+type PartnerChurchProfile=LeanChurchRef&{
+  serviceTimes:{raw:string;slots:ServiceTimeSlot[];parsed:boolean}|null;
+  website:string|null;
+  phone:string|null;
+  email:string|null;
+  pastorName:string|null;
+  languages:string[];
+  ministries:string[];
+  attendanceEstimate:number|null;
+  homeCampus:{id:string;name:string;state:string;shortId:string}|null;
+  campuses:{id:string;name:string;shortId:string}[];
+  listingStatus:string|null;
+};
+
+const strOrNull=(v:unknown):string|null=>typeof v==="string"&&v.trim()?v.trim():null;
+const strList=(v:unknown):string[]=>Array.isArray(v)?v.filter((x)=>typeof x==="string"&&x.trim()).map((x)=>x.trim()):(typeof v==="string"&&v.trim()?v.split(",").map((x)=>x.trim()).filter(Boolean):[]);
+
+async function buildPartnerChurchProfile(found:{church:any;st:string;list:any[]}):Promise<PartnerChurchProfile>{
+  const{church,st,list}=found;
+  const lean=toLeanChurchRef(church,st,false);
+  const rawSvc=typeof church.serviceTimes==="string"?church.serviceTimes.trim():"";
+  let serviceTimes:PartnerChurchProfile["serviceTimes"]=null;
+  if(!isServiceTimesMissing(rawSvc)){
+    const slots=parseServiceTimesToSlots(rawSvc);
+    serviceTimes={raw:rawSvc,slots,parsed:slots.length>0};
+  }
+  let homeCampus:PartnerChurchProfile["homeCampus"]=null;
+  const hid=typeof church.homeCampusId==="string"?church.homeCampusId:"";
+  if(hid){
+    const sameRegion=list.find((c:any)=>c.id===hid);
+    if(sameRegion)homeCampus={id:sameRegion.id,name:sameRegion.name||"Unknown",state:st,shortId:toShortId(sameRegion.id,st,sameRegion.shortId)};
+    else{const probe=[{homeCampusId:hid}];await resolveHomeCampus(probe,st);homeCampus=(probe[0] as any).homeCampus??null;}
+  }
+  // v1: campuses in the same region only — the region list is already in memory; a cross-region
+  // reverse lookup would mean scanning every region per request.
+  const campuses=list
+    .filter((c:any)=>c.homeCampusId===church.id&&c.id!==church.id)
+    .map((c:any)=>({id:c.id,name:c.name||"Unknown",shortId:toShortId(c.id,st,c.shortId)}));
+  return{
+    ...lean,
+    serviceTimes,
+    website:strOrNull(church.website),
+    phone:strOrNull(church.phone),
+    email:strOrNull(church.email),
+    pastorName:strOrNull(church.pastorName),
+    languages:strList(church.languages),
+    ministries:strList(church.ministries),
+    attendanceEstimate:typeof church.attendance==="number"&&church.attendance>0?church.attendance:null,
+    homeCampus,
+    campuses,
+    listingStatus:strOrNull(church.listingStatus),
+  };
 }
 
 // Resolve homeCampus summary when homeCampusId points to another state

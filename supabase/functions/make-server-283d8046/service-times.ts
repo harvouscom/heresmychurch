@@ -156,3 +156,32 @@ function timeMinutes(time: string): number {
   if (p === "AM" && h === 12) h = 0;
   return h * 60 + min;
 }
+
+/** One recurring service, structured for partners: 0 = Sunday, 24h wall-clock time. */
+export type ServiceTimeSlot = { dayOfWeek: number; startTime: string; label: string | null };
+
+/**
+ * Parse a stored (or raw) service-times string into structured slots, with the same grammar
+ * `normalizeServiceTimes` uses — so a value the site shows as "Sun 9:00 AM" is always slot
+ * `{ dayOfWeek: 0, startTime: "09:00" }` for a partner. Unparseable text yields no slots;
+ * callers keep the raw string alongside. One slot per day+time (first label wins), sorted.
+ */
+export function parseServiceTimesToSlots(value: string | undefined | null): ServiceTimeSlot[] {
+  if (!value || !String(value).trim()) return [];
+  const dayOrder = DAYS.map((d) => d.short) as readonly string[];
+  const seen = new Set<string>();
+  const slots: ServiceTimeSlot[] = [];
+  for (const seg of splitSegments(String(value))) {
+    for (const row of parseSegment(seg)) {
+      if (!/^\d{1,2}:\d{2}\s+(AM|PM)$/i.test(row.time)) continue;
+      const minutes = timeMinutes(row.time);
+      const startTime = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+      const dayOfWeek = dayOrder.indexOf(row.day);
+      const key = `${dayOfWeek}@${startTime}`;
+      if (dayOfWeek < 0 || seen.has(key)) continue;
+      seen.add(key);
+      slots.push({ dayOfWeek, startTime, label: row.label?.trim() || null });
+    }
+  }
+  return slots.sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.startTime.localeCompare(b.startTime));
+}
