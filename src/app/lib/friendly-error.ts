@@ -8,6 +8,7 @@ export const NETWORK_ERROR = "We couldn't reach the server. Check your connectio
 export const TIMEOUT_ERROR = "This is taking longer than usual. Check your connection and try again.";
 export const SERVER_ERROR = "Something went wrong on our end. Please try again in a moment.";
 export const RATE_LIMIT_ERROR = "Too many requests. Please wait a moment and try again.";
+export const MAINTENANCE_ERROR = "Changes are paused for a few minutes while we upgrade. Browsing still works.";
 
 export function friendlyError(err: unknown, fallback = SERVER_ERROR): string {
   let msg = err instanceof Error ? err.message : typeof err === "string" ? err : "";
@@ -25,6 +26,7 @@ export function friendlyError(err: unknown, fallback = SERVER_ERROR): string {
     }
   }
 
+  if (/^maintenance$/i.test(msg)) return MAINTENANCE_ERROR;
   if (/timed out|timeout/i.test(msg)) return TIMEOUT_ERROR;
   if (/(^|: )failed to fetch$|networkerror|network request failed|load failed|err_|offline/i.test(msg)) return NETWORK_ERROR;
   if (/\b429\b|too many/i.test(msg)) return /too many/i.test(msg) && !/\b429\b/.test(msg) ? msg : RATE_LIMIT_ERROR;

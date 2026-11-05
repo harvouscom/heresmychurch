@@ -1,6 +1,5 @@
 import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
-import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv.ts";
 import { recordChurchAudit, queryAuditRecent, queryAuditByState, queryAuditByChurch, queryAuditChangesSince } from "./audit.ts";
 import { POP } from "./state-populations.ts";
@@ -45,7 +44,8 @@ import {
   regionFromChurchId,
   parseMetaCountKey,
 } from "./church-keys.ts";
-import { searchTable, setSearchTableReady, syncSearchRegion } from "./search-table.ts";
+import { normalizeSearchText, searchTable, setSearchTableReady, syncSearchRegion } from "./search-table.ts";
+import { queryMonthlyRows, upsertMonthlyRows } from "./monthly.ts";
 import { r2Enabled, r2PutJson } from "./r2.ts";
 import { env, renderOgImage, waitUntil } from "./runtime.ts";
 
@@ -601,12 +601,6 @@ function mergeUserFieldsFromExisting(existingChurches:any[],newChurches:any[]):v
 
 // Shared normalization and tokenization helpers for search. Keep in sync with
 // src/app/components/search-normalize.ts on the frontend.
-function normalizeSearchText(text:string):string{
-  if(!text)return"";
-  const lower=text.toLowerCase();
-  const cleaned=lower.replace(/[^a-z0-9]+/g," ");
-  return cleaned.replace(/\s+/g," ").trim();
-}
 function tokenizeSearchText(text:string):string[]{
   const norm=normalizeSearchText(text);
   if(!norm)return[];
@@ -869,6 +863,17 @@ function serverError(c:any,e:unknown){
 }
 
 const P="/make-server-283d8046";
+
+// Maintenance freeze (MAINTENANCE_READONLY): reads keep working, and anything that changes data
+// gets a clean 503. The exempt routes are what a cutover itself needs, and check the moderator key.
+const FREEZE_EXEMPT=new Set([`${P}/churches/search/backfill`,`${P}/admin/publish-static`]);
+app.use("*",async(c,next)=>{
+  const m=c.req.method;
+  if(!env("MAINTENANCE_READONLY")||m==="GET"||m==="HEAD"||m==="OPTIONS")return next();
+  if(FREEZE_EXEMPT.has(c.req.path)||c.req.path.startsWith(`${P}/admin/migrate/`))return next();
+  c.header("Retry-After","300");
+  return c.json({error:"maintenance"},503);
+});
 
 // ── In-memory cache for churches:meta (read on nearly every endpoint, changes rarely) ──
 let _metaCache:{data:any;ts:number}|null=null;
@@ -3204,8 +3209,6 @@ app.get(`${P}/community/history/:churchId`,async(c)=>{
 });
 
 // ── Monthly impact snapshots (reporting) ──
-const MONTHLY_SNAPSHOTS_TABLE="monthly_impact_snapshots";
-function supabaseMonthly(){return createClient(env("SUPABASE_URL")!,env("SUPABASE_SERVICE_ROLE_KEY")!);}
 function communityStatsByState(stats:any,states:string[]):Record<string,{totalCorrections:number;churchesImproved:number}>{
   const corrections=Array.isArray(stats?.corrections)?stats.corrections:[];
   const improved=Array.isArray(stats?.churchesImproved)?stats.churchesImproved:[];
@@ -3254,11 +3257,9 @@ app.post(`${P}/internal/monthly-stats`,async(c)=>{
     const monthParam=(body.month||"").toString().trim()||new Date().toISOString().slice(0,7);
     const m=monthParam.match(/^(\d{4})-(\d{2})$/);
     const monthDate=m?`${m[1]}-${m[2]}-01`:new Date().toISOString().slice(0,7)+"-01";
-    const sb=supabaseMonthly();
     if(body.baseline&&typeof body.baseline==="object"){
       const pct=Number(body.baseline.pct_needs_review);
-      const {error}=await sb.from(MONTHLY_SNAPSHOTS_TABLE).upsert({month:monthDate,state_abbrev:"",total_churches:body.baseline.total_churches??0,total_needs_review:body.baseline.total_needs_review??0,pct_needs_review:Number.isFinite(pct)?pct:74,missing_address:0,missing_service_times:0,missing_denomination:0,total_corrections:0,churches_improved:0,population:null,people_per_church:null,churches_per_10k:null},{onConflict:"month,state_abbrev"});
-      if(error)return c.json({error:error.message},500);
+      await upsertMonthlyRows([{month:monthDate,state_abbrev:"",total_churches:body.baseline.total_churches??0,total_needs_review:body.baseline.total_needs_review??0,pct_needs_review:Number.isFinite(pct)?pct:74,missing_address:0,missing_service_times:0,missing_denomination:0,total_corrections:0,churches_improved:0,population:null,people_per_church:null,churches_per_10k:null}]);
       return c.json({ok:true,month:monthDate,baseline:true});
     }
     const review=await computeReviewStats();
@@ -3278,8 +3279,7 @@ app.post(`${P}/internal/monthly-stats`,async(c)=>{
       const per10k=pop>0&&data.total>0?(data.total/pop)*10000:null;
       rows.push({month:monthDate,state_abbrev:st,total_churches:data.total,total_needs_review:data.needsReview,pct_needs_review:data.total>0?Math.round((data.needsReview/data.total)*1000)/10:0,missing_address:data.missingAddress,missing_service_times:data.missingPhone,missing_denomination:data.missingEmail,total_corrections:comm.totalCorrections,churches_improved:comm.churchesImproved,population:pop||null,people_per_church:peoplePer,churches_per_10k:per10k});
     }
-    const {error}=await sb.from(MONTHLY_SNAPSHOTS_TABLE).upsert(rows,{onConflict:"month,state_abbrev"});
-    if(error)return c.json({error:error.message},500);
+    await upsertMonthlyRows(rows);
     return c.json({ok:true,month:monthDate,rows:rows.length});
   }catch(e){return serverError(c,e);}
 });
@@ -3289,15 +3289,9 @@ app.get(`${P}/monthly-stats`,async(c)=>{
     const state=c.req.query("state");
     const from=c.req.query("from");
     const to=c.req.query("to");
-    const sb=supabaseMonthly();
-    let q=sb.from(MONTHLY_SNAPSHOTS_TABLE).select("*").order("month",{ascending:false});
-    if(month){const m=month.match(/^(\d{4})-(\d{2})$/);if(m)q=q.eq("month",m[0]+"-01");}
-    if(state&&isValidRegion(state))q=q.eq("state_abbrev",state.toUpperCase());
-    if(from){const m=from.match(/^(\d{4})-(\d{2})$/);if(m)q=q.gte("month",m[0]+"-01");}
-    if(to){const m=to.match(/^(\d{4})-(\d{2})$/);if(m)q=q.lte("month",m[0]+"-01");}
-    const {data,error}=await q.limit(500);
-    if(error)return c.json({error:error.message},500);
-    return c.json({rows:data||[]});
+    const monthDate=(v?:string)=>{const m=(v||"").match(/^\d{4}-\d{2}$/);return m?`${m[0]}-01`:undefined;};
+    const rows=await queryMonthlyRows({month:monthDate(month),state:state&&isValidRegion(state)?state.toUpperCase():undefined,from:monthDate(from),to:monthDate(to)});
+    return c.json({rows});
   }catch(e){return serverError(c,e);}
 });
 
