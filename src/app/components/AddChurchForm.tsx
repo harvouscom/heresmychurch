@@ -24,7 +24,7 @@ import { ServiceTimesInput, normalizeServiceTimes } from "./ServiceTimesInput";
 import { normalizePhone } from "./ui/utils";
 import { CloseButton } from "./ui/close-button";
 import { resolveRegionByAbbrev } from "../config/countries";
-import { HmcDialog, HmcDialogTitle } from "./ui/hmc-dialog";
+import { HmcDialog, HmcDialogBody, HmcDialogTitle } from "./ui/hmc-dialog";
 import { friendlyError } from "../lib/friendly-error";
 import { toast } from "sonner";
 
@@ -416,7 +416,7 @@ export function AddChurchForm({
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
+        <HmcDialogBody className="px-5 py-4">
           {/* Error banner */}
           {error && (
             <div ref={errorRef} role="alert" className="flex items-center gap-2 rounded-lg p-3 bg-red-500/10 border border-red-500/20 mb-4">
@@ -778,7 +778,7 @@ export function AddChurchForm({
               </p>
             </div>
           )}
-        </div>
+        </HmcDialogBody>
     </HmcDialog>
   );
 }

@@ -5,7 +5,7 @@ import {
   fetchAuditByState,
   type AuditLogEntry,
 } from "./api";
-import { HmcDialog, HmcDialogTitle } from "./ui/hmc-dialog";
+import { HmcDialog, HmcDialogBody, HmcDialogTitle } from "./ui/hmc-dialog";
 import { friendlyError } from "../lib/friendly-error";
 
 function formatTimeAgo(createdAt: string): string {
@@ -132,7 +132,7 @@ export function AuditModal({
           )}
         </div>
 
-        <div className="px-6 py-4 overflow-y-auto flex-1 min-h-0">
+        <HmcDialogBody className="px-6 py-4">
           {error && (
             <p className="text-red-300/90 text-sm mb-4">{error}</p>
           )}
@@ -201,7 +201,7 @@ export function AuditModal({
               ))}
             </ul>
           )}
-        </div>
+        </HmcDialogBody>
     </HmcDialog>
   );
 }

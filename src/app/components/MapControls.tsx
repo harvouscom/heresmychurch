@@ -79,7 +79,7 @@ export function MapControls({
   const controlClass = (active = false) =>
     [
       sizeClass,
-      "rounded-full flex items-center justify-center shrink-0 border shadow-hmc-pill backdrop-blur-md transition-colors",
+      "rounded-full flex items-center justify-center shrink-0 border shadow-hmc-pill backdrop-blur-md transition-[background-color,color,border-color,transform] duration-150 enabled:active:scale-90",
       "disabled:opacity-30 disabled:cursor-not-allowed",
       active
         ? "bg-hmc-brand border-hmc-brand text-white"
@@ -145,7 +145,8 @@ export function MapControls({
             initial="closed"
             animate="open"
             exit="closed"
-            className={`overflow-hidden flex flex-col ${gapClass}`}
+            // Room around the buttons: the clip is for the height animation, not their shadows.
+            className={`overflow-hidden -mx-3 px-3 -mb-3 pb-3 flex flex-col ${gapClass}`}
           >
             {focusedState && (
               <button

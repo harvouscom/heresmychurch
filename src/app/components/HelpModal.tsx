@@ -10,7 +10,7 @@ import { CloseButton } from "./ui/close-button";
 import { reportErrorsContact } from "../config/pendingAlerts";
 import { SeasonalReportMethodologyFaqDetails } from "./report/ReportFaqMethodologyContent";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
-import { HmcDialog, HmcDialogTitle } from "./ui/hmc-dialog";
+import { HmcDialog, HmcDialogBody, HmcDialogTitle } from "./ui/hmc-dialog";
 import { Button } from "./ui/button";
 
 const EMAIL = "hey@heresmychurch.com";
@@ -65,7 +65,7 @@ export function HelpModal({
           </p>
         </div>
 
-        <div className="px-6 py-5 overflow-y-auto flex-1 min-h-0">
+        <HmcDialogBody className="px-6 py-5">
           <p className="text-white/60 text-caption uppercase tracking-wider font-medium mb-3">
             Contact & report
           </p>
@@ -306,7 +306,7 @@ export function HelpModal({
               </AccordionContent>
             </AccordionItem>
           </Accordion>
-        </div>
+        </HmcDialogBody>
 
         <div className="px-6 pb-5 flex-shrink-0">
           <Button variant="brand" size="block" onClick={onClose}>

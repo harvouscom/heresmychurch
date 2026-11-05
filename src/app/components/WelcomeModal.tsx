@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Map as MapIcon, Search, Clock, PlusCircle, PencilLine } from "lucide-react";
-import { HmcDialog, HmcDialogTitle } from "./ui/hmc-dialog";
+import { HmcDialog, HmcDialogBody, HmcDialogTitle } from "./ui/hmc-dialog";
 import { CloseButton } from "./ui/close-button";
 import { Button } from "./ui/button";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
@@ -114,7 +114,7 @@ export function WelcomeModal({ onClose, stats }: { onClose: () => void; stats?: 
 
       {/* Hero */}
       <div
-        className="relative flex-shrink-0 overflow-hidden px-6 pt-6 pb-5 md:w-[42%] md:px-8 md:py-8 md:flex md:flex-col md:justify-end"
+        className="relative flex-shrink-0 overflow-hidden px-6 pt-6 pb-5 md:w-[42%] md:px-8 md:py-8 md:flex md:flex-col md:justify-end short:!w-full short:!px-6 short:!py-5"
         style={{ background: "linear-gradient(160deg, #4C1D95 0%, #2A1260 55%, #1A0E38 100%)" }}
       >
         <GlobeIllustration className="pointer-events-none absolute -right-14 -top-10 w-56 opacity-90 md:right-auto md:-left-6 md:top-4 md:w-[115%]" />
@@ -145,7 +145,7 @@ export function WelcomeModal({ onClose, stats }: { onClose: () => void; stats?: 
 
       {/* Features + CTA */}
       <div className="flex flex-col flex-1 min-h-0 min-w-0">
-        <div className="px-6 pt-5 pb-4 md:px-8 md:pt-8 overflow-y-auto flex-1 min-h-0">
+        <HmcDialogBody className="px-6 pt-5 pb-4 md:px-8 md:pt-8">
           <p className="text-hmc-text-subtle text-caption uppercase tracking-wider font-medium mb-3">What you can do</p>
           <ul className="space-y-1">
             {FEATURES.map(({ icon: Icon, title, body }, i) => (
@@ -168,7 +168,7 @@ export function WelcomeModal({ onClose, stats }: { onClose: () => void; stats?: 
             <span className="text-purple-300" aria-hidden="true">{"✦"}</span>
             Free and open source, with data crowd-sourced by people like you.
           </p>
-        </div>
+        </HmcDialogBody>
 
         <div className="px-6 pb-5 pt-1 md:px-8 md:pb-7 flex-shrink-0">
           <Button variant="brand" size="block" onClick={onClose}>

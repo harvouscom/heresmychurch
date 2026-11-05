@@ -6,6 +6,10 @@
 /* Touch screens (phones/tablets): use for larger tap targets without changing desktop. */
 @custom-variant coarse (@media (pointer: coarse));
 
+/* Short screens (phones in landscape, small phones under browser bars): modals scroll as a
+   whole, since fixed headers and footers would leave almost no room for their content. */
+@custom-variant short (@media (max-height: 600px));
+
 @theme {
   --breakpoint-md: 990px;
 
@@ -85,6 +89,35 @@
 @media (prefers-reduced-motion: reduce) {
   .animate-hmc-rise, .animate-hmc-dot-pop { animation: none; }
   .animate-hmc-ping { display: none; }
+}
+
+/* iPhone Safari, map routes: see useIosFullBleed. The backdrop is page content rather than
+   fixed, so it dims the map behind the browser bars as well. */
+/* A margin rather than body padding, which the modal scroll lock resets. flow-root stops it
+   collapsing and moving body itself, which the absolute backdrop is positioned against. */
+.hmc-ios-bleed body { display: flow-root; }
+.hmc-ios-bleed #root { margin-top: var(--hmc-bleed-top); }
+.hmc-ios-bleed .hmc-dialog-backdrop {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: calc(100dvh + var(--hmc-bleed-top) + var(--hmc-bleed-bottom));
+}
+
+/* Modal scroll regions: a soft edge on whichever side has more content, and a scrollbar
+   that suits the card rather than the default light one. */
+@property --hmc-fade-top { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --hmc-fade-bottom { syntax: "<length>"; inherits: false; initial-value: 0px; }
+.hmc-scroll-edges {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, currentColor 25%, transparent) transparent;
+  transition: --hmc-fade-top 0.15s ease-out, --hmc-fade-bottom 0.15s ease-out;
+}
+.hmc-scroll-edges[data-more-above] { --hmc-fade-top: 20px; }
+.hmc-scroll-edges[data-more-below] { --hmc-fade-bottom: 28px; }
+.hmc-scroll-edges[data-more-above],
+.hmc-scroll-edges[data-more-below] {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--hmc-fade-top), #000 calc(100% - var(--hmc-fade-bottom)), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--hmc-fade-top), #000 calc(100% - var(--hmc-fade-bottom)), transparent);
 }
 
 /* iOS Safari zooms the page when a field under 16px is focused. On touch screens,

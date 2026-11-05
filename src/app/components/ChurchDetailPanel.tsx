@@ -48,6 +48,7 @@ import { getCountry } from "../config/countries";
 import { lazyComponent } from "./ui/lazy-component";
 import { toast } from "sonner";
 import { friendlyError } from "../lib/friendly-error";
+import { useScrollEdges } from "./ui/hmc-dialog";
 
 const SuggestEditForm = lazyComponent(() => import("./SuggestEditForm").then((m) => m.SuggestEditForm));
 /** Church or minimal summary for cross-state main campus link; both have state and shortId for navigation. */
@@ -394,6 +395,7 @@ export function ChurchDetailPanel({
   }, [church.id]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  useScrollEdges(scrollContainerRef);
   useEffect(() => {
     scrollContainerRef.current?.scrollTo(0, 0);
   }, [church.id]);
@@ -492,7 +494,7 @@ export function ChurchDetailPanel({
 
   return (
     <div
-      className="h-full flex flex-col overflow-hidden rounded-panel bg-hmc-surface"
+      className="h-full flex flex-col overflow-hidden rounded-panel bg-hmc-surface shadow-hmc-panel"
     >
       {/* Header */}
       <div className="flex-shrink-0 px-5 pt-5 pb-4 border-b border-white/10">
@@ -594,7 +596,7 @@ export function ChurchDetailPanel({
       </div>
 
       {/* Scrollable content */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+      <div ref={scrollContainerRef} className="hmc-scroll-edges flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-4 space-y-4">
         {/* Reaction bar (Netflix-style thumbs) — above service times */}
         {!reactionsLoading && (
           <div className="flex flex-col gap-2">
@@ -654,7 +656,7 @@ export function ChurchDetailPanel({
                     >
                       <Icon size={20} strokeWidth={1.5} className="fill-inherit stroke-inherit" />
                     </motion.span>
-                    <span className="text-sm font-medium truncate w-full text-center">
+                    <span className="text-[13px] sm:text-sm font-medium truncate w-full text-center">
                       {label}
                     </span>
                   </motion.button>

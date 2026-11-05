@@ -201,10 +201,11 @@
   * These are in @layer base, so Tailwind utility classes (like text-sm, text-lg) automatically override them.
   */
 
+  /* dvh follows Safari's collapsing bars. height: 100% alone stops at the small viewport
+     and leaves the page background showing as a band under the map. */
   html, body, #root {
     height: 100%;
-    min-height: 100dvh;
-    min-height: -webkit-fill-available;
+    height: 100dvh;
   }
 
   html {

@@ -60,6 +60,7 @@ import {
   loadAdmin2Features,
   planarBoundsForFeature,
 } from "./admin2";
+import { mapBleed } from "../hooks/useIosFullBleed";
 
 /** Stable defaults — inline `= []` in the props destructure is a new array every call. */
 const EMPTY_COUNTRIES: CountrySummary[] = [];
@@ -369,9 +370,36 @@ function cameraFor(map: MaplibreMap, bounds: [[number, number], [number, number]
 function usFrameZoom(map: MaplibreMap, padding: Padding): number {
   return Math.min(US_DEFAULT_ZOOM, cameraFor(map, CONUS_BOUNDS, padding)?.zoom ?? US_DEFAULT_ZOOM);
 }
-/** World choropleth framing — keep in sync with the camera effect. */
-const WORLD_CENTER: [number, number] = [0, 20];
-const WORLD_ZOOM = 1.35;
+/** Latitudes the world view frames. Antarctica isn't drawn, so land stops at Cape Horn. */
+const WORLD_LAND_NORTH = 83.5;
+const WORLD_LAND_SOUTH = -56;
+/**
+ * Panning stops just past the land, so empty ocean can't fill the screen. Not exactly ±180:
+ * MapLibre wraps both to the same x, the range collapses to zero and zoom becomes NaN.
+ */
+const ALMOST_180 = 180 - 1e-10;
+const WORLD_MAX_BOUNDS: [[number, number], [number, number]] = [[-ALMOST_180, -60], [ALMOST_180, 85.05]];
+
+/** Web Mercator y for a latitude, from 0 (north edge) to 1 (south edge). */
+const mercatorY = (lat: number) =>
+  0.5 - Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) / (2 * Math.PI);
+const latFromMercatorY = (y: number) =>
+  (Math.atan(Math.sinh((0.5 - y) * 2 * Math.PI)) * 180) / Math.PI;
+
+/**
+ * World framing for a viewport: land covers the full height whatever the aspect ratio.
+ * When the width forces more zoom than that (most desktops), the land's south edge stays
+ * on the bottom of the screen and the Arctic is what gets cropped.
+ */
+function worldCamera(width: number, height: number) {
+  const south = mercatorY(WORLD_LAND_SOUTH);
+  const worldPx = Math.max(width, height / (south - mercatorY(WORLD_LAND_NORTH)));
+  if (!worldPx || !height) return { center: [0, 35] as [number, number], zoom: 1.35 };
+  return {
+    center: [0, latFromMercatorY(south - height / worldPx / 2)] as [number, number],
+    zoom: Math.log2(worldPx / 512),
+  };
+}
 
 interface MapLibreCanvasProps {
   /** [lng, lat] center. */
@@ -1448,6 +1476,8 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   const programmaticMoveRef = useRef(false);
   /** Min-zoom floor for the region being flown to, applied once it settles. */
   const pendingMinZoomRef = useRef<number | null>(null);
+  /** Apply the world pan limits once the fly to /world settles, like the floor above. */
+  const pendingWorldBoundsRef = useRef(false);
   /** Country-view framing zoom — pinch below this − delta steps out to /world. */
   const countryFrameZoomRef = useRef<number | null>(null);
   // Memoized: rebuilding this on every render meant re-creating a Map of tens
@@ -1475,8 +1505,9 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     // Start already framed for /world so we don't flash continental US → fly.
-    const startCenter = viewLevel === "world" ? WORLD_CENTER : center;
-    const startZoom = viewLevel === "world" ? WORLD_ZOOM : zoom;
+    const startWorld = worldCamera(containerRef.current.clientWidth, containerRef.current.clientHeight);
+    const startCenter = viewLevel === "world" ? startWorld.center : center;
+    const startZoom = viewLevel === "world" ? startWorld.zoom : zoom;
     const map = new MaplibreMap({
       container: containerRef.current,
       style: BASEMAP_STYLE,
@@ -1499,6 +1530,23 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       // Phones: start with the whole continental US in view.
       map.jumpTo({ zoom: usFrameZoom(map, paddingRef.current) });
     }
+
+    // First load: fade in once the choropleth has painted, so the map doesn't pop in over
+    // an empty background. Later data swaps keep their own layer transitions.
+    const canvas = map.getCanvas();
+    canvas.style.opacity = "0";
+    canvas.style.transition = "opacity 0.45s ease-out";
+    const revealCanvas = () => {
+      window.clearTimeout(revealTimer);
+      map.off("idle", revealWhenPainted);
+      canvas.style.opacity = "1";
+    };
+    const revealWhenPainted = () => {
+      if (map.getLayer("states-fill")) revealCanvas();
+    };
+    // Don't leave the map hidden if its data fails or the tab is throttled.
+    const revealTimer = window.setTimeout(revealCanvas, 5000);
+    map.on("idle", revealWhenPainted);
 
     /** True while the container is being resized — map.resize() fires moveend
      *  with a new viewport aspect, which must NOT count as a user zoom-out
@@ -1535,6 +1583,10 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       if (wasProgrammatic && pendingMinZoomRef.current != null) {
         map.setMinZoom(pendingMinZoomRef.current);
         pendingMinZoomRef.current = null;
+      }
+      if (wasProgrammatic && pendingWorldBoundsRef.current) {
+        map.setMaxBounds(WORLD_MAX_BOUNDS);
+        pendingWorldBoundsRef.current = false;
       }
 
       if (wasProgrammatic) {
@@ -1733,6 +1785,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
 
     return () => {
       ro.disconnect();
+      window.clearTimeout(revealTimer);
       if (resizeSettleTimer) window.clearTimeout(resizeSettleTimer);
       if (hoverFrame != null) cancelAnimationFrame(hoverFrame);
       map.off("moveend", handleMoveEnd);
@@ -1747,8 +1800,8 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   // detail panel), so MapLibre offsets the view instead of us fudging the
   // latitude by hand.
   const cameraPadding = {
-    top: FIT_PADDING,
-    bottom: FIT_PADDING + bottomPadding,
+    top: FIT_PADDING + mapBleed.top,
+    bottom: FIT_PADDING + bottomPadding + mapBleed.bottom,
     left: FIT_PADDING,
     right: FIT_PADDING + rightPadding,
   };
@@ -1817,6 +1870,10 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     if (!map || !fitToFocusedState) return;
     let cancelled = false;
 
+    // World pan limits would clamp a flight to anywhere else.
+    pendingWorldBoundsRef.current = false;
+    map.setMaxBounds(null);
+
     // Clear any existing floor first: it belongs to the region we're leaving and
     // would otherwise clamp a move outward. The new floor is applied on moveend,
     // so it can't clip the animation itself.
@@ -1867,21 +1924,26 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
         programmaticMoveRef.current = true;
         map.setMinZoom(0);
         pendingMinZoomRef.current = 0.8;
+        const container = map.getContainer();
+        const world = worldCamera(container.clientWidth, container.clientHeight);
         const c = map.getCenter();
         const alreadyFramed =
-          Math.abs(map.getZoom() - WORLD_ZOOM) < 0.08 &&
-          Math.abs(c.lng - WORLD_CENTER[0]) < 2 &&
-          Math.abs(c.lat - WORLD_CENTER[1]) < 2;
+          Math.abs(map.getZoom() - world.zoom) < 0.08 &&
+          Math.abs(c.lng - world.center[0]) < 2 &&
+          Math.abs(c.lat - world.center[1]) < 2;
         if (alreadyFramed) {
           // Constructed on /world (or settled) — skip flyTo to avoid a flicker.
           map.setMinZoom(0.8);
+          map.setMaxBounds(WORLD_MAX_BOUNDS);
           pendingMinZoomRef.current = null;
           return;
         }
+        pendingWorldBoundsRef.current = true;
         map.flyTo({
-          center: WORLD_CENTER,
-          zoom: WORLD_ZOOM,
-          padding: paddingRef.current,
+          center: world.center,
+          zoom: world.zoom,
+          // worldCamera frames the whole canvas, so no offset for the bars or panels.
+          padding: { top: 0, bottom: 0, left: 0, right: 0 },
           duration: transitionMs,
           essential: false,
         });
@@ -2040,5 +2102,17 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countyStats, focusedCounty, countryCode]);
 
-  return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
+  // Fills its parent, plus the space behind Safari's bars on iPhone (see useIosFullBleed).
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        top: "calc(-1 * var(--hmc-bleed-top, 0px))",
+        bottom: "calc(-1 * var(--hmc-bleed-bottom, 0px))",
+      }}
+    />
+  );
 });
