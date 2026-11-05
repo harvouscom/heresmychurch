@@ -7,11 +7,13 @@ import * as React from "react";
  */
 export function lazyComponent<P extends object>(
   load: () => Promise<React.ComponentType<P>>,
+  /** Shown while the code loads, for components that appear in place of something. */
+  fallback: React.ReactNode = null,
 ): React.ComponentType<P> {
   const Lazy = React.lazy(async () => ({ default: await load() }));
   function LazyComponent(props: P) {
     return (
-      <React.Suspense fallback={null}>
+      <React.Suspense fallback={fallback}>
         <Lazy {...(props as any)} />
       </React.Suspense>
     );

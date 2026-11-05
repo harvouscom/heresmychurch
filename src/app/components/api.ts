@@ -2,6 +2,7 @@ import { projectId, publicAnonKey } from "/utils/supabase/info";
 import type { Church, StateInfo } from "./church-data";
 import statesSnapshot from "../data/states-snapshot.json";
 import { POP as BUNDLED_POPULATIONS } from "../data/state-populations";
+import { readStoredChurches, writeStoredChurches } from "../lib/church-store";
 
 /**
  * API base. VITE_HMC_API_BASE_URL points at the Cloudflare Worker (https://api.heresmychurch.com);
@@ -27,6 +28,8 @@ const STATIC_BYPASS_AFTER_WRITE_MS = 2 * 60 * 1000;
 let staticBypassUntil = 0;
 function markDataWritten(): void {
   staticBypassUntil = Date.now() + STATIC_BYPASS_AFTER_WRITE_MS;
+  // Churches held from before the write are out of date too.
+  recentChurches.clear();
 }
 
 /** Fetch a published static JSON file, or null to fall back to the API. Never throws. */
@@ -371,12 +374,46 @@ export async function fetchCountries(): Promise<{ countries: CountrySummary[]; t
   return { countries, totalChurches: 0 };
 }
 
+/**
+ * A region's churches straight from the network: the static copy, else the API. Use this
+ * after a write or a populate, when the answer must be current. Every success also
+ * refreshes the on-device copy that loadChurches starts from.
+ */
 export async function fetchChurches(
   stateAbbrev: string
 ): Promise<ChurchesResponse> {
   const region = stateAbbrev.toUpperCase();
+  const { response, signature, text } = await fetchChurchesFromNetwork(region, stateAbbrev);
+  if (response.churches.length > 0) {
+    rememberChurches(region, response);
+    void writeStoredChurches(region, signature, text);
+  }
+  return response;
+}
+
+async function fetchChurchesFromNetwork(
+  region: string,
+  stateAbbrev: string,
+): Promise<{ response: ChurchesResponse; signature: string; text: string }> {
+  let data: any = null;
+  let signature = "";
+  let body = "";
   // Large states are several MB; allow longer than the default static timeout.
-  let data: any = await fetchStatic(`churches/${encodeURIComponent(region)}.json`, 20000);
+  if (DATA_BASE_URL && Date.now() >= staticBypassUntil) {
+    try {
+      const res = await fetchWithTimeout(`${DATA_BASE_URL}/churches/${encodeURIComponent(region)}.json`, {
+        timeoutMs: 20000,
+      });
+      if (res.ok) {
+        body = await res.text();
+        data = JSON.parse(body);
+        signature = res.headers.get("etag") || `${body.length}`;
+      }
+    } catch (err) {
+      console.warn(`Static churches/${region}.json unavailable, using API:`, err);
+      data = null;
+    }
+  }
   if (!Array.isArray(data?.churches)) {
     const res = await fetchWithRetry(
       `${BASE_URL}/churches/${region}`,
@@ -387,16 +424,113 @@ export async function fetchChurches(
       console.error(`Error fetching churches for ${stateAbbrev}:`, text);
       throw new Error(`Failed to fetch churches: ${res.status}`);
     }
-    data = await res.json();
+    body = await res.text();
+    data = JSON.parse(body);
+    signature = `${body.length}`;
   }
-  // Defensive: ensure churches is always an array
+  const response = toChurchesResponse(data, stateAbbrev);
+  // Content-derived, so the static copy and the API give the same answer for the same data.
+  return { response, signature: `${response.churches.length}:${signature}`, text: body };
+}
+
+function toChurchesResponse(data: any, stateAbbrev: string): ChurchesResponse {
   return {
-    churches: Array.isArray(data.churches) ? data.churches : [],
-    state: data.state || { abbrev: stateAbbrev, name: stateAbbrev, lat: 0, lng: 0 },
-    count: data.count,
-    fromCache: data.fromCache,
-    message: data.message,
+    // Defensive: ensure churches is always an array
+    churches: Array.isArray(data?.churches) ? data.churches : [],
+    state: data?.state || { abbrev: stateAbbrev, name: stateAbbrev, lat: 0, lng: 0 },
+    count: data?.count,
+    fromCache: data?.fromCache,
+    message: data?.message,
   };
+}
+
+// ── First loads: on-device copy first, network in the background ──
+
+type ChurchesListener = (region: string, data: ChurchesResponse) => void;
+const churchesListeners = new Set<ChurchesListener>();
+/** Called when a background refresh finds a region's churches have changed. */
+export function onChurchesRefreshed(listener: ChurchesListener): () => void {
+  churchesListeners.add(listener);
+  return () => churchesListeners.delete(listener);
+}
+
+/** One request per region at a time, shared by prefetch and the load that follows it. */
+const churchesInFlight = new Map<string, Promise<ChurchesResponse>>();
+/** Recent results, so a prefetch is still there when the click comes. */
+const recentChurches = new Map<string, { at: number; data: ChurchesResponse }>();
+const RECENT_TTL_MS = 5 * 60 * 1000;
+const RECENT_MAX = 6;
+
+function rememberChurches(region: string, data: ChurchesResponse) {
+  recentChurches.delete(region);
+  recentChurches.set(region, { at: Date.now(), data });
+  while (recentChurches.size > RECENT_MAX) recentChurches.delete(recentChurches.keys().next().value!);
+}
+
+/**
+ * A region's churches for showing a region: the on-device copy when there is one, so a
+ * return visit renders at once, with the network checked in the background and
+ * onChurchesRefreshed listeners told if anything changed. Without a copy it waits on the
+ * network, sharing any prefetch already in flight.
+ */
+export function loadChurches(stateAbbrev: string): Promise<ChurchesResponse> {
+  const region = stateAbbrev.toUpperCase();
+  // Right after this tab writes, show what the server has now (see markDataWritten).
+  if (Date.now() < staticBypassUntil) return fetchChurches(stateAbbrev);
+  const recent = recentChurches.get(region);
+  if (recent && Date.now() - recent.at < RECENT_TTL_MS) return Promise.resolve(recent.data);
+  const pending = churchesInFlight.get(region);
+  if (pending) return pending;
+
+  const load = (async () => {
+    // Start the network request now; reading the device copy shouldn't delay a cold load.
+    const storedPromise = readStoredChurches(region);
+    const networkStarted = fetchChurchesFromNetwork(region, stateAbbrev);
+    networkStarted.catch(() => {}); // handled below; avoid an unhandled rejection meanwhile
+    const stored = await storedPromise;
+    let storedData: ChurchesResponse | null = null;
+    try {
+      storedData = stored ? toChurchesResponse(JSON.parse(stored.text), stateAbbrev) : null;
+    } catch {
+      storedData = null; // corrupt copy: treat as none
+    }
+    const network = networkStarted.then((result) => {
+      // Re-save only when something changed; an unchanged list costs nothing.
+      if (result.response.churches.length > 0 && result.signature !== stored?.signature) {
+        void writeStoredChurches(region, result.signature, result.text);
+      }
+      return result;
+    });
+    if (stored && storedData?.churches.length) {
+      network
+        .then(({ response, signature }) => {
+          if (signature === stored.signature) return;
+          rememberChurches(region, response);
+          for (const listener of churchesListeners) listener(region, response);
+        })
+        .catch((err) => console.warn(`Background refresh of ${region} churches failed:`, err));
+      return storedData;
+    }
+    return (await network).response;
+  })();
+  churchesInFlight.set(region, load);
+  load
+    .then((data) => rememberChurches(region, data))
+    .catch(() => {})
+    .finally(() => churchesInFlight.delete(region));
+  return load;
+}
+
+/** Start loading a region the user is likely to open (e.g. on hover). Never throws. */
+export function prefetchChurches(stateAbbrev: string): void {
+  const region = stateAbbrev.toUpperCase();
+  if (churchesInFlight.has(region)) return;
+  const recent = recentChurches.get(region);
+  if (recent && Date.now() - recent.at < RECENT_TTL_MS) return;
+  // Respect data-saver; a hover is only a hint.
+  const conn = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+  if (conn?.saveData) return;
+  loadChurches(region).catch(() => {});
 }
 
 /** Fetch a single church by state and URL segment (shortId). Used when the church is not in the state list (e.g. list cap or filter). */

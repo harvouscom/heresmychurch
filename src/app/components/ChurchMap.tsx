@@ -8,7 +8,6 @@ import {
 import type { Church, StateInfo } from "./church-data";
 import { churchMeetsVerifiedListingCriteria, churchNeedsReview } from "./church-data";
 import { MapSearchBar } from "./MapSearchBar";
-import { ChurchDetailPanel } from "./ChurchDetailPanel";
 import { SummaryPanel } from "./SummaryPanel";
 import { WelcomeModal } from "./WelcomeModal";
 import type { SummaryStats } from "./SummaryPanel";
@@ -18,7 +17,9 @@ import { MapControls } from "./MapControls";
 import { MapLibreCanvas, type MapLibreHandle } from "./MapLibreCanvas";
 import {
   fetchRegions,
-  fetchChurches as fetchChurchesApi,
+  loadChurches,
+  onChurchesRefreshed,
+  prefetchChurches,
   fetchChurchByShortId,
   fetchCountries,
   type CountrySummary,
@@ -76,6 +77,14 @@ import { lazyComponent } from "./ui/lazy-component";
 // Rarely used UI, split out of the main bundle (see ui/lazy-component.tsx).
 const ChurchListModal = lazyComponent(() => import("./ChurchListModal").then((m) => m.ChurchListModal));
 const AddChurchForm = lazyComponent(() => import("./AddChurchForm").then((m) => m.AddChurchForm));
+// The detail panel (with phone formatting and the time-zone lookup) isn't needed for the
+// first map paint. It's preloaded once the browser is idle, so a church click rarely
+// waits on it; the fallback is an empty panel so a slow load never shows a blank sheet.
+const loadChurchDetailPanel = () => import("./ChurchDetailPanel").then((m) => m.ChurchDetailPanel);
+const ChurchDetailPanel = lazyComponent(
+  loadChurchDetailPanel,
+  <div className="h-full rounded-panel bg-hmc-surface shadow-hmc-panel" aria-hidden="true" />,
+);
 const HelpModal = lazyComponent(() => import("./HelpModal").then((m) => m.HelpModal));
 const AuditModal = lazyComponent(() => import("./AuditModal").then((m) => m.AuditModal));
 const VerificationModal = lazyComponent(() => import("./VerificationModal").then((m) => m.VerificationModal));
@@ -166,6 +175,17 @@ export function ChurchMap({
   const isPhone = useIsPhone();
   const isWorld = viewLevel === "world";
 
+  // Warm the detail panel's code once the map is up and the browser has a moment.
+  useEffect(() => {
+    const preload = () => void loadChurchDetailPanel().catch(() => {});
+    if ("requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(preload, { timeout: 4000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(preload, 2500);
+    return () => window.clearTimeout(id);
+  }, []);
+
   // Country mode. useChurchMapData is US-shaped end to end — it looks regions up
   // in a 50-state list — so non-US browsing runs on its own data path. Admin-2
   // (CA census divisions / AU LGAs) is layered on here when CountryConfig.hasAdmin2.
@@ -215,11 +235,15 @@ export function ChurchMap({
     let cancelled = false;
     setIntlChurchesLoading(true);
     setIntlChurches([]);
-    fetchChurchesApi(routeStateAbbrev)
+    loadChurches(routeStateAbbrev)
       .then((r) => { if (!cancelled) setIntlChurches(r.churches); })
-      .catch((e) => console.error("[ChurchMap] fetchChurches failed", e))
+      .catch((e) => console.error("[ChurchMap] loadChurches failed", e))
       .finally(() => { if (!cancelled) setIntlChurchesLoading(false); });
-    return () => { cancelled = true; };
+    // Shown from the on-device copy: take the current list if the network differs.
+    const stopListening = onChurchesRefreshed((region, data) => {
+      if (!cancelled && region === routeStateAbbrev.toUpperCase()) setIntlChurches(data.churches);
+    });
+    return () => { cancelled = true; stopListening(); };
   }, [isIntl, routeStateAbbrev]);
 
   useEffect(() => {
@@ -1429,6 +1453,25 @@ function MapArea({
     [isPhone, hasSelectedChurch],
   );
   const isWorld = viewLevel === "world";
+
+  // Hovering a region for a moment starts loading its churches, so a click usually finds
+  // them ready. Mouse/trackpad only (taps don't hover), and not the region already open.
+  const prefetchTimerRef = useRef<number | null>(null);
+  const handleStateHover = useCallback(
+    (abbrev: string | null) => {
+      d.setHoveredState(abbrev);
+      if (prefetchTimerRef.current != null) window.clearTimeout(prefetchTimerRef.current);
+      prefetchTimerRef.current = null;
+      if (!abbrev || isWorld || abbrev === (d.focusedState ?? routeStateAbbrev)) return;
+      if (!window.matchMedia("(hover: hover)").matches) return;
+      prefetchTimerRef.current = window.setTimeout(() => prefetchChurches(abbrev), 150);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- d.setHoveredState is stable
+    [isWorld, d.focusedState, routeStateAbbrev],
+  );
+  useEffect(() => () => {
+    if (prefetchTimerRef.current != null) window.clearTimeout(prefetchTimerRef.current);
+  }, []);
   const isIntl = !isWorld && countryCode !== "US";
   const countryCfg = getCountry(countryCode);
   const mapStates = isWorld
@@ -1799,7 +1842,7 @@ function MapArea({
             navigateToWorld();
           }
         }}
-        onStateHover={d.setHoveredState}
+        onStateHover={handleStateHover}
         onChurchClick={onChurchDotClick}
         onChurchHover={d.setHoveredChurch}
         onCountyHover={isIntl ? onIntlCountyHover : d.setHoveredCounty}

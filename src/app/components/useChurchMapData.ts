@@ -5,6 +5,8 @@ import type { Church, StateInfo } from "./church-data";
 import {
   fetchStates,
   fetchChurches,
+  loadChurches,
+  onChurchesRefreshed,
   fetchChurchByShortId,
   populateState,
   fetchStatePopulations,
@@ -210,6 +212,19 @@ export function useChurchMapData({
 
   // Keep ref in sync (no useEffect needed — direct assignment every render)
   refs.current.focusedState = focusedState;
+
+  // A region shown from the on-device copy is checked against the network in the
+  // background; if it changed meanwhile, show the current churches.
+  useEffect(
+    () =>
+      onChurchesRefreshed((region, data) => {
+        const current = refs.current.focusedState;
+        if (!current || current.toUpperCase() !== region || !data.churches.length) return;
+        setChurches(filterToStatePolygon(data.churches, current, refs.current.stateFeatures));
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reads refs; subscribe once
+    [],
+  );
   if (states.length > 0) refs.current.statesLoaded = true;
 
   // ── moveToView helper (replaces old useCallback from useMapView) ──
@@ -328,7 +343,7 @@ export function useChurchMapData({
     moveToView([stateInfo.lng, stateInfo.lat], getStateZoom(stateAbbrev));
 
     try {
-      const data = await fetchChurches(stateAbbrev);
+      const data = await loadChurches(stateAbbrev);
       if (isStale()) {
         console.log(`[ChurchMap] Discarding stale load for ${stateAbbrev} [v${version}]`);
         return;
@@ -445,7 +460,7 @@ export function useChurchMapData({
     overlay.setForceLoadingVisible(false);
 
     try {
-      const data = await fetchChurches(stateAbbrev);
+      const data = await loadChurches(stateAbbrev);
       if (isStale()) return;
 
       if (data.churches && data.churches.length > 0) {
@@ -555,7 +570,7 @@ export function useChurchMapData({
     moveToView([stateInfo.lng, stateInfo.lat], getStateZoom(stateAbbrev));
 
     try {
-      const data = await fetchChurches(stateAbbrev);
+      const data = await loadChurches(stateAbbrev);
       if (isStale()) return;
 
       if (data.churches && data.churches.length > 0) {

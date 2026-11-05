@@ -39,7 +39,7 @@ import { CloseButton } from "./ui/close-button";
 import { groupServiceTimesByDay, parseServiceTimesForDisplay } from "./ServiceTimesInput";
 import { formatFullAddress } from "./AddressInput";
 import { formatModerationDisplayValue } from "./formatModerationValue";
-import { formatPhoneDisplay } from "./ui/utils";
+import { formatPhoneDisplay } from "../lib/phone";
 import { withSiteRef } from "./url-utils";
 import { confirmChurchData, fetchCorrectionHistory, fetchReactions, submitReaction, moderateApproveSuggestion, moderateRejectSuggestion } from "./api";
 import type { CorrectionHistoryEntry, ReactionType, ReactionCounts, PendingSuggestionItem } from "./api";

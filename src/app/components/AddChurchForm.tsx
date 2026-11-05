@@ -21,7 +21,7 @@ import type { Church } from "./church-data";
 import { DENOMINATION_GROUPS, COMMON_LANGUAGES, COMMON_MINISTRIES } from "./church-data";
 import { addChurch } from "./api";
 import { ServiceTimesInput, normalizeServiceTimes } from "./ServiceTimesInput";
-import { normalizePhone } from "./ui/utils";
+import { normalizePhone } from "../lib/phone";
 import { CloseButton } from "./ui/close-button";
 import { resolveRegionByAbbrev } from "../config/countries";
 import { HmcDialog, HmcDialogBody, HmcDialogTitle } from "./ui/hmc-dialog";
