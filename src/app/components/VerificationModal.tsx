@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect } from "react";
-import { motion } from "motion/react";
 import {
   AlertTriangle,
   Check,
@@ -18,7 +17,7 @@ import { fetchCommunityStats, type CommunityStats, type NationalReviewStatsRespo
 import { PlaceFlag } from "./PlaceFlag";
 import { STATE_NAMES } from "./map-constants";
 import { getCountry, getRegion } from "../config/countries";
-import { HmcDialog, HmcDialogTitle } from "./ui/hmc-dialog";
+import { HmcDialog, HmcDialogBody, HmcDialogTitle } from "./ui/hmc-dialog";
 
 // Green Community Impact block (national or state-scoped)
 function CommunityImpactCard({
@@ -116,15 +115,7 @@ export function VerificationModal({
     : stateName;
 
   return (
-    <HmcDialog onClose={onClose} bare className="max-w-lg">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
-        className="relative w-full max-w-lg max-h-[80vh] rounded-panel shadow-hmc-panel border border-hmc-border overflow-hidden flex flex-col bg-hmc-surface"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <HmcDialog onClose={onClose} className="max-w-lg">
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-white/8 flex-shrink-0">
           <div className="flex items-center gap-3">
@@ -144,7 +135,7 @@ export function VerificationModal({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto min-h-0 px-5 py-3">
+        <HmcDialogBody className="px-5 py-3">
           {!countyName && <CommunityImpactCard stateAbbrev={stateAbbrev} className="mb-3" />}
           <IncompleteChurchesList
             churches={incompleteChurches}
@@ -155,7 +146,7 @@ export function VerificationModal({
             }}
             onAddChurch={onAddChurch}
           />
-        </div>
+        </HmcDialogBody>
 
         {/* Footer */}
         <div className="flex-shrink-0 px-5 py-3 border-t border-white/6 text-pretty">
@@ -163,7 +154,6 @@ export function VerificationModal({
             Complete = name + street address. Click a church to update its info.
           </p>
         </div>
-      </motion.div>
     </HmcDialog>
   );
 }
@@ -350,15 +340,7 @@ export function NationalReviewModal({
   }, [search, stateEntries, countryCode]);
 
   return (
-    <HmcDialog onClose={onClose} bare className="max-w-lg">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
-        className="relative w-full max-w-lg max-h-[80vh] rounded-panel shadow-hmc-panel border border-hmc-border overflow-hidden flex flex-col bg-hmc-surface"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <HmcDialog onClose={onClose} className="max-w-lg">
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-white/8 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-pink-500/15 flex items-center justify-center">
@@ -378,7 +360,7 @@ export function NationalReviewModal({
           <CloseButton onClick={onClose} size="md" />
         </div>
 
-        <div className="flex-1 overflow-y-auto min-h-0 px-5 py-3">
+        <HmcDialogBody className="px-5 py-3">
           {!stats ? (
             <div className="flex flex-col items-center justify-center py-12 gap-3">
               <AlertTriangle size={32} className="text-pink-400/60" />
@@ -448,14 +430,13 @@ export function NationalReviewModal({
               </div>
             </>
           )}
-        </div>
+        </HmcDialogBody>
 
         <div className="flex-shrink-0 px-5 py-3 border-t border-white/6 text-pretty">
           <p className="text-white/55 text-caption text-center leading-relaxed">
             Click a {regionOne} to open its churches needing review. Complete = name + street address.
           </p>
         </div>
-      </motion.div>
     </HmcDialog>
   );
 }

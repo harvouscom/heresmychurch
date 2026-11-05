@@ -25,7 +25,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { ServiceTimesInput } from "./ServiceTimesInput";
 import { AddressInput, serializeAddress, parseAddressValue } from "./AddressInput";
 import { geocodeAddress } from "./AddChurchForm";
-import { normalizePhone } from "./ui/utils";
+import { normalizePhone } from "../lib/phone";
 import { CloseButton } from "./ui/close-button";
 import { STATE_NAMES, STATE_NEIGHBORS } from "./map-constants";
 import { matchQueryToChurch } from "./church-search-match";

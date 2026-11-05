@@ -10,6 +10,7 @@ import {
   regionPath,
 } from "../lib/map-paths";
 import { getCountry } from "../config/countries";
+import { useIosFullBleed } from "../hooks/useIosFullBleed";
 
 /**
  * Thin routing wrapper — parses URL params and passes navigation
@@ -21,6 +22,7 @@ import { getCountry } from "../config/countries";
 export function ChurchMapPage() {
   const location = useLocation();
   const nav = useNavigate();
+  useIosFullBleed();
 
   const detectedCountry = useMemo(() => {
     if (typeof document === "undefined") return null;

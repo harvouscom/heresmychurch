@@ -7,7 +7,7 @@ import { spotlightMapHref } from "./url-utils";
 import { STATE_NAMES } from "./map-constants";
 import { haversineMiles, formatDistance } from "../lib/geo";
 import { getCountry } from "../config/countries";
-import { HmcDialog, HmcDialogTitle } from "./ui/hmc-dialog";
+import { HmcDialog, HmcDialogBody, HmcDialogTitle } from "./ui/hmc-dialog";
 
 const SESSION_LOC_KEY = "hmc_easter_loc";
 
@@ -117,7 +117,7 @@ export function NearbyPanel({ open, onClose, churches, onLocationResolved }: Nea
   return (
     <HmcDialog onClose={onClose} tone="light">
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-4 border-b border-stone-200/70">
+        <div className="flex-shrink-0 flex items-start justify-between gap-4 px-6 pt-6 pb-4 border-b border-stone-200/70">
           <div className="min-w-0">
             <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-purple-700">
               <LocateFixed className="h-4 w-4" aria-hidden />
@@ -134,7 +134,7 @@ export function NearbyPanel({ open, onClose, churches, onLocationResolved }: Nea
         </div>
 
         {/* Body */}
-        <div className="px-6 py-5 space-y-4">
+        <HmcDialogBody className="px-6 py-5 space-y-4">
 
           {/* Permission state badge — visible so we can diagnose */}
           {permState && (
@@ -223,14 +223,14 @@ export function NearbyPanel({ open, onClose, churches, onLocationResolved }: Nea
           {showStateResults && churches && stateResults.length > 0 && (
             <ChurchList items={stateResults.map((c) => ({ c, label: c.city || STATE_NAMES[c.state] || c.state }))} />
           )}
-        </div>
+        </HmcDialogBody>
     </HmcDialog>
   );
 }
 
 function ChurchList({ items }: { items: { c: Church; label: string }[] }) {
   return (
-    <ul className="space-y-2 max-h-[40vh] overflow-y-auto -mx-1 px-1">
+    <ul className="space-y-2 -mx-1 px-1">
       {items.map(({ c, label }) => {
         const href = spotlightMapHref({ id: c.id, shortId: c.shortId, state: c.state }) || `/US/${c.state}`;
         return (

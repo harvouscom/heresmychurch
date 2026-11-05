@@ -55,7 +55,7 @@ export function AnnouncementsPill({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.97 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="mt-2 rounded-panel shadow-hmc-menu bg-hmc-surface-glass backdrop-blur-md overflow-hidden w-[min(360px,calc(100vw-3.5rem))] max-h-[390px] flex flex-col border border-hmc-border"
+            className="mt-2 rounded-panel shadow-hmc-menu bg-hmc-surface-glass backdrop-blur-md overflow-hidden w-[min(360px,calc(100vw-3.5rem))] max-h-[min(390px,70dvh,calc(100dvh-var(--hmc-keyboard,0px)-6rem))] flex flex-col border border-hmc-border"
           >
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-purple-500/20 flex-shrink-0">
               <span className="flex items-center gap-1.5 text-xs font-medium text-white uppercase tracking-widest">

@@ -11,7 +11,7 @@ import {
   type SizeCategory,
 } from "../church-data";
 import { STATE_NAMES } from "../map-constants";
-import { fetchChurches } from "../api";
+import { loadChurches } from "../api";
 import {
   US_METROS,
   churchesInMetro,
@@ -65,7 +65,7 @@ export function MetroPage() {
     setError(null);
     (async () => {
       try {
-        const data = await fetchChurches(metro.region);
+        const data = await loadChurches(metro.region);
         if (cancelled) return;
         setChurches(churchesInMetro(data.churches ?? [], metro));
       } catch {

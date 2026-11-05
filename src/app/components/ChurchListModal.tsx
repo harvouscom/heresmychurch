@@ -91,7 +91,9 @@ export function ChurchListModal({
   >({});
   const [selectedReactionFilter, setSelectedReactionFilter] =
     useState<ReactionFilter>("any");
-  const listContainerRef = useRef<HTMLDivElement>(null);
+  // State, not a ref: the dialog portals its content after mount, so a ref is still null
+  // when a mount effect runs and the list would never learn its real height.
+  const [listContainer, setListContainer] = useState<HTMLDivElement | null>(null);
   const [listHeight, setListHeight] = useState(400);
 
   // Fetch reaction counts for the state when modal has churches
@@ -103,17 +105,16 @@ export function ChurchListModal({
   }, [churches.length, stateAbbrev]);
 
   useEffect(() => {
-    const el = listContainerRef.current;
-    if (!el) return;
+    if (!listContainer) return;
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const h = entry.contentRect.height;
         if (h > 0) setListHeight(h);
       }
     });
-    ro.observe(el);
+    ro.observe(listContainer);
     return () => ro.disconnect();
-  }, []);
+  }, [listContainer]);
 
   // Compute denomination counts from the full church list
   const denomCounts = useMemo(() => {
@@ -346,7 +347,7 @@ export function ChurchListModal({
   }
 
   return (
-    <HmcDialog onClose={onClose} className="w-[95vw] max-w-[900px] bg-hmc-surface-sunken">
+    <HmcDialog onClose={onClose} className="w-[95vw] max-w-[900px] h-[min(85dvh,calc(100dvh-var(--hmc-keyboard,0px)-1.5rem))] short:h-auto bg-hmc-surface-sunken">
         {/* Header */}
         <div className="px-6 pt-5 pb-4 flex-shrink-0">
           <div className="flex items-center justify-between mb-4">
@@ -494,7 +495,7 @@ export function ChurchListModal({
 
               {showDenomDropdown && (
                 <div
-                  className="absolute right-0 top-full mt-2 w-64 rounded-xl shadow-hmc-panel border border-white/10 p-3 z-50 max-h-[50vh] overflow-y-auto bg-hmc-surface-raised"
+                  className="absolute right-0 top-full mt-2 w-64 rounded-xl shadow-hmc-panel border border-white/10 p-3 z-50 max-h-[50dvh] overflow-y-auto bg-hmc-surface-raised"
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">
@@ -792,7 +793,7 @@ export function ChurchListModal({
         </div>
 
         {/* Church list */}
-        <div className="flex-1 overflow-hidden min-h-0" ref={listContainerRef}>
+        <div className="flex-1 overflow-hidden min-h-0 short:flex-none short:h-[75dvh]" ref={setListContainer}>
           {filteredChurches.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Search size={32} className="text-white/50 mb-3" />
@@ -820,6 +821,7 @@ export function ChurchListModal({
               itemSize={64}
               width="100%"
               overscanCount={10}
+              className="hmc-scroll-edges"
             >
               {({ index, style }) => {
                 const church = filteredChurches[index];
@@ -836,7 +838,7 @@ export function ChurchListModal({
                       }`}
                     >
                       {/* Name */}
-                      <div className="min-w-0">
+                      <div className="min-w-0 self-center">
                         <div className="text-sm text-white font-medium truncate">
                           {church.name}
                         </div>

@@ -1,7 +1,7 @@
 import { LocateFixed, Sparkles } from "lucide-react";
 import { Button } from "../ui/button";
 import { CloseButton } from "../ui/close-button";
-import { HmcDialog, HmcDialogTitle } from "../ui/hmc-dialog";
+import { HmcDialog, HmcDialogBody, HmcDialogTitle } from "../ui/hmc-dialog";
 
 interface Easter2026SpecialReportBlurbModalProps {
   onClose: () => void;
@@ -30,6 +30,7 @@ export function Easter2026SpecialReportBlurbModal({ onClose }: Easter2026Special
 
   return (
     <HmcDialog onClose={onClose} tone="light" className="max-w-lg">
+        <HmcDialogBody>
         <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-4 border-b border-stone-200/70">
           <div className="min-w-0">
             <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-purple-700">
@@ -67,6 +68,7 @@ export function Easter2026SpecialReportBlurbModal({ onClose }: Easter2026Special
             </Button>
           </div>
         </div>
+        </HmcDialogBody>
     </HmcDialog>
   );
 }

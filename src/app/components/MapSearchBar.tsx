@@ -494,7 +494,7 @@ export function MapSearchBar({
       {showStateDropdown && showPlaceFilter && (
         <div
           ref={stateDropdownRef}
-          className="mb-2 rounded-xl shadow-hmc-panel overflow-hidden max-h-[40vh] overflow-y-auto bg-hmc-surface-glass backdrop-blur-md"
+          className="mb-2 rounded-xl shadow-hmc-panel overflow-hidden max-h-[min(40dvh,calc(100dvh-var(--hmc-keyboard,0px)-9rem))] overflow-y-auto bg-hmc-surface-glass backdrop-blur-md"
         >
           <div className="px-3 py-2 text-caption font-medium text-white/55 uppercase tracking-wider border-b border-white/5">
             {isWorld ? "Filter by country" : "Filter by " + regionNounOne}
@@ -555,7 +555,7 @@ export function MapSearchBar({
       {/* Results dropdown — rendered above the input */}
       {showDropdown && !showStateDropdown && resultsDropdownVisible && (
         <div
-          className="mb-2 rounded-panel border border-hmc-border shadow-hmc-menu overflow-hidden max-h-[50vh] overflow-y-auto bg-hmc-surface-glass backdrop-blur-md p-1 animate-in fade-in-0 slide-in-from-bottom-1 duration-150"
+          className="mb-2 rounded-panel border border-hmc-border shadow-hmc-menu overflow-hidden max-h-[min(50dvh,calc(100dvh-var(--hmc-keyboard,0px)-9rem))] overflow-y-auto bg-hmc-surface-glass backdrop-blur-md p-1 animate-in fade-in-0 slide-in-from-bottom-1 duration-150"
         >
           {/* State view: local results */}
           {focusedState && (
@@ -826,7 +826,7 @@ export function MapSearchBar({
             focusedState
               ? showInViewCopy
                 ? "Search churches in view…"
-                : `Search churches in ${focusedStateName}…`
+                : `Search ${focusedStateName}…`
               : isWorld
                 ? (countryFilter
                     ? `Search in ${populatedCountries.find((c) => c.code === countryFilter)?.name || countryFilter}…`
@@ -835,7 +835,7 @@ export function MapSearchBar({
                   ? `Search in ${STATE_NAMES[stateFilter] || stateFilter}…`
                   : "Find a church…"
           }
-          className="flex-1 bg-transparent text-white text-[15px] placeholder:text-white/75 outline-none min-w-0"
+          className="flex-1 bg-transparent text-white text-[15px] text-ellipsis placeholder:text-sm placeholder:text-white/75 outline-none min-w-0"
         />
         {query.trim().length > 0 && (
           <button

@@ -8,7 +8,6 @@ import {
 import type { Church, StateInfo } from "./church-data";
 import { churchMeetsVerifiedListingCriteria, churchNeedsReview } from "./church-data";
 import { MapSearchBar } from "./MapSearchBar";
-import { ChurchDetailPanel } from "./ChurchDetailPanel";
 import { SummaryPanel } from "./SummaryPanel";
 import { WelcomeModal } from "./WelcomeModal";
 import type { SummaryStats } from "./SummaryPanel";
@@ -18,7 +17,9 @@ import { MapControls } from "./MapControls";
 import { MapLibreCanvas, type MapLibreHandle } from "./MapLibreCanvas";
 import {
   fetchRegions,
-  fetchChurches as fetchChurchesApi,
+  loadChurches,
+  onChurchesRefreshed,
+  prefetchChurches,
   fetchChurchByShortId,
   fetchCountries,
   type CountrySummary,
@@ -76,6 +77,14 @@ import { lazyComponent } from "./ui/lazy-component";
 // Rarely used UI, split out of the main bundle (see ui/lazy-component.tsx).
 const ChurchListModal = lazyComponent(() => import("./ChurchListModal").then((m) => m.ChurchListModal));
 const AddChurchForm = lazyComponent(() => import("./AddChurchForm").then((m) => m.AddChurchForm));
+// The detail panel (with phone formatting and the time-zone lookup) isn't needed for the
+// first map paint. It's preloaded once the browser is idle, so a church click rarely
+// waits on it; the fallback is an empty panel so a slow load never shows a blank sheet.
+const loadChurchDetailPanel = () => import("./ChurchDetailPanel").then((m) => m.ChurchDetailPanel);
+const ChurchDetailPanel = lazyComponent(
+  loadChurchDetailPanel,
+  <div className="h-full rounded-panel bg-hmc-surface shadow-hmc-panel" aria-hidden="true" />,
+);
 const HelpModal = lazyComponent(() => import("./HelpModal").then((m) => m.HelpModal));
 const AuditModal = lazyComponent(() => import("./AuditModal").then((m) => m.AuditModal));
 const VerificationModal = lazyComponent(() => import("./VerificationModal").then((m) => m.VerificationModal));
@@ -166,6 +175,17 @@ export function ChurchMap({
   const isPhone = useIsPhone();
   const isWorld = viewLevel === "world";
 
+  // Warm the detail panel's code once the map is up and the browser has a moment.
+  useEffect(() => {
+    const preload = () => void loadChurchDetailPanel().catch(() => {});
+    if ("requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(preload, { timeout: 4000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(preload, 2500);
+    return () => window.clearTimeout(id);
+  }, []);
+
   // Country mode. useChurchMapData is US-shaped end to end — it looks regions up
   // in a 50-state list — so non-US browsing runs on its own data path. Admin-2
   // (CA census divisions / AU LGAs) is layered on here when CountryConfig.hasAdmin2.
@@ -215,11 +235,15 @@ export function ChurchMap({
     let cancelled = false;
     setIntlChurchesLoading(true);
     setIntlChurches([]);
-    fetchChurchesApi(routeStateAbbrev)
+    loadChurches(routeStateAbbrev)
       .then((r) => { if (!cancelled) setIntlChurches(r.churches); })
-      .catch((e) => console.error("[ChurchMap] fetchChurches failed", e))
+      .catch((e) => console.error("[ChurchMap] loadChurches failed", e))
       .finally(() => { if (!cancelled) setIntlChurchesLoading(false); });
-    return () => { cancelled = true; };
+    // Shown from the on-device copy: take the current list if the network differs.
+    const stopListening = onChurchesRefreshed((region, data) => {
+      if (!cancelled && region === routeStateAbbrev.toUpperCase()) setIntlChurches(data.churches);
+    });
+    return () => { cancelled = true; stopListening(); };
   }, [isIntl, routeStateAbbrev]);
 
   useEffect(() => {
@@ -266,7 +290,9 @@ export function ChurchMap({
   // Phone bottom sheet: drag handle to dismiss; grows when the correction form is open.
   const sheetDrag = useDragControls();
   const [detailEditOpen, setDetailEditOpen] = useState(false);
-  const sheetHeight = isPhone && detailEditOpen ? "90dvh" : "55dvh";
+  // The floor keeps the panel usable in landscape, where 55% of the height is mostly header.
+  // Both sit above the keyboard while it's open (--hmc-keyboard, see useIosFullBleed).
+  const sheetHeight = `min(${isPhone && detailEditOpen ? "90dvh" : "max(55dvh, min(360px, 100dvh))"}, calc(100dvh - var(--hmc-keyboard, 0px) - 1rem))`;
   const closeChurchDetail = () => {
     if (isIntl) {
       if (routeStateAbbrev) {
@@ -860,17 +886,6 @@ export function ChurchMap({
     ? { ...SAMPLE_ACTIVE_BY_STATE, ...activeByState }
     : activeByState;
 
-  const isStateOrChurchView = !!d.focusedState || !!routeStateAbbrev || !!selectedChurch;
-  useEffect(() => {
-    const color = isStateOrChurchView ? "#EDE4F3" : "#F5F0E8";
-    document.documentElement.style.backgroundColor = color;
-    document.body.style.backgroundColor = color;
-    return () => {
-      document.documentElement.style.backgroundColor = "";
-      document.body.style.backgroundColor = "";
-    };
-  }, [isStateOrChurchView]);
-
   const resolvedCountyForSelectedChurch = useMemo(() => {
     if (!selectedChurch || !mapCountyFeatures?.size) return null;
     const st = (selectedChurch.state || routeStateAbbrev || "").toUpperCase();
@@ -888,7 +903,7 @@ export function ChurchMap({
 
   return (
     <div
-      className={`relative size-full overflow-hidden flex ${selectedChurch ? 'flex-col md:flex-row' : ''}`}
+      className={`relative size-full overflow-x-clip flex ${selectedChurch ? 'flex-col md:flex-row' : ''}`}
       onMouseMove={d.handleMouseMove}
       onMouseLeave={d.handleMouseLeave}
     >
@@ -989,8 +1004,10 @@ export function ChurchMap({
       />
 
       {/* Modals (rendered outside map area to reduce nesting depth) */}
+      <AnimatePresence>
       {d.showListModal && (isIntl ? routeStateAbbrev : d.focusedState) && (
         <ChurchListModal
+          key="church-list"
           churches={
             isIntl
               ? (intlFocusedAdmin2 ? intlChurchesForMap : intlChurches)
@@ -1032,6 +1049,7 @@ export function ChurchMap({
 
       {d.showAddChurchFromSummary && (isIntl ? routeStateAbbrev : d.focusedState) && (
         <AddChurchForm
+          key="add-church-summary"
           stateAbbrev={(isIntl ? routeStateAbbrev : d.focusedState)!}
           stateName={
             isIntl
@@ -1059,6 +1077,7 @@ export function ChurchMap({
 
       {d.addChurchForState && (
         <AddChurchForm
+          key="add-church-state"
           stateAbbrev={d.addChurchForState}
           stateName={d.states.find((s) => s.abbrev === d.addChurchForState)?.name ?? d.addChurchForState}
           onClose={() => { d.setShowAddChurchFromSummary(false); d.setAddChurchForState(null); }}
@@ -1081,6 +1100,7 @@ export function ChurchMap({
 
       {local.showVerificationModal && (isIntl ? routeStateAbbrev : d.focusedState) && (
         <VerificationModal
+          key="verification"
           stateAbbrev={(isIntl ? routeStateAbbrev : d.focusedState)!}
           stateName={
             isIntl
@@ -1118,6 +1138,7 @@ export function ChurchMap({
 
       {local.showNationalReviewModal && (
         <NationalReviewModal
+          key="national-review"
           stats={
             local.nationalReviewStatsKey === (isWorld ? "WORLD" : countryCode)
               ? local.nationalReviewStats
@@ -1137,6 +1158,8 @@ export function ChurchMap({
         />
       )}
 
+      </AnimatePresence>
+
       {/* Detail panel — overlays the map on both breakpoints. As a desktop flex
           sibling it squeezed the map into the remaining width and filled the
           gutter with a flat panel colour; floating it lets the map run
@@ -1148,14 +1171,14 @@ export function ChurchMap({
             // Stable key — remounting on isMobile used to flash the whole map
             // whenever a window resize crossed the breakpoint.
             key="church-detail-panel"
-            className={`overflow-hidden absolute z-40 ${
+            className={`absolute z-40 ${
               isPhone ? "bottom-0 left-0 right-0" : isMobile ? "bottom-0 right-0" : "top-0 right-0 bottom-0"
             }`}
-            style={isMobile ? { height: sheetHeight, width: isPhone ? undefined : DETAIL_PANEL_WIDTH } : undefined}
-            initial={isMobile ? { y: "100%" } : { width: 0, height: "100%" }}
-            animate={isMobile ? { y: 0 } : { width: DETAIL_PANEL_WIDTH, height: "100%" }}
-            exit={isMobile ? { y: "100%" } : { width: 0, height: "100%" }}
-            transition={{ type: "spring", damping: 28, stiffness: 300 }}
+            style={isMobile ? { height: sheetHeight, bottom: "var(--hmc-keyboard, 0px)", width: isPhone ? undefined : DETAIL_PANEL_WIDTH } : { width: DETAIL_PANEL_WIDTH }}
+            initial={isMobile ? { y: "100%" } : { x: "100%" }}
+            animate={isMobile ? { y: 0 } : { x: 0 }}
+            exit={isMobile ? { y: "100%" } : { x: "100%" }}
+            transition={{ type: "spring", damping: 34, stiffness: 320, mass: 0.9 }}
             // Phones: drag the handle down to dismiss the sheet.
             drag={isPhone ? "y" : false}
             dragControls={sheetDrag}
@@ -1176,7 +1199,7 @@ export function ChurchMap({
               </div>
             )}
             <div
-              className={isPhone ? "px-4 pb-4" : isMobile ? "pr-4 pb-4 pl-0" : "pt-4 pr-4 pb-4 pl-0"}
+              className={isPhone ? "px-4 pb-[max(1rem,env(safe-area-inset-bottom))]" : isMobile ? "pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-0" : "pt-4 pr-4 pb-4 pl-0"}
               style={{ width: isPhone ? "100%" : DETAIL_PANEL_WIDTH, height: isMobile ? sheetHeight : "100%" }}
             >
               <ChurchDetailPanel
@@ -1422,12 +1445,33 @@ function MapArea({
   // Snapshot once when the detail panel opens — don't recompute every resize
   // pixel (that broke MapLibreCanvas memo and churned padding props).
   const hasSelectedChurch = !!selectedChurch;
-  // Phone bottom sheet covers the bottom 55vh; keep that clear of the camera.
+  // Phone bottom sheet (see sheetHeight) covers the bottom of the map; keep that clear of the camera.
   const mobileDetailBottomPad = useMemo(
-    () => (isPhone && hasSelectedChurch ? Math.round(window.innerHeight * 0.55) : 0),
+    () => (isPhone && hasSelectedChurch
+      ? Math.round(Math.max(window.innerHeight * 0.55, Math.min(360, window.innerHeight)))
+      : 0),
     [isPhone, hasSelectedChurch],
   );
   const isWorld = viewLevel === "world";
+
+  // Hovering a region for a moment starts loading its churches, so a click usually finds
+  // them ready. Mouse/trackpad only (taps don't hover), and not the region already open.
+  const prefetchTimerRef = useRef<number | null>(null);
+  const handleStateHover = useCallback(
+    (abbrev: string | null) => {
+      d.setHoveredState(abbrev);
+      if (prefetchTimerRef.current != null) window.clearTimeout(prefetchTimerRef.current);
+      prefetchTimerRef.current = null;
+      if (!abbrev || isWorld || abbrev === (d.focusedState ?? routeStateAbbrev)) return;
+      if (!window.matchMedia("(hover: hover)").matches) return;
+      prefetchTimerRef.current = window.setTimeout(() => prefetchChurches(abbrev), 150);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- d.setHoveredState is stable
+    [isWorld, d.focusedState, routeStateAbbrev],
+  );
+  useEffect(() => () => {
+    if (prefetchTimerRef.current != null) window.clearTimeout(prefetchTimerRef.current);
+  }, []);
   const isIntl = !isWorld && countryCode !== "US";
   const countryCfg = getCountry(countryCode);
   const mapStates = isWorld
@@ -1539,7 +1583,7 @@ function MapArea({
           overlaps it below the md breakpoint). Fades back when the card closes. */}
       <div
         aria-hidden={selectedChurch ? true : undefined}
-        className={`absolute top-4 left-4 right-4 z-40 flex flex-row items-center justify-center animate-in fade-in duration-300 pointer-events-none transition-[opacity,transform,visibility] ${
+        className={`absolute top-[max(1rem,env(safe-area-inset-top))] left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] z-40 flex flex-row items-center justify-center animate-in fade-in duration-300 pointer-events-none transition-[opacity,transform,visibility] ${
           selectedChurch ? "opacity-0 -translate-y-2 invisible" : "opacity-100 translate-y-0 visible"
         }`}
       >
@@ -1699,15 +1743,17 @@ function MapArea({
       </div>
 
       {/* About Modal / Reviewer Login */}
+      <AnimatePresence>
       {showAbout && (moderatorKey && !moderationMode ? (
-        <ReviewerLoginModal loading={moderationLoading} error={moderationError} onClose={onDismissAbout} />
+        <ReviewerLoginModal key="reviewer-login" loading={moderationLoading} error={moderationError} onClose={onDismissAbout} />
       ) : showAbout ? (
-        <WelcomeModal onClose={onDismissAbout} />
+        <WelcomeModal key="welcome" onClose={onDismissAbout} />
       ) : null)}
 
       {/* Help Modal */}
       {showHelp && (
         <HelpModal
+          key="help"
           onClose={onDismissHelp}
           showReportIssue={showReportIssue}
           onReportIssue={onReportIssue}
@@ -1717,12 +1763,15 @@ function MapArea({
       {/* Audit / Change history modal (review mode) */}
       {showAudit && moderatorKey && (
         <AuditModal
+          key="audit"
           onClose={onDismissAudit}
           moderatorKey={moderatorKey}
           focusedStateAbbrev={d.focusedState}
           navigateToChurch={navigateToChurch}
         />
       )}
+
+      </AnimatePresence>
 
       {/* Map canvas.
           d.zoom/d.center are deliberately NOT passed: MapLibre uses Web Mercator
@@ -1779,7 +1828,7 @@ function MapArea({
             navigateToWorld();
           }
         }}
-        onStateHover={d.setHoveredState}
+        onStateHover={handleStateHover}
         onChurchClick={onChurchDotClick}
         onChurchHover={d.setHoveredChurch}
         onCountyHover={isIntl ? onIntlCountyHover : d.setHoveredCounty}
@@ -1912,7 +1961,7 @@ function MapArea({
       )}
 
       {!isLoadingVisible && (
-        <div className="absolute left-4 bottom-4 z-30 flex flex-col gap-2 items-start pointer-events-none">
+        <div className="absolute left-[max(1rem,env(safe-area-inset-left))] bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex flex-col gap-2 items-start pointer-events-none">
           <div className="pointer-events-auto flex flex-col gap-2 items-start">
           {/* Location is the map (dimmed neighbors) + HeaderPill; zoom-out/reset goes up. */}
           {!selectedChurch && (
@@ -1998,7 +2047,7 @@ function MapArea({
 
       {!isLoadingVisible && !d.showFilterPanel && !d.showLegend && (
         <div
-          className={`absolute left-6 right-6 md:left-12 md:right-12 z-40 flex flex-col items-center gap-2.5 pointer-events-none ${selectedChurch ? (isMobile ? "top-[80px] md:top-auto md:bottom-8" : "md:bottom-8") : "bottom-3 md:bottom-8"}`}
+          className={`absolute left-6 right-6 md:left-12 md:right-12 z-40 flex flex-col items-center gap-2.5 pointer-events-none ${selectedChurch ? (isMobile ? "top-[80px] md:top-auto md:bottom-[max(2rem,env(safe-area-inset-bottom))]" : "md:bottom-[max(2rem,env(safe-area-inset-bottom))]") : "bottom-[calc(max(0.75rem,env(safe-area-inset-bottom))+var(--hmc-keyboard,0px))] md:bottom-[calc(max(2rem,env(safe-area-inset-bottom))+var(--hmc-keyboard,0px))] transition-[bottom] duration-300 ease-out"}`}
         >
           {/* People with you now — bottom of map; hidden on church view (mobile and desktop) */}
           {!selectedChurch && ((activePeople + activeBots) > 1 || (isLocalhost && (activePeople + activeBots) >= 1)) && (() => {
@@ -2304,7 +2353,7 @@ function ReviewerLoginModal({ loading, error, onClose }: { loading: boolean; err
   return (
     <HmcDialog onClose={onClose} bare className="max-w-sm">
       <div
-        className="relative w-full max-w-sm rounded-panel bg-hmc-surface border border-hmc-border shadow-hmc-panel overflow-hidden p-6 flex flex-col items-center text-center transition-transform duration-300 ease-out"
+        className="relative w-full max-w-sm max-h-[calc(100dvh-1.5rem)] rounded-panel bg-hmc-surface border border-hmc-border shadow-hmc-panel overflow-y-auto overscroll-contain p-6 flex flex-col items-center text-center transition-transform duration-300 ease-out"
         style={{
           ...(loading
             ? { animation: "reviewerCardTilt 3s cubic-bezier(0.37, 0, 0.63, 1) infinite" }
