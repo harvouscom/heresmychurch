@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Live visitor counts run on Cloudflare** — "people with you now" uses a Durable Object over WebSockets instead of Supabase Realtime, which also drops supabase-js from the browser bundle.
 - **Worldwide coverage** — Here's My Church is no longer U.S.-only. Browse Christian churches by country and region on a world map, with international search, add-church, seasonal reports, and product copy updated for global scope.
 
 ## [1.171.0] - 2026-04-01

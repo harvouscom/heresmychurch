@@ -42,6 +42,8 @@
   //   SUPABASE_SERVICE_ROLE_KEY, MODERATOR_KEY, PARTNER_API_KEY, LOOKUP_INTERNAL_KEY, GOOGLE_MAPS_API_KEY,
   //   TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET,
   //   TWITTER_WEBHOOK_SECRET  (R2 uses the HMC_DATA binding instead of S3 keys)
+  "durable_objects": { "bindings": [{ "name": "PRESENCE", "class_name": "PresenceRoom" }] },
+  "migrations": [{ "tag": "v1-presence", "new_sqlite_classes": ["PresenceRoom"] }],
   "observability": { "enabled": true },
   "env": {
     // Rehearsal copy on workers.dev with its own databases and buckets. It reads Postgres only to
@@ -50,6 +52,7 @@
       "name": "hmc-api-staging",
       "routes": [],
       "workers_dev": true,
+      "durable_objects": { "bindings": [{ "name": "PRESENCE", "class_name": "PresenceRoom" }] },
       "vars": {
         "SUPABASE_URL": "https://epufchwxofsyuictfufy.supabase.co",
         "HMC_RUNTIME": "worker",

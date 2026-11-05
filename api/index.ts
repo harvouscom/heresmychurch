@@ -10,6 +10,9 @@ import { setEnv, setOgImageRenderer, setWaitUntil } from "../supabase/functions/
 import { setR2Binding } from "../supabase/functions/make-server-283d8046/r2.ts";
 import { setD1, setKvBucket, setSearchD1 } from "../supabase/functions/make-server-283d8046/bindings.ts";
 import { generateOgImage } from "./og-image.ts";
+import { handlePresence } from "./presence.ts";
+
+export { PresenceRoom } from "./presence.ts";
 
 const PREFIX = "/make-server-283d8046";
 
@@ -23,6 +26,8 @@ interface Env {
   HMC_SEARCH_DB?: D1Database;
   /** Private bucket for KV values too large for a D1 row. */
   HMC_KV?: R2Bucket;
+  /** Live visitor counts. */
+  PRESENCE?: DurableObjectNamespace;
 }
 
 // og-image.tsx is Deno-only (esm.sh React + og_edge); Workers use workers-og.
@@ -30,6 +35,11 @@ setOgImageRenderer(generateOgImage);
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    // Bypasses the Hono app: this needs no store, and must keep working if the store is down.
+    if (new URL(request.url).pathname === "/presence" && env.PRESENCE) {
+      return handlePresence(request, env.PRESENCE);
+    }
+
     setEnv((name) => {
       const v = env[name];
       return typeof v === "string" ? v : undefined;
