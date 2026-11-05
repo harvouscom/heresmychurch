@@ -1,4 +1,22 @@
-> **Status:** in progress, started 2026-11-05. D1 databases and R2 buckets exist; nothing reads or writes them yet. Production stays on Supabase until the cutover. Written 2026-10-18 after a full audit; the corrections below come from a second audit on 2026-11-05 and **override the phases further down** where they differ.
+> **Status:** in progress, started 2026-11-05. Presence is live on the Durable Object. The D1 store and tooling are deployed but off, and the staging rehearsal passed. Production data stays on Supabase until the cutover. Written 2026-10-18 after a full audit; the corrections below come from a second audit on 2026-11-05 and **override the phases further down** where they differ.
+
+## Rehearsal results (2026-11-05, staging, real data)
+
+| Check | Result |
+|---|---|
+| Data | 5,911 keys, 293 MB (over twice the October estimate), 1,893 audit rows, 358 monthly rows |
+| Verify while frozen | 0 differences |
+| Change feed | `feed-compare` matched from 29 days back and from a trimmed Postgres cursor. Harvous's real stored cursor is still to run |
+| Search speed | Median 251 ms vs 1,985 ms on prod; worst 793 ms vs 22 s |
+| Search results | On the same scan path, 48 of 50 queries identical. The other 2 failed on prod itself |
+| Freeze | All reads 200, writes 503 with `Retry-After`, preflight passes |
+| Write round trip | Suggestion, audit row, feed, Lookup `dirtyAt`, moderation queue and R2 republish all worked |
+
+**Timings:** copy 182 s, verify 200 s, search backfill 86 s, static publish 441 s. Run the publish after unfreezing, since the data hasn't changed, so the freeze is about 8 minutes plus the deploy and checks.
+
+**Search results will change at cutover.** Prod has been on the slow scan fallback since a sync failure on 2026-10-30 cleared `church-search:ready`. The scan stops at a candidate cap, which favours states early in the list. The table doesn't, so search and Harvous's `/v1` search return different, nationwide results after cutover.
+
+**Staging holds the production service key and real data.** Delete `hmc-api-staging` and its databases and buckets after cutover.
 
 ## Corrections (2026-11-05)
 
