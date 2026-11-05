@@ -20,6 +20,7 @@
     "dev:api": "wrangler dev -c api/wrangler.jsonc --port 8790",
     "parity:api": "node scripts/api-parity.mjs",
     "contract:api": "node scripts/api-contract.mjs",
+    "migrate:d1": "node scripts/migrate-to-d1.mjs",
     "test:api": "vitest run --config api/vitest.config.ts"
   },
   "dependencies": {

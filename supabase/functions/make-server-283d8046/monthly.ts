@@ -11,6 +11,7 @@ export const MONTHLY_COLUMNS = [
   "missing_service_times", "missing_denomination", "total_corrections", "churches_improved", "population",
   "people_per_church", "churches_per_10k",
 ] as const;
+const D1_COLUMNS = [...MONTHLY_COLUMNS, "country"] as const;
 
 function supabase() {
   return createClient(env("SUPABASE_URL")!, env("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -24,16 +25,19 @@ export async function upsertMonthlyRows(rows: Array<Record<string, unknown>>): P
     if (error) throw new Error(error.message);
     return;
   }
+  await upsertMonthlyRowsD1(rows);
+}
+
+export async function upsertMonthlyRowsD1(rows: Array<Record<string, unknown>>): Promise<void> {
+  if (!rows.length) return;
   const db = getD1();
-  const placeholders = MONTHLY_COLUMNS.map((_, i) => `?${i + 1}`).join(", ");
-  const updates = MONTHLY_COLUMNS.filter((c) => c !== "month" && c !== "state_abbrev")
+  const placeholders = D1_COLUMNS.map((_, i) => `?${i + 1}`).join(", ");
+  const updates = D1_COLUMNS.filter((c) => c !== "month" && c !== "state_abbrev")
     .map((c) => `${c} = excluded.${c}`)
     .join(", ");
-  const sql = `INSERT INTO ${TABLE} (${MONTHLY_COLUMNS.join(", ")}) VALUES (${placeholders})
+  const sql = `INSERT INTO ${TABLE} (${D1_COLUMNS.join(", ")}) VALUES (${placeholders})
     ON CONFLICT(month, state_abbrev) DO UPDATE SET ${updates}`;
-  await withRetry(() =>
-    db.batch(rows.map((row) => db.prepare(sql).bind(...MONTHLY_COLUMNS.map((c) => row[c] ?? null)))),
-  );
+  await withRetry(() => db.batch(rows.map((row) => db.prepare(sql).bind(...D1_COLUMNS.map((c) => row[c] ?? null)))));
 }
 
 export type MonthlyQuery = { month?: string; state?: string; from?: string; to?: string };
