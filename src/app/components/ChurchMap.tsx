@@ -1702,20 +1702,7 @@ function MapArea({
       {showAbout && (moderatorKey && !moderationMode ? (
         <ReviewerLoginModal loading={moderationLoading} error={moderationError} onClose={onDismissAbout} />
       ) : showAbout ? (
-        <WelcomeModal
-          onClose={onDismissAbout}
-          stats={
-            isWorld
-              ? {
-                  churches: worldCountries.reduce((a, c) => a + (c.churchCount || 0), 0),
-                  places: worldCountries.filter((c) => (c.churchCount || 0) > 0).length,
-                  placeLabel: "countries",
-                }
-              : countryCode === "US"
-                ? { churches: d.totalChurches, places: d.states.filter((s) => s.isPopulated).length, placeLabel: "states" }
-                : { churches: intlRegions.reduce((a, r) => a + r.churchCount, 0), places: intlRegions.length, placeLabel: "regions" }
-          }
-        />
+        <WelcomeModal onClose={onDismissAbout} />
       ) : null)}
 
       {/* Help Modal */}

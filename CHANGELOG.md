@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Worldwide totals in the welcome modal** — the modal now shows the same church and country totals on every route, with a row of country flags, instead of numbers for the current view.
 - **Prep for moving off Supabase** — empty D1 databases and private R2 buckets with a staging copy, a guard that refuses API deploys from a stale checkout, and cron workflows that call the API directly. Production still reads and writes Supabase.
 - **Internal routes for Lookup** — moderated region export plus suggestion and confirm routes for the new Lookup autofill API, behind `LOOKUP_INTERNAL_KEY`. Moderators see which tool sent a suggestion.
 - **`POST /churches/populate-fill/:state`** — moderator-only. Fills blank phone, postcode, website, address and city from a staged OSM walk, without adding or removing churches. Previews unless `?apply=true`.
