@@ -3,7 +3,7 @@
  * Geometry comes from CountryConfig.admin2SourceUrl; stats are client-side PIP.
  */
 
-import { geoContains } from "d3-geo";
+import { featureContainsPoint, findAdmin2ForPoint } from "./county-resolve";
 import { feature } from "topojson-client";
 import { getCountry } from "../config/countries";
 import { STATE_TO_FIPS } from "./map-constants";
@@ -203,13 +203,9 @@ export function buildAdmin2Stats(
 
   const byFips: CountyStats["byFips"] = {};
   for (const church of churches) {
-    let hit: string | null = null;
-    for (const [id, feat] of regionFeatures) {
-      if (geoContains(feat as GeoJSON.Feature, [church.lng, church.lat])) {
-        hit = id;
-        break;
-      }
-    }
+    const found = findAdmin2ForPoint(regionAbbrev, church.lng, church.lat, all);
+    // findAdmin2ForPoint also accepts areas without a region tag; keep this region's only.
+    const hit = found && found.id in names ? found.id : null;
     if (!hit) continue;
     const pop = pops[hit] ?? 0;
     if (!byFips[hit]) {
@@ -252,5 +248,5 @@ export function filterChurchesToAdmin2(
   if (!admin2Id || !all?.size) return churches;
   const feat = all.get(admin2Id);
   if (!feat) return churches;
-  return churches.filter((ch) => geoContains(feat as GeoJSON.Feature, [ch.lng, ch.lat]));
+  return churches.filter((ch) => featureContainsPoint(feat, ch.lng, ch.lat));
 }

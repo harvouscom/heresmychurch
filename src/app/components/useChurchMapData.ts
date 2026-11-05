@@ -33,6 +33,7 @@ import {
   filterChurchesToAdmin2,
   loadAdmin2Features,
 } from "./admin2";
+import { featureContainsPoint } from "./county-resolve";
 import { useLoadingOverlay } from "./hooks/useLoadingOverlay";
 import { useUIState } from "./hooks/useUIState";
 import { useChurchFilters } from "./hooks/useChurchFilters";
@@ -59,7 +60,7 @@ function filterToStatePolygon(
 ): Church[] {
   const feat = stateFeatures.get(stateAbbrev.toUpperCase());
   if (feat) {
-    return rawChurches.filter((ch) => geoContains(feat, [ch.lng, ch.lat]));
+    return rawChurches.filter((ch) => featureContainsPoint(feat, ch.lng, ch.lat));
   }
   return filterToStateBounds(rawChurches, stateAbbrev) as Church[];
 }

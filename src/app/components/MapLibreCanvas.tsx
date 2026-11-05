@@ -333,6 +333,15 @@ const BASEMAP_STYLE: StyleSpecification = {
   ],
 };
 
+// Streets are invisible below STREET_FADE_START, but MapLibre still fetches and parses their
+// tiles unless the layers say so: about 1MB per state transition, parsed while the camera
+// is flying. A layer below its minzoom marks the source unused, so nothing is requested.
+for (const layer of BASEMAP_STYLE.layers) {
+  if ("source" in layer && layer.source === "streets") {
+    layer.minzoom = Math.max(layer.minzoom ?? 0, STREET_FADE_START);
+  }
+}
+
 // Continental-US default view (Web Mercator zoom 0–22, not the old 1–500 scale).
 export const US_DEFAULT_CENTER: [number, number] = [-98.5, 39.5];
 export const US_DEFAULT_ZOOM = 3.4;
@@ -599,42 +608,53 @@ const CHURCH_VIEW_ZOOM = 16;
 const ZOOM_STEP_MS = 320;
 
 /**
- * Run a layer mutation once the style is actually ready.
+ * Run a layer mutation once the style document has loaded.
  *
- * MapLibre throws "Style is not done loading" if you add a source/layer too
- * early, and the `load` event alone is not a sufficient guard (data arrives
- * asynchronously, and HMR can remount against a fresh map). Errors are logged
- * rather than thrown so a transient map failure can never crash the React tree.
+ * Adding a source or layer before then throws "Style is not done loading". That is the
+ * only requirement: `map.isStyleLoaded()` also waits for every tile of every source, which
+ * never settles during a camera flight (street tiles keep streaming in), so gating on it
+ * held dot updates back for seconds and dropped them entirely after a timeout.
+ *
+ * Updates run in exactly the order they were requested. Each used to poll on its own
+ * timer, so an older update could land after a newer one: switch states quickly and the
+ * previous state's dots stayed on screen.
+ *
+ * Errors are logged rather than thrown so a transient map failure can never crash the
+ * React tree.
  */
+type StyleGate = { open: boolean; queue: Array<() => void> };
+const styleGates = new WeakMap<MaplibreMap, StyleGate>();
+
+function runLayerUpdate(fn: () => void) {
+  try {
+    fn();
+  } catch (err) {
+    console.error("[maplibre] layer update failed", err);
+  }
+}
+
+function styleGate(map: MaplibreMap): StyleGate {
+  let gate = styleGates.get(map);
+  if (gate) return gate;
+  const created: StyleGate = { open: false, queue: [] };
+  gate = created;
+  styleGates.set(map, created);
+  // `_loaded` is the flag MapLibre's own "not done loading" check reads; it isn't public.
+  if ((map as unknown as { style?: { _loaded?: boolean } }).style?._loaded) {
+    created.open = true;
+  } else {
+    map.once("style.load", () => {
+      created.open = true;
+      for (const fn of created.queue.splice(0)) runLayerUpdate(fn);
+    });
+  }
+  return created;
+}
+
 function whenStyleReady(map: MaplibreMap, fn: () => void) {
-  const run = () => {
-    try {
-      fn();
-    } catch (err) {
-      console.error("[maplibre] layer update failed", err);
-    }
-  };
-  const ready = () => {
-    try {
-      return map.isStyleLoaded();
-    } catch {
-      return false; // map was removed
-    }
-  };
-  if (ready()) return run();
-  // Poll rather than wait on a single `styledata`/`load` event: those can fire
-  // while the style is still busy (e.g. a large GeoJSON source is tiling) and
-  // then never fire again once it settles, stranding the update forever.
-  let tries = 0;
-  const tick = () => {
-    if (ready()) return run();
-    if (++tries > 200) {
-      console.warn("[maplibre] style never became ready; skipping layer update");
-      return;
-    }
-    setTimeout(tick, 50);
-  };
-  setTimeout(tick, 50);
+  const gate = styleGate(map);
+  if (gate.open) runLayerUpdate(fn);
+  else gate.queue.push(fn);
 }
 
 // Canonical bottom→top draw order. Layers are added asynchronously (each waits
@@ -1474,8 +1494,14 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
    * view vs a newly-set tiny CD bbox immediately "exceeds" and jumps out.
    */
   const framedCountyRef = useRef<string | null>(null);
-  /** Set before each camera move we initiate, so moveend can tell them apart. */
-  const programmaticMoveRef = useRef(false);
+  /**
+   * Id of the latest camera move we started, passed to MapLibre as event data so its
+   * moveend can be told apart from user moves. A single "programmatic" flag broke when a
+   * new flight interrupted an old one: the old flight's moveend used the flag up, the new
+   * one ended looking like a user zoom-out, and small regions stepped straight back out.
+   */
+  const cameraMoveIdRef = useRef(0);
+  const ourMove = () => ({ hmcMoveId: ++cameraMoveIdRef.current });
   /** Min-zoom floor for the region being flown to, applied once it settles. */
   const pendingMinZoomRef = useRef<number | null>(null);
   /** Apply the world pan limits once the fly to /world settles, like the floor above. */
@@ -1528,6 +1554,8 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     // drive the map through apiRef. MapLibre's default pair would duplicate them
     // in the opposite corner and in someone else's visual style.
     mapRef.current = map;
+    // Listen for the style before anything can queue an update (see whenStyleReady).
+    styleGate(map);
     if (viewLevel !== "world" && startZoom === US_DEFAULT_ZOOM) {
       // Phones: start with the whole continental US in view.
       map.jumpTo({ zoom: usFrameZoom(map, paddingRef.current) });
@@ -1566,7 +1594,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       handlersRef.current.onMoveEnd?.([c.lng, c.lat], map.getZoom(), view);
     };
 
-    const handleMoveEnd = () => {
+    const handleMoveEnd = (e: { hmcMoveId?: number }) => {
       const c = map.getCenter();
       const b = map.getBounds();
       const view: [[number, number], [number, number]] = [
@@ -1575,23 +1603,24 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       ];
 
       // Our own flyTo/fitBounds must not trigger a step-out — they would undo
-      // the view they just set. A flag is used rather than the event's
-      // originalEvent, which wheel-zoom's inertial ease does not carry.
-      const wasProgrammatic = programmaticMoveRef.current;
-      programmaticMoveRef.current = false;
+      // the view they just set. Event data rather than originalEvent, which
+      // wheel-zoom's inertial ease does not carry.
+      const wasProgrammatic = e.hmcMoveId != null;
+      // An interrupted flight still fires moveend; only the latest one has arrived.
+      const arrived = wasProgrammatic && e.hmcMoveId === cameraMoveIdRef.current;
 
       // Apply the new floor only now the camera has settled, so it can't clip
       // the move that was still animating toward it.
-      if (wasProgrammatic && pendingMinZoomRef.current != null) {
+      if (arrived && pendingMinZoomRef.current != null) {
         map.setMinZoom(pendingMinZoomRef.current);
         pendingMinZoomRef.current = null;
       }
-      if (wasProgrammatic && pendingWorldBoundsRef.current) {
+      if (arrived && pendingWorldBoundsRef.current) {
         map.setMaxBounds(WORLD_MAX_BOUNDS);
         pendingWorldBoundsRef.current = false;
       }
 
-      if (wasProgrammatic) {
+      if (arrived) {
         // Camera settled on the target admin-2 — step-out may use its bounds now.
         framedCountyRef.current = targetCountyRef.current;
       }
@@ -1827,14 +1856,13 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || fitToFocusedState) return;
-    programmaticMoveRef.current = true;
     map.flyTo({
       center,
       zoom,
       padding: paddingRef.current,
       duration: transitionMs,
       essential: false,
-    });
+    }, ourMove());
     // fitToFocusedState is config, not a trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [center, zoom]);
@@ -1880,25 +1908,23 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     // would otherwise clamp a move outward. The new floor is applied on moveend,
     // so it can't clip the animation itself.
     const fit = (bounds: [[number, number], [number, number]]) => {
-      programmaticMoveRef.current = true;
       map.setMinZoom(0);
       const target = cameraFor(map, bounds, paddingRef.current);
       pendingMinZoomRef.current =
         target?.zoom != null ? Math.max(0, target.zoom - ZOOM_OUT_ALLOWANCE) : null;
       if (!target) return;
-      map.flyTo({ ...target, padding: paddingRef.current, duration: transitionMs, essential: false });
+      map.flyTo({ ...target, padding: paddingRef.current, duration: transitionMs, essential: false }, ourMove());
     };
 
     const apply = async () => {
       if (selectedLng != null && selectedLat != null) {
-        programmaticMoveRef.current = true;
         map.flyTo({
           center: [selectedLng, selectedLat],
           zoom: CHURCH_VIEW_ZOOM,
           padding: paddingRef.current,
           duration: transitionMs,
           essential: false,
-        });
+        }, ourMove());
         return;
       }
       if (targetCounty) {
@@ -1923,7 +1949,6 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       }
       if (viewLevel === "world") {
         countryFrameZoomRef.current = null;
-        programmaticMoveRef.current = true;
         map.setMinZoom(0);
         pendingMinZoomRef.current = 0.8;
         const container = map.getContainer();
@@ -1948,7 +1973,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
           padding: { top: 0, bottom: 0, left: 0, right: 0 },
           duration: transitionMs,
           essential: false,
-        });
+        }, ourMove());
         return;
       }
       // Whole-country view. Non-US countries fit their own extent; the US keeps
@@ -1957,7 +1982,6 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       if (countryCode !== "US") {
         const cb = boundsForCountry(countryCode);
         if (cb) {
-          programmaticMoveRef.current = true;
           map.setMinZoom(0);
           // Antimeridian-crossing extents (west > east) keep MapLibre's own fit.
           const crosses = cb[0][0] > cb[1][0];
@@ -1970,14 +1994,13 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
             0.5,
             frameZoom - COUNTRY_ZOOM_OUT_DELTA - COUNTRY_ZOOM_OUT_FLOOR_EXTRA,
           );
-          if (crosses || !target) map.fitBounds(cb, { padding: paddingRef.current, duration: transitionMs });
-          else map.flyTo({ ...target, padding: paddingRef.current, duration: transitionMs, essential: false });
+          if (crosses || !target) map.fitBounds(cb, { padding: paddingRef.current, duration: transitionMs }, ourMove());
+          else map.flyTo({ ...target, padding: paddingRef.current, duration: transitionMs, essential: false }, ourMove());
           return;
         }
       }
       const usZoom = usFrameZoom(map, paddingRef.current);
       countryFrameZoomRef.current = usZoom;
-      programmaticMoveRef.current = true;
       map.setMinZoom(0);
       pendingMinZoomRef.current = Math.max(
         0.5,
@@ -1989,7 +2012,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
         padding: paddingRef.current,
         duration: transitionMs,
         essential: false,
-      });
+      }, ourMove());
     };
 
     void apply();
