@@ -26,7 +26,7 @@
   // Static files (states.json, churches/{REGION}.json); r2.ts prefers this over S3 keys.
   "r2_buckets": [{ "binding": "HMC_DATA", "bucket_name": "hmc-data" }],
   // Secrets (wrangler secret put -c api/wrangler.jsonc NAME):
-  //   SUPABASE_SERVICE_ROLE_KEY, MODERATOR_KEY, PARTNER_API_KEY, GOOGLE_MAPS_API_KEY,
+  //   SUPABASE_SERVICE_ROLE_KEY, MODERATOR_KEY, PARTNER_API_KEY, LOOKUP_INTERNAL_KEY, GOOGLE_MAPS_API_KEY,
   //   TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET,
   //   TWITTER_WEBHOOK_SECRET  (R2 uses the HMC_DATA binding instead of S3 keys)
   "observability": { "enabled": true }

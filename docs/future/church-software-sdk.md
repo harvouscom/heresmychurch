@@ -1,6 +1,6 @@
 # Public API & SDK for Church Software
 
-**Status:** Proposal (future / hackathon candidate)  
+**Status:** Being built as **Lookup** in [harvouscom/lookup](https://github.com/harvouscom/lookup) for the AI for Church hackathon. Lookup's API and SDK live there; this doc is the original proposal.  
 **Related:** [public-api.md](./public-api.md) (Harvous-first partner API), [ARCHITECTURE.md](../ARCHITECTURE.md)
 
 ## Problem
@@ -51,16 +51,16 @@ Consumers treat optional fields as nullable and handle missing data gracefully.
 - Suggest a field correction or addition (reuses the existing suggestion pipeline).
 - Confirm that current data is still accurate (bumps freshness).
 - Optional: detect differences between what the consuming app has stored and what HMC currently has, then surface a "suggest update" prompt.
-- All writes remain human-reviewed on the HMC side (sensitive fields require moderation; non-sensitive can auto-apply after consensus, same as the site).
+- Writes follow the same rules as the site. `name`, `website`, `address`, reports and `homeCampusId` wait for a moderator. Other fields go live on one vote, with the tool recorded as the source. Lookup doesn't accept `email` or `pastorName`, because they'd go live unreviewed and a host form can hold personal details.
 
 **Review bottleneck note:** Human review is the current limiting factor. Once other tools send suggestions via the SDK, the queue can grow faster than reviewers can clear it. Longer-term options to loosen this without dropping review:
 - Auto-apply low-risk updates (confirmations, formatting, high-confidence matches from strong sources) after a short delay or consensus.
-- Keep sensitive fields (pastor name, contact info, beliefs) in the full review queue.
+- Move pastor name and contact info into the full review queue (they go live on one vote today).
 - Rank the queue by confidence and source quality so reviewers focus on what needs judgment.
 - Contributor trust levels — proven sources can have lower-risk updates auto-apply or skip to lighter review.
 - Batch/diff views and community confirmations to speed up clearing pending items.
 
-For the hackathon, suggestions can still land in the existing review queue. The scaling approaches above are post-hackathon.
+For the hackathon, moderated fields land in the existing review queue. The scaling approaches above are post-hackathon.
 
 ### 4. Widgets / embeddable components (optional but high-leverage)
 - "Select your church" typeahead component.
@@ -94,7 +94,7 @@ A small React (or framework-agnostic) component can wrap the search + select flo
 - **For other church software:** Instant, accurate church details without maintaining their own directory. Faster onboarding for users.
 - **For HMC data integrity:** More eyes and more contributions from the places where people already enter church information. The shared directory improves over time.
 - **For discovery:** Better data makes the map and any future discovery features more useful for everyone.
-- **Responsible AI:** AI only assists matching and ranking on existing community-maintained data. It does not invent church facts. Users confirm selections and any contributions. Humans stay in the loop for review.
+- **Responsible AI:** AI only assists matching and ranking on existing community-maintained data. It does not invent church facts. Users confirm selections and explicitly choose to share any contribution. A moderator reviews the sensitive fields before they go live; other fields go live on one vote and are traceable by source.
 
 ## Hackathon angle (AI for Church)
 
@@ -122,7 +122,7 @@ Focus on three pieces that can be finished and demoed in the build window while 
    A drop-in component (React or web component) that searches, selects, and autofills. Include a lightweight “this looks out of date — suggest an update” path that feeds HMC’s existing human-reviewed suggestion pipeline.  
    This is the piece that both helps HMC get better data and gives other builders something concrete to use.
 
-Skip a full public API key system, billing, rate limits, and broad partner onboarding for the hackathon. Those are post-hackathon. The demo can be: search widget in a sample form → autofill → suggest a correction → show it landing in HMC’s review queue.
+Skip a full public API key system, billing, and broad partner onboarding for the hackathon. Keep per-IP rate limits, because a no-key AI endpoint is billed to us. Those are post-hackathon. The demo can be: search widget in a sample form → autofill → suggest a correction → show it landing in HMC’s review queue.
 
 ### Longer-term paid product path
 

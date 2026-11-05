@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Add new changes here as you work. Move to a version section when releasing. -->
 
+### Added
+
+- **Internal routes for Lookup** — moderated region export plus suggestion and confirm routes for the new Lookup autofill API, behind `LOOKUP_INTERNAL_KEY`. Moderators see which tool sent a suggestion.
+- **`POST /churches/populate-fill/:state`** — moderator-only. Fills blank phone, postcode, website, address and city from a staged OSM walk, without adding or removing churches. Previews unless `?apply=true`.
+
+### Fixed
+
+- **Unreviewed edits no longer show publicly** — name, website, address, report and campus-link suggestions now stay off the map and public data files until a moderator approves them.
+- **Corrections no longer lose to older values** — on a tied vote the newest value now wins, and `applied` is only true when the stored value matches what was sent.
+
 ## [2.0.0] - 2026-07-27
 
 ### Changed

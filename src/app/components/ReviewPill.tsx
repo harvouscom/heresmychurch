@@ -227,6 +227,11 @@ export function ReviewPill({
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-caption font-medium uppercase tracking-wider">
                                 {FIELD_LABELS[s.field] || s.field}
                               </span>
+                              {s.clients?.length ? (
+                                <span className="text-caption text-white/50" title="Tool name as declared by the sender, not verified">
+                                  via {s.clients.join(", ")}
+                                </span>
+                              ) : null}
                               {onOpenChurch && (
                                 <>
                                   <button
