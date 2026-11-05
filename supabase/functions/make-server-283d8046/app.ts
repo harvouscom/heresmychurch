@@ -1368,7 +1368,9 @@ async function getApprovedCorrectionsForState(st:string):Promise<Record<string,R
     const id=entry.churchId||"";if(!id)continue;
     const con=consensus(entry.submissions);
     const corr:Record<string,string>={};
-    for(const[f,d]of Object.entries(con)){if((d as any).approved&&(d as any).value!==null)corr[f]=(d as any).value;}
+    // Sensitive fields reach the stored record only through moderator approval. With THR=1 consensus
+    // marks every single vote approved, so without this filter they'd show on the map and in R2 unreviewed.
+    for(const[f,d]of Object.entries(con)){if(!SENSITIVE_FIELDS.includes(f)&&(d as any).approved&&(d as any).value!==null)corr[f]=(d as any).value;}
     if(Object.keys(corr).length)approved[id]=corr;
   }
   return approved;
@@ -2574,7 +2576,16 @@ function consensus(subs:any[]){
     const vc=new Map<string,number>();for(const s of u){const k=f==="attendance"?String(Math.round(parseFloat(s.value)||0)):s.value.trim();vc.set(k,(vc.get(k)||0)+1);}
     const submissions=Array.from(vc.entries()).map(([val,count])=>({value:val,count})).sort((a,b)=>b.count-a.count);
     if(f==="attendance"){const vals=u.map((s:any)=>parseFloat(s.value)).filter((n:number)=>!isNaN(n));const avg=vals.length?Math.round(vals.reduce((a:number,b:number)=>a+b,0)/vals.length):null;res[f]={approved:v>=THR&&avg!==null,value:v>=THR&&avg!==null?String(avg):null,votes:v,needed:THR,submissions};}
-    else{let av:string|null=null,mx=0;for(const[val,cnt]of vc){if(cnt>=THR&&cnt>mx){av=u.filter((s:any)=>s.value.trim()===val).sort((a:any,b:any)=>b.timestamp-a.timestamp)[0].value.trim();mx=cnt;}}res[f]={approved:av!==null,value:av,votes:v,needed:THR,submissions};}
+    else{
+      // Most votes wins; on a tie the newest value wins, so a correction isn't outvoted by the stale value it replaces.
+      let av:string|null=null,mx=0,mxAt=-1;
+      for(const[val,cnt]of vc){
+        if(cnt<THR)continue;
+        const latest=u.filter((s:any)=>s.value.trim()===val).sort((a:any,b:any)=>b.timestamp-a.timestamp)[0];
+        if(cnt>mx||(cnt===mx&&latest.timestamp>mxAt)){av=latest.value.trim();mx=cnt;mxAt=latest.timestamp;}
+      }
+      res[f]={approved:av!==null,value:av,votes:v,needed:THR,submissions};
+    }
   }
   return res;
 }
@@ -2806,7 +2817,8 @@ async function submitSuggestionCore(opts:{churchId:string;field:string;value:unk
   for(const[f,d]of Object.entries(con)){if(!SENSITIVE_FIELDS.includes(f))safeCon[f]=d;}
   const applied=await applyApprovedCorrections(churchId,safeCon,{source:auditSource,actorIp:actorKey});
   if(applied.updated&&applied.state&&applied.churches&&applied.corrections){void runDeferredIndexAndStats(applied.state,applied.churches,churchId,applied.corrections).catch(()=>{});}
-  return{ok:true,field,consensus:con[field],allFields:con,applied:applied.updated};
+  // Attendance is averaged across votes, so it never equals one submission.
+  return{ok:true,field,consensus:con[field],allFields:con,applied:applied.updated&&(field==="attendance"||con[field]?.value===storeValue)};
 }
 
 function leanConsensusField(d:any):{votes:number;needed:number;approved:boolean;value:string|null}|undefined{
@@ -2895,7 +2907,7 @@ app.get(`${P}/suggestions/approved/:state`,async(c)=>{
       if(!id)continue;
       const con=consensus(entry.submissions);
       const corr:Record<string,string>={};
-      for(const[f,d]of Object.entries(con)){if((d as any).approved&&(d as any).value!==null)corr[f]=(d as any).value;}
+      for(const[f,d]of Object.entries(con)){if(!SENSITIVE_FIELDS.includes(f)&&(d as any).approved&&(d as any).value!==null)corr[f]=(d as any).value;}
       if(Object.keys(corr).length)approved[id]=corr;
     }
     return c.json({state:st,corrections:approved});
@@ -3299,6 +3311,13 @@ function valuesMatchForReview(field:string,current:string|null,proposed:string):
   if(field==="website")return a.toLowerCase()===b.toLowerCase();
   return a===b;
 }
+/** Lookup tools behind a field's submissions, as they declared themselves (source lookup:{client}). */
+function lookupClients(subs:any[],field:string):string[]{
+  const out=new Set<string>();
+  for(const s of subs){if(s.field===field&&typeof s.source==="string"&&s.source.startsWith("lookup:"))out.add(s.source.slice(7));}
+  return[...out];
+}
+
 const moderatePendingHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
@@ -3353,7 +3372,7 @@ const moderatePendingHandler=async(c:any)=>{
               if(storedPrev!=null&&String(storedPrev).trim()!==""){currentValue=String(storedPrev);alreadyApplied=true;}
               else continue;
             }
-            pendingSuggestions.push({churchId:entry.churchId,field:f,proposedValue:d.value,currentValue,churchName:ch?.name,churchCity:ch?.city,churchState:ch?.state,churchShortId:ch?.shortId,votes:d.votes,submissions:d.submissions||[],alreadyApplied,relocatedTo:ch?.relocatedTo,listingStatus:ch?.listingStatus});
+            pendingSuggestions.push({churchId:entry.churchId,field:f,proposedValue:d.value,currentValue,churchName:ch?.name,churchCity:ch?.city,churchState:ch?.state,churchShortId:ch?.shortId,votes:d.votes,submissions:d.submissions||[],clients:lookupClients(entry.submissions,f),alreadyApplied,relocatedTo:ch?.relocatedTo,listingStatus:ch?.listingStatus});
           }
         }
       }
@@ -5958,6 +5977,11 @@ function publishTargetsForKey(key:string,kind:"set"|"del"):string[]{
 }
 
 kv.onKvWrite((keys,kind)=>{
+  // Tell Lookup's sync which regions changed. The stamp's own key doesn't match, so this can't loop.
+  for(const k of keys){
+    const m=k.match(/^churches:(?:([A-Z]{2}):)?([A-Z][A-Z0-9]+)$/);
+    if(m)waitUntil(kv.set(`${LOOKUP_DIRTY_PREFIX}${m[2]}`,{cc:m[1]??regionCountry(m[2]),abbrev:m[2],at:Date.now()}).catch((e:unknown)=>console.error(`lookup dirty stamp ${m[2]} failed:`,e)));
+  }
   if(!r2Enabled())return;
   for(const k of keys)for(const t of publishTargetsForKey(k,kind))schedulePublish(t);
 });
@@ -6009,6 +6033,134 @@ app.post(`${P}/admin/publish-static`,async(c)=>{
     const next=offset+limit<regions.length?offset+limit:null;
     return c.json({published,failed,next,total:regions.length});
   }catch(e){return serverError(c,e);}
+});
+
+// ── Lookup (lookup.heresmychurch.com): moderated export, and writes under the site's review rules ──
+const LOOKUP_DIRTY_PREFIX="lookup:dirty:";
+/** What Lookup may read. An allowlist, so private fields added to church rows later can't leak. */
+const LOOKUP_EXPORT_FIELDS=["id","shortId","name","address","city","state","postcode","lat","lng","denomination","website","serviceTimes","languages","ministries","pastorName","phone","email","lastVerified","listingStatus","relocatedFrom","relocatedTo","homeCampusId"] as const;
+/** No email or pastorName: they'd go live on one vote, and a host form can hold personal details. */
+const LOOKUP_CONTRIBUTABLE_FIELDS=new Set(["serviceTimes","denomination","languages","ministries","website","address","phone"]);
+const LOOKUP_CLIENT_RE=/^[a-z0-9][a-z0-9-]{1,39}$/;
+const LOOKUP_IP_HASH_RE=/^[a-f0-9]{16,64}$/;
+const LOOKUP_SUGGESTION_RATE_LIMIT=30;     // per person per hour, across tools
+
+/** Null when the caller may proceed, else the error response. Unset secret fails closed. */
+function lookupAuthError(c:any):Response|null{
+  const expected=env("LOOKUP_INTERNAL_KEY")||"";
+  if(!expected)return c.json({error:"Lookup not configured"},503);
+  if(c.req.header("x-lookup-key")!==expected)return c.json({error:"Unauthorized"},401);
+  return null;
+}
+/** Shared body checks for writes. The Worker hashes the IP, so raw IPs never reach this API or get stored. */
+function lookupActor(body:any):{client:string;ipHash:string;churchId:string}|null{
+  const{client,ipHash,churchId}=body||{};
+  if(typeof client!=="string"||!LOOKUP_CLIENT_RE.test(client))return null;
+  if(typeof ipHash!=="string"||!LOOKUP_IP_HASH_RE.test(ipHash))return null;
+  if(typeof churchId!=="string"||!churchId)return null;
+  return{client,ipHash,churchId};
+}
+
+app.get(`${P}/internal/lookup/regions`,async(c)=>{
+  try{
+    const denied=lookupAuthError(c);if(denied)return denied;
+    const meta=await getMeta();
+    const stamps=await kv.getByPrefix(LOOKUP_DIRTY_PREFIX);
+    const dirty=new Map<string,number>();
+    for(const s of Array.isArray(stamps)?stamps:[]){if(s?.abbrev&&typeof s.at==="number")dirty.set(s.abbrev,s.at);}
+    const counts=meta?.stateCounts||{};
+    const regions=listPopulated(counts).map(({cc,abbrev})=>({cc,abbrev,dirtyAt:dirty.get(abbrev)??null}));
+    return c.json({regions});
+  }catch(e){return serverError(c,e);}
+});
+
+// Stored rows only: no correction overlay, Google data or calibration, so unmoderated values can't reach Lookup.
+app.get(`${P}/internal/lookup/region/:cc/:abbrev`,async(c)=>{
+  try{
+    const denied=lookupAuthError(c);if(denied)return denied;
+    const cc=c.req.param("cc").toUpperCase(),abbrev=c.req.param("abbrev").toUpperCase();
+    if(!isValidRegion(abbrev)||regionCountry(abbrev)!==cc)return c.json({error:"Unknown region"},404);
+    const stored=await getChurches(abbrev,cc);
+    const rows=Array.isArray(stored)?addShortIdsUnique(stored,abbrev):[];
+    const churches=rows.map((ch:any)=>{
+      const out:Record<string,unknown>={country:cc};
+      for(const f of LOOKUP_EXPORT_FIELDS){if(ch[f]!==undefined&&ch[f]!==null&&ch[f]!=="")out[f]=ch[f];}
+      return out;
+    });
+    return c.json({cc,abbrev,count:churches.length,churches});
+  }catch(e){return serverError(c,e);}
+});
+
+app.post(`${P}/internal/lookup/suggestions`,async(c)=>{
+  try{
+    const denied=lookupAuthError(c);if(denied)return denied;
+    const body=await c.req.json();
+    const actor=lookupActor(body);
+    if(!actor)return c.json({error:"client, ipHash and churchId are required"},400);
+    const{field,value}=body;
+    if(typeof field!=="string"||!LOOKUP_CONTRIBUTABLE_FIELDS.has(field))return c.json({error:"Field can't be contributed through Lookup"},400);
+    const st=regionFromChurchId(actor.churchId);
+    if(!st||!isValidRegion(st))return c.json({error:"Invalid church ID"},400);
+    // Existing normalizers only handle these formats: addresses truncate region codes, phones drop the +.
+    const cc=regionCountry(st);
+    if(field==="address"&&cc!=="US")return c.json({error:"Address corrections are US only for now"},400);
+    if(field==="phone"&&cc!=="US"&&cc!=="CA")return c.json({error:"Phone corrections are US and Canada only for now"},400);
+    const churches=await getChurches(st);
+    if(!Array.isArray(churches)||!churches.some((ch:any)=>ch.id===actor.churchId))return c.json({error:"Church not found"},404);
+    if(!(await ipRateLimit("lookup-suggestion",actor.ipHash,LOOKUP_SUGGESTION_RATE_LIMIT,SUGGESTION_WINDOW_MS)))return c.json({error:"Too many suggestions. Please try again later."},429);
+    const result=await submitSuggestionCore({churchId:actor.churchId,field,value,actorKey:`lookup:${actor.client}:${actor.ipHash}`,auditSource:`lookup:${actor.client}`});
+    if(!result.ok)return c.json({error:result.error},result.status);
+    return c.json({success:true,field:result.field,applied:!!result.applied,needsModeration:!!result.needsModeration});
+  }catch(e){return serverError(c,e);}
+});
+
+app.post(`${P}/internal/lookup/confirm`,async(c)=>{
+  try{
+    const denied=lookupAuthError(c);if(denied)return denied;
+    const actor=lookupActor(await c.req.json());
+    if(!actor)return c.json({error:"client, ipHash and churchId are required"},400);
+    if(!(await ipRateLimit("lookup-confirm",actor.ipHash,CONFIRM_RATE_LIMIT,CONFIRM_WINDOW_MS)))return c.json({error:"Too many confirmations. Please try again later."},429);
+    const result=await confirmChurchCore({churchId:actor.churchId,actorKey:`lookup:${actor.client}:${actor.ipHash}`,auditSource:`lookup:${actor.client}`});
+    if(!result.ok)return c.json({error:result.error},result.status);
+    return c.json(result);
+  }catch(e){return serverError(c,e);}
+});
+
+// Fill blanks from a staged OSM walk (scripts/populate-region.mjs --dry-run), without populate-finalize's
+// replace: never adds or removes churches, never overwrites a value, never touches serviceTimes
+// (opening_hours can be office hours). Previews unless ?apply=true.
+const POPULATE_FILL_FIELDS=["phone","postcode","website","address","city"] as const;
+app.post(`${P}/churches/populate-fill/:state`,async(c)=>{
+  try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    const st=c.req.param("state").toUpperCase();
+    if(!gS(st))return c.json({error:`Unknown state: ${st}`},400);
+    const staged=await kv.get(STAGE(st));
+    if(!Array.isArray(staged)||!staged.length)return c.json({error:`No staged churches for ${st}. Run populate-region --dry-run first.`},400);
+    const churches=await getChurches(st);
+    if(!Array.isArray(churches)||!churches.length)return c.json({error:`No churches stored for ${st}`},400);
+    const stagedById=new Map<string,any>();for(const x of staged)if(x?.id)stagedById.set(x.id,x);
+    const filled:Record<string,number>={};let churchesChanged=0,matched=0;
+    for(const ch of churches){
+      const src=stagedById.get(ch.id);if(!src)continue;
+      matched++;let changed=false;
+      for(const f of POPULATE_FILL_FIELDS){
+        const incoming=typeof src[f]==="string"?src[f].trim():"";
+        const current=typeof ch[f]==="string"?ch[f].trim():ch[f];
+        if(!incoming||current)continue;
+        ch[f]=incoming;filled[f]=(filled[f]||0)+1;changed=true;
+      }
+      if(changed)churchesChanged++;
+    }
+    const apply=c.req.query("apply")==="true";
+    if(apply&&churchesChanged){
+      const withShort=addShortIdsUnique(churches,st);
+      await setChurches(st,withShort);await writeIdx(st,withShort);await invalidateReviewStatsCache();
+      void recordChurchAudit({state:st,action:"state_populated",new_value:{filled,churchesChanged},source:"populate_fill",actor_type:"system"});
+    }
+    if(apply)await kv.del(STAGE(st));
+    return c.json({state:st,applied:apply,stored:churches.length,staged:staged.length,matched,churchesChanged,filled});
+  }catch(e){console.log(`populate-fill error:${e}`);return serverError(c,e);}
 });
 
 export default app;

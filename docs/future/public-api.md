@@ -198,6 +198,8 @@ Partner writes reuse the site suggestion + confirm pipeline. **Non-sensitive fie
 }
 ```
 
+`applied: false` with no `needsModeration` means the value was not stored: it already matched, or another value has more votes.
+
 After `applied: true`, re-fetch `GET /v1/churches/by-id/:id` (and refresh any denormalized Harvous copy). Partner resolve reads **KV only** (no pending-suggestion overlay), so sensitive fields stay unchanged on by-id until a moderator approves and applies them.
 
 **Confirm response:** `{ "success": true, "totalConfirmations": N }` or `{ "success": true, "alreadyConfirmed": true, … }` (one confirm per partner actor per 24h).
@@ -364,7 +366,7 @@ When a church creates a Clerk org on Harvous:
 
 Today a partner is just another anonymous actor: `partner:harvous` gets exactly the rules an IP gets. That is right for a member suggesting a fix, and wrong for a church editing its own listing through a partner that has verified it. This is the contract sketch to build against; nothing below exists yet.
 
-**Fix first — the consensus tie-break.** With `THR=1`, `consensus()` picks the most-voted value and on a tie keeps the one seen first, i.e. the *older* submission. A partner correcting a stale community value ties 1–1 and loses, while the suggest response still says `applied: true`. Any trusted path needs "newest wins on a tie" (or the trusted actor outranks), and `applied` must mean the stored value now equals what was sent.
+**Consensus tie-break (done).** `consensus()` picks the most-voted value and the newest wins a tie, and `applied` means the stored value now equals what was sent. A trusted path still needs the trusted actor to outrank a community majority.
 
 **Claim, attested by the partner.**
 
@@ -384,6 +386,19 @@ Today a partner is just another anonymous actor: `partner:harvous` gets exactly 
 **Feeding partners back.** `changes` gains the provenance on each row so a partner can tell its own church's edit from a community one and skip the re-fetch. Outbound webhooks stay deferred.
 
 **Harvous's side** (for whoever builds it): staff-edited `ChurchServiceTimes` become `serviceTimes` writes as the church; the claim is posted when a church is approved and withdrawn on offboarding.
+
+### Lookup internal routes
+
+[Lookup](https://github.com/harvouscom/lookup) is the public autofill API and SDK, served by its own Worker. These routes are its only link to this API. They require `x-lookup-key: <LOOKUP_INTERNAL_KEY>`, and return `503` when the secret is unset.
+
+| Method | Path | Behavior |
+|--------|------|----------|
+| `GET` | `/internal/lookup/regions` | `{ regions: [{ cc, abbrev, dirtyAt }] }`. `dirtyAt` is the last church-list write for that region, or `null` before the first write after this shipped. |
+| `GET` | `/internal/lookup/region/:cc/:abbrev` | Stored rows only, with an allowlist of fields. No correction overlay, Google data or calibration. |
+| `POST` | `/internal/lookup/suggestions` | Body `{ churchId, field, value, client, ipHash }`. Same rules as the site. Actor is `lookup:{client}:{ipHash}` and source is `lookup:{client}`. Fields: `serviceTimes`, `denomination`, `languages`, `ministries`, `website`, `address` (US only), `phone` (US and Canada only). |
+| `POST` | `/internal/lookup/confirm` | Body `{ churchId, client, ipHash }`. Same as the partner confirm. |
+
+The Worker hashes IPs before calling these, so raw IPs aren't stored for Lookup traffic. `client` is declared by the caller and isn't verified.
 
 ### Deferred (not in v1)
 

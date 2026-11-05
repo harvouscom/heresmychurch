@@ -1116,6 +1116,8 @@ export interface PendingSuggestionItem {
   currentValue: string | null;
   votes: number;
   submissions: { value: string; count: number }[];
+  /** Tools that sent this through Lookup, as they declared themselves (unverified). */
+  clients?: string[];
   churchName?: string;
   churchCity?: string;
   churchState?: string;
