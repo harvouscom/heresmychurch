@@ -145,6 +145,15 @@ export const get = async (key: string): Promise<any> => {
   return JSON.parse(json as string);
 };
 
+/** The stored JSON text exactly, or null when the key doesn't exist. */
+export const getRawJson = async (key: string): Promise<string | null> => {
+  const row = await withRetry(() =>
+    getD1().prepare("SELECT value, r2_key FROM kv WHERE key = ?1").bind(key).first<Row>(),
+  );
+  if (!row) return null;
+  return row.r2_key ? await resolveSpilled(key, row.r2_key) : row.value;
+};
+
 export const del = async (key: string): Promise<void> => {
   await mdel([key]);
 };

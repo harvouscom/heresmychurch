@@ -46,6 +46,7 @@ import {
 } from "./church-keys.ts";
 import { normalizeSearchText, searchTable, setSearchTableReady, syncSearchRegion } from "./search-table.ts";
 import { queryMonthlyRows, upsertMonthlyRows } from "./monthly.ts";
+import { registerMigrateRoutes } from "./admin-migrate.ts";
 import { r2Enabled, r2PutJson } from "./r2.ts";
 import { env, renderOgImage, waitUntil } from "./runtime.ts";
 
@@ -6156,5 +6157,7 @@ app.post(`${P}/churches/populate-fill/:state`,async(c)=>{
     return c.json({state:st,applied:apply,stored:churches.length,staged:staged.length,matched,churchesChanged,filled});
   }catch(e){console.log(`populate-fill error:${e}`);return serverError(c,e);}
 });
+
+registerMigrateRoutes(app,P,checkModKey);
 
 export default app;
