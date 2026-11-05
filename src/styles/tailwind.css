@@ -112,6 +112,8 @@
   scrollbar-color: color-mix(in srgb, currentColor 25%, transparent) transparent;
   transition: --hmc-fade-top 0.15s ease-out, --hmc-fade-bottom 0.15s ease-out;
 }
+/* Keeps a focused field clear of its scroller's edge (and fade) when scrolled into view. */
+:is(input, select, textarea) { scroll-margin-block: 40px; }
 .hmc-scroll-edges[data-more-above] { --hmc-fade-top: 20px; }
 .hmc-scroll-edges[data-more-below] { --hmc-fade-bottom: 28px; }
 .hmc-scroll-edges[data-more-above],

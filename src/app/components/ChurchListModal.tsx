@@ -347,7 +347,7 @@ export function ChurchListModal({
   }
 
   return (
-    <HmcDialog onClose={onClose} className="w-[95vw] max-w-[900px] h-[85dvh] short:h-auto bg-hmc-surface-sunken">
+    <HmcDialog onClose={onClose} className="w-[95vw] max-w-[900px] h-[min(85dvh,calc(100dvh-var(--hmc-keyboard,0px)-1.5rem))] short:h-auto bg-hmc-surface-sunken">
         {/* Header */}
         <div className="px-6 pt-5 pb-4 flex-shrink-0">
           <div className="flex items-center justify-between mb-4">

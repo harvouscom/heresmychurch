@@ -87,10 +87,12 @@ const CREAM = "#F5F0E8"; // --background (national view)
 const STATE_FILL = STATE_COUNT_TIERS[0].color; // "not yet explored" tier, for states with no data
 const STATE_STROKE = "#C9A0DC"; // brand purple borders (matches national view)
 const STATE_FOCUSED_FILL = "#C9A0DC"; // focused state
-const STATE_DIMMED_FILL = "#EDE4F3"; // non-focused states in state view
+/** Land that isn't the focus: the same warm grey as uncovered countries on the world view. */
+const CONTEXT_LAND_FILL = WORLD_COUNT_TIERS[0].color;
+const STATE_DIMMED_FILL = CONTEXT_LAND_FILL; // non-focused states in state view
 const STATE_HOVER_FILL = "#D4B8E8"; // hovered state (national view only)
-/** Other countries under a country/region view — same family as state dim. */
-const COUNTRY_DIMMED_FILL = "#EDE4F3";
+/** Other countries under a country/region view. */
+const COUNTRY_DIMMED_FILL = CONTEXT_LAND_FILL;
 // County choropleth defaults (match CountyGeographies in MapCanvas)
 const COUNTY_FILL = "rgba(255, 255, 255, 0.8)";
 const COUNTY_STROKE = "rgba(107, 33, 168, 0.25)";

@@ -267,7 +267,8 @@ export function ChurchMap({
   const sheetDrag = useDragControls();
   const [detailEditOpen, setDetailEditOpen] = useState(false);
   // The floor keeps the panel usable in landscape, where 55% of the height is mostly header.
-  const sheetHeight = isPhone && detailEditOpen ? "90dvh" : "max(55dvh, min(360px, 100dvh))";
+  // Both sit above the keyboard while it's open (--hmc-keyboard, see useIosFullBleed).
+  const sheetHeight = `min(${isPhone && detailEditOpen ? "90dvh" : "max(55dvh, min(360px, 100dvh))"}, calc(100dvh - var(--hmc-keyboard, 0px) - 1rem))`;
   const closeChurchDetail = () => {
     if (isIntl) {
       if (routeStateAbbrev) {
@@ -861,17 +862,6 @@ export function ChurchMap({
     ? { ...SAMPLE_ACTIVE_BY_STATE, ...activeByState }
     : activeByState;
 
-  const isStateOrChurchView = !!d.focusedState || !!routeStateAbbrev || !!selectedChurch;
-  useEffect(() => {
-    const color = isStateOrChurchView ? "#EDE4F3" : "#F5F0E8";
-    document.documentElement.style.backgroundColor = color;
-    document.body.style.backgroundColor = color;
-    return () => {
-      document.documentElement.style.backgroundColor = "";
-      document.body.style.backgroundColor = "";
-    };
-  }, [isStateOrChurchView]);
-
   const resolvedCountyForSelectedChurch = useMemo(() => {
     if (!selectedChurch || !mapCountyFeatures?.size) return null;
     const st = (selectedChurch.state || routeStateAbbrev || "").toUpperCase();
@@ -1160,7 +1150,7 @@ export function ChurchMap({
             className={`absolute z-40 ${
               isPhone ? "bottom-0 left-0 right-0" : isMobile ? "bottom-0 right-0" : "top-0 right-0 bottom-0"
             }`}
-            style={isMobile ? { height: sheetHeight, width: isPhone ? undefined : DETAIL_PANEL_WIDTH } : { width: DETAIL_PANEL_WIDTH }}
+            style={isMobile ? { height: sheetHeight, bottom: "var(--hmc-keyboard, 0px)", width: isPhone ? undefined : DETAIL_PANEL_WIDTH } : { width: DETAIL_PANEL_WIDTH }}
             initial={isMobile ? { y: "100%" } : { x: "100%" }}
             animate={isMobile ? { y: 0 } : { x: 0 }}
             exit={isMobile ? { y: "100%" } : { x: "100%" }}
@@ -2028,7 +2018,7 @@ function MapArea({
 
       {!isLoadingVisible && !d.showFilterPanel && !d.showLegend && (
         <div
-          className={`absolute left-6 right-6 md:left-12 md:right-12 z-40 flex flex-col items-center gap-2.5 pointer-events-none ${selectedChurch ? (isMobile ? "top-[80px] md:top-auto md:bottom-[max(2rem,env(safe-area-inset-bottom))]" : "md:bottom-[max(2rem,env(safe-area-inset-bottom))]") : "bottom-[max(0.75rem,env(safe-area-inset-bottom))] md:bottom-[max(2rem,env(safe-area-inset-bottom))]"}`}
+          className={`absolute left-6 right-6 md:left-12 md:right-12 z-40 flex flex-col items-center gap-2.5 pointer-events-none ${selectedChurch ? (isMobile ? "top-[80px] md:top-auto md:bottom-[max(2rem,env(safe-area-inset-bottom))]" : "md:bottom-[max(2rem,env(safe-area-inset-bottom))]") : "bottom-[calc(max(0.75rem,env(safe-area-inset-bottom))+var(--hmc-keyboard,0px))] md:bottom-[calc(max(2rem,env(safe-area-inset-bottom))+var(--hmc-keyboard,0px))] transition-[bottom] duration-300 ease-out"}`}
         >
           {/* People with you now — bottom of map; hidden on church view (mobile and desktop) */}
           {!selectedChurch && ((activePeople + activeBots) > 1 || (isLocalhost && (activePeople + activeBots) >= 1)) && (() => {

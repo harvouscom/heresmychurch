@@ -94,13 +94,14 @@ export function HmcDialog({
             onInteractOutside={(e) => { if (!closeOnBackdrop) e.preventDefault(); }}
             onEscapeKeyDown={(e) => { if (!closeOnEscape) e.preventDefault(); }}
             className={cn(
-              "fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 outline-none",
+              // Centred in what's visible, which the keyboard shortens (see useIosFullBleed).
+              "fixed left-1/2 top-[calc((100dvh-var(--hmc-keyboard,0px))/2)] -translate-x-1/2 -translate-y-1/2 outline-none transition-[top,max-height] duration-300 ease-out",
               "w-[calc(100%-2rem)] max-w-md",
               isPresent
                 ? "animate-in fade-in-0 zoom-in-[0.97] slide-in-from-bottom-2 duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]"
                 : "animate-out fade-out-0 zoom-out-[0.98] duration-150 ease-in [animation-fill-mode:forwards]",
               !bare && [
-                "max-h-[85dvh] short:max-h-[calc(100dvh-1.5rem)] flex flex-col overflow-hidden rounded-panel shadow-hmc-panel border",
+                "max-h-[min(85dvh,calc(100dvh-var(--hmc-keyboard,0px)-1.5rem))] short:max-h-[calc(100dvh-var(--hmc-keyboard,0px)-1.5rem)] flex flex-col overflow-hidden rounded-panel shadow-hmc-panel border",
                 tone === "dark"
                   ? "bg-hmc-surface text-hmc-text border-hmc-border"
                   : "bg-white text-stone-900 border-stone-200/70",

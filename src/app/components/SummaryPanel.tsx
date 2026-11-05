@@ -1,4 +1,6 @@
 import { motion } from "motion/react";
+import { useRef } from "react";
+import { useScrollEdges } from "./ui/hmc-dialog";
 import {
   Church as ChurchIcon,
   Users,
@@ -137,13 +139,16 @@ export function SummaryPanel({
         ? "U.S."
         : (getCountry(reportScopeCode)?.name || reportScopeCode);
   const countyData = focusedCounty && countyStats?.byFips[focusedCounty];
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useScrollEdges(scrollRef);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -8, scale: 0.97 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -8, scale: 0.97 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
-      className="mt-2 rounded-panel shadow-hmc-panel overflow-hidden w-[min(360px,calc(100vw-3.5rem))] max-h-[70dvh] flex flex-col bg-hmc-surface-glass backdrop-blur-md"
+      className="mt-2 rounded-panel shadow-hmc-panel overflow-hidden w-[min(360px,calc(100vw-3.5rem))] max-h-[min(70dvh,calc(100dvh-var(--hmc-keyboard,0px)-6rem))] flex flex-col bg-hmc-surface-glass backdrop-blur-md"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-white/8 flex-shrink-0">
@@ -159,7 +164,7 @@ export function SummaryPanel({
         <CloseButton onClick={onClose} />
       </div>
 
-      <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1 min-h-0">
+      <div ref={scrollRef} className="hmc-scroll-edges px-5 py-4 space-y-4 overflow-y-auto overscroll-contain flex-1 min-h-0">
         {focusedCounty && countyData ? (
           <CountySummaryContent
             countyName={countyData.name}

@@ -11,9 +11,15 @@ import { useLayoutEffect } from "react";
  * where it was, and only the map reaches out behind the bars. Generous sizes are harmless,
  * since anything past the screen edge is simply off screen. Measured on iOS 26: status bar
  * 62pt, toolbar 98pt, landscape tab bar 110pt.
+ *
+ * The keyboard: Safari scrolls the page to centre a focused field, which leaves the search
+ * bar floating mid-screen and pushes modal headers under the status bar. So the scroll stays
+ * pinned for fields too, and the UI fits itself above the keyboard using --hmc-keyboard.
  */
 const BLEED = { top: 120, bottom: 120 };
 const NO_BLEED = { top: 0, bottom: 0 };
+/** Below this, a change in the visible height is browser chrome rather than the keyboard. */
+const MIN_KEYBOARD_HEIGHT = 100;
 
 function isIphoneSafariTab(): boolean {
   if (typeof window === "undefined" || typeof CSS === "undefined") return false;
@@ -38,18 +44,32 @@ export function useIosFullBleed() {
     root.classList.add("hmc-ios-bleed");
 
     const pin = () => {
-      // Safari scrolls the page itself to keep a focused field above the keyboard.
-      const el = document.activeElement;
-      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return;
       if (Math.abs(window.scrollY - mapBleed.top) > 1) window.scrollTo(0, mapBleed.top);
     };
-    pin();
+    const viewport = window.visualViewport;
+    const syncKeyboard = () => {
+      // The layout viewport keeps its height when the keyboard opens; the visual one shrinks.
+      const height = viewport ? root.clientHeight - viewport.height : 0;
+      root.style.setProperty("--hmc-keyboard", height > MIN_KEYBOARD_HEIGHT ? `${Math.round(height)}px` : "0px");
+      pin();
+      // The field's scroller has just got shorter; keep the field inside it.
+      if (height > MIN_KEYBOARD_HEIGHT) {
+        window.setTimeout(() => document.activeElement?.scrollIntoView({ block: "nearest" }), 320);
+      }
+    };
+    syncKeyboard();
+    viewport?.addEventListener("resize", syncKeyboard);
+    viewport?.addEventListener("scroll", pin);
     window.addEventListener("scroll", pin, { passive: true }); // e.g. tapping the status bar
     window.addEventListener("resize", pin);
     window.addEventListener("pageshow", pin);
+    document.addEventListener("focusin", pin);
     document.addEventListener("focusout", pin);
 
     return () => {
+      viewport?.removeEventListener("resize", syncKeyboard);
+      viewport?.removeEventListener("scroll", pin);
+      document.removeEventListener("focusin", pin);
       window.removeEventListener("scroll", pin);
       window.removeEventListener("resize", pin);
       window.removeEventListener("pageshow", pin);
@@ -57,6 +77,7 @@ export function useIosFullBleed() {
       root.classList.remove("hmc-ios-bleed");
       root.style.removeProperty("--hmc-bleed-top");
       root.style.removeProperty("--hmc-bleed-bottom");
+      root.style.removeProperty("--hmc-keyboard");
       window.scrollTo(0, 0);
     };
   }, []);
