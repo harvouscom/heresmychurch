@@ -5,7 +5,7 @@
 // These read Postgres and write D1 regardless of STORE_BACKEND, and bypass kv.ts, so copying doesn't
 // republish static files or mark regions dirty for Lookup. Only `replay` writes to Postgres.
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
-import { isoToMicros } from "./audit.ts";
+import { isoToMicros, PARTNER_CHANGE_ACTIONS, queryAuditChangesSinceD1 } from "./audit.ts";
 import { getD1 } from "./bindings.ts";
 import * as d1Kv from "./kv-d1.ts";
 import { upsertMonthlyRowsD1 } from "./monthly.ts";
@@ -197,6 +197,38 @@ const ROUTES: Record<string, (q: (name: string) => string | undefined) => Promis
       d1: { families: Object.fromEntries((results ?? []).map((r) => [r.family, r.n])), audit: audit?.n ?? 0, auditMaxId: audit?.max_id ?? 0, monthly: monthly?.n ?? 0 },
       postgres: { audit: await count(AUDIT_TABLE), auditMaxId: (top as any)?.[0]?.id ?? 0, monthly: await count(MONTHLY_TABLE) },
     };
+  },
+
+  /**
+   * Walks the partner change feed from `since` on both databases, as a partner would: each page
+   * starts from the last row's own timestamp. Any difference in rows or order fails the cutover,
+   * because partners would silently skip or repeat changes. Read-only.
+   */
+  async "feed-compare"(q) {
+    const since = q("since");
+    if (!since) throw new HttpError(400, "since is required");
+    const limit = 100;
+    const started = Date.now();
+    let cursorPg = since, cursorD1 = since, rows = 0, pages = 0;
+    for (;;) {
+      const { data, error } = await pg().from(AUDIT_TABLE).select("id, church_id, action, field, created_at")
+        .gt("created_at", cursorPg).in("action", [...PARTNER_CHANGE_ACTIONS]).not("church_id", "is", null)
+        .order("created_at", { ascending: true }).order("id", { ascending: true }).limit(limit);
+      if (error) throw new Error(error.message);
+      const a = (data ?? []) as any[];
+      const b = await queryAuditChangesSinceD1(cursorD1, limit);
+      pages++;
+      for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const same = a[i] && b[i] && a[i].id === b[i].id && a[i].church_id === b[i].church_id && a[i].action === b[i].action &&
+          (a[i].field ?? null) === (b[i].field ?? null) && isoToMicros(a[i].created_at) === isoToMicros(b[i].created_at);
+        if (!same) return { ok: false, next: null, rows, pages, firstDiff: { postgres: a[i] ?? null, d1: b[i] ?? null } };
+      }
+      rows += a.length;
+      if (a.length < limit) return { ok: true, next: null, rows, pages, nextSince: a.length ? a[a.length - 1].created_at : cursorPg };
+      cursorPg = a[a.length - 1].created_at;
+      cursorD1 = b[b.length - 1].created_at;
+      if (Date.now() - started > TIME_BUDGET_MS) throw new HttpError(413, `feed too long for one call: stopped at ${cursorPg}`);
+    }
   },
 
   /** Records where production switched, which is what `replay` works from. */

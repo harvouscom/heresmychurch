@@ -1,4 +1,22 @@
-> **Status:** in progress, started 2026-11-05. D1 databases and R2 buckets exist; nothing reads or writes them yet. Production stays on Supabase until the cutover. Written 2026-10-18 after a full audit; the corrections below come from a second audit on 2026-11-05 and **override the phases further down** where they differ.
+> **Status:** in progress, started 2026-11-05. Presence is live on the Durable Object. The D1 store and tooling are deployed but off, and the staging rehearsal passed. Production data stays on Supabase until the cutover. Written 2026-10-18 after a full audit; the corrections below come from a second audit on 2026-11-05 and **override the phases further down** where they differ.
+
+## Rehearsal results (2026-11-05, staging, real data)
+
+| Check | Result |
+|---|---|
+| Data | 5,911 keys, 293 MB (over twice the October estimate), 1,893 audit rows, 358 monthly rows |
+| Verify while frozen | 0 differences |
+| Change feed | `feed-compare` matched from 29 days back and from a trimmed Postgres cursor. Harvous's real stored cursor is still to run |
+| Search speed | Median 251 ms vs 1,985 ms on prod; worst 793 ms vs 22 s |
+| Search results | On the same scan path, 48 of 50 queries identical. The other 2 failed on prod itself |
+| Freeze | All reads 200, writes 503 with `Retry-After`, preflight passes |
+| Write round trip | Suggestion, audit row, feed, Lookup `dirtyAt`, moderation queue and R2 republish all worked |
+
+**Timings:** copy 182 s, verify 200 s, search backfill 86 s, static publish 441 s. Run the publish after unfreezing, since the data hasn't changed, so the freeze is about 8 minutes plus the deploy and checks.
+
+**Search results will change at cutover.** Prod's Postgres has no `church_search` table or `search_churches` function (checked 2026-11-05), so migration `20261001000000` was probably never applied there. Search therefore uses the slow scan fallback, and each church-list write fails its search sync and sets `church-search:ready` to false, which is why the flag shows `sync-failed` from the last write on 2026-10-30. The scan stops at a candidate cap, which favours states early in the list. The table doesn't, so search and Harvous's `/v1` search return different, nationwide results after cutover.
+
+**Staging holds the production service key and real data.** Delete `hmc-api-staging` and its databases and buckets after cutover.
 
 ## Corrections (2026-11-05)
 
@@ -22,6 +40,8 @@
 **Already done:** the cron workflows no longer use `SUPABASE_FUNCTION_URL`, which already pointed at the Worker.
 
 **Migration tooling differs slightly from Phase 2:** \`prune\` removes deleted keys by asking Postgres about each D1 key, because the two databases sort keys differently, so comparing key ranges wouldn't be safe. Rollback is a Worker route, \`replay\`, instead of \`export-delta\`, so no keys leave the Worker; it needs \`confirm=write-postgres\` and a freeze. After \`mark-cutover\`, the copy steps refuse to run.
+
+**Before cutover:** `feed-compare?since=` walks the partner change feed on both databases and must return `ok: true`.
 
 **Staging** has its own `hmc-data-staging` bucket as well, so a test publish can't overwrite the live public files.
 

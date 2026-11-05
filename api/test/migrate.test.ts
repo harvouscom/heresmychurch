@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { isoToMicros } from "../../supabase/functions/make-server-283d8046/audit.ts";
 import { canonicalJson, setPostgresForTest } from "../../supabase/functions/make-server-283d8046/admin-migrate.ts";
 import app from "../../supabase/functions/make-server-283d8046/app.ts";
 import * as kv from "../../supabase/functions/make-server-283d8046/kv.ts";
@@ -29,9 +30,14 @@ function fakePostgres(tables: Record<string, any[]>, primaryKeys: Record<string,
       select: (_c: string, o?: any) => { head = !!o?.head; return q; },
       order: (col: string, o?: any) => { sort = { col, asc: o?.ascending !== false }; return q; },
       limit: (n: number) => { cap = n; return q; },
-      gt: (col: string, v: any) => { filters.push((r) => cmp(r[col], v) > 0); return q; },
+      gt: (col: string, v: any) => {
+        // Postgres compares created_at as a timestamp, not text.
+        filters.push((r) => (col === "created_at" ? isoToMicros(r[col]) > isoToMicros(v) : cmp(r[col], v) > 0));
+        return q;
+      },
       eq: (col: string, v: any) => { filters.push((r) => r[col] === v); return q; },
       in: (col: string, vs: any[]) => { filters.push((r) => vs.includes(r[col])); return q; },
+      not: (col: string, _op: string, _v: null) => { filters.push((r) => r[col] !== null && r[col] !== undefined); return q; },
       maybeSingle: () => { single = true; return q; },
       delete: () => { mode = "delete"; return q; },
       upsert: async (rows: any) => {
@@ -190,6 +196,20 @@ describe("migration", () => {
     await copyAll();
     expect(seen).toEqual([]);
     expect(pg.kv_store_283d8046).toHaveLength(rowsBefore);
+  });
+
+  it("feed-compare passes on matching rows and pinpoints a difference", async () => {
+    await copyAll();
+    const since = "2026-10-14T21:00:00.25057+00:00";
+    const good = (await step("feed-compare", { since })).body;
+    expect(good).toMatchObject({ ok: true, rows: 3 });
+    expect((await step("feed-compare")).status).toBe(400);
+
+    await h.db.prepare("DELETE FROM church_audit_log WHERE id = 7").run();
+    const bad = (await step("feed-compare", { since })).body;
+    expect(bad.ok).toBe(false);
+    expect(bad.firstDiff.postgres.id).toBe(7);
+    expect(bad.firstDiff.d1.id).toBe(9);
   });
 
   it("works while frozen", async () => {
