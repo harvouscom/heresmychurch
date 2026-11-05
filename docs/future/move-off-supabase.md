@@ -14,7 +14,7 @@
 
 **Timings:** copy 182 s, verify 200 s, search backfill 86 s, static publish 441 s. Run the publish after unfreezing, since the data hasn't changed, so the freeze is about 8 minutes plus the deploy and checks.
 
-**Search results will change at cutover.** Prod has been on the slow scan fallback since a sync failure on 2026-10-30 cleared `church-search:ready`. The scan stops at a candidate cap, which favours states early in the list. The table doesn't, so search and Harvous's `/v1` search return different, nationwide results after cutover.
+**Search results will change at cutover.** Prod's Postgres has no `church_search` table or `search_churches` function (checked 2026-11-05), so migration `20261001000000` was probably never applied there. Search therefore uses the slow scan fallback, and each church-list write fails its search sync and sets `church-search:ready` to false, which is why the flag shows `sync-failed` from the last write on 2026-10-30. The scan stops at a candidate cap, which favours states early in the list. The table doesn't, so search and Harvous's `/v1` search return different, nationwide results after cutover.
 
 **Staging holds the production service key and real data.** Delete `hmc-api-staging` and its databases and buckets after cutover.
 
