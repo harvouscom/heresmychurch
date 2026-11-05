@@ -229,6 +229,17 @@ export type PartnerChangeAction = (typeof PARTNER_CHANGE_ACTIONS)[number];
 const CHANGES_DEFAULT_LIMIT = 100;
 const CHANGES_MAX_LIMIT = 500;
 
+/** The D1 half of queryAuditChangesSince, callable whichever backend is active. */
+export function queryAuditChangesSinceD1(sinceIso: string, limit: number): Promise<AuditLogRow[]> {
+  const actions = PARTNER_CHANGE_ACTIONS.map((_, i) => `?${i + 2}`).join(", ");
+  return queryD1(
+    `WHERE created_us > CAST(?1 AS INTEGER) AND action IN (${actions}) AND church_id IS NOT NULL`,
+    [isoToMicros(sinceIso), ...PARTNER_CHANGE_ACTIONS],
+    limit,
+    true,
+  );
+}
+
 /**
  * Chronological partner change feed: rows with created_at strictly after `sinceIso`,
  * filtered to snapshot-relevant actions. Ascending for watermark-friendly pagination.
@@ -238,15 +249,7 @@ export async function queryAuditChangesSince(
   limit = CHANGES_DEFAULT_LIMIT
 ): Promise<AuditLogRow[]> {
   const n = Math.min(Math.max(1, limit), CHANGES_MAX_LIMIT);
-  if (usesD1()) {
-    const actions = PARTNER_CHANGE_ACTIONS.map((_, i) => `?${i + 2}`).join(", ");
-    return queryD1(
-      `WHERE created_us > CAST(?1 AS INTEGER) AND action IN (${actions}) AND church_id IS NOT NULL`,
-      [isoToMicros(sinceIso), ...PARTNER_CHANGE_ACTIONS],
-      n,
-      true,
-    );
-  }
+  if (usesD1()) return queryAuditChangesSinceD1(sinceIso, n);
   const { data, error } = await getClient()
     .from("church_audit_log")
     .select("*")

@@ -23,6 +23,8 @@
 
 **Migration tooling differs slightly from Phase 2:** \`prune\` removes deleted keys by asking Postgres about each D1 key, because the two databases sort keys differently, so comparing key ranges wouldn't be safe. Rollback is a Worker route, \`replay\`, instead of \`export-delta\`, so no keys leave the Worker; it needs \`confirm=write-postgres\` and a freeze. After \`mark-cutover\`, the copy steps refuse to run.
 
+**Before cutover:** `feed-compare?since=` walks the partner change feed on both databases and must return `ok: true`.
+
 **Staging** has its own `hmc-data-staging` bucket as well, so a test publish can't overwrite the live public files.
 
 # Move Here's My Church off Supabase (D1 + R2 + Durable Object)
