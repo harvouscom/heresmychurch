@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { RealtimeChannel } from "@supabase/supabase-js";
 
-const CHANNEL_NAME = "active-users";
 const PRESENCE_STORAGE_KEY = "hmc-presence-id";
 
 const BOT_UA_PATTERNS = [
@@ -65,133 +63,138 @@ function detectBot(): boolean {
   return false;
 }
 
-type PresencePayload = { id?: string; isBot?: boolean; viewingState?: string | null };
+type Counts = { people: number; bots: number; byState: Record<string, number> };
 
-function countPeopleAndBots(state: Record<string, PresencePayload[]>): { people: number; bots: number } {
-  const peopleIds = new Set<string>();
-  const botIds = new Set<string>();
-  for (const key of Object.keys(state)) {
-    const payloads = state[key];
-    if (!Array.isArray(payloads) || payloads.length === 0) continue;
-    const first = payloads[0] as PresencePayload | undefined;
-    const id = first?.id;
-    if (typeof id !== "string") continue;
-    if (first?.isBot) botIds.add(id);
-    else peopleIds.add(id);
-  }
-  return { people: peopleIds.size, bots: botIds.size };
+const PING_INTERVAL_MS = 30_000;
+/** Two missed pongs: the connection is dead even if the browser hasn't noticed. */
+const PONG_TIMEOUT_MS = 70_000;
+const RECONNECT_MIN_MS = 1_000;
+const RECONNECT_MAX_MS = 30_000;
+
+function presenceUrl(): string {
+  const base = ((import.meta.env.VITE_HMC_API_BASE_URL as string | undefined) || "https://api.heresmychurch.com").replace(/\/$/, "");
+  return `${base.replace(/^http/, "ws")}/presence`;
 }
 
-function countByState(state: Record<string, PresencePayload[]>): Record<string, number> {
-  const idsByState: Record<string, Set<string>> = {};
-  for (const key of Object.keys(state)) {
-    const payloads = state[key];
-    if (!Array.isArray(payloads) || payloads.length === 0) continue;
-    const first = payloads[0] as PresencePayload | undefined;
-    if (first?.isBot) continue;
-    const id = first?.id;
-    const stateAbbrev = first?.viewingState;
-    if (typeof id === "string" && stateAbbrev && typeof stateAbbrev === "string") {
-      if (!idsByState[stateAbbrev]) idsByState[stateAbbrev] = new Set();
-      idsByState[stateAbbrev].add(id);
-    }
-  }
-  const byState: Record<string, number> = {};
-  for (const [stateAbbrev, ids] of Object.entries(idsByState)) {
-    byState[stateAbbrev] = ids.size;
-  }
-  return byState;
+function isCounts(v: any): v is Counts {
+  return !!v && typeof v.people === "number" && typeof v.bots === "number" && !!v.byState && typeof v.byState === "object";
 }
 
-export function useActiveUsers(viewingState: string | null = null): {
-  people: number;
-  bots: number;
-  byState: Record<string, number>;
-} {
-  const [counts, setCounts] = useState({ people: 0, bots: 0, byState: {} as Record<string, number> });
-  const channelRef = useRef<ReturnType<ReturnType<typeof getSupabase>["channel"]> | null>(null);
+export function useActiveUsers(viewingState: string | null = null): Counts {
+  const [counts, setCounts] = useState<Counts>({ people: 0, bots: 0, byState: {} });
+  const socketRef = useRef<WebSocket | null>(null);
   const viewingStateRef = useRef(viewingState);
   viewingStateRef.current = viewingState;
 
-  const retrack = useCallback(() => {
-    const ch = channelRef.current;
-    if (!ch) return;
-    ch.track({
-      id: getOrCreateSessionId(),
-      isBot: detectBot(),
-      viewingState: viewingStateRef.current ?? null,
-    }).catch(() => {});
+  const track = useCallback(() => {
+    const ws = socketRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(
+      JSON.stringify({
+        type: "track",
+        id: getOrCreateSessionId(),
+        isBot: detectBot(),
+        viewingState: viewingStateRef.current ?? null,
+      }),
+    );
   }, []);
 
   useEffect(() => {
-    // supabase-js (~170 KB) is only needed for presence, so load it after first paint
-    // rather than in the main bundle.
+    if (typeof WebSocket === "undefined") return;
     let disposed = false;
-    let cleanup: (() => void) | null = null;
-    void import("../../lib/supabase").then(({ getSupabase }) => {
+    let failures = 0;
+    let lastPongAt = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const scheduleReconnect = () => {
+      if (disposed || reconnectTimer !== undefined) return;
+      const ceiling = Math.min(RECONNECT_MAX_MS, RECONNECT_MIN_MS * 2 ** failures);
+      failures += 1;
+      // Jittered so a deploy or outage doesn't reconnect every visitor at the same moment.
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = undefined;
+        connect();
+      }, ceiling / 2 + Math.random() * (ceiling / 2));
+    };
+
+    const connect = () => {
       if (disposed) return;
-      const supabase = getSupabase();
-      const channel: RealtimeChannel = supabase.channel(CHANNEL_NAME);
-
-      const updateCount = () => {
-        const state = channel.presenceState() as Record<string, PresencePayload[]>;
-        const { people, bots } = countPeopleAndBots(state);
-        const byState = countByState(state);
-        setCounts({ people, bots, byState });
+      let ws: WebSocket;
+      try {
+        ws = new WebSocket(presenceUrl());
+      } catch {
+        scheduleReconnect();
+        return;
+      }
+      socketRef.current = ws;
+      ws.onopen = () => {
+        failures = 0;
+        lastPongAt = Date.now();
+        track();
       };
-
-      channel
-        .on("presence", { event: "sync" }, updateCount)
-        .on("presence", { event: "join" }, updateCount)
-        .on("presence", { event: "leave" }, updateCount)
-        .subscribe(async (status) => {
-          if (status !== "SUBSCRIBED") return;
-          await channel.track({
-            id: getOrCreateSessionId(),
-            isBot: detectBot(),
-            viewingState: viewingStateRef.current ?? null,
-          });
-        });
-
-      channelRef.current = channel;
-
-      // Re-announce presence when the tab becomes visible again (handles mobile
-      // browsers that freeze WebSocket connections when backgrounded / screen locked).
-      const onVisibilityChange = () => {
-        if (document.visibilityState === "visible") retrack();
+      ws.onmessage = (event) => {
+        lastPongAt = Date.now();
+        if (event.data === "pong" || typeof event.data !== "string") return;
+        try {
+          const next = JSON.parse(event.data);
+          if (isCounts(next)) setCounts(next);
+        } catch {
+          /* ignore a malformed frame */
+        }
       };
-
-      // Re-announce when the device comes back online (handles cellular drops,
-      // WiFi→cellular handoff, airplane mode toggle, etc.).
-      const onOnline = () => retrack();
-
-      document.addEventListener("visibilitychange", onVisibilityChange);
-      window.addEventListener("online", onOnline);
-
-      // Periodic heartbeat to recover from silent WebSocket drops that don't
-      // fire any browser events (common on cellular networks with aggressive NAT).
-      const heartbeat = setInterval(retrack, 30_000);
-
-      cleanup = () => {
-        clearInterval(heartbeat);
-        document.removeEventListener("visibilitychange", onVisibilityChange);
-        window.removeEventListener("online", onOnline);
-        void channel.untrack().then(() => {
-          supabase.removeChannel(channel);
-        });
-        channelRef.current = null;
+      ws.onclose = () => {
+        if (socketRef.current === ws) socketRef.current = null;
+        scheduleReconnect();
       };
-    });
+      ws.onerror = () => ws.close();
+    };
+
+    // Re-announce, or reconnect straight away, when a frozen tab or dropped network comes back
+    // (mobile browsers freeze sockets when backgrounded; cellular handoffs drop them silently).
+    const revive = () => {
+      const ws = socketRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        track();
+      } else if (!ws) {
+        if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
+        failures = 0;
+        connect();
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") revive();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("online", revive);
+
+    const heartbeat = setInterval(() => {
+      const ws = socketRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      if (Date.now() - lastPongAt > PONG_TIMEOUT_MS) {
+        ws.close();
+        return;
+      }
+      ws.send("ping");
+    }, PING_INTERVAL_MS);
+
+    connect();
+
     return () => {
       disposed = true;
-      cleanup?.();
+      clearInterval(heartbeat);
+      if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("online", revive);
+      socketRef.current?.close();
+      socketRef.current = null;
     };
-  }, [retrack]);
+  }, [track]);
 
   // When viewingState changes, re-announce presence so our byState is accurate
   useEffect(() => {
-    retrack();
-  }, [viewingState, retrack]);
+    track();
+  }, [viewingState, track]);
 
   return counts;
 }

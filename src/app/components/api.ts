@@ -346,8 +346,25 @@ export interface CountrySummary {
   populatedRegions: number;
 }
 
+export interface CountriesResponse {
+  countries: CountrySummary[];
+  totalChurches: number;
+}
+
+// The world map and the welcome modal can both ask on load; share one in-flight request.
+let countriesInFlight: Promise<CountriesResponse> | null = null;
+
 /** World choropleth: supported countries with church totals. */
-export async function fetchCountries(): Promise<{ countries: CountrySummary[]; totalChurches: number }> {
+export function fetchCountries(): Promise<CountriesResponse> {
+  if (!countriesInFlight) {
+    countriesInFlight = fetchCountriesOnce().finally(() => {
+      countriesInFlight = null;
+    });
+  }
+  return countriesInFlight;
+}
+
+async function fetchCountriesOnce(): Promise<CountriesResponse> {
   try {
     const res = await fetchWithRetry(`${BASE_URL}/churches/countries`, { headers, timeoutMs: 15000 });
     if (res.ok) {

@@ -1,8 +1,10 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Map as MapIcon, Search, Clock, PlusCircle, PencilLine } from "lucide-react";
 import { HmcDialog, HmcDialogBody, HmcDialogTitle } from "./ui/hmc-dialog";
 import { CloseButton } from "./ui/close-button";
 import { Button } from "./ui/button";
+import { PlaceFlag } from "./PlaceFlag";
+import { fetchCountries, type CountrySummary } from "./api";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 
 const FEATURES = [
@@ -99,15 +101,92 @@ function GlobeIllustration({ className }: { className?: string }) {
   );
 }
 
-export interface WelcomeStats {
+const PILL_CLASS = "rounded-full bg-white/10 ring-1 ring-white/10 px-3 py-1 text-xs font-medium text-white tabular-nums";
+/** Flags that fit one line of the hero column; the rest collapse into "+N". */
+const MAX_FLAGS = 10;
+// On short phones the hero sits above a scrolling list; the feature list needs the room more.
+const FLAGS_ROW_CLASS = "mt-3 h-[18px] [@media(max-width:767px)_and_(max-height:700px)]:hidden";
+
+interface WorldStats {
   churches: number;
-  places: number;
-  /** e.g. "countries", "states", "regions" */
-  placeLabel: string;
+  /** Countries with at least one church, most churches first. */
+  countries: CountrySummary[];
 }
 
-export function WelcomeModal({ onClose, stats }: { onClose: () => void; stats?: WelcomeStats }) {
-  const showStats = !!stats && stats.churches > 0;
+// Survives close and reopen, so the About modal doesn't show placeholders a second time.
+let lastWorldStats: WorldStats | null = null;
+
+/**
+ * Worldwide totals, independent of the route behind the modal.
+ * undefined = still loading, null = unavailable (the pills are left out rather than
+ * showing zeros: fetchCountries falls back to a zero-count registry when the API fails).
+ */
+function useWorldStats(): WorldStats | null | undefined {
+  const [stats, setStats] = useState<WorldStats | null | undefined>(lastWorldStats ?? undefined);
+  useEffect(() => {
+    let cancelled = false;
+    fetchCountries()
+      .then(({ countries }) => {
+        const populated = countries
+          .filter((c) => c.churchCount > 0)
+          .sort((a, b) => b.churchCount - a.churchCount);
+        const next = populated.length
+          ? { churches: populated.reduce((sum, c) => sum + c.churchCount, 0), countries: populated }
+          : null;
+        if (next) lastWorldStats = next;
+        if (!cancelled) setStats(next ?? lastWorldStats);
+      })
+      .catch(() => {
+        if (!cancelled) setStats(lastWorldStats);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return stats;
+}
+
+function WorldStatsBlock({ stats }: { stats: WorldStats | undefined }) {
+  // Same footprint loading and loaded, so the hero text doesn't jump when numbers arrive.
+  if (!stats) {
+    return (
+      <div className="mt-4" aria-hidden="true">
+        <div className="flex flex-wrap gap-2">
+          <span className={`${PILL_CLASS} w-[126px] animate-pulse`}>{"\u00A0"}</span>
+          <span className={`${PILL_CLASS} w-[92px] animate-pulse`}>{"\u00A0"}</span>
+        </div>
+        <div className={FLAGS_ROW_CLASS} />
+      </div>
+    );
+  }
+  const shown = stats.countries.slice(0, MAX_FLAGS);
+  const overflow = stats.countries.length - shown.length;
+  return (
+    <div className="mt-4 animate-hmc-rise">
+      <div className="flex flex-wrap gap-2">
+        <span className={PILL_CLASS}>{stats.churches.toLocaleString()} churches</span>
+        <span className={PILL_CLASS}>{stats.countries.length.toLocaleString()} countries</span>
+      </div>
+      <div
+        role="img"
+        aria-label={`Countries on the map: ${stats.countries.map((c) => c.name).join(", ")}`}
+        className={`${FLAGS_ROW_CLASS} flex items-center gap-1`}
+      >
+        {shown.map((c) => (
+          <span key={c.code} title={c.name} className="inline-flex">
+            <PlaceFlag abbrev={c.code} countryCode="WORLD" size="sm" />
+          </span>
+        ))}
+        {overflow > 0 && (
+          <span className="ml-1 text-xs font-medium text-hmc-text-muted tabular-nums">+{overflow}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function WelcomeModal({ onClose }: { onClose: () => void }) {
+  const worldStats = useWorldStats();
   return (
     <HmcDialog onClose={onClose} className="max-w-[880px] md:flex-row md:max-h-[min(640px,90dvh)]">
       <CloseButton onClick={onClose} size="md" className="absolute top-4 right-4 z-10" />
@@ -128,18 +207,7 @@ export function WelcomeModal({ onClose, stats }: { onClose: () => void; stats?: 
           <p className="text-hmc-text-muted text-sm leading-relaxed mt-2.5 max-w-[34ch] text-pretty">
             An interactive map of Christian churches worldwide, built to be the most accurate place to find one.
           </p>
-          {showStats && (
-            <div className="mt-4 flex flex-wrap gap-2 animate-hmc-rise">
-              <span className="rounded-full bg-white/10 ring-1 ring-white/10 px-3 py-1 text-xs font-medium text-white tabular-nums">
-                {stats!.churches.toLocaleString()} churches
-              </span>
-              {stats!.places > 0 && (
-                <span className="rounded-full bg-white/10 ring-1 ring-white/10 px-3 py-1 text-xs font-medium text-white tabular-nums">
-                  {stats!.places.toLocaleString()} {stats!.placeLabel}
-                </span>
-              )}
-            </div>
-          )}
+          {worldStats !== null && <WorldStatsBlock stats={worldStats} />}
         </div>
       </div>
 

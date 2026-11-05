@@ -1,4 +1,49 @@
-> **Status:** plan only — not started. Written 2026-10-18 after a full audit of what still depends on Supabase.
+> **Status:** in progress, started 2026-11-05. Presence is live on the Durable Object. The D1 store and tooling are deployed but off, and the staging rehearsal passed. Production data stays on Supabase until the cutover. Written 2026-10-18 after a full audit; the corrections below come from a second audit on 2026-11-05 and **override the phases further down** where they differ.
+
+## Rehearsal results (2026-11-05, staging, real data)
+
+| Check | Result |
+|---|---|
+| Data | 5,911 keys, 293 MB (over twice the October estimate), 1,893 audit rows, 358 monthly rows |
+| Verify while frozen | 0 differences |
+| Change feed | `feed-compare` matched from 29 days back and from a trimmed Postgres cursor. Harvous's real stored cursor is still to run |
+| Search speed | Median 251 ms vs 1,985 ms on prod; worst 793 ms vs 22 s |
+| Search results | On the same scan path, 48 of 50 queries identical. The other 2 failed on prod itself |
+| Freeze | All reads 200, writes 503 with `Retry-After`, preflight passes |
+| Write round trip | Suggestion, audit row, feed, Lookup `dirtyAt`, moderation queue and R2 republish all worked |
+
+**Timings:** copy 182 s, verify 200 s, search backfill 86 s, static publish 441 s. Run the publish after unfreezing, since the data hasn't changed, so the freeze is about 8 minutes plus the deploy and checks.
+
+**Search results will change at cutover.** Prod's Postgres has no `church_search` table or `search_churches` function (checked 2026-11-05), so migration `20261001000000` was probably never applied there. Search therefore uses the slow scan fallback, and each church-list write fails its search sync and sets `church-search:ready` to false, which is why the flag shows `sync-failed` from the last write on 2026-10-30. The scan stops at a candidate cap, which favours states early in the list. The table doesn't, so search and Harvous's `/v1` search return different, nationwide results after cutover.
+
+**Staging holds the production service key and real data.** Delete `hmc-api-staging` and its databases and buckets after cutover.
+
+## Corrections (2026-11-05)
+
+| # | Problem in the phases below | Do this instead |
+|---|---|---|
+| 1 | GET routes write caches (review stats, calibration, reports, partner rate limits), and the ephemeral-prefix allowlist misses review stats, so the freeze would break browsing | While frozen, `kv.ts` logs and skips **all** writes, because the middleware already rejects non-GETs. No `ReadOnlyError`, no allowlist |
+| 2 | Cutover steps POST to `/churches/search/backfill` and `/admin/publish-static` while frozen | Exempt those two and `/admin/migrate/*`, behind `checkModKey`. The search-ready flag and migration writes use the raw backend |
+| 3 | The freeze would block CORS preflight | Exempt `OPTIONS` and `HEAD` |
+| 4 | Keys deleted between pre-copy and final copy would come back | The final copy also deletes D1 keys missing from Postgres |
+| 5 | `created_us UNIQUE` could abort the copy on rows sharing a timestamp | Not unique; order by `(created_us, id)`. New inserts stay strictly increasing |
+| 6 | `parsePartnerSince` returning only an integer would change the echoed cursor; Harvous stops when `nextSince === since` | Return both `iso` (echoed untouched when there are no rows) and `us` (for comparing) |
+| 7 | Replacing a whole region per correction costs about 100k row writes for Texas (estimate) | `syncSearchRegion` compares in JS and writes only changed rows. Full replace is for backfill. Use `ON CONFLICT DO UPDATE`, never `INSERT OR REPLACE`, which skips the FTS delete trigger |
+| 8 | A reader can hit a spilled R2 object that was just replaced | On an R2 miss, re-read the row once |
+| 9 | D1 can fail transiently | Retry reads and idempotent writes twice with jitter |
+| 10 | A deploy from a stale checkout would drop `STORE_BACKEND` and send writes back to Postgres | `deploy:api` refuses unless the tree is clean and contains `origin/main` (`scripts/check-deploy-ref.mjs`). After cutover, `d1` is the code default and Supabase is paused |
+| 11 | Presence broadcasts `viewingState` unchecked | Validate it (`^[A-Z0-9-]{1,10}), cap id length and connections per IP |
+| 12 | The repo has no test runner | Add `vitest` and `@cloudflare/vitest-pool-workers` |
+
+**Added since this was written:** `lookup:dirty:*` keys and `/internal/lookup/*` are copied and tested like everything else. Migration writes skip `onKvWrite`, so Lookup doesn't see every region as changed. During the freeze, Lookup's POST routes return 503 with `Retry-After` and its reads keep working.
+
+**Already done:** the cron workflows no longer use `SUPABASE_FUNCTION_URL`, which already pointed at the Worker.
+
+**Migration tooling differs slightly from Phase 2:** \`prune\` removes deleted keys by asking Postgres about each D1 key, because the two databases sort keys differently, so comparing key ranges wouldn't be safe. Rollback is a Worker route, \`replay\`, instead of \`export-delta\`, so no keys leave the Worker; it needs \`confirm=write-postgres\` and a freeze. After \`mark-cutover\`, the copy steps refuse to run.
+
+**Before cutover:** `feed-compare?since=` walks the partner change feed on both databases and must return `ok: true`.
+
+**Staging** has its own `hmc-data-staging` bucket as well, so a test publish can't overwrite the live public files.
 
 # Move Here's My Church off Supabase (D1 + R2 + Durable Object)
 

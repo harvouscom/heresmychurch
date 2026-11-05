@@ -5,7 +5,7 @@
   "license": "CC-BY-NC-4.0",
   "type": "module",
   "scripts": {
-    "deploy:make-server": "supabase functions deploy make-server-283d8046",
+    "deploy:make-server": "node scripts/check-deploy-ref.mjs && supabase functions deploy make-server-283d8046",
     "build": "vite build",
     "dev": "vite",
     "prebuild": "node scripts/generate-sitemap.mjs",
@@ -15,10 +15,13 @@
     "cleanup-blocked": "node scripts/cleanup-blocked-denominations.mjs",
     "deploy": "pnpm run build && wrangler deploy",
     "preview:cf": "pnpm run build && wrangler dev",
-    "deploy:api": "wrangler deploy -c api/wrangler.jsonc",
+    "deploy:api": "node scripts/check-deploy-ref.mjs && wrangler deploy -c api/wrangler.jsonc",
+    "deploy:api:staging": "wrangler deploy -c api/wrangler.jsonc --env staging",
     "dev:api": "wrangler dev -c api/wrangler.jsonc --port 8790",
     "parity:api": "node scripts/api-parity.mjs",
-    "contract:api": "node scripts/api-contract.mjs"
+    "contract:api": "node scripts/api-contract.mjs",
+    "migrate:d1": "node scripts/migrate-to-d1.mjs",
+    "test:api": "vitest run --config api/vitest.config.ts"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -101,9 +104,11 @@
     "@vitejs/plugin-react": "4.7.0",
     "aws4fetch": "1.0.20",
     "hono": "^4.13.13",
+    "miniflare": "^4.20260730.0",
     "supabase": "^2.78.1",
     "tailwindcss": "4.1.12",
     "vite": "6.3.5",
+    "vitest": "^4.1.12",
     "workers-og": "^0.0.27",
     "wrangler": "^4.151.0"
   },
