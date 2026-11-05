@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Add new changes here as you work. Move to a version section when releasing. -->
 
+### Changed
+
+- **Lookup can suggest church names** — they wait for a moderator, like name suggestions from the site.
+
 ### Added
 
 - **Worldwide totals in the welcome modal** — the modal now shows the same church and country totals on every route, with a row of country flags, instead of numbers for the current view.

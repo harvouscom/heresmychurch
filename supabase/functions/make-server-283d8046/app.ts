@@ -6034,8 +6034,9 @@ app.post(`${P}/admin/publish-static`,async(c)=>{
 const LOOKUP_DIRTY_PREFIX="lookup:dirty:";
 /** What Lookup may read. An allowlist, so private fields added to church rows later can't leak. */
 const LOOKUP_EXPORT_FIELDS=["id","shortId","name","address","city","state","postcode","lat","lng","denomination","website","serviceTimes","languages","ministries","pastorName","phone","email","lastVerified","listingStatus","relocatedFrom","relocatedTo","homeCampusId"] as const;
-/** No email or pastorName: they'd go live on one vote, and a host form can hold personal details. */
-const LOOKUP_CONTRIBUTABLE_FIELDS=new Set(["serviceTimes","denomination","languages","ministries","website","address","phone"]);
+/** Name, website and address wait for a moderator (SENSITIVE_FIELDS). No email or pastorName: they'd go
+ *  live on one vote, and a host form can hold personal details. */
+const LOOKUP_CONTRIBUTABLE_FIELDS=new Set(["name","serviceTimes","denomination","languages","ministries","website","address","phone"]);
 const LOOKUP_CLIENT_RE=/^[a-z0-9][a-z0-9-]{1,39}$/;
 const LOOKUP_IP_HASH_RE=/^[a-f0-9]{16,64}$/;
 const LOOKUP_SUGGESTION_RATE_LIMIT=30;     // per person per hour, across tools
