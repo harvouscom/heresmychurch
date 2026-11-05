@@ -31,6 +31,20 @@
         "127.0.0.1"
       ],
       "port": 8787
+    },
+    {
+      "name": "api-worker",
+      "runtimeExecutable": "node_modules/.bin/wrangler",
+      "runtimeArgs": [
+        "dev",
+        "-c",
+        "api/wrangler.jsonc",
+        "--port",
+        "8790",
+        "--ip",
+        "127.0.0.1"
+      ],
+      "port": 8790
     }
   ]
 }
