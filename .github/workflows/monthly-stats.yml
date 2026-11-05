@@ -12,15 +12,12 @@ jobs:
     steps:
       - name: Record monthly stats
         env:
-          SUPABASE_FUNCTION_URL: ${{ secrets.SUPABASE_FUNCTION_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           MONTHLY_STATS_SECRET: ${{ secrets.MONTHLY_STATS_SECRET }}
           TWITTER_WEBHOOK_SECRET: ${{ secrets.TWITTER_WEBHOOK_SECRET }}
         run: |
           SECRET="${MONTHLY_STATS_SECRET}"
           if [ -z "$SECRET" ]; then SECRET="${TWITTER_WEBHOOK_SECRET}"; fi
-          curl -sf -X POST "${SUPABASE_FUNCTION_URL}/internal/monthly-stats" \
+          curl -sf -X POST "https://api.heresmychurch.com/internal/monthly-stats" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
             -d "{\"secret\":\"${SECRET}\"}" \
             || echo "Monthly stats recording failed (non-fatal)"

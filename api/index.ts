@@ -8,6 +8,7 @@
 import app from "../supabase/functions/make-server-283d8046/app.ts";
 import { setEnv, setOgImageRenderer, setWaitUntil } from "../supabase/functions/make-server-283d8046/runtime.ts";
 import { setR2Binding } from "../supabase/functions/make-server-283d8046/r2.ts";
+import { setD1, setKvBucket, setSearchD1 } from "../supabase/functions/make-server-283d8046/bindings.ts";
 import { generateOgImage } from "./og-image.ts";
 
 const PREFIX = "/make-server-283d8046";
@@ -16,6 +17,12 @@ interface Env {
   [name: string]: unknown;
   /** hmc-data bucket (static files); replaces the S3 keys the Supabase function uses. */
   HMC_DATA?: R2Bucket;
+  /** Main store: KV rows, audit log, monthly snapshots. */
+  HMC_DB?: D1Database;
+  /** Church search with FTS5. Separate so a heavy search can't block KV reads. */
+  HMC_SEARCH_DB?: D1Database;
+  /** Private bucket for KV values too large for a D1 row. */
+  HMC_KV?: R2Bucket;
 }
 
 // og-image.tsx is Deno-only (esm.sh React + og_edge); Workers use workers-og.
@@ -29,6 +36,9 @@ export default {
     });
     setWaitUntil((p) => ctx.waitUntil(p));
     setR2Binding(env.HMC_DATA ?? null);
+    setD1(env.HMC_DB ?? null);
+    setSearchD1(env.HMC_SEARCH_DB ?? null);
+    setKvBucket(env.HMC_KV ?? null);
 
     // Routes are mounted under /make-server-283d8046 (the Supabase function name);
     // accept bare paths too, so api.heresmychurch.com/churches/TX works.

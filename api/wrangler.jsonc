@@ -20,14 +20,52 @@
     // Tells app.ts it runs behind Cloudflare, so cf-connecting-ip can be trusted for client IPs.
     "HMC_RUNTIME": "worker",
     "R2_ACCOUNT_ID": "ec934baa29eb81459ffeaf18ba044b9e",
-    "R2_BUCKET": "hmc-data"
+    "R2_BUCKET": "hmc-data",
+    // "supabase" or "d1". See docs/future/move-off-supabase.md.
+    "STORE_BACKEND": "supabase",
+    // Any non-empty value pauses writes while reads keep working.
+    "MAINTENANCE_READONLY": ""
   },
   "routes": [{ "pattern": "api.heresmychurch.com", "custom_domain": true }],
   // Static files (states.json, churches/{REGION}.json); r2.ts prefers this over S3 keys.
-  "r2_buckets": [{ "binding": "HMC_DATA", "bucket_name": "hmc-data" }],
+  // HMC_KV holds large KV values, some with IPs, so it stays private: never point it at hmc-data.
+  "r2_buckets": [
+    { "binding": "HMC_DATA", "bucket_name": "hmc-data" },
+    { "binding": "HMC_KV", "bucket_name": "hmc-kv" }
+  ],
+  // Apply with: wrangler d1 migrations apply <binding> -c api/wrangler.jsonc --remote [--env staging]
+  "d1_databases": [
+    { "binding": "HMC_DB", "database_name": "hmc-db", "database_id": "cc914d25-e127-474a-b014-a9742e9b33d3", "migrations_dir": "migrations" },
+    { "binding": "HMC_SEARCH_DB", "database_name": "hmc-search", "database_id": "92944a09-b3c8-4028-a0e4-b763ff97c023", "migrations_dir": "search-migrations" }
+  ],
   // Secrets (wrangler secret put -c api/wrangler.jsonc NAME):
   //   SUPABASE_SERVICE_ROLE_KEY, MODERATOR_KEY, PARTNER_API_KEY, LOOKUP_INTERNAL_KEY, GOOGLE_MAPS_API_KEY,
   //   TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET,
   //   TWITTER_WEBHOOK_SECRET  (R2 uses the HMC_DATA binding instead of S3 keys)
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  "env": {
+    // Rehearsal copy on workers.dev with its own databases and buckets. It reads Postgres only to
+    // copy from it, and must never bind hmc-data, or a test publish would overwrite the live files.
+    "staging": {
+      "name": "hmc-api-staging",
+      "routes": [],
+      "workers_dev": true,
+      "vars": {
+        "SUPABASE_URL": "https://epufchwxofsyuictfufy.supabase.co",
+        "HMC_RUNTIME": "worker",
+        "R2_ACCOUNT_ID": "ec934baa29eb81459ffeaf18ba044b9e",
+        "R2_BUCKET": "hmc-data-staging",
+        "STORE_BACKEND": "d1",
+        "MAINTENANCE_READONLY": ""
+      },
+      "r2_buckets": [
+        { "binding": "HMC_DATA", "bucket_name": "hmc-data-staging" },
+        { "binding": "HMC_KV", "bucket_name": "hmc-kv-staging" }
+      ],
+      "d1_databases": [
+        { "binding": "HMC_DB", "database_name": "hmc-db-staging", "database_id": "a8fa2f32-8d7e-4d96-887a-13ebbe5e9f23", "migrations_dir": "migrations" },
+        { "binding": "HMC_SEARCH_DB", "database_name": "hmc-search-staging", "database_id": "bac27594-049f-433f-8434-a9a888da9b6d", "migrations_dir": "search-migrations" }
+      ]
+    }
+  }
 }
