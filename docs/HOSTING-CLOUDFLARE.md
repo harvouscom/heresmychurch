@@ -73,5 +73,4 @@ These were left out when the API moved; the routes fail softly without them.
 The Supabase function still holds its old copies of these until it is retired.
 
 Callers switch by config, each reversible: `VITE_HMC_API_BASE_URL` (frontend build),
-`HMC_API_BASE_URL` (site Worker og-rewrite), the `SUPABASE_FUNCTION_URL` GitHub secret
-(cron workflows), and Harvous's `HERESMYCHURCH_API_BASE` (`https://api.heresmychurch.com/v1`).
+`HMC_API_BASE_URL` (site Worker og-rewrite) and Harvous's `HERESMYCHURCH_API_BASE` (`https://api.heresmychurch.com/v1`).

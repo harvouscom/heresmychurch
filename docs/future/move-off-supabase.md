@@ -1,4 +1,27 @@
-> **Status:** plan only — not started. Written 2026-10-18 after a full audit of what still depends on Supabase.
+> **Status:** in progress, started 2026-11-05. D1 databases and R2 buckets exist; nothing reads or writes them yet. Production stays on Supabase until the cutover. Written 2026-10-18 after a full audit; the corrections below come from a second audit on 2026-11-05 and **override the phases further down** where they differ.
+
+## Corrections (2026-11-05)
+
+| # | Problem in the phases below | Do this instead |
+|---|---|---|
+| 1 | GET routes write caches (review stats, calibration, reports, partner rate limits), and the ephemeral-prefix allowlist misses review stats, so the freeze would break browsing | While frozen, `kv.ts` logs and skips **all** writes, because the middleware already rejects non-GETs. No `ReadOnlyError`, no allowlist |
+| 2 | Cutover steps POST to `/churches/search/backfill` and `/admin/publish-static` while frozen | Exempt those two and `/admin/migrate/*`, behind `checkModKey`. The search-ready flag and migration writes use the raw backend |
+| 3 | The freeze would block CORS preflight | Exempt `OPTIONS` and `HEAD` |
+| 4 | Keys deleted between pre-copy and final copy would come back | The final copy also deletes D1 keys missing from Postgres |
+| 5 | `created_us UNIQUE` could abort the copy on rows sharing a timestamp | Not unique; order by `(created_us, id)`. New inserts stay strictly increasing |
+| 6 | `parsePartnerSince` returning only an integer would change the echoed cursor; Harvous stops when `nextSince === since` | Return both `iso` (echoed untouched when there are no rows) and `us` (for comparing) |
+| 7 | Replacing a whole region per correction costs about 100k row writes for Texas (estimate) | `syncSearchRegion` compares in JS and writes only changed rows. Full replace is for backfill. Use `ON CONFLICT DO UPDATE`, never `INSERT OR REPLACE`, which skips the FTS delete trigger |
+| 8 | A reader can hit a spilled R2 object that was just replaced | On an R2 miss, re-read the row once |
+| 9 | D1 can fail transiently | Retry reads and idempotent writes twice with jitter |
+| 10 | A deploy from a stale checkout would drop `STORE_BACKEND` and send writes back to Postgres | `deploy:api` refuses unless the tree is clean and contains `origin/main` (`scripts/check-deploy-ref.mjs`). After cutover, `d1` is the code default and Supabase is paused |
+| 11 | Presence broadcasts `viewingState` unchecked | Validate it (`^[A-Z0-9-]{1,10}), cap id length and connections per IP |
+| 12 | The repo has no test runner | Add `vitest` and `@cloudflare/vitest-pool-workers` |
+
+**Added since this was written:** `lookup:dirty:*` keys and `/internal/lookup/*` are copied and tested like everything else. Migration writes skip `onKvWrite`, so Lookup doesn't see every region as changed. During the freeze, Lookup's POST routes return 503 with `Retry-After` and its reads keep working.
+
+**Already done:** the cron workflows no longer use `SUPABASE_FUNCTION_URL`, which already pointed at the Worker.
+
+**Staging** has its own `hmc-data-staging` bucket as well, so a test publish can't overwrite the live public files.
 
 # Move Here's My Church off Supabase (D1 + R2 + Durable Object)
 

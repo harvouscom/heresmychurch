@@ -38,14 +38,11 @@ jobs:
     steps:
       - name: Post scheduled tweet
         env:
-          SUPABASE_FUNCTION_URL: ${{ secrets.SUPABASE_FUNCTION_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           TWITTER_WEBHOOK_SECRET: ${{ secrets.TWITTER_WEBHOOK_SECRET }}
         run: |
           FORCE=false
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then FORCE=true; fi
-          curl -sf -X POST "${SUPABASE_FUNCTION_URL}/twitter/scheduled" \
+          curl -sf -X POST "https://api.heresmychurch.com/twitter/scheduled" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
             -d "{\"secret\":\"${TWITTER_WEBHOOK_SECRET}\",\"force\":${FORCE}}" \
             || echo "Scheduled tweet failed (non-fatal)"
