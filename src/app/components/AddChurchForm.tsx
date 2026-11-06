@@ -156,6 +156,9 @@ interface AddChurchFormProps {
   onSelectChurch?: (church: Church) => void;
   /** After successfully adding (or duplicate), navigate to that church's page. */
   onChurchAdded?: (state: string, shortId: string) => void;
+  /** Prefill from a deep link (/add?name=&city=). */
+  initialName?: string;
+  initialCity?: string;
 }
 
 export function AddChurchForm({
@@ -165,6 +168,8 @@ export function AddChurchForm({
   churches = [],
   onSelectChurch,
   onChurchAdded,
+  initialName = "",
+  initialCity = "",
 }: AddChurchFormProps) {
   const fieldId = useId();
   const [submitting, setSubmitting] = useState(false);
@@ -179,9 +184,9 @@ export function AddChurchForm({
   const [geocodedCoords, setGeocodedCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   // Core form fields (lat/lng come from geocoding the address)
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initialName);
   const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
+  const [city, setCity] = useState(initialCity);
   const [denomination, setDenomination] = useState("");
   const [attendance, setAttendance] = useState("");
   const [website, setWebsite] = useState("");

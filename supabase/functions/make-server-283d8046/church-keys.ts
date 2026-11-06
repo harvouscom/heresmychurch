@@ -48,10 +48,12 @@ export function regionFromChurchId(id: string): string | null {
   const t = id.trim();
   if (t.startsWith("community-")) {
     const p = t.split("-");
-    // community-{region}-… (US) or community-{cc}-{region}-…
-    if (p.length >= 3 && COUNTRY_CODES.has((p[1] || "").toUpperCase()) && !US_STATE_ABBREVS.has((p[1] || "").toUpperCase())) {
-      const reg = (p[2] || "").toUpperCase();
-      return isValidRegion(reg) ? reg : null;
+    // community-{region}-… (US) or community-{cc}-{region}-…. CA and DE are also US states, so a
+    // country code counts when the next part is one of that country's regions (US ids have a timestamp there).
+    const cc1 = (p[1] || "").toUpperCase(), reg2 = (p[2] || "").toUpperCase();
+    if (p.length >= 3 && COUNTRY_CODES.has(cc1) && cc1 !== "US" && isValidRegion(reg2) && regionCountry(reg2) === cc1) return reg2;
+    if (p.length >= 3 && COUNTRY_CODES.has(cc1) && !US_STATE_ABBREVS.has(cc1)) {
+      return isValidRegion(reg2) ? reg2 : null;
     }
     const st = (p[1] || "").toUpperCase();
     return isValidRegion(st) ? st : null;

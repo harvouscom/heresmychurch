@@ -45,18 +45,12 @@ const suggest = (field, value) => req("/internal/lookup/suggestions", {
 });
 const queue = async () => (await req("/moderate/pending", { headers: modHeaders })).body?.pendingSuggestions ?? [];
 
-const parts = churchId.split("-");
-const region = parts[0] === "community" ? (parts[1].length === 2 && parts[2]?.match(/^[A-Z]/) ? parts[2] : parts[1]) : (parts.length > 2 ? parts[1] : parts[0]);
-const regions = (await req("/internal/lookup/regions", { headers: lookupHeaders })).body?.regions ?? [];
-const cc = regions.find((r) => r.abbrev === region)?.cc;
-if (!cc) { console.error(`Can't resolve region ${region} for ${churchId}`); process.exit(2); }
-const stored = async () => {
-  const { body } = await req(`/internal/lookup/region/${cc}/${region}`, { headers: lookupHeaders });
-  return (body?.churches ?? []).find((x) => x.id === churchId);
-};
+// Stored row, in Lookup's export shape (country, state and shortId included).
+const stored = async () => (await req(`/internal/lookup/church/${encodeURIComponent(churchId)}`, { headers: lookupHeaders })).body?.church;
 
 const before = await stored();
 if (!before) { console.error(`${churchId} not found in stored data`); process.exit(2); }
+const region = before.state;
 if (!before.serviceTimes) { console.error(`${churchId} has no service times, so step 2 couldn't restore. Pick another church.`); process.exit(2); }
 if ((await queue()).some((s) => s.churchId === churchId && s.field === "website")) {
   console.error(`${churchId} already has a pending website suggestion. Rejecting it here would lose it, so stopping.`);
@@ -69,7 +63,8 @@ check(sent.status === 200 && sent.body?.needsModeration === true && sent.body?.a
 await sleep(5000);
 const value = PROBE.replace(/\/$/, "");
 try {
-  check(!(await req(`/churches/church/${encodeURIComponent(churchId)}`)).text.includes(value), "absent from the single-church read");
+  const single = await req(`/churches/${region}/church/${encodeURIComponent(before.shortId)}`);
+  check(single.status === 200 && !single.text.includes(value), "absent from the single-church read");
   check(!(await req(`/churches/${region}`)).text.includes(value), "absent from the region read");
   check(!(await req(`/churches/${region}.json`, {}, DATA)).text.includes(value), "absent from the public R2 file");
   check(!(await req(`/suggestions/approved/${region}`)).text.includes(value), "absent from /suggestions/approved");

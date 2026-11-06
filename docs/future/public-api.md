@@ -394,11 +394,17 @@ Today a partner is just another anonymous actor: `partner:harvous` gets exactly 
 | Method | Path | Behavior |
 |--------|------|----------|
 | `GET` | `/internal/lookup/regions` | `{ regions: [{ cc, abbrev, dirtyAt }] }`. `dirtyAt` is the last church-list write for that region, or `null` before the first write after this shipped. |
-| `GET` | `/internal/lookup/region/:cc/:abbrev` | Stored rows only, with an allowlist of fields. No correction overlay, Google data or calibration. |
-| `POST` | `/internal/lookup/suggestions` | Body `{ churchId, field, value, client, ipHash }`. Same rules as the site. Actor is `lookup:{client}:{ipHash}` and source is `lookup:{client}`. Fields: `name`, `serviceTimes`, `denomination`, `languages`, `ministries`, `website`, `address` (US only), `phone` (US and Canada only). `name`, `website` and `address` wait for a moderator. |
-| `POST` | `/internal/lookup/confirm` | Body `{ churchId, client, ipHash }`. Same as the partner confirm. |
+| `GET` | `/internal/lookup/region/:cc/:abbrev` | Stored rows only, with an allowlist of fields (`LOOKUP_EXPORT_FIELDS` plus `country`). No correction overlay, Google data or calibration. |
+| `GET` | `/internal/lookup/church/:id` | `{ church }`, one stored row in the same shape as the region export (uncached). `400` bad id, `404` not found. |
+| `POST` | `/internal/lookup/suggestions` | Body `{ churchId, field, value, client, ipHash }`. Same rules as the site. Returns `{ success, field, applied, needsModeration, church? }`; `church` (export shape) only when `applied`. Fields: `name`, `serviceTimes`, `denomination`, `languages`, `ministries`, `website`, `address`, `phone`, `email`, `pastorName`, `reportClosed`, `reportDuplicate`, `reportRelocated`, worldwide. `name`, `website`, `address` and the reports wait for a moderator, and so do `email` and `pastorName` when they come from Lookup. `409 { error, relocatedTo?, listingStatus? }` when the listing has `relocatedTo` or is `pending_reverify`. |
+| `POST` | `/internal/lookup/confirm` | Body `{ churchId, client, ipHash }`. Same as the partner confirm, plus `lastVerified` (ms or `null`). `404` when the church isn't stored. |
+| `POST` | `/internal/lookup/churches` | Body `{ client, ipHash, church: { name, address, city, postcode?, state \| region, country?, phone?, website?, denomination?, serviceTimes?, languages?, ministries? }, confirmAdd? }`. Same rules as the site's add form: geocoded here (in the region's country, must land inside the region), then `{ needsConfirmation: true, similar: [...] }` for near-duplicates (resend with `confirmAdd: true`), or `{ success: true, church }` live in the export shape (`isDuplicate: true` when it matched an existing listing exactly). `400` invalid input, `422` the address couldn't be placed, `429` over the add limit. No `email` or `pastorName` on add. |
+
+Votes are one per person across tools: the voter key is `lookup:{ipHash}`, and `client` goes into the source (`lookup:{client}`), which the moderation queue shows. Rate limits are keyed by `ipHash` and only count requests that pass validation. As everywhere, votes older than 365 days stop counting.
 
 The Worker hashes IPs before calling these, so raw IPs aren't stored for Lookup traffic. `client` is declared by the caller and isn't verified.
+
+The site takes two deep links for Lookup to hand people over: `/add?name=&city=&region=` (optionally `&country=`) opens the add-church form for that region, prefilled, and `/{CC}/{REGION}/{shortId}?suggest=1` opens suggest-an-edit on that church.
 
 ### Deferred (not in v1)
 

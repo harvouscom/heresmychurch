@@ -8,7 +8,8 @@ import { RootLayout } from "./RootLayout";
 // /world                       → World choropleth (countries) — default home
 // /:countryCode                → Country overview (e.g. /US, /CA)
 // /:countryCode/:regionCode    → Region view (e.g. /US/TX, /CA/PE)
-// /:countryCode/:region/:seg   → Church / county deep link
+// /:countryCode/:region/:seg   → Church / county deep link (?suggest=1 opens suggest-an-edit)
+// /add?name=&city=&region=     → Add-church form for that region, prefilled (links from Lookup)
 // Legacy (redirected in ChurchMapPage + the site Worker):
 //   /state/:abbrev…  → /US/:abbrev…
 //   /country/:cc…    → /:cc…
@@ -88,6 +89,8 @@ export const router = createBrowserRouter([
       { path: "/country/:countryCode/:regionCode/:segment1/:segment2?", Component: ChurchMapPage, ErrorBoundary: RouteError },
       { path: "/state/:stateAbbrev", Component: ChurchMapPage, ErrorBoundary: RouteError },
       { path: "/state/:stateAbbrev/:segment1/:segment2?", Component: ChurchMapPage, ErrorBoundary: RouteError },
+      // Lookup's "add this church" link; ChurchMapPage redirects to the region with the form open.
+      { path: "/add", Component: ChurchMapPage, ErrorBoundary: RouteError },
       // Canonical country-scoped browsing (must stay after reserved paths above).
       { path: "/:countryCode", Component: ChurchMapPage, ErrorBoundary: RouteError },
       { path: "/:countryCode/:regionCode", Component: ChurchMapPage, ErrorBoundary: RouteError },

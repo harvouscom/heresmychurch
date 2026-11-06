@@ -1,7 +1,7 @@
 import { useLocation, useNavigate } from "react-router";
 import { useMemo, useCallback, useEffect } from "react";
 import { ChurchMap } from "./ChurchMap";
-import { DEFAULT_COUNTRY_CODE, isSupportedCountry } from "../config/countries";
+import { DEFAULT_COUNTRY_CODE, getRegion, isSupportedCountry, resolveRegionByAbbrev } from "../config/countries";
 import {
   churchMapPath,
   countryPath,
@@ -48,6 +48,36 @@ export function ChurchMapPage() {
       const rest = parts.slice(3).join("/");
       nav(
         `/${cc}${region ? `/${region}` : ""}${rest ? `/${rest}` : ""}${search}`,
+        { replace: true },
+      );
+      return;
+    }
+    // /add?name=&city=&region=[&country=] → /:CC/:REGION?add=1&name=&city= (the map opens the form).
+    if (parts[0] === "add") {
+      const params = new URLSearchParams(search);
+      const region = (params.get("region") || "").trim().toUpperCase();
+      const country = (params.get("country") || "").trim().toUpperCase();
+      const resolved = country && getRegion(country, region)
+        ? { cc: country, abbrev: region }
+        : (() => {
+          const r = resolveRegionByAbbrev(region);
+          return r ? { cc: r.country.code, abbrev: region } : null;
+        })();
+      const next = new URLSearchParams();
+      const key = params.get("key");
+      if (key) next.set("key", key);
+      if (resolved) {
+        next.set("add", "1");
+        for (const k of ["name", "city"] as const) {
+          const v = (params.get(k) || "").trim().slice(0, 120);
+          if (v) next.set(k, v);
+        }
+      }
+      const qs = next.toString() ? `?${next.toString()}` : "";
+      nav(
+        resolved
+          ? `${regionPath(resolved.cc, resolved.abbrev)}${qs}`
+          : `${detectedCountry ? countryPath(detectedCountry) : "/world"}${qs}`,
         { replace: true },
       );
       return;
@@ -145,6 +175,11 @@ export function ChurchMapPage() {
     const showVerifiedDots =
       searchParams.get("verified") === "true" || searchParams.get("verified") === "1";
     const moderatorKey = searchParams.get("key") || null;
+    // Deep links from Lookup: ?add=1&name=&city= on a region, ?suggest=1 on a church.
+    const addChurchPrefill = viewLevel === "region" && !churchShortId && searchParams.get("add") === "1"
+      ? { name: searchParams.get("name") || "", city: searchParams.get("city") || "" }
+      : null;
+    const openSuggestFromQuery = !!churchShortId && searchParams.get("suggest") === "1";
     const queryCounty = searchParams.get("county");
     const routeCountyFipsResolved =
       routeCountyFips
@@ -160,6 +195,8 @@ export function ChurchMapPage() {
       openReviewModalFromQuery,
       showVerifiedDots,
       moderatorKey,
+      addChurchPrefill,
+      openSuggestFromQuery,
     };
   }, [location.pathname, location.search, detectedCountry]);
 
@@ -236,6 +273,18 @@ export function ChurchMapPage() {
     }
   }, [nav, location.pathname, location.search]);
 
+  /** Drops the one-shot deep-link params once the form they asked for is open. */
+  const clearDeepLinkParams = useCallback(() => {
+    const params = new URLSearchParams(location.search);
+    let changed = false;
+    for (const k of ["add", "name", "city", "suggest"]) {
+      if (params.has(k)) { params.delete(k); changed = true; }
+    }
+    if (!changed) return;
+    const search = params.toString();
+    nav(location.pathname + (search ? `?${search}` : ""), { replace: true });
+  }, [nav, location.pathname, location.search]);
+
   const exitReviewView = useCallback(() => {
     const params = new URLSearchParams(location.search);
     params.delete("key");
@@ -257,6 +306,9 @@ export function ChurchMapPage() {
       showVerifiedDotsFromQuery={routeParams.showVerifiedDots}
       clearReviewQueryParam={clearReviewQueryParam}
       moderatorKey={routeParams.moderatorKey}
+      addChurchPrefill={routeParams.addChurchPrefill}
+      openSuggestFromQuery={routeParams.openSuggestFromQuery}
+      clearDeepLinkParams={clearDeepLinkParams}
       onExitReviewView={exitReviewView}
       navigateToState={navigateToState}
       navigateToStateWithReview={navigateToStateWithReview}

@@ -136,6 +136,11 @@ interface ChurchMapProps {
   clearReviewQueryParam?: () => void;
   moderatorKey?: string | null;
   onExitReviewView?: () => void;
+  /** /add deep link: open the add-church form on this region, prefilled. */
+  addChurchPrefill?: { name: string; city: string } | null;
+  /** ?suggest=1 on a church URL: open the suggest-an-edit form. */
+  openSuggestFromQuery?: boolean;
+  clearDeepLinkParams?: () => void;
   navigateToState: (abbrev: string) => void;
   navigateToStateWithReview: (abbrev: string) => void;
   navigateToChurch: (
@@ -162,6 +167,9 @@ export function ChurchMap({
   clearReviewQueryParam,
   moderatorKey,
   onExitReviewView,
+  addChurchPrefill = null,
+  openSuggestFromQuery = false,
+  clearDeepLinkParams,
   navigateToState,
   navigateToStateWithReview,
   navigateToChurch,
@@ -874,6 +882,24 @@ export function ChurchMap({
     }
   }, [openReviewModalFromQuery, moderatorKey, clearReviewQueryParam, d.focusedState, d.churches.length, d.loading, d.populating]);
 
+  // Lookup deep links. Wait for the region's churches so the add form's duplicate check has them.
+  const [addFormPrefill, setAddFormPrefill] = useState<{ name: string; city: string } | null>(null);
+  useEffect(() => {
+    if (!addChurchPrefill || !routeStateAbbrev) return;
+    const ready = isIntl
+      ? !intlChurchesLoading
+      : d.focusedState === routeStateAbbrev && !d.loading && !d.populating;
+    if (!ready) return;
+    setAddFormPrefill(addChurchPrefill);
+    d.setShowAddChurchFromSummary(true);
+    clearDeepLinkParams?.();
+  }, [addChurchPrefill, routeStateAbbrev, isIntl, intlChurchesLoading, d.focusedState, d.loading, d.populating, clearDeepLinkParams]);
+  useEffect(() => {
+    if (!openSuggestFromQuery || !selectedChurch) return;
+    localDispatch({ type: "SET", key: "forceEditForm", value: true });
+    clearDeepLinkParams?.();
+  }, [openSuggestFromQuery, selectedChurch, clearDeepLinkParams]);
+
   const { people: activePeople, bots: activeBots, byState: activeByState } = useActiveUsers(
     selectedChurch?.state ?? routeStateAbbrev ?? d.focusedState ?? null
   );
@@ -1056,7 +1082,9 @@ export function ChurchMap({
               ? (intlRegions.find((r) => r.abbrev === routeStateAbbrev)?.name ?? routeStateAbbrev ?? "")
               : d.focusedStateName
           }
-          onClose={() => { d.setShowAddChurchFromSummary(false); d.setAddChurchForState(null); }}
+          initialName={addFormPrefill?.name}
+          initialCity={addFormPrefill?.city}
+          onClose={() => { d.setShowAddChurchFromSummary(false); d.setAddChurchForState(null); setAddFormPrefill(null); }}
           churches={isIntl ? intlChurches : d.churches}
           onSelectChurch={(church) => {
             d.setShowAddChurchFromSummary(false);

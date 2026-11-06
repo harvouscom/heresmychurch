@@ -19,6 +19,7 @@ import {
 
 import { INTL_REGIONS } from "./regions-intl.ts";
 import { normalizeServiceTimes, parseServiceTimesToSlots, type ServiceTimeSlot } from "./service-times.ts";
+import { LOOKUP_MODERATED_FIELDS, isHeldVote, liveVotes, normalizePhone } from "./contrib-rules.ts";
 import {
   regionCountry,
   churchesKey,
@@ -1389,11 +1390,10 @@ function mergeCorrectionsIntoChurches(churches:any[],corrections:Record<string,R
       if(f==="attendance"){(ch as any).attendance=parseInt(v)||(ch as any).attendance;}
       else if(f==="languages"||f==="ministries"){(ch as any)[f]=String(v).split(",").map((s:string)=>s.trim()).filter(Boolean);}
       else if(f==="address"){
-        const val=String(v).trim();
-        if(val.startsWith("{")){try{const o=JSON.parse(val) as Record<string,unknown>;(ch as any).address=String(o.address??"").trim();(ch as any).city=String(o.city??"").trim();(ch as any).state=String(o.state??"").trim().toUpperCase().slice(0,2);const lat=typeof o.lat==="number"&&!isNaN(o.lat)?o.lat:undefined;const lng=typeof o.lng==="number"&&!isNaN(o.lng)?o.lng:undefined;if(lat!=null&&lng!=null&&lat>=18&&lat<=72&&lng>=-180&&lng<=-65){(ch as any).lat=lat;(ch as any).lng=lng;}}catch{ (ch as any).address=val; }}
-        else{const parts=val.split(",").map((s:string)=>s.trim());(ch as any).address=parts[0]??"";(ch as any).city=parts[1]??(ch as any).city;(ch as any).state=(parts[2]??((ch as any).state||"")).toUpperCase().slice(0,2);}
+        const p=parseAddressValue(v,(ch as any).state||regionFromChurchId(ch.id)||"");
+        if(p){(ch as any).address=p.address;if(p.city)(ch as any).city=p.city;(ch as any).state=p.state;if(p.lat!=null&&p.lng!=null){(ch as any).lat=p.lat;(ch as any).lng=p.lng;}}
       }
-      else if(f==="phone"){(ch as any).phone=normalizePhone(String(v))||undefined;}
+      else if(f==="phone"){(ch as any).phone=normalizePhone(String(v),regionCountry((ch as any).state||regionFromChurchId(ch.id)||""))||undefined;}
       else if(f==="homeCampusId"){(ch as any).homeCampusId=(String(v).trim()||undefined);}
       else{(ch as any)[f]=v;}
     }
@@ -2565,17 +2565,42 @@ function findSimilarChurchesServer(name:string,lat:number,lng:number,city:string
     .slice(0,SIMILAR_MAX)
     .map(({church})=>church);
 }
-function normalizePhone(s:string):string{
-  const digits=(s??"").replace(/\D/g,"");
-  if(digits.length===11&&digits[0]==="1")return digits.slice(1);
-  if(digits.length<10)return "";
-  return digits;
+/** A supplied region code, if it's a real region in the same country as the church's; otherwise the church's own. */
+function resolveRegionCode(code:unknown,churchRegion:string):string{
+  const c=String(code??"").trim().toUpperCase();
+  const own=String(churchRegion||"").toUpperCase();
+  if(c&&isValidRegion(c)&&(!own||!isValidRegion(own)||regionCountry(c)===regionCountry(own)))return c;
+  return own;
+}
+type ParsedAddress={address:string;city:string;state:string;postcode?:string;lat?:number;lng?:number};
+/** Address value as stored in suggestions: JSON {address,city,state|region,postcode?,lat?,lng?} or "street, city, region".
+ *  Works worldwide: the region falls back to the church's, and coordinates are kept only when inside that region. */
+function parseAddressValue(raw:unknown,churchRegion:string):ParsedAddress|null{
+  const val=String(raw??"").trim();
+  if(!val)return null;
+  if(val.startsWith("{")){
+    let o:Record<string,unknown>;
+    try{o=JSON.parse(val) as Record<string,unknown>;}catch{return null;}
+    const state=resolveRegionCode(o.state??o.region,churchRegion);
+    const out:ParsedAddress={address:String(o.address??"").trim(),city:String(o.city??"").trim(),state};
+    const postcode=String(o.postcode??"").trim();if(postcode)out.postcode=postcode.slice(0,20);
+    const lat=typeof o.lat==="number"&&!isNaN(o.lat)?o.lat:undefined;
+    const lng=typeof o.lng==="number"&&!isNaN(o.lng)?o.lng:undefined;
+    if(lat!=null&&lng!=null&&state&&coordsInRegion(lat,lng,state)){out.lat=lat;out.lng=lng;}
+    return out;
+  }
+  const parts=val.split(",").map((s:string)=>s.trim());
+  return{address:parts[0]??"",city:parts[1]??"",state:resolveRegionCode(parts[2],churchRegion)};
 }
 const VF=["name","website","address","reportClosed","reportDuplicate","reportOutOfScope","reportRelocated","attendance","denomination","serviceTimes","languages","ministries","pastorName","phone","email","homeCampusId"];
-function consensus(subs:any[]){
+/** held: "exclude" (default) leaves out Lookup's votes on LOOKUP_MODERATED_FIELDS, which only a moderator
+ *  can apply; "only" counts just those. Votes older than VOTE_TTL_MS never count. */
+function consensus(subs:any[],opts:{held?:"exclude"|"only"}={}){
   const res:Record<string,any>={};
+  const held=opts.held??"exclude";
+  const live=liveVotes(Array.isArray(subs)?subs:[]).filter((s:any)=>held==="only"?isHeldVote(s):!isHeldVote(s));
   for(const f of VF){
-    const fs=subs.filter((s:any)=>s.field===f);
+    const fs=live.filter((s:any)=>s.field===f);
     const byIp=new Map<string,any>();for(const s of fs){const e=byIp.get(s.ip);if(!e||s.timestamp>e.timestamp)byIp.set(s.ip,s);}
     const u=Array.from(byIp.values()),v=u.length;
     // Build submissions breakdown (value -> count)
@@ -2662,30 +2687,23 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>,a
         if(f==="attendance"){ch.attendance=parseInt(v)||ch.attendance;}
         else if(f==="languages"||f==="ministries"){ch[f]=String(v).split(",").map((s:string)=>s.trim()).filter(Boolean);}
         else if(f==="address"){
-          const val=String(v).trim();
-          let gotCoords=false;
-          if(val.startsWith("{")){
-            try{
-              const o=JSON.parse(val) as Record<string,unknown>;
-              (ch as any).address=String(o.address??"").trim();
-              (ch as any).city=String(o.city??"").trim();
-              (ch as any).state=String(o.state??"").trim().toUpperCase().slice(0,2);
-              const lat=typeof o.lat==="number"&&!isNaN(o.lat)?o.lat:undefined;
-              const lng=typeof o.lng==="number"&&!isNaN(o.lng)?o.lng:undefined;
-              if(lat!=null&&lng!=null&&lat>=18&&lat<=72&&lng>=-180&&lng<=-65){(ch as any).lat=lat;(ch as any).lng=lng;gotCoords=true;}
-            }catch{ (ch as any).address=val; }
-          }else{
-            const parts=val.split(",").map((s:string)=>s.trim());
-            (ch as any).address=parts[0]??"";
-            (ch as any).city=parts[1]??"";
-            (ch as any).state=(parts[2]??"").toUpperCase().slice(0,2);
-          }
-          if(!gotCoords){
-            const geo=await geocodeAddress((ch as any).address,(ch as any).city,(ch as any).state);
-            if(geo){(ch as any).lat=geo.lat;(ch as any).lng=geo.lng;}
+          // Worldwide: the region stays the church's unless a valid code in the same country is given, and
+          // coordinates are kept only inside that region; otherwise geocode in the church's country.
+          const parsed=parseAddressValue(v,(ch as any).state||st);
+          if(!parsed){(ch as any).address=String(v).trim();}
+          else{
+            (ch as any).address=parsed.address;
+            (ch as any).city=parsed.city;
+            (ch as any).state=parsed.state;
+            if(parsed.postcode)(ch as any).postcode=parsed.postcode;
+            if(parsed.lat!=null&&parsed.lng!=null){(ch as any).lat=parsed.lat;(ch as any).lng=parsed.lng;}
+            else{
+              const geo=await geocodeAddress(parsed.address,parsed.city,parsed.state);
+              if(geo){(ch as any).lat=geo.lat;(ch as any).lng=geo.lng;}
+            }
           }
         }
-        else if(f==="phone"){(ch as any).phone=normalizePhone(String(v))||undefined;}
+        else if(f==="phone"){(ch as any).phone=normalizePhone(String(v),regionCountry((ch as any).state||st))||undefined;}
         else if(f==="serviceTimes"){(ch as any).serviceTimes=normalizeServiceTimes(String(v))||undefined;}
         else if(f==="homeCampusId"){(ch as any).homeCampusId=(String(v).trim()||undefined);}
         else if(f==="reportClosed"||f==="reportDuplicate"||f==="reportOutOfScope"||f==="reportRelocated"){/* report fields applied via dedicated handlers */}
@@ -2767,8 +2785,8 @@ async function ipRateLimit(bucket:string,ip:string,limit:number,windowMs:number)
 const SUGGESTION_RATE_LIMIT=60;            // per IP per hour
 const SUGGESTION_WINDOW_MS=60*60*1000;
 
-async function submitSuggestionCore(opts:{churchId:string;field:string;value:unknown;actorKey:string;auditSource:string}):Promise<SuggestionSubmitResult>{
-  const{churchId,field,value,actorKey,auditSource}=opts;
+/** Validates and normalizes one suggestion without writing anything, so callers can rate-limit only valid ones. */
+function prepareSuggestion(churchId:string,field:string,value:unknown):{ok:true;storeValue:string}|SuggestionSubmitErr{
   if(!churchId||!field)return{ok:false,status:400,error:"Missing fields"};
   if(value===undefined||value===null)return{ok:false,status:400,error:"Value is required"};
   if(!VF.includes(field))return{ok:false,status:400,error:"Invalid field"};
@@ -2788,25 +2806,25 @@ async function submitSuggestionCore(opts:{churchId:string;field:string;value:unk
   if(field==="reportRelocated"){
     const churchSt=regionFromChurchId(churchId);
     if(!churchSt||!isValidRegion(churchSt))return{ok:false,status:400,error:"Invalid church ID"};
-    let street="",city="",stateAbbrev="";
-    if(storeValue.startsWith("{")){
-      try{
-        const o=JSON.parse(storeValue) as Record<string,unknown>;
-        street=String(o.address??"").trim();
-        city=String(o.city??"").trim();
-        stateAbbrev=String(o.state??"").trim().toUpperCase().slice(0,2);
-      }catch{return{ok:false,status:400,error:"Invalid address format"};}
-    }else{
-      const parts=storeValue.split(",").map((s:string)=>s.trim());
-      street=parts[0]??"";city=parts[1]??"";stateAbbrev=(parts[2]??"").toUpperCase().slice(0,2);
-    }
+    // Region codes are 2–20 characters worldwide; a missing or unknown one means the church's own region.
+    const parsed=parseAddressValue(storeValue,churchSt);
+    if(!parsed)return{ok:false,status:400,error:"Invalid address format"};
+    const street=parsed.address,city=parsed.city,stateAbbrev=parsed.state;
     if(!street||!city||!stateAbbrev)return{ok:false,status:400,error:"Street, city, and state are required"};
     if(!isValidRegion(stateAbbrev))return{ok:false,status:400,error:"Invalid state"};
     if(stateAbbrev!==churchSt)return{ok:false,status:400,error:"New address must be in the same state/region as this church"};
   }
   if(field==="name"&&storeValue.length<2)return{ok:false,status:400,error:"Church name must be at least 2 characters"};
-  if(field==="phone"){storeValue=normalizePhone(storeValue);if(!storeValue)return{ok:false,status:400,error:"Invalid phone number"};}
+  if(field==="phone"){storeValue=normalizePhone(storeValue,regionCountry(regionFromChurchId(churchId)!));if(!storeValue)return{ok:false,status:400,error:"Invalid phone number"};}
   if(field==="serviceTimes"){storeValue=normalizeServiceTimes(storeValue);if(!storeValue)return{ok:false,status:400,error:"Invalid service times"};}
+  return{ok:true,storeValue};
+}
+
+async function submitSuggestionCore(opts:{churchId:string;field:string;value:unknown;actorKey:string;auditSource:string}):Promise<SuggestionSubmitResult>{
+  const{churchId,field,value,actorKey,auditSource}=opts;
+  const prepared=prepareSuggestion(churchId,field,value);
+  if(!prepared.ok)return prepared;
+  const storeValue=prepared.storeValue;
   const k=`suggestions:${churchId}`;const ex=(await kv.get(k))||{churchId,submissions:[]};
   if(!ex.churchId)ex.churchId=churchId;
   if(!Array.isArray(ex.submissions))ex.submissions=[];
@@ -2816,8 +2834,11 @@ async function submitSuggestionCore(opts:{churchId:string;field:string;value:unk
   else ex.submissions.push({ip:actorKey,field,value:storeValue,timestamp:Date.now(),source:auditSource});
   await kv.set(k,ex);const con=consensus(ex.submissions);
   const isSensitive=SENSITIVE_FIELDS.includes(field);
-  if(isSensitive){
-    return{ok:true,field,consensus:con[field],allFields:con,applied:false,needsModeration:true};
+  // Lookup's email/pastorName votes are held for a moderator (consensus leaves them out of con).
+  const held=LOOKUP_MODERATED_FIELDS.has(field)&&auditSource.startsWith("lookup:");
+  if(isSensitive||held){
+    const shown=held?consensus(ex.submissions,{held:"only"}):con;
+    return{ok:true,field,consensus:shown[field],allFields:con,applied:false,needsModeration:true};
   }
   const safeCon:Record<string,any>={};
   for(const[f,d]of Object.entries(con)){if(!SENSITIVE_FIELDS.includes(f))safeCon[f]=d;}
@@ -3055,71 +3076,91 @@ const alertsProposalsResolveHandler=async(c:any)=>{
 app.post(`${P}/alerts/proposals/resolve`,alertsProposalsResolveHandler);
 app.post("/alerts/proposals/resolve",alertsProposalsResolveHandler);
 
+type AddChurchInput={name:unknown;address?:unknown;city?:unknown;postcode?:unknown;state:unknown;lat:unknown;lng:unknown;attendance?:unknown;denomination?:unknown;website?:unknown;serviceTimes?:unknown;languages?:unknown;ministries?:unknown;pastorName?:unknown;phone?:unknown;email?:unknown;confirmAdd?:unknown};
+type AddChurchResult=
+  |{kind:"error";status:number;error:string}
+  |{kind:"similar";similar:any[]}
+  |{kind:"pendingDup";church:any}
+  |{kind:"mainDup";existingChurch:{id:string;shortId:string;name:string;city:string;state:string}}
+  |{kind:"added";church:any;mainChurch:any};
+/** Shared add-church path for the site form and Lookup. Duplicate check, rate limit (only once the input
+ *  is valid and has no near-duplicates), then the church goes live. actorKey is the vote/rate identity. */
+async function addChurchCore(b:AddChurchInput,actor:{actorKey:string;auditSource:string}):Promise<AddChurchResult>{
+  const ip=actor.actorKey;
+  const err=(error:string,status=400):AddChurchResult=>({kind:"error",status,error});
+  const str=(v:unknown,max:number)=>(typeof v==="string"||typeof v==="number")?String(v).trim().slice(0,max):"";
+  const{name,state,lat,lng,attendance,serviceTimes,confirmAdd}=b as any;
+  const addr=str(b.address,300),ci=str(b.city,120),denomination=str(b.denomination,80),pastorName=str(b.pastorName,120),phone=str(b.phone,40);
+  const postcode=str(b.postcode,20);
+  const email=str(b.email,254);
+  if(email&&!EMAIL_RE.test(email))return err("Invalid email address");
+  const website=normalizeWebsite(str(b.website,300));
+  if(website===null)return err("Website must be an http(s) link");
+  const languages=cleanStringList(b.languages),ministries=cleanStringList(b.ministries);
+  if(!name||typeof name!=="string"||name.trim().length<2)return err("Name required");
+  if(name.trim().length>120)return err("Name is too long (max 120 characters)");
+  const st=String(state||"").toUpperCase().trim();
+  if(!isValidRegion(st)||!gS(st))return err("Invalid region");
+  const cc=regionCountry(st);
+  const pLat=parseFloat(lat as any),pLng=parseFloat(lng as any);
+  if(isNaN(pLat)||isNaN(pLng)||!coordsInRegion(pLat,pLng,st))return err("Valid coordinates required for this region");
+  const att=Math.max(1,Math.min(parseInt(attendance as any)||50,50000));
+  const rawDenom=(denomination??"").trim();
+  if(rawDenom&&isBlockedDenomination(rawDenom))return err("Denomination not supported");
+  const mainChurches=(await getChurches(st))||[];
+  if(!confirmAdd){
+    const similar=findSimilarChurchesServer(name.trim(),pLat,pLng,String(ci||""),st,Array.isArray(mainChurches)?mainChurches:[]);
+    if(similar.length){
+      return{kind:"similar",similar:similar.map((ch:any)=>({
+        id:ch.id,
+        shortId:ch.shortId||toShortId(ch.id,ch.state||st,ch.shortId),
+        name:ch.name,
+        city:ch.city,
+        state:ch.state||st,
+        country:cc,
+        address:ch.address||"",
+        denomination:ch.denomination||"",
+        lat:ch.lat,
+        lng:ch.lng,
+      }))};
+    }
+  }
+  const rlKey=`ratelimit:add-church:${ip}`;
+  const raw=await kv.get(rlKey);
+  const now=Date.now();
+  const data=(!raw||(now-(raw.windowStart||0))>ADD_CHURCH_WINDOW_MS)?{count:1,windowStart:now}:{count:(raw.count||0)+1,windowStart:raw.windowStart||now};
+  if(data.count>ADD_CHURCH_RATE_LIMIT)return err("Too many church submissions. Please try again later.",429);
+  await kv.set(rlKey,data);
+  const id=cc==="US"
+    ?`community-${st}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`
+    :`community-${cc}-${st}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+  const existingShortIds=new Set((mainChurches as any[]).map((c:any)=>c.shortId||toShortId(c.id,c.state||st)));
+  let shortId:string;do{shortId=Math.floor(10000000+Math.random()*90000000).toString();}while(existingShortIds.has(shortId));
+  const store=(await getPending(st))||{churches:[]};
+  const dup=store.churches.find((ch:any)=>String(ch.name||"").trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs(ch.lat-pLat)<0.001&&Math.abs(ch.lng-pLng)<0.001);
+  if(dup){if(!dup.verifications.some((v:any)=>v.ip===ip)){dup.verifications.push({ip,timestamp:Date.now()});if(dup.verifications.length>=THR)dup.approved=true;await setPending(st,store);}return{kind:"pendingDup",church:dup};}
+  const mainDup=Array.isArray(mainChurches)&&(mainChurches as any[]).find((ch:any)=>(ch.name||"").trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs((ch.lat||0)-pLat)<0.001&&Math.abs((ch.lng||0)-pLng)<0.001);
+  if(mainDup){return{kind:"mainDup",existingChurch:{id:mainDup.id,shortId:mainDup.shortId,name:mainDup.name,city:mainDup.city,state:mainDup.state||st}};}
+  const normalizedSvc=normalizeServiceTimes(serviceTimes as any)||undefined;
+  const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),postcode:postcode||undefined,state:st,country:cc,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:normalizedSvc,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:normalizePhone(phone||"",cc)||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
+  store.churches.push(nc);await setPending(st,store);
+  const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,postcode:nc.postcode,state:st,country:cc,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
+  if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await setChurches(st,mainChurches);await writeIdx(st,mainChurches);await invalidateReviewStatsCache();await queueChurch(churchForMain);void recordChurchAudit({church_id:id,church_name:nc.name,church_city_state:[nc.city,st].filter(Boolean).join(", "),state:st,action:"church_added",new_value:{name:nc.name,city:nc.city,state:st,denomination:nc.denomination},source:actor.auditSource},{hashIp:ip});}
+  return{kind:"added",church:nc,mainChurch:churchForMain};
+}
+
 app.post(`${P}/churches/add`,async(c)=>{
   try{
     const ip=cip(c);const b=await c.req.json();
     if(!b||typeof b!=="object")return c.json({error:"Invalid request body"},400);
-    const str=(v:unknown,max:number)=>(typeof v==="string"||typeof v==="number")?String(v).trim().slice(0,max):"";
-    const{name,state,lat,lng,attendance,serviceTimes,confirmAdd}=b;
-    const addr=str(b.address,300),ci=str(b.city,120),denomination=str(b.denomination,80),pastorName=str(b.pastorName,120),phone=str(b.phone,40);
-    const email=str(b.email,254);
-    if(email&&!EMAIL_RE.test(email))return c.json({error:"Invalid email address"},400);
-    const website=normalizeWebsite(str(b.website,300));
-    if(website===null)return c.json({error:"Website must be an http(s) link"},400);
-    const languages=cleanStringList(b.languages),ministries=cleanStringList(b.ministries);
-    if(!name||typeof name!=="string"||name.trim().length<2)return c.json({error:"Name required"},400);
-    if(name.trim().length>120)return c.json({error:"Name is too long (max 120 characters)"},400);
-    const st=String(state||"").toUpperCase().trim();
-    if(!isValidRegion(st)||!gS(st))return c.json({error:"Invalid region"},400);
-    const cc=regionCountry(st);
-    const pLat=parseFloat(lat),pLng=parseFloat(lng);
-    if(isNaN(pLat)||isNaN(pLng)||!coordsInRegion(pLat,pLng,st))return c.json({error:"Valid coordinates required for this region"},400);
-    const att=Math.max(1,Math.min(parseInt(attendance)||50,50000));
-    const rawDenom=(denomination??"").trim();
-    if(rawDenom&&isBlockedDenomination(rawDenom))return c.json({error:"Denomination not supported"},400);
-    const mainChurches=(await getChurches(st))||[];
-    if(!confirmAdd){
-      const similar=findSimilarChurchesServer(name.trim(),pLat,pLng,String(ci||""),st,Array.isArray(mainChurches)?mainChurches:[]);
-      if(similar.length){
-        return c.json({
-          needsConfirmation:true,
-          similar:similar.map((ch:any)=>({
-            id:ch.id,
-            shortId:ch.shortId||toShortId(ch.id,ch.state||st,ch.shortId),
-            name:ch.name,
-            city:ch.city,
-            state:ch.state||st,
-            country:cc,
-            address:ch.address||"",
-            denomination:ch.denomination||"",
-            lat:ch.lat,
-            lng:ch.lng,
-          })),
-        });
-      }
+    const r=await addChurchCore(b,{actorKey:ip,auditSource:"community_add"});
+    switch(r.kind){
+      case "error":return c.json({error:r.error},r.status as any);
+      case "similar":return c.json({needsConfirmation:true,similar:r.similar});
+      case "pendingDup":return c.json({success:true,church:r.church,isDuplicate:true});
+      case "mainDup":return c.json({success:true,isDuplicate:true,existingChurch:r.existingChurch});
+      case "added":return c.json({success:true,church:r.church});
     }
-    const rlKey=`ratelimit:add-church:${ip}`;
-    const raw=await kv.get(rlKey);
-    const now=Date.now();
-    const data=(!raw||(now-(raw.windowStart||0))>ADD_CHURCH_WINDOW_MS)?{count:1,windowStart:now}:{count:(raw.count||0)+1,windowStart:raw.windowStart||now};
-    if(data.count>ADD_CHURCH_RATE_LIMIT)return c.json({error:"Too many church submissions. Please try again later."},429);
-    await kv.set(rlKey,data);
-    const id=cc==="US"
-      ?`community-${st}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`
-      :`community-${cc}-${st}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-    const existingShortIds=new Set((mainChurches as any[]).map((c:any)=>c.shortId||toShortId(c.id,c.state||st)));
-    let shortId:string;do{shortId=Math.floor(10000000+Math.random()*90000000).toString();}while(existingShortIds.has(shortId));
-    const store=(await getPending(st))||{churches:[]};
-    const dup=store.churches.find((ch:any)=>String(ch.name||"").trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs(ch.lat-pLat)<0.001&&Math.abs(ch.lng-pLng)<0.001);
-    if(dup){if(!dup.verifications.some((v:any)=>v.ip===ip)){dup.verifications.push({ip,timestamp:Date.now()});if(dup.verifications.length>=THR)dup.approved=true;await setPending(st,store);}return c.json({success:true,church:dup,isDuplicate:true});}
-    const mainDup=Array.isArray(mainChurches)&&(mainChurches as any[]).find((ch:any)=>(ch.name||"").trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs((ch.lat||0)-pLat)<0.001&&Math.abs((ch.lng||0)-pLng)<0.001);
-    if(mainDup){return c.json({success:true,isDuplicate:true,existingChurch:{id:mainDup.id,shortId:mainDup.shortId,name:mainDup.name,city:mainDup.city,state:mainDup.state||st}});}
-    const normalizedSvc=normalizeServiceTimes(serviceTimes)||undefined;
-    const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),state:st,country:cc,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:normalizedSvc,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:normalizePhone(phone||"")||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
-    store.churches.push(nc);await setPending(st,store);
-    const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,state:st,country:cc,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
-    if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await setChurches(st,mainChurches);await writeIdx(st,mainChurches);await invalidateReviewStatsCache();await queueChurch(churchForMain);void recordChurchAudit({church_id:id,church_name:nc.name,church_city_state:[nc.city,st].filter(Boolean).join(", "),state:st,action:"church_added",new_value:{name:nc.name,city:nc.city,state:st,denomination:nc.denomination},source:"community_add"},{hashIp:ip});}
-    return c.json({success:true,church:nc});
   }catch(e){return serverError(c,e);}
 });
 
@@ -3315,6 +3356,23 @@ function lookupClients(subs:any[],field:string):string[]{
   return[...out];
 }
 
+/** Moderator-review fields with their consensus: SENSITIVE_FIELDS from everyone, plus Lookup's held fields. */
+function reviewConsensus(subs:any[]):Array<[string,any]>{
+  const con=consensus(subs);
+  const heldCon=consensus(subs,{held:"only"});
+  return[
+    ...SENSITIVE_FIELDS.map((f)=>[f,con[f]] as [string,any]),
+    ...[...LOOKUP_MODERATED_FIELDS].map((f)=>[f,heldCon[f]] as [string,any]),
+  ];
+}
+/** Every region that can hold a pending add or a re-verify listing: populated regions plus the US states. */
+async function moderationRegions():Promise<string[]>{
+  const meta=await getMeta();
+  const out=new Set<string>(US_STATES_LIST);
+  for(const{abbrev}of listPopulated(meta?.stateCounts||{}))if(isValidRegion(abbrev))out.add(abbrev);
+  return[...out];
+}
+
 const moderatePendingHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
@@ -3324,9 +3382,7 @@ const moderatePendingHandler=async(c:any)=>{
     if(Array.isArray(allSuggestions)){
       for(const entry of allSuggestions){
         if(!entry||!Array.isArray(entry.submissions)||!entry.churchId)continue;
-        const con=consensus(entry.submissions);
-        for(const f of SENSITIVE_FIELDS){
-          const d=con[f] as any;
+        for(const[,d]of reviewConsensus(entry.submissions)){
           if(d&&d.votes>0&&d.value!==null){
             const st=regionFromChurchId(entry.churchId);
             if(st&&isValidRegion(st))statesNeeded.add(st);
@@ -3349,9 +3405,7 @@ const moderatePendingHandler=async(c:any)=>{
     if(Array.isArray(allSuggestions)){
       for(const entry of allSuggestions){
         if(!entry||!Array.isArray(entry.submissions)||!entry.churchId)continue;
-        const con=consensus(entry.submissions);
-        for(const f of SENSITIVE_FIELDS){
-          const d=con[f] as any;
+        for(const[f,d]of reviewConsensus(entry.submissions)){
           if(d&&d.votes>0&&d.value!==null){
             const st=regionFromChurchId(entry.churchId);
             let currentValue:string|null=null;
@@ -3376,8 +3430,9 @@ const moderatePendingHandler=async(c:any)=>{
     }
     const pendingChurches:any[]=[];
     const pendingReverifyChurches:any[]=[];
-    for(let i=0;i<US_STATES_LIST.length;i+=MODERATE_BATCH){
-      const batch=US_STATES_LIST.slice(i,i+MODERATE_BATCH);
+    const modRegions=await moderationRegions();
+    for(let i=0;i<modRegions.length;i+=MODERATE_BATCH){
+      const batch=modRegions.slice(i,i+MODERATE_BATCH);
       const pendingKeys=batch.map(st=>`pending-churches:${regionCountry(st)}:${st}`);
       const churchKeysBatch=batch.map(st=>churchesKey(regionCountry(st),st));
       const [pendingValues,churchValues]=await Promise.all([kv.mget(pendingKeys),kv.mget(churchKeysBatch)]);
@@ -3455,44 +3510,27 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
     if(editedValue!==undefined&&editedValue!==null&&String(editedValue).trim()!==""){
       valueToApply=String(editedValue).trim();
     }else{
-      const con=consensus(ex.submissions);
-      const d=con[field] as any;
+      const heldD=LOOKUP_MODERATED_FIELDS.has(field)?(consensus(ex.submissions,{held:"only"})[field] as any):null;
+      const d=(heldD&&heldD.value!==null?heldD:consensus(ex.submissions)[field]) as any;
       if(!d||d.value===null)return c.json({error:"No value to approve"},400);
       valueToApply=d.value;
     }
     // For address / relocate approvals, ensure lat/lng coordinates are present (geocode if missing)
     if(field==="address"||field==="reportRelocated"){
-      let val=String(valueToApply).trim();
-      if(!val.startsWith("{")){
-        const parts=val.split(",").map((s:string)=>s.trim());
-        const geo=await geocodeAddress(parts[0]??"",parts[1]??"",parts[2]??"");
-        val=JSON.stringify({address:parts[0]??"",city:parts[1]??"",state:(parts[2]??"").toUpperCase().slice(0,2),...(geo?{lat:geo.lat,lng:geo.lng}:{})});
-        valueToApply=val;
-      }else{
-        try{
-          const o=JSON.parse(val) as Record<string,any>;
-          if(o.lat==null||o.lng==null||(typeof o.lat!=="number")||(typeof o.lng!=="number")){
-            const geo=await geocodeAddress(String(o.address??""),String(o.city??""),String(o.state??""));
-            if(geo){o.lat=geo.lat;o.lng=geo.lng;}
-            valueToApply=JSON.stringify(o);
-          }
-        }catch{}
+      const parsed=parseAddressValue(valueToApply,regionFromChurchId(churchId)||"");
+      if(parsed){
+        if(parsed.lat==null||parsed.lng==null){
+          const geo=await geocodeAddress(parsed.address,parsed.city,parsed.state);
+          if(geo){parsed.lat=geo.lat;parsed.lng=geo.lng;}
+        }
+        valueToApply=JSON.stringify(parsed);
       }
     }
     if(field==="reportRelocated"){
       const st=regionFromChurchId(churchId);
       if(!st||!isValidRegion(st))return c.json({error:"Invalid church ID"},400);
-      let addrObj:{address:string;city:string;state:string;lat?:number;lng?:number};
-      try{
-        const o=JSON.parse(String(valueToApply).trim()) as Record<string,unknown>;
-        addrObj={
-          address:String(o.address??"").trim(),
-          city:String(o.city??"").trim(),
-          state:String(o.state??"").trim().toUpperCase().slice(0,2),
-          lat:typeof o.lat==="number"&&!isNaN(o.lat)?o.lat:undefined,
-          lng:typeof o.lng==="number"&&!isNaN(o.lng)?o.lng:undefined,
-        };
-      }catch{return c.json({error:"Invalid address format"},400);}
+      const addrObj=parseAddressValue(valueToApply,st);
+      if(!addrObj)return c.json({error:"Invalid address format"},400);
       if(!addrObj.address||!addrObj.city||!addrObj.state)return c.json({error:"Street, city, and state are required"},400);
       if(addrObj.state!==st)return c.json({error:"New address must be in the same state/region as this church"},400);
       if(addrObj.lat==null||addrObj.lng==null){
@@ -3601,7 +3639,8 @@ const moderateRejectSuggestionHandler=async(c:any)=>{
     if(!churchId||!field)return c.json({error:"Missing churchId or field"},400);
     const k=`suggestions:${churchId}`;const ex=await kv.get(k);
     if(!ex||!Array.isArray(ex.submissions))return c.json({error:"No suggestions found"},404);
-    const con=consensus(ex.submissions);const rejectedVal=(con[field] as any)?.value;
+    const heldRej=LOOKUP_MODERATED_FIELDS.has(field)?(consensus(ex.submissions,{held:"only"})[field] as any)?.value:null;
+    const rejectedVal=heldRej??(consensus(ex.submissions)[field] as any)?.value;
     ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
     await kv.set(k,ex);
     const stRej=churchId.split("-")[0]==="community"?churchId.split("-")[1]:churchId.split("-")[0];
@@ -6036,12 +6075,30 @@ app.post(`${P}/admin/publish-static`,async(c)=>{
 const LOOKUP_DIRTY_PREFIX="lookup:dirty:";
 /** What Lookup may read. An allowlist, so private fields added to church rows later can't leak. */
 const LOOKUP_EXPORT_FIELDS=["id","shortId","name","address","city","state","postcode","lat","lng","denomination","website","serviceTimes","languages","ministries","pastorName","phone","email","lastVerified","listingStatus","relocatedFrom","relocatedTo","homeCampusId"] as const;
-/** Name, website and address wait for a moderator (SENSITIVE_FIELDS). No email or pastorName: they'd go
- *  live on one vote, and a host form can hold personal details. */
-const LOOKUP_CONTRIBUTABLE_FIELDS=new Set(["name","serviceTimes","denomination","languages","ministries","website","address","phone"]);
+/** Name, website, address and the reports wait for a moderator (SENSITIVE_FIELDS). Email and pastorName
+ *  also wait when they come from Lookup (LOOKUP_MODERATED_FIELDS), since a host form can hold personal details. */
+const LOOKUP_CONTRIBUTABLE_FIELDS=new Set(["name","serviceTimes","denomination","languages","ministries","website","address","phone","email","pastorName","reportClosed","reportDuplicate","reportRelocated"]);
 const LOOKUP_CLIENT_RE=/^[a-z0-9][a-z0-9-]{1,39}$/;
 const LOOKUP_IP_HASH_RE=/^[a-f0-9]{16,64}$/;
 const LOOKUP_SUGGESTION_RATE_LIMIT=30;     // per person per hour, across tools
+/** Vote identity for a person using Lookup, the same across every tool so one person is one vote. */
+const lookupVoterKey=(ipHash:string)=>`lookup:${ipHash}`;
+/** One church in Lookup's export shape: LOOKUP_EXPORT_FIELDS plus country. */
+function lookupExportChurch(ch:any,cc:string):Record<string,unknown>{
+  const out:Record<string,unknown>={country:cc};
+  for(const f of LOOKUP_EXPORT_FIELDS){if(ch[f]!==undefined&&ch[f]!==null&&ch[f]!=="")out[f]=ch[f];}
+  return out;
+}
+/** A stored church by id (uncached, stored rows only), with its region's short ids filled in. */
+async function lookupStoredChurch(churchId:string):Promise<{church:any;st:string;cc:string}|null>{
+  const st=regionFromChurchId(churchId);
+  if(!st||!isValidRegion(st))return null;
+  const cc=regionCountry(st);
+  const stored=await getChurches(st,cc);
+  if(!Array.isArray(stored))return null;
+  const ch=addShortIdsUnique(stored,st).find((x:any)=>x.id===churchId);
+  return ch?{church:ch,st,cc}:null;
+}
 
 /** Null when the caller may proceed, else the error response. Unset secret fails closed. */
 function lookupAuthError(c:any):Response|null{
@@ -6080,14 +6137,29 @@ app.get(`${P}/internal/lookup/region/:cc/:abbrev`,async(c)=>{
     if(!isValidRegion(abbrev)||regionCountry(abbrev)!==cc)return c.json({error:"Unknown region"},404);
     const stored=await getChurches(abbrev,cc);
     const rows=Array.isArray(stored)?addShortIdsUnique(stored,abbrev):[];
-    const churches=rows.map((ch:any)=>{
-      const out:Record<string,unknown>={country:cc};
-      for(const f of LOOKUP_EXPORT_FIELDS){if(ch[f]!==undefined&&ch[f]!==null&&ch[f]!=="")out[f]=ch[f];}
-      return out;
-    });
+    const churches=rows.map((ch:any)=>lookupExportChurch(ch,cc));
     return c.json({cc,abbrev,count:churches.length,churches});
   }catch(e){return serverError(c,e);}
 });
+
+// One church, same shape and source as the region export, for refreshing a row after a write.
+app.get(`${P}/internal/lookup/church/:id`,async(c)=>{
+  try{
+    const denied=lookupAuthError(c);if(denied)return denied;
+    const id=c.req.param("id");
+    const st=regionFromChurchId(id);
+    if(!st||!isValidRegion(st))return c.json({error:"Invalid church ID"},400);
+    const found=await lookupStoredChurch(id);
+    if(!found)return c.json({error:"Church not found"},404);
+    return c.json({church:lookupExportChurch(found.church,found.cc)});
+  }catch(e){return serverError(c,e);}
+});
+
+/** 409 body for listings that moved: edits belong on the new listing, and a moderator re-verifies the old one. */
+function lookupMovedConflict(ch:any):{error:string;relocatedTo?:string;listingStatus?:string}|null{
+  if(!ch?.relocatedTo&&ch?.listingStatus!=="pending_reverify")return null;
+  return{error:"This listing moved or is waiting to be re-verified",...(ch.relocatedTo?{relocatedTo:ch.relocatedTo}:{}),...(ch.listingStatus?{listingStatus:ch.listingStatus}:{})};
+}
 
 app.post(`${P}/internal/lookup/suggestions`,async(c)=>{
   try{
@@ -6099,16 +6171,19 @@ app.post(`${P}/internal/lookup/suggestions`,async(c)=>{
     if(typeof field!=="string"||!LOOKUP_CONTRIBUTABLE_FIELDS.has(field))return c.json({error:"Field can't be contributed through Lookup"},400);
     const st=regionFromChurchId(actor.churchId);
     if(!st||!isValidRegion(st))return c.json({error:"Invalid church ID"},400);
-    // Existing normalizers only handle these formats: addresses truncate region codes, phones drop the +.
-    const cc=regionCountry(st);
-    if(field==="address"&&cc!=="US")return c.json({error:"Address corrections are US only for now"},400);
-    if(field==="phone"&&cc!=="US"&&cc!=="CA")return c.json({error:"Phone corrections are US and Canada only for now"},400);
-    const churches=await getChurches(st);
-    if(!Array.isArray(churches)||!churches.some((ch:any)=>ch.id===actor.churchId))return c.json({error:"Church not found"},404);
+    const found=await lookupStoredChurch(actor.churchId);
+    if(!found)return c.json({error:"Church not found"},404);
+    const moved=lookupMovedConflict(found.church);
+    if(moved)return c.json(moved,409);
+    // Validate before counting against the person's limit, so a typo doesn't use up their hour.
+    const prepared=prepareSuggestion(actor.churchId,field,value);
+    if(!prepared.ok)return c.json({error:prepared.error},prepared.status as any);
     if(!(await ipRateLimit("lookup-suggestion",actor.ipHash,LOOKUP_SUGGESTION_RATE_LIMIT,SUGGESTION_WINDOW_MS)))return c.json({error:"Too many suggestions. Please try again later."},429);
-    const result=await submitSuggestionCore({churchId:actor.churchId,field,value,actorKey:`lookup:${actor.client}:${actor.ipHash}`,auditSource:`lookup:${actor.client}`});
-    if(!result.ok)return c.json({error:result.error},result.status);
-    return c.json({success:true,field:result.field,applied:!!result.applied,needsModeration:!!result.needsModeration});
+    const result=await submitSuggestionCore({churchId:actor.churchId,field,value,actorKey:lookupVoterKey(actor.ipHash),auditSource:`lookup:${actor.client}`});
+    if(!result.ok)return c.json({error:result.error},result.status as any);
+    const out:Record<string,unknown>={success:true,field:result.field,applied:!!result.applied,needsModeration:!!result.needsModeration};
+    if(result.applied){const fresh=await lookupStoredChurch(actor.churchId);if(fresh)out.church=lookupExportChurch(fresh.church,fresh.cc);}
+    return c.json(out);
   }catch(e){return serverError(c,e);}
 });
 
@@ -6117,10 +6192,57 @@ app.post(`${P}/internal/lookup/confirm`,async(c)=>{
     const denied=lookupAuthError(c);if(denied)return denied;
     const actor=lookupActor(await c.req.json());
     if(!actor)return c.json({error:"client, ipHash and churchId are required"},400);
+    const st=regionFromChurchId(actor.churchId);
+    if(!st||!isValidRegion(st))return c.json({error:"Invalid church ID"},400);
+    if(!(await lookupStoredChurch(actor.churchId)))return c.json({error:"Church not found"},404);
     if(!(await ipRateLimit("lookup-confirm",actor.ipHash,CONFIRM_RATE_LIMIT,CONFIRM_WINDOW_MS)))return c.json({error:"Too many confirmations. Please try again later."},429);
-    const result=await confirmChurchCore({churchId:actor.churchId,actorKey:`lookup:${actor.client}:${actor.ipHash}`,auditSource:`lookup:${actor.client}`});
-    if(!result.ok)return c.json({error:result.error},result.status);
-    return c.json(result);
+    const result=await confirmChurchCore({churchId:actor.churchId,actorKey:lookupVoterKey(actor.ipHash),auditSource:`lookup:${actor.client}`});
+    if(!result.ok)return c.json({error:result.error},result.status as any);
+    const fresh=await lookupStoredChurch(actor.churchId);
+    return c.json({...result,lastVerified:fresh?.church?.lastVerified??null});
+  }catch(e){return serverError(c,e);}
+});
+
+const LOOKUP_ADD_FIELDS=["name","address","city","postcode","phone","website","denomination","serviceTimes","languages","ministries"] as const;
+/** Lists may arrive as arrays or comma-separated text. */
+const lookupList=(v:unknown)=>typeof v==="string"?v.split(",").map((x)=>x.trim()).filter(Boolean):v;
+
+// Add a church from Lookup. Same rules as the site's add form: a near-duplicate check first (resend with
+// confirmAdd:true to add anyway), then it goes live. Coordinates come from geocoding here, never the caller.
+// No email or pastorName: those only reach a listing through a moderator when they come from Lookup.
+app.post(`${P}/internal/lookup/churches`,async(c)=>{
+  try{
+    const denied=lookupAuthError(c);if(denied)return denied;
+    const body=await c.req.json();
+    const{client,ipHash,church,confirmAdd}=body||{};
+    if(typeof client!=="string"||!LOOKUP_CLIENT_RE.test(client)||typeof ipHash!=="string"||!LOOKUP_IP_HASH_RE.test(ipHash))return c.json({error:"client and ipHash are required"},400);
+    if(!church||typeof church!=="object")return c.json({error:"church is required"},400);
+    const region=String(church.region??church.state??"").trim().toUpperCase();
+    if(!region||!isValidRegion(region)||!gS(region))return c.json({error:"Invalid region"},400);
+    const cc=regionCountry(region);
+    if(church.country!=null&&String(church.country).trim().toUpperCase()!==cc)return c.json({error:`Region ${region} is not in ${String(church.country).toUpperCase()}`},400);
+    const name=typeof church.name==="string"?church.name.trim():"";
+    if(name.length<2)return c.json({error:"Name required"},400);
+    const address=typeof church.address==="string"?church.address.trim():"";
+    const city=typeof church.city==="string"?church.city.trim():"";
+    if(!address||!city)return c.json({error:"Street address and city are required"},400);
+    const input:Record<string,unknown>={};
+    for(const f of LOOKUP_ADD_FIELDS)if(church[f]!=null)input[f]=church[f];
+    input.languages=lookupList(church.languages);input.ministries=lookupList(church.ministries);
+    const geo=await geocodeAddress(address,city,region);
+    if(!geo||!coordsInRegion(geo.lat,geo.lng,region))return c.json({error:"Couldn't find that address on the map"},422);
+    const r=await addChurchCore({...input,name,address,city,state:region,lat:geo.lat,lng:geo.lng,confirmAdd:!!confirmAdd} as AddChurchInput,{actorKey:lookupVoterKey(ipHash),auditSource:`lookup:${client}`});
+    switch(r.kind){
+      case "error":return c.json({error:r.error},r.status as any);
+      case "similar":return c.json({needsConfirmation:true,similar:r.similar});
+      case "pendingDup":
+      case "mainDup":{
+        const id=r.kind==="mainDup"?r.existingChurch.id:r.church.id;
+        const existing=await lookupStoredChurch(id);
+        return c.json({success:true,isDuplicate:true,church:existing?lookupExportChurch(existing.church,existing.cc):{id,country:cc}});
+      }
+      case "added":return c.json({success:true,church:lookupExportChurch(r.mainChurch,cc)});
+    }
   }catch(e){return serverError(c,e);}
 });
 
