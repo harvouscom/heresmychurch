@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Add new changes here as you work. Move to a version section when releasing. -->
 
+### Fixed
+
+- **Typing spaces in the address form** — city and street no longer drop spaces as you type, so "Des Moines" can be entered and saved.
+- **Pending website, name and address edits are visible again** — the listing shows them as pending review until a moderator decides.
+
 ### Added
 
 - **Worldwide totals in the welcome modal** — the modal now shows the same church and country totals on every route, with a row of country flags, instead of numbers for the current view.

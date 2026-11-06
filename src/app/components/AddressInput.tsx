@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // US state abbreviations and names for dropdown
 const US_STATES: { abbrev: string; name: string }[] = [
@@ -127,15 +127,22 @@ export function AddressInput({ value, onChange, compact }: AddressInputProps) {
   const [city, setCity] = useState(parsed.city);
   const [stateAbbrev, setStateAbbrev] = useState(parsed.state);
 
+  // The value we last sent up. serializeAddress trims, so the parent echoes back "New" while the
+  // user is mid-way through typing "New York"; re-parsing that echo would delete the space.
+  const lastEmitted = useRef(value);
+
   useEffect(() => {
     const next = serializeAddress({ address: street, city, state: stateAbbrev });
     if (next !== value) {
+      lastEmitted.current = next;
       onChange(next);
     }
   }, [street, city, stateAbbrev]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync from external value (e.g. when church data loads)
+  // Sync from external value (e.g. when church data loads), but not from our own echo.
   useEffect(() => {
+    if (value === lastEmitted.current) return;
+    lastEmitted.current = value;
     const p = parseAddressValue(value);
     setStreet(p.address);
     setCity(p.city);
