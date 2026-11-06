@@ -395,7 +395,7 @@ Today a partner is just another anonymous actor: `partner:harvous` gets exactly 
 |--------|------|----------|
 | `GET` | `/internal/lookup/regions` | `{ regions: [{ cc, abbrev, dirtyAt }] }`. `dirtyAt` is the last church-list write for that region, or `null` before the first write after this shipped. |
 | `GET` | `/internal/lookup/region/:cc/:abbrev` | Stored rows only, with an allowlist of fields. No correction overlay, Google data or calibration. |
-| `POST` | `/internal/lookup/suggestions` | Body `{ churchId, field, value, client, ipHash }`. Same rules as the site. Actor is `lookup:{client}:{ipHash}` and source is `lookup:{client}`. Fields: `serviceTimes`, `denomination`, `languages`, `ministries`, `website`, `address` (US only), `phone` (US and Canada only). |
+| `POST` | `/internal/lookup/suggestions` | Body `{ churchId, field, value, client, ipHash }`. Same rules as the site. Actor is `lookup:{client}:{ipHash}` and source is `lookup:{client}`. Fields: `name`, `serviceTimes`, `denomination`, `languages`, `ministries`, `website`, `address` (US only), `phone` (US and Canada only). `name`, `website` and `address` wait for a moderator. |
 | `POST` | `/internal/lookup/confirm` | Body `{ churchId, client, ipHash }`. Same as the partner confirm. |
 
 The Worker hashes IPs before calling these, so raw IPs aren't stored for Lookup traffic. `client` is declared by the caller and isn't verified.
