@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Typing spaces in the address form** — city and street no longer drop spaces as you type, so "Des Moines" can be entered and saved.
+- **Pending website, name and address edits are visible again** — the listing shows them as pending review until a moderator decides.
 - **Unreviewed edits no longer show publicly** — name, website, address, report and campus-link suggestions now stay off the map and public data files until a moderator approves them.
 - **Corrections no longer lose to older values** — on a tied vote the newest value now wins, and `applied` is only true when the stored value matches what was sent.
 

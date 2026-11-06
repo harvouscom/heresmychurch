@@ -2932,7 +2932,9 @@ app.get(`${P}/suggestions/pending/:state`,async(c)=>{
       const pf:Record<string,any>={};
       for(const[f,d]of Object.entries(con)){
         const fd=d as any;
-        if(fd.votes>0&&!fd.approved){
+        // Sensitive fields count as approved at THR=1 but still wait for a moderator, and since they no
+        // longer overlay onto listings this is the only sign visitors get that an edit was received.
+        if(fd.votes>0&&(!fd.approved||SENSITIVE_FIELDS.includes(f))){
           pf[f]={votes:fd.votes,needed:fd.needed,topValue:fd.submissions?.[0]?.value||"",submissions:fd.submissions||[]};
         }
       }
