@@ -66,3 +66,15 @@ describe("first contributions", () => {
     expect(isHeldVote({ field: "serviceTimes", source: "partner:harvous", needsModeration: true })).toBe(true);
   });
 });
+
+describe("Cloudflare storage default", () => {
+  it("uses D1 when the Worker has no explicit backend flag", async () => {
+    const { setEnv } = await import("../../supabase/functions/make-server-283d8046/runtime.ts");
+    const { usesD1 } = await import("../../supabase/functions/make-server-283d8046/kv-backend.ts");
+    setEnv((name) => name === "HMC_RUNTIME" ? "worker" : undefined);
+    expect(usesD1()).toBe(true);
+    setEnv((name) => name === "STORE_BACKEND" ? "supabase" : undefined);
+    expect(usesD1()).toBe(false);
+    setEnv(() => undefined);
+  });
+});

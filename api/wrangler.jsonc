@@ -22,7 +22,7 @@
     "R2_ACCOUNT_ID": "ec934baa29eb81459ffeaf18ba044b9e",
     "R2_BUCKET": "hmc-data",
     // "supabase" or "d1". See docs/future/move-off-supabase.md.
-    "STORE_BACKEND": "supabase",
+    "STORE_BACKEND": "d1",
     // Any non-empty value pauses writes while reads keep working.
     "MAINTENANCE_READONLY": "1"
   },

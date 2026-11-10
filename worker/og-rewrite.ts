@@ -5,28 +5,17 @@
  *
  * Called by the site Worker (worker/index.ts).
  *
- * Optional env (bot requests only; defaults below match utils/supabase/info.tsx):
+ * Optional env (bot requests only):
  *   HMC_API_BASE_URL - API base, e.g. https://api.heresmychurch.com
- *   SUPABASE_FUNCTIONS_BASE_URL - legacy name for the same (Supabase edge function URL)
- *   SUPABASE_ANON_KEY - Supabase anon key for API calls
  */
 import { INTL_COUNTRY_META } from "./lib/intl-country-meta.generated.ts";
 import { US_METROS_FOR_SEO } from "./lib/us-metros.generated.ts";
 
 export type OgRewriteEnv = {
   HMC_API_BASE_URL?: string;
-  SUPABASE_FUNCTIONS_BASE_URL?: string;
-  SUPABASE_ANON_KEY?: string;
 };
 
-/**
- * Fallback when env vars are unset. Same values as `utils/supabase/info.tsx`
- * (anon key is already public in the client bundle). Env vars override for other deploys.
- */
-const DEFAULT_SUPABASE_FUNCTIONS_BASE_URL =
-  "https://epufchwxofsyuictfufy.supabase.co/functions/v1/make-server-283d8046";
-const DEFAULT_SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwdWZjaHd4b2ZzeXVpY3RmdWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5NzcxMTUsImV4cCI6MjA4ODU1MzExNX0.v11kHHpM1IsK6q81909CYkWgX5TdV8kJhCkNqSEs5QM";
+const DEFAULT_API_BASE_URL = "https://api.heresmychurch.com";
 
 /** Search, social, preview, and AI/answer-engine crawlers — match og:image + crawlable HTML for bots only. */
 const BOT_UA_PATTERNS = [
@@ -322,16 +311,11 @@ export async function rewriteForBots(
   const path = url.pathname;
   const pathParts = path.split("/").filter(Boolean); // ["state", "CA"] or ["state", "CA", "16692500"]
 
-  const apiBase = (env.HMC_API_BASE_URL || env.SUPABASE_FUNCTIONS_BASE_URL || DEFAULT_SUPABASE_FUNCTIONS_BASE_URL).replace(
+  const apiBase = (env.HMC_API_BASE_URL || DEFAULT_API_BASE_URL).replace(
     /\/$/,
     "",
   );
-  const anonKey = env.SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
-  const supabaseHeaders: Record<string, string> = {
-    Authorization: `Bearer ${anonKey}`,
-    apikey: anonKey,
-    "Content-Type": "application/json",
-  };
+  const apiHeaders: Record<string, string> = { "Content-Type": "application/json" };
 
   let meta: OgMeta = {
     title: "Here's My Church",
@@ -352,7 +336,7 @@ export async function rewriteForBots(
       url: `${SITE_URL}/reports`,
     };
     try {
-      const res = await fetch(`${apiBase}/reports`, { headers: supabaseHeaders });
+      const res = await fetch(`${apiBase}/reports`, { headers: apiHeaders });
       if (res.ok) {
         const list = await res.json();
         if (Array.isArray(list) && list.length) {
@@ -393,7 +377,7 @@ export async function rewriteForBots(
         : isCountryReport
           ? `${apiBase}/report/${encodeURIComponent(countryParam!)}/${slug}`
           : `${apiBase}/report/${slug}`;
-      const res = await fetch(apiPath, { headers: supabaseHeaders });
+      const res = await fetch(apiPath, { headers: apiHeaders });
       if (res.ok) {
         const data = await res.json();
         const reportName = data.title ?? "Report";
@@ -481,7 +465,7 @@ export async function rewriteForBots(
           url: pageUrl,
         };
         try {
-          const res = await fetch(`${apiBase}/churches/${metro.region}`, { headers: supabaseHeaders });
+          const res = await fetch(`${apiBase}/churches/${metro.region}`, { headers: apiHeaders });
           let churches: SeoChurch[] = [];
           if (res.ok) {
             const data = await res.json();
@@ -571,7 +555,7 @@ ${items ? `<ul style="margin:0;padding-left:1.25rem">${items}</ul>` : ""}
         url: pageUrl,
       };
       try {
-        const res = await fetch(`${apiBase}/churches/${mapRegion}`, { headers: supabaseHeaders });
+        const res = await fetch(`${apiBase}/churches/${mapRegion}`, { headers: apiHeaders });
         if (res.ok) {
           const data = await res.json();
           const churches: SeoChurch[] = Array.isArray(data.churches) ? data.churches : [];
@@ -617,14 +601,14 @@ ${items ? `<ul style="margin:0;padding-left:1.25rem">${items}</ul>` : ""}
         let church: SeoChurch | null = null;
         const oneRes = await fetch(
           `${apiBase}/churches/${mapRegion}/church/${encodeURIComponent(mapShortId)}`,
-          { headers: supabaseHeaders },
+          { headers: apiHeaders },
         );
         if (oneRes.ok) {
           const oneData = await oneRes.json();
           church = oneData?.church ?? null;
         }
         if (!church) {
-          const res = await fetch(`${apiBase}/churches/${mapRegion}`, { headers: supabaseHeaders });
+          const res = await fetch(`${apiBase}/churches/${mapRegion}`, { headers: apiHeaders });
           if (res.ok) {
             const data = await res.json();
             const churches: SeoChurch[] = Array.isArray(data.churches) ? data.churches : [];
