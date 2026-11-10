@@ -41,10 +41,10 @@ textarea.email-input{resize:vertical;min-height:66px}
 .email-page-details p{display:flex;align-items:center;gap:8px;margin:0;color:#cbbbdc;font-size:11px;line-height:1.5}
 .email-page-details svg{flex-shrink:0;color:#ad90c7}
 .email-page-primary{width:100%;margin-top:23px;min-height:37px}
-.email-cancel{padding:8px 5px;white-space:nowrap;color:#b9a4cc;font-size:10px;line-height:1.5;text-decoration:none;background:none;border:0;border-radius:5px;cursor:pointer}
-.email-cancel:hover{color:#eee1fa;text-decoration:underline;text-underline-offset:3px}
-.email-back{display:flex;align-items:center;justify-content:center;gap:6px;width:fit-content;margin:20px auto 0;padding:4px;color:#b39ac8;font-size:11px;text-decoration:none}
-.email-back:hover{color:#e5d2f5}
+.email-cancel{padding:8px 5px;white-space:nowrap;color:rgba(255,255,255,.6);font-size:10px;line-height:1.5;text-decoration:none;background:none;border:0;border-radius:5px;cursor:pointer}
+.email-cancel:hover{color:rgba(255,255,255,.85);text-decoration:underline;text-underline-offset:3px}
+.email-back{display:flex;align-items:center;justify-content:center;gap:6px;width:fit-content;margin:20px auto 0;padding:4px;color:rgba(255,255,255,.6);font-size:11px;text-decoration:none}
+.email-back:hover{color:rgba(255,255,255,.85)}
 .email-review-form{display:grid;gap:15px;margin-top:22px}
 .email-church-name{display:flex;align-items:center;gap:8px;padding-bottom:13px;border-bottom:1px solid rgba(255,255,255,.08);color:#d8b4fe}
 .email-church-name h2{margin:0;font-size:14px;line-height:1.5;font-weight:500;color:#eee3fa}
