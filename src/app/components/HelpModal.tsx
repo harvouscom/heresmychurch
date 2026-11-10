@@ -173,9 +173,11 @@ export function HelpModal({
                 Where does the data come from?
               </AccordionTrigger>
               <AccordionContent className="text-white/70">
-                We use OpenStreetMap church data with denomination matching, population figures where
-                available (including U.S. Census for the United States), ARDA reference data for U.S.
-                attendance benchmarks, and community-submitted churches and corrections. Attendance
+                Our worldwide directory uses OpenStreetMap church data with denomination matching,
+                alongside community-submitted churches and corrections. Population figures support
+                density comparisons where available; coverage varies by country and region.
+                U.S. Census population figures and ARDA attendance benchmarks apply to the United
+                States only, and are not local data sources for other countries. Attendance
                 estimates are primarily based on building footprint area from OpenStreetMap, with
                 denomination averages, capacity data, and regional population scaling used where
                 building data is not available.
