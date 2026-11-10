@@ -6,6 +6,7 @@
  * migration cannot blank the map. Writes always go to the namespaced key.
  */
 import * as kv from "./kv.ts";
+import { inheritSnapshot, snapshotOf, forgetSnapshot } from "./edit-versions.ts";
 import { INTL_REGIONS } from "./regions-intl.ts";
 
 const US_STATE_ABBREVS = new Set([
@@ -125,6 +126,8 @@ function makeBlobCache(maxEntries: number) {
     },
     put(key: string, value: Promise<any>): void {
       m.set(key, { at: Date.now(), value });
+      // Cached blobs are read-only; keep edit snapshots only on mutable fresh reads.
+      value.then(forgetSnapshot,()=>{});
       // Don't cache failed reads
       value.catch(() => { if (m.get(key)?.value === value) m.delete(key); });
       while (m.size > maxEntries) m.delete(m.keys().next().value!);
@@ -192,12 +195,15 @@ export async function getChurches(abbrev: string, cc?: string): Promise<any> {
   const country = (cc || regionCountry(st)).toUpperCase();
   const namespaced = await kv.get(churchesKey(country, st));
   if (namespaced != null) return namespaced;
-  return kv.get(`churches:${st}`);
+  const legacy=await kv.get(`churches:${st}`);
+  if(legacy)inheritSnapshot(legacy,legacy,churchesKey(country,st));
+  return legacy;
 }
 
-export async function setChurches(abbrev: string, value: any, cc?: string): Promise<void> {
+export async function setChurches(abbrev: string, value: any, cc?: string, base?:unknown): Promise<void> {
   const st = abbrev.toUpperCase();
   const country = (cc || regionCountry(st)).toUpperCase();
+  if(base!==undefined||!snapshotOf(value))inheritSnapshot(base??[],value,churchesKey(country,st));
   churchesCache.del(churchesKey(country, st));
   await kv.set(churchesKey(country, st), value);
   churchesCache.del(churchesKey(country, st));

@@ -49,6 +49,9 @@ import { normalizeSearchText, searchTable, setSearchTableReady, syncSearchRegion
 import { queryMonthlyRows, upsertMonthlyRows } from "./monthly.ts";
 import { checkChurchEvidence, reviewAiAvailable } from "./review-evidence.ts";
 import { dispatchPublications, hasPublicationQueue, requestPublications, publicationHealth, validPublicationTarget, releasePublication } from "./publication.ts";
+import { indexedReviewView, refreshReviewIndex } from "./review-index.ts";
+import { usesD1 } from "./kv-backend.ts";
+import { EditConflictError, snapshotOf, proposalVersion } from "./edit-versions.ts";
 import { registerMigrateRoutes } from "./admin-migrate.ts";
 import { r2Enabled, r2PutJson } from "./r2.ts";
 import { env, renderOgImage, waitUntil } from "./runtime.ts";
@@ -583,7 +586,7 @@ function addShortIds(ch:any[],st:string):any[]{return ch.map((c:any)=>({...c,sho
 
 // ── Search index (include shortId so search returns unique segment per church) ──
 function buildIdx(ch:any[]){return ch.map((c:any)=>({id:c.id,shortId:c.shortId,n:c.name||"",c:c.city||"",d:c.denomination||"",a:c.attendance||0,ad:c.address||"",la:c.lat||0,lo:c.lng||0,w:c.website||"",st:c.serviceTimes||"",p:c.phone||"",e:c.email||""}));}
-async function writeIdx(st:string,ch:any[]){const idx=buildIdx(ch);await setSidx(st,idx);await syncSearchRegion(regionCountry(st),st,idx);await persistStateReviewStats(st,ch);}
+async function writeIdx(st:string,ch:any[],fromPublication=false){if(hasPublicationQueue()&&!fromPublication)return;const idx=buildIdx(ch);await setSidx(st,idx);await syncSearchRegion(regionCountry(st),st,idx);await persistStateReviewStats(st,ch);}
 
 // Preserve user/community-submitted fields when overwriting cache (populate force, refresh-attendance).
 const USER_FIELDS_TO_PRESERVE=["shortId","homeCampusId","website","serviceTimes","languages","ministries","pastorName","phone","email","lastVerified","buildingSqft","listingStatus","relocatedFrom","relocatedTo"] as const;
@@ -863,6 +866,7 @@ app.use("*",async(c,next)=>{
 const SERVER_ERROR_MSG="Something went wrong. Please try again.";
 // Log the real error server-side; never send internal error text to clients.
 function serverError(c:any,e:unknown){
+  if(e instanceof EditConflictError)return c.json({error:e.message,code:e.code},409);
   console.error(`${c.req.method} ${c.req.path} failed:`,e);
   return c.json({error:SERVER_ERROR_MSG},500);
 }
@@ -1994,7 +1998,7 @@ async function finalizePopulate(st:string,ch:any[],ex:any,force:boolean){
   }
   if(force&&Array.isArray(ex)&&ex.length)mergeUserFieldsFromExisting(ex,ch);
   const chWithShort=addShortIdsUnique(ch,st);
-  await setChurches(st,chWithShort);await writeIdx(st,chWithShort);
+  await setChurches(st,chWithShort,undefined,ex);await writeIdx(st,chWithShort);
   void recordChurchAudit({state:st,action:"state_populated",old_value:Array.isArray(ex)?{churchCount:ex.length}:undefined,new_value:{churchCount:ch.length},source:"populate",actor_type:"system"});
   const meta=(await getMeta(false))||{stateCounts:{}};meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,ch.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();
   await invalidateReviewStatsCache();
@@ -2173,7 +2177,7 @@ app.post(`${P}/admin/refresh-attendance`,async(c)=>{
         const existing=await getChurches(st);
         if(Array.isArray(existing)&&existing.length)mergeUserFieldsFromExisting(existing,ch);
         const chWithShort=addShortIdsUnique(ch,st);
-        await setChurches(st,chWithShort);await writeIdx(st,chWithShort);
+        await setChurches(st,chWithShort,undefined,existing);await writeIdx(st,chWithShort);
         void recordChurchAudit({state:st,action:"state_refreshed",old_value:Array.isArray(existing)?{churchCount:existing.length}:undefined,new_value:{churchCount:chWithShort.length},source:"refresh",actor_type:"system"});
         if(meta){meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,ch.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
         refreshed++;
@@ -2381,7 +2385,7 @@ app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
       const filtered=ch.filter((x:any)=>!isBlockedDenomination(x.denomination));
       const removed=ch.length-filtered.length;
       if(removed>0){
-        await setChurches(st,filtered,cc);
+        await setChurches(st,filtered,cc,ch);
         await writeIdx(st,filtered);
         setCount(sc,st,filtered.length,cc);
         removedTotal+=removed;
@@ -2454,7 +2458,7 @@ app.post(`${P}/admin/remove-churches-by-name`,async(c)=>{
         const filtered=ch.filter((x:any)=>norm((x.name||"").trim())!==target);
         const r=ch.length-filtered.length;
         if(r>0){
-          await setChurches(st,filtered,cc);
+          await setChurches(st,filtered,cc,ch);
           await writeIdx(st,filtered);
           setCount(sc,st,filtered.length,cc);
           removedMain+=r;
@@ -3405,7 +3409,10 @@ const moderatePendingHandler=async(c:any)=>{
         }
       }
     }
-    const regionList=[...statesNeeded];
+    const neededIds=new Set<string>();
+    for(const entry of Array.isArray(allSuggestions)?allSuggestions:[]){if(entry?.churchId&&reviewConsensus(entry.submissions??[]).some(([,d])=>d?.votes>0&&d.value!==null))neededIds.add(entry.churchId);}
+    const indexed=usesD1()?await indexedReviewView(await moderationRegions(),neededIds,st=>getChurches(st)):null;
+    const regionList=indexed?[]:[...statesNeeded];
     const churchKeys=regionList.map(st=>churchesKey(regionCountry(st),st));
     const churchesByState=new Map<string,any[]>();
     for(let i=0;i<churchKeys.length;i+=MODERATE_BATCH){
@@ -3424,8 +3431,9 @@ const moderatePendingHandler=async(c:any)=>{
           if(d&&d.votes>0&&d.value!==null){
             const st=regionFromChurchId(entry.churchId);
             let currentValue:string|null=null;
-            let ch:any=null;
-            if(st&&isValidRegion(st)){
+            let ch:any=indexed?.churches.get(entry.churchId)??null;
+            if(indexed&&ch){currentValue=f==="address"||f==="reportRelocated"?[ch.address,ch.city,ch.state].filter(Boolean).join(", "):String(ch[f]||"");}
+            if(!indexed&&st&&isValidRegion(st)){
               const churches=churchesByState.get(st);
               if(Array.isArray(churches)){ch=churches.find((x:any)=>x.id===entry.churchId);if(ch){if(f==="address"||f==="reportRelocated")currentValue=[ch.address,ch.city,ch.state].filter(Boolean).join(", ");else if(f==="name")currentValue=String(ch.name??"");else if(f==="website")currentValue=String(ch.website??"");else currentValue=String(ch[f]||"");}}
             }
@@ -3438,14 +3446,20 @@ const moderatePendingHandler=async(c:any)=>{
               if(storedPrev!=null&&String(storedPrev).trim()!==""){currentValue=String(storedPrev);alreadyApplied=true;}
               else continue;
             }
-            pendingSuggestions.push({churchId:entry.churchId,field:f,proposedValue:d.value,currentValue,churchName:ch?.name,churchCity:ch?.city,churchState:ch?.state,churchShortId:ch?.shortId,votes:d.votes,submissions:d.submissions||[],clients:lookupClients(entry.submissions,f),alreadyApplied,relocatedTo:ch?.relocatedTo,listingStatus:ch?.listingStatus});
+            pendingSuggestions.push({churchId:entry.churchId,field:f,proposedValue:d.value,currentValue,churchName:ch?.name,churchCity:ch?.city,churchState:ch?.state,churchShortId:ch?.shortId,votes:d.votes,submissions:d.submissions||[],clients:lookupClients(entry.submissions,f),alreadyApplied,relocatedTo:ch?.relocatedTo,listingStatus:ch?.listingStatus,reviewVersion:await proposalVersion(entry,f)});
           }
         }
       }
     }
     const pendingChurches:any[]=[];
     const pendingReverifyChurches:any[]=[];
-    const modRegions=await moderationRegions();
+    if(indexed){
+      const seen=new Map<string,any>();
+      for(const store of await kv.getByPrefix("pending-churches:")){for(const ch of Array.isArray(store?.churches)?store.churches:[]){const old=seen.get(ch.id);seen.set(ch.id,{...ch,approved:!!(ch.approved||old?.approved),state:ch.state||regionFromChurchId(ch.id)});}}
+      pendingChurches.push(...[...seen.values()].filter(ch=>!ch.approved));
+      pendingReverifyChurches.push(...indexed.reverify.map(ch=>({churchId:ch.id,shortId:ch.shortId,name:ch.name,city:ch.city,state:ch.state,address:ch.address||"",relocatedTo:ch.relocatedTo,listingStatus:ch.listingStatus})));
+    }
+    const modRegions=indexed?[]:await moderationRegions();
     for(let i=0;i<modRegions.length;i+=MODERATE_BATCH){
       const batch=modRegions.slice(i,i+MODERATE_BATCH);
       const pendingKeys=batch.map(st=>`pending-churches:${regionCountry(st)}:${st}`);
@@ -3543,10 +3557,11 @@ app.post(`${P}/moderate/evidence`,async(c)=>{
 const moderateApproveSuggestionHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
-    const{churchId,field,value:editedValue}=await c.req.json();
+    const{churchId,field,value:editedValue,reviewVersion}=await c.req.json();
     if(!churchId||!field)return c.json({error:"Missing churchId or field"},400);
     const k=`suggestions:${churchId}`;const ex=await kv.get(k);
     if(!ex||!Array.isArray(ex.submissions))return c.json({error:"No suggestions found"},404);
+    if(reviewVersion!==undefined&&reviewVersion!==await proposalVersion(ex,field))throw new EditConflictError();
     let valueToApply:any;
     if(editedValue!==undefined&&editedValue!==null&&String(editedValue).trim()!==""){
       valueToApply=String(editedValue).trim();
@@ -3639,7 +3654,7 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
         if(ch){auditChurchName=ch.name||null;auditChurchCityState=[ch.city,ch.state].filter(Boolean).join(", ")||null;}
         const filtered=mainChurches.filter((x:any)=>x.id!==churchId);
         if(filtered.length!==mainChurches.length){
-          await setChurches(st,filtered);
+          await setChurches(st,filtered,undefined,mainChurches);
           await writeIdx(st,filtered);
           const meta=await getMeta(false);if(meta){meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,filtered.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
         }
@@ -3676,10 +3691,11 @@ app.post("/moderate/approve/suggestion",moderateApproveSuggestionHandler);
 const moderateRejectSuggestionHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
-    const{churchId,field}=await c.req.json();
+    const{churchId,field,reviewVersion}=await c.req.json();
     if(!churchId||!field)return c.json({error:"Missing churchId or field"},400);
     const k=`suggestions:${churchId}`;const ex=await kv.get(k);
     if(!ex||!Array.isArray(ex.submissions))return c.json({error:"No suggestions found"},404);
+    if(reviewVersion!==undefined&&reviewVersion!==await proposalVersion(ex,field))throw new EditConflictError();
     const heldRej=(consensus(ex.submissions,{held:"only"})[field] as any)?.value;
     const rejectedVal=heldRej??(consensus(ex.submissions)[field] as any)?.value;
     ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
@@ -4675,7 +4691,7 @@ app.post(`${P}/migrate/apply-pending`,async(c)=>{
         mainChurches.push({id:pc.id,shortId:pc.shortId||toShortId(pc.id,st),name:pc.name,address:pc.address,city:pc.city,state:st,lat:pc.lat,lng:pc.lng,denomination:pc.denomination,attendance:pc.attendance,website:pc.website,serviceTimes:pc.serviceTimes,languages:pc.languages,ministries:pc.ministries,pastorName:pc.pastorName,phone:pc.phone,email:pc.email,lastVerified:Date.now()});
         churchesMerged++;added=true;
       }
-      if(added){const unique=addShortIdsUnique(mainChurches,st);await setChurches(st,unique);await writeIdx(st,unique);}
+      if(added){const unique=addShortIdsUnique(mainChurches,st);await setChurches(st,unique,undefined,mainChurches);await writeIdx(st,unique);}
       await setPending(st,store);
     }
     return c.json({success:true,correctionsApplied,churchesMerged});
@@ -6096,6 +6112,9 @@ export async function publishTarget(target:string){
     return;
   }
   const st=target.slice("region:".length);
+  const churches=await getChurches(st);
+  if(Array.isArray(churches))await writeIdx(st,churches,true);
+  if(usesD1())await refreshReviewIndex(st,Array.isArray(churches)?churches:[]);
   const body=await buildRegionPayload(st);
   if(!body)return;
   await r2PutJson(`churches/${st}.json`,body,STATIC_CACHE_CONTROL);
@@ -6348,7 +6367,7 @@ app.post(`${P}/churches/populate-fill/:state`,async(c)=>{
     const apply=c.req.query("apply")==="true";
     if(apply&&churchesChanged){
       const withShort=addShortIdsUnique(churches,st);
-      await setChurches(st,withShort);await writeIdx(st,withShort);await invalidateReviewStatsCache();
+      await setChurches(st,withShort,undefined,churches);await writeIdx(st,withShort);await invalidateReviewStatsCache();
       void recordChurchAudit({state:st,action:"state_populated",new_value:{filled,churchesChanged},source:"populate_fill",actor_type:"system"});
     }
     if(apply)await kv.del(STAGE(st));

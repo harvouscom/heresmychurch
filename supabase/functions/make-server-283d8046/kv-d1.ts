@@ -5,6 +5,7 @@
 // private HMC_KV bucket. Values are JSON text, measured in UTF-8 bytes.
 import { type D1Statement, getD1, getKvBucket } from "./bindings.ts";
 import { retireObjectStatement } from "./recovery.ts";
+import { rememberSnapshot, snapshotOf, mergeEdits, guardStatement, isGuardConflict, replaceInPlace, EditConflictError, type ReadSnapshot } from "./edit-versions.ts";
 import { publicationStatements } from "./publication.ts";
 
 export const SPILL_BYTES = 900 * 1024;
@@ -52,7 +53,7 @@ async function sha1Hex(s: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-type Row = { key: string; value: string | null; r2_key: string | null };
+type Row = { key: string; value: string | null; r2_key: string | null; revision:number };
 
 /**
  * Loads a spilled value. A concurrent write may have replaced and deleted the object after we
@@ -63,7 +64,7 @@ async function resolveSpilled(key: string, r2Key: string): Promise<string> {
   const obj = await getKvBucket().get(r2Key);
   if (obj) return await obj.text();
   const row = await withRetry(() =>
-    getD1().prepare("SELECT value, r2_key FROM kv WHERE key = ?1").bind(key).first<Row>(),
+    getD1().prepare("SELECT value, r2_key, revision FROM kv WHERE key = ?1").bind(key).first<Row>(),
   );
   if (row?.value != null) return row.value;
   if (row?.r2_key) {
@@ -74,7 +75,7 @@ async function resolveSpilled(key: string, r2Key: string): Promise<string> {
 }
 
 const UPSERT_SQL = `INSERT INTO kv (key, value, r2_key, size, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)
-  ON CONFLICT(key) DO UPDATE SET value = excluded.value, r2_key = excluded.r2_key, size = excluded.size, updated_at = excluded.updated_at`;
+  ON CONFLICT(key) DO UPDATE SET value = excluded.value, r2_key = excluded.r2_key, size = excluded.size, updated_at = excluded.updated_at, revision=kv.revision+1`;
 
 type Prepared = { key: string; json: string; size: number; r2Key: string | null };
 
@@ -97,7 +98,7 @@ function upsertStatements(p: Prepared, now: number): D1Statement[] {
 }
 
 /** Atomically records retired files, the new values, and publication work. */
-async function writeAll(prepared: Prepared[]): Promise<void> {
+async function writeAll(prepared: Prepared[], guard?:ReadSnapshot): Promise<void> {
   const db = getD1();
   const now = Date.now();
   const groups: Prepared[][] = [];
@@ -117,31 +118,65 @@ async function writeAll(prepared: Prepared[]): Promise<void> {
 
   for (const g of groups) {
     const keys = JSON.stringify(g.map((p) => p.key));
+    const token=crypto.randomUUID();
     await withRetry(() => db.batch([
+      ...(guard?[guardStatement(guard,token)]:[]),
       retireObjectStatement(keys,now),
       ...g.flatMap((p) => upsertStatements(p,now)),
       ...publicationStatements(g.map(p=>p.key),"set",now),
+      ...g.flatMap(p=>{
+        const region=p.key.match(/^churches:(?:[A-Z]{2}:)?([A-Z][A-Z0-9]+)$/)?.[1];
+        return region?[db.prepare("INSERT INTO review_index_regions(region,complete) VALUES(?1,0) ON CONFLICT(region) DO UPDATE SET complete=0").bind(region)]:[];
+      }),
+      ...(guard?[db.prepare("DELETE FROM kv_write_guards WHERE token=?1").bind(token)]:[]),
     ]));
   }
 }
 
 export const set = async (key: string, value: any): Promise<void> => {
-  await writeAll([await prepare(key, value)]);
+  let baseline=snapshotOf(value);
+  const desired=structuredClone(value);
+  if(!baseline&&value&&typeof value==="object"&&((key.startsWith("suggestions:")&&Array.isArray(value.submissions)&&value.submissions.every((s:any)=>typeof s.ip==="string"&&typeof s.field==="string"))||(key.startsWith("pending-churches:")&&Array.isArray(value.churches)&&value.churches.every((ch:any)=>typeof ch.id==="string")))){
+    const empty=key.startsWith("suggestions:")?{...desired,submissions:[]}:{...desired,churches:[]};
+    baseline={key,revision:null,value:empty};
+    // Missing-record creation is guarded too; competing first contributions are merged on retry.
+  }
+  if(!baseline||baseline.key!==key){await writeAll([await prepare(key,value)]);return;}
+  const baseValue=baseline.value;
+  for(let attempt=0;attempt<5;attempt++){
+    const row=await getD1().prepare("SELECT value,r2_key,revision FROM kv WHERE key=?1").bind(key).first<Row>();
+    const current=row?JSON.parse(row.r2_key?await resolveSpilled(key,row.r2_key):row.value as string):undefined;
+    const latest={key,revision:row?.revision??null,value:current};
+    const merged=current==null&&baseline.revision===null?desired:mergeEdits(baseValue,current,desired);
+    const candidate=await prepare(key,merged);
+    try{
+      await writeAll([candidate],latest);
+      replaceInPlace(value,merged);
+      rememberSnapshot(key,(latest.revision??0)+1,value);
+      return;
+    }catch(e){
+      if(candidate.r2Key){
+        await getD1().prepare("INSERT INTO r2_retired_objects(r2_key,retired_at,delete_after) VALUES(?1,?2,?3) ON CONFLICT(r2_key) DO NOTHING").bind(candidate.r2Key,Date.now(),Date.now()+35*86400000).run();
+      }
+      if(!isGuardConflict(e))throw e;
+    }
+  }
+  throw new EditConflictError();
 };
 
 export const get = async (key: string): Promise<any> => {
   const row = await withRetry(() =>
-    getD1().prepare("SELECT value, r2_key FROM kv WHERE key = ?1").bind(key).first<Row>(),
+    getD1().prepare("SELECT value, r2_key, revision FROM kv WHERE key = ?1").bind(key).first<Row>(),
   );
   if (!row) return undefined;
   const json = row.r2_key ? await resolveSpilled(key, row.r2_key) : row.value;
-  return JSON.parse(json as string);
+  return rememberSnapshot(key,row.revision,JSON.parse(json as string));
 };
 
 /** The stored JSON text exactly, or null when the key doesn't exist. */
 export const getRawJson = async (key: string): Promise<string | null> => {
   const row = await withRetry(() =>
-    getD1().prepare("SELECT value, r2_key FROM kv WHERE key = ?1").bind(key).first<Row>(),
+    getD1().prepare("SELECT value, r2_key, revision FROM kv WHERE key = ?1").bind(key).first<Row>(),
   );
   if (!row) return null;
   return row.r2_key ? await resolveSpilled(key, row.r2_key) : row.value;
@@ -162,19 +197,19 @@ export const mset = async (keys: string[], values: any[]): Promise<void> => {
 
 async function loadValues(keys: string[], out: Map<string, any>): Promise<void> {
   const db = getD1();
-  const spilled: Array<{ key: string; r2Key: string }> = [];
+  const spilled: Array<{ key: string; r2Key: string; revision:number }> = [];
   for (let i = 0; i < keys.length; i += KEY_CHUNK) {
     const chunk = JSON.stringify(keys.slice(i, i + KEY_CHUNK));
     const { results } = await withRetry(() =>
-      db.prepare("SELECT key, value, r2_key FROM kv WHERE key IN (SELECT value FROM json_each(?1))").bind(chunk).all<Row>(),
+      db.prepare("SELECT key, value, r2_key, revision FROM kv WHERE key IN (SELECT value FROM json_each(?1))").bind(chunk).all<Row>(),
     );
     for (const r of results ?? []) {
-      if (r.r2_key) spilled.push({ key: r.key, r2Key: r.r2_key });
-      else out.set(r.key, JSON.parse(r.value as string));
+      if (r.r2_key) spilled.push({ key: r.key, r2Key: r.r2_key,revision:r.revision });
+      else out.set(r.key, rememberSnapshot(r.key,r.revision,JSON.parse(r.value as string)));
     }
   }
-  await pool(spilled, async ({ key, r2Key }) => {
-    out.set(key, JSON.parse(await resolveSpilled(key, r2Key)));
+  await pool(spilled, async ({ key, r2Key,revision }) => {
+    out.set(key, rememberSnapshot(key,revision,JSON.parse(await resolveSpilled(key, r2Key))));
   });
 }
 
@@ -195,6 +230,7 @@ export const mdel = async (keys: string[]): Promise<void> => {
       db.batch([
         retireObjectStatement(chunk,now),
         ...publicationStatements(keys.slice(i,i+KEY_CHUNK),"del",now),
+        ...keys.slice(i,i+KEY_CHUNK).flatMap(key=>{const region=key.match(/^churches:(?:[A-Z]{2}:)?([A-Z][A-Z0-9]+)$/)?.[1];return region?[db.prepare("INSERT INTO review_index_regions(region,complete) VALUES(?1,0) ON CONFLICT(region) DO UPDATE SET complete=0").bind(region)]:[];}),
         db.prepare("DELETE FROM kv WHERE key IN (SELECT value FROM json_each(?1))").bind(chunk),
         db
           .prepare(

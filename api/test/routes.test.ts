@@ -293,3 +293,28 @@ describe("reviewer AI access", () => {
     expect(unavailable.status).toBe(503);
   });
 });
+
+describe("simultaneous moderator decisions",()=>{
+ const headers={"content-type":"application/json","x-moderator-key":"mod-test"};
+ const approve=(churchId:string,field:string,reviewVersion?:string)=>call("/moderate/approve/suggestion",{method:"POST",headers,body:JSON.stringify({churchId,field,reviewVersion})});
+ async function seed(id:string){const churches=await kv.get("churches:US:TX");churches.push({id,name:"Before",state:"TX",city:"Austin",website:"https://before.example"});await kv.set("churches:US:TX",churches);await kv.set(`suggestions:${id}`,{churchId:id,submissions:[{ip:"one",field:"name",value:"After",timestamp:Date.now()},{ip:"two",field:"website",value:"https://after.example/",timestamp:Date.now()}]});}
+ it("saves approvals for two fields without losing either decision or its cleanup",async()=>{
+  const id="TX-9010";await seed(id);const before=(await kv.get("community:stats"))?.totalCorrections??0;
+  const queue=await(await call("/moderate/pending",{headers})).json() as any;
+  const name=queue.pendingSuggestions.find((s:any)=>s.churchId===id&&s.field==="name"),website=queue.pendingSuggestions.find((s:any)=>s.churchId===id&&s.field==="website");
+  const result=await Promise.all([approve(id,"name",name.reviewVersion),approve(id,"website",website.reviewVersion)]);
+  expect(result.map(r=>r.status)).toEqual([200,200]);await h.flush();
+  const church=(await kv.get("churches:US:TX")).find((ch:any)=>ch.id===id);expect(church).toMatchObject({name:"After",website:"https://after.example/"});
+  expect((await kv.get(`suggestions:${id}`)).submissions).toEqual([]);
+  expect((await kv.get("community:stats")).totalCorrections).toBe(before+2);
+ });
+ it("rejects an outdated decision while leaving the updated proposal pending",async()=>{
+  const id="TX-9011";await seed(id);const queue=await(await call("/moderate/pending",{headers})).json() as any;
+  const item=queue.pendingSuggestions.find((s:any)=>s.churchId===id&&s.field==="name");
+  const ex=await kv.get(`suggestions:${id}`);ex.submissions[0].value="A newer proposal";await kv.set(`suggestions:${id}`,ex);
+  expect((await approve(id,"name",item.reviewVersion)).status).toBe(409);
+  const rejected=await call("/moderate/reject/suggestion",{method:"POST",headers,body:JSON.stringify({churchId:id,field:"name",reviewVersion:item.reviewVersion})});expect(rejected.status).toBe(409);
+  expect((await kv.get(`suggestions:${id}`)).submissions[0].value).toBe("A newer proposal");
+  expect((await kv.get("churches:US:TX")).find((ch:any)=>ch.id===id).name).toBe("Before");
+ });
+});
