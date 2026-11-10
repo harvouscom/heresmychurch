@@ -23,10 +23,10 @@ This doc explains how **Here's My Church** is built: what it does, how the front
 | Layer | Technology |
 |-------|------------|
 | **Frontend** | Vite + React 18, React Router 7, Tailwind v4, Radix UI, MapLibre GL + d3-geo |
-| **Backend** | One Hono app (`supabase/functions/make-server-283d8046/app.ts`) served by the Cloudflare Worker `hmc-api` at `https://api.heresmychurch.com` (primary) and by the Supabase Edge Function `make-server-283d8046` (fallback, same code). See [HOSTING-CLOUDFLARE.md](HOSTING-CLOUDFLARE.md). |
-| **Data** | One Supabase table used by the edge function: `kv_store_283d8046` (key/value JSON). Church and state data is served from this KV layer (populated by the server from OSM, Census, etc.). |
-| **Realtime** | Supabase Realtime (presence on `active-users` channel) for “who’s viewing this state.” |
-| **Hosting** | Cloudflare Worker with static assets: SPA from `dist/`, plus geo-inject and OG meta rewrite in `worker/` (see [HOSTING-CLOUDFLARE.md](HOSTING-CLOUDFLARE.md)). Netlify is being retired. |
+| **Backend** | One Hono app (`supabase/functions/make-server-283d8046/app.ts`) served by the Cloudflare Worker `hmc-api` at `https://api.heresmychurch.com` ; the old Supabase function is write-blocked for rollback only. See [HOSTING-CLOUDFLARE.md](HOSTING-CLOUDFLARE.md). |
+| **Data** | Cloudflare D1 for records, audit logs, monthly snapshots, and search; private R2 for large values and public R2 for published directory files. |
+| **Realtime** | Cloudflare Durable Object over WebSocket for “who’s viewing this state.” |
+| **Hosting** | Cloudflare Worker with static assets: SPA from `dist/`, plus geo-inject and OG meta rewrite in `worker/` (see [HOSTING-CLOUDFLARE.md](HOSTING-CLOUDFLARE.md)). Netlify is retired. |
 
 ---
 
@@ -42,10 +42,10 @@ flowchart LR
     GeoInject[geo-inject]
     OGRewrite[og-rewrite]
   end
-  subgraph supabase [Supabase]
-    Edge[Hono Edge Function]
-    KV[(kv_store_283d8046)]
-    Realtime[Realtime]
+  subgraph cloudflare [Cloudflare API]
+    Edge[Hono Worker]
+    KV[(D1 + R2)]
+    Realtime[Presence Durable Object]
   end
   SPA --> Static
   SPA --> GeoInject
@@ -112,7 +112,7 @@ Central hook used by ChurchMap: [src/app/components/useChurchMapData.ts](src/app
 
 All server calls go through [src/app/components/api.ts](src/app/components/api.ts):
 
-- **Base URL:** `VITE_HMC_API_BASE_URL` (production: `https://api.heresmychurch.com`). Unset, it falls back to `https://{projectId}.supabase.co/functions/v1/make-server-283d8046` (dev uses the Vite proxy).
+- **Base URL:** `VITE_HMC_API_BASE_URL` (production: `https://api.heresmychurch.com`). Unset, it defaults to `https://api.heresmychurch.com`, including local development.
 - **Auth:** none for the Worker. Against the Supabase fallback, `Authorization: Bearer {publicAnonKey}` + `apikey` (the Supabase gateway requires them). Moderator routes send the moderator key (`?key=` or `x-moderator-key`).
 - **Static reads first:** `states.json` and `churches/{REGION}.json` come from R2 (`VITE_HMC_DATA_BASE_URL`, see [STATIC-FILES-R2.md](STATIC-FILES-R2.md)), falling back to the API.
 - **Helpers:** `fetchWithTimeout`, `fetchWithRetry` for reliability.
@@ -152,7 +152,7 @@ Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurc
 
 ---
 
-## 7. Backend (Hono app on the Worker + Supabase fallback)
+## 7. Backend (Hono app on Cloudflare Workers)
 
 **Single Hono app:** [supabase/functions/make-server-283d8046/app.ts](supabase/functions/make-server-283d8046/app.ts), platform-neutral via `runtime.ts` (`env()`, `waitUntil()`, OG renderer hook). Entry points: `api/index.ts` (Cloudflare Worker `hmc-api`) and `supabase/functions/make-server-283d8046/index.ts` (Supabase/Deno).
 
@@ -164,7 +164,7 @@ Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurc
 - **Moderator:** pending, approve/reject suggestions and churches, in-review (requires `Moderator-Key`).
 - **Other:** health, population, og-image (OG images for sharing), admin (refresh-attendance, enrich-regrid, cleanup-dc, cleanup-blocked-denominations, remove-churches-by-name).
 
-**Storage:** [supabase/functions/make-server-283d8046/kv_store.tsx](supabase/functions/make-server-283d8046/kv_store.tsx) wraps the Supabase table `kv_store_283d8046` (set/get/del, prefix scan). Church and state data is stored and read from here; the server populates it from OSM, Census, and community submissions.
+**Storage:** `kv.ts` wraps the selected backend; production uses `kv-d1.ts` and the private R2 spill bucket. Audit logs and monthly snapshots use D1, and search uses the separate search D1 database. Legacy Supabase adapters remain only for deliberate rollback tooling.
 
 **Supporting modules:**
 
@@ -210,7 +210,7 @@ Selected church is driven by the route (`routeChurchShortId` / `routeLegacyChurc
 **Supabase:**
 
 - Deploy the API Worker: `pnpm run deploy:api` (`wrangler deploy -c api/wrangler.jsonc`).
-- Deploy the Supabase fallback with the same code: `pnpm run deploy:make-server` (or `npx supabase functions deploy make-server-283d8046`). See [.cursor/rules/supabase-deploy.mdc](.cursor/rules/supabase-deploy.mdc).
+- Keep the legacy Supabase endpoint write-blocked. Do not redeploy or unfreeze it as an automatic fallback; see [the Cloudflare cutover record](CLOUDFLARE-CUTOVER.md).
 - Compare the two: `pnpm run parity:api`.
 
 **Scripts:**
