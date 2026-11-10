@@ -45,3 +45,7 @@ Next stages remain separate: per-church record concurrency, an indexed review qu
 ## First protected production checkpoint
 
 After deploying retention protection, production `hmc-db` returned recovery bookmark `0000000b-00000006-0000511f-1372703c35fc3ae44b5432baa6021587`. Use this or a later point for the new complete-file recovery guarantee, within D1's available recovery window. The bucket had no object-expiration lifecycle rule; its only rule aborts incomplete multipart uploads.
+
+## Live publication validation
+
+After deployment, real `states` and `region:TX` jobs completed through `hmc-publications`. Both targets recorded successful publication with no error, and the outbox was empty afterward. Public directory and search requests remained HTTP 200 and the national count remained 244,569. Production API contract checks passed. The implementation and tests were merged in [PR #43](https://github.com/harvouscom/heresmychurch/pull/43).
