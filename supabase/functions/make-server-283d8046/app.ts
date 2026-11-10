@@ -1,3 +1,5 @@
+import { registerAttendanceCalibrationRoutes } from "./attendance-calibration.ts";
+import { registerChurchPortalRoutes } from "./church-portal.ts";
 import { registerEmailConfirmationRoutes } from "./email-confirmation.ts";
 import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
@@ -2718,11 +2720,12 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>,a
         else{(ch as any)[f]=v;}
       }
       // Service-time email confirmation cannot resolve a relocation warning.
-      if((ch as any).listingStatus==="pending_reverify" && auditContext?.source!=="church_email_update"){
+      if((ch as any).listingStatus==="pending_reverify" && !(["church_email_update", "attendance_calibration"].includes(auditContext?.source || ""))){
         delete (ch as any).listingStatus;
         auditEntries.push({field:"listingStatus",oldVal:"pending_reverify",newVal:null});
       }
-      ch.lastVerified=Date.now();updated=true;
+      if (auditContext?.source !== "attendance_calibration") ch.lastVerified=Date.now();
+      updated=true;
       break;
     }
   }
@@ -2934,6 +2937,31 @@ async function confirmChurchCore(opts:{churchId:string;actorKey:string;auditSour
   stats.totalConfirmations=(stats.totalConfirmations||0)+1;stats.lastUpdated=Date.now();await kv.set("community:stats",stats);
   return{ok:true,success:true,totalConfirmations:existing.confirmations.length};
 }
+
+registerAttendanceCalibrationRoutes(app, P, {
+  authorized: checkModKey,
+  apply: async (id, estimate, expected, modKey) => {
+    const st = regionFromChurchId(id); const rows = st ? await getChurches(st) : [];
+    const church = Array.isArray(rows) ? rows.find((r: any) => r.id === id) : null;
+    if (!church || (church.attendance || null) !== expected) throw new EditConflictError();
+    const result = await applyApprovedCorrections(id, { attendance: { approved: true, value: String(estimate) } }, { source: "attendance_calibration", actorModKey: modKey }, rows);
+    if (!result.updated) throw new Error("Listing unavailable");
+    if (result.state && result.churches && result.corrections) await runDeferredIndexAndStats(result.state, result.churches, id, result.corrections);
+  },
+});
+
+registerChurchPortalRoutes(app, P, {
+  pending: (entry, church) => {
+    if (!church || !Array.isArray(entry?.submissions)) return 0;
+    const con = consensus(entry.submissions), held = consensus(entry.submissions, { held: "only" });
+    return VF.filter(f => {
+      const d = (held[f]?.votes > 0 ? held[f] : con[f]) as any;
+      return d?.votes > 0 && (!d.approved || SENSITIVE_FIELDS.includes(f) || held[f]?.votes > 0) && !suggestionAlreadySaved(entry, f, d.value ?? d.submissions?.[0]?.value, church);
+    }).length;
+  },
+  rateLimit: c => ipRateLimit("church-portal", cip(c), 30, 3600000),
+  submit: (churchId, field, value, actorKey) => submitSuggestionCore({ churchId, field, value, actorKey, auditSource: "church_portal" }),
+});
 
 registerEmailConfirmationRoutes(app, P, {
   rateLimit: c => ipRateLimit("email-confirmation", cip(c), 10, 3600000),

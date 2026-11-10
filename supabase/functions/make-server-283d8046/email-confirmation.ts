@@ -157,3 +157,8 @@ export function registerEmailConfirmationRoutes(app: Hono, prefix: string, deps:
     return c.json({ success: true, message: body.locationCorrect === true ? "Thank you. Your service times are confirmed." : "Your service times are confirmed. Your location correction is awaiting review." });
   });
 }
+
+export const churchPortalEmailEnabled = () => env("CHURCH_PORTAL_ENABLED") === "1" && !!emailBinding && !!env("EMAIL_FROM");
+export async function sendChurchPortalEmail(to: string, name: string, token: string) {
+  await send(to, `Manage ${name} on Here’s My Church`, `Claim and update your church listing through this private link:\n${site()}/church-portal#${new URLSearchParams({ token })}\n\nThis link expires in 24 hours. Anyone with it can submit updates to this listing. If you did not request it, you can ignore this email.`, "church-portal");
+}

@@ -1,3 +1,4 @@
+import { ChurchClaimCard } from "./ChurchPortal";
 import { EmailConfirmationCard } from "./EmailConfirmation";
 import type { Church, HomeCampusSummary } from "./church-data";
 import {
@@ -878,6 +879,7 @@ export function ChurchDetailPanel({
             )}
           </button>
           </div>
+          <ChurchClaimCard key={`claim-${church.id}`} church={church} />
         </div>
 
         {/* Recent changes */}

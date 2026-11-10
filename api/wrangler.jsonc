@@ -19,6 +19,7 @@
     // Tells app.ts it runs behind Cloudflare, so cf-connecting-ip can be trusted for client IPs.
     "EMAIL_FROM": "updates@mail.heresmychurch.com",
     "EMAIL_CONFIRMATION_ENABLED": "1",
+    "CHURCH_PORTAL_ENABLED": "1",
     "HMC_RUNTIME": "worker",
     "R2_ACCOUNT_ID": "ec934baa29eb81459ffeaf18ba044b9e",
     "R2_BUCKET": "hmc-data",
