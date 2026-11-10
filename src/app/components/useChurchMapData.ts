@@ -733,6 +733,16 @@ export function useChurchMapData({
     }
   };
 
+  // Review actions must refresh map/local-search data as well as the review queue.
+  useEffect(() => {
+    const refresh = () => {
+      refs.current.churchCache.clear();
+      void refetchCurrentStateChurches();
+    };
+    window.addEventListener("hmc:listing-changed", refresh);
+    return () => window.removeEventListener("hmc:listing-changed", refresh);
+  }, [focusedState, selectedChurch]);
+
   // Store latest versions in ref (avoids useCallback, stabilizes effect deps)
   loadFnsRef.current.loadStateData = loadStateData;
   loadFnsRef.current.loadStateDataSilent = loadStateDataSilent;

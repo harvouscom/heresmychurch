@@ -112,6 +112,12 @@ export function MapSearchBar({
   const [remoteError, setRemoteError] = useState<string | null>(null);
   /** Bumped by "Try again" to re-run the server search for the same query. */
   const [retryNonce, setRetryNonce] = useState(0);
+  useEffect(() => {
+    const refresh = () => setRetryNonce((value) => value + 1);
+    window.addEventListener("hmc:listing-changed", refresh);
+    return () => window.removeEventListener("hmc:listing-changed", refresh);
+  }, []);
+
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
   const searchVersionRef = useRef(0);
 
