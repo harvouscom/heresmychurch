@@ -21,3 +21,9 @@ For a deliberate rollback: freeze Cloudflare writes, restore the Supabase URL co
 Production config pins `STORE_BACKEND=d1`. When the flag is absent, the Worker defaults to D1. Browser and bot defaults point to `api.heresmychurch.com`; the old Supabase fallback and local proxy are removed. Commit and publish this configuration so future builds cannot revert storage.
 
 Fresh AI checks are reviewer-initiated, capped and cached, and never publish changes. See [AI evidence checks](future/ai-review-evidence.md).
+
+## Final production checks
+
+Search backfill completed for 544 regions. All 543 public region files and the national states file were refreshed; Michigan and PT12 were retried successfully after transient D1 overload responses. Production API contract checks passed. A temporary replacement stayed held, the original service time remained unchanged, and moderator approval of the original value exercised the D1 audit/write/publication path without publishing the probe time. Workers AI returned a validated `contradicted` result for the probe based on the official homepage. The final public Texas file retained the original value. A final search returned HTTP 200 in approximately 368 ms.
+
+The migration/review PR was merged as [#42](https://github.com/harvouscom/heresmychurch/pull/42), and the active-model correction is on main. The GitHub Supabase Preview app still created a separate preview during the PR; disconnect this integration when retiring Supabase. It is not used by the live directory. The temporary local moderator-key copy was removed after the checks.
