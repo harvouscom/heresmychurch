@@ -6,7 +6,7 @@ Production deployments replace the complete Worker and site bundle. An email-onl
 2. Open a PR, run the relevant checks, and compare the complete preview with the approved current design.
 3. Coordinate deployment ownership with any other active session.
 4. Merge the PR. In a clean release checkout, fetch main and check out the exact merged `origin/main` commit.
-5. Run `pnpm deploy` for the frontend and `pnpm deploy:api` when the API changed. Both paths run `scripts/check-deploy-ref.mjs`; it rejects dirty checkouts and unmerged/outdated commits.
+5. Run `pnpm run deploy` for the frontend and `pnpm run deploy:api` when the API changed. Both paths run `scripts/check-deploy-ref.mjs`; it rejects dirty checkouts and unmerged/outdated commits.
 6. Verify the current live map, church panel, report pages, and any changed feature. Keep the deployed version ID with the release record.
 
 Do not bypass these steps by directly calling Wrangler from an old worktree. `HMC_DEPLOY_FORCE=1` is reserved for a specific user-authorized emergency rollback.
