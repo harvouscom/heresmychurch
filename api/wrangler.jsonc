@@ -24,8 +24,10 @@
     // "supabase" or "d1". See docs/future/move-off-supabase.md.
     "STORE_BACKEND": "d1",
     // Any non-empty value pauses writes while reads keep working.
+    "AI_REVIEW_ENABLED": "1",
     "MAINTENANCE_READONLY": "1"
   },
+  "ai": { "binding": "AI" },
   "routes": [{ "pattern": "api.heresmychurch.com", "custom_domain": true }],
   // Static files (states.json, churches/{REGION}.json); r2.ts prefers this over S3 keys.
   // HMC_KV holds large KV values, some with IPs, so it stays private: never point it at hmc-data.

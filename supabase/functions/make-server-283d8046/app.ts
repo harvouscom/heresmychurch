@@ -47,6 +47,7 @@ import {
 } from "./church-keys.ts";
 import { normalizeSearchText, searchTable, setSearchTableReady, syncSearchRegion } from "./search-table.ts";
 import { queryMonthlyRows, upsertMonthlyRows } from "./monthly.ts";
+import { checkChurchEvidence, reviewAiAvailable } from "./review-evidence.ts";
 import { registerMigrateRoutes } from "./admin-migrate.ts";
 import { r2Enabled, r2PutJson } from "./r2.ts";
 import { env, renderOgImage, waitUntil } from "./runtime.ts";
@@ -841,6 +842,7 @@ app.use(
       "Prefer",
       "x-partner-key",
       "X-Partner-Key",
+      "x-moderator-key",
     ],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     maxAge: 86400,
@@ -3510,6 +3512,32 @@ async function removeFromInReviewKV(modKey:string,type:string,churchId:string,fi
     if(next.length!==gChs.length)await kv.set(IN_REVIEW_GLOBAL_KEY,{suggestions:gSugs,churches:next});
   }
 }
+
+// On-demand only: a reviewer chooses when to spend an AI check. Never applies an edit.
+app.post(`${P}/moderate/evidence`,async(c)=>{
+  try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(env("AI_REVIEW_ENABLED")!=="1"||!reviewAiAvailable())return c.json({error:"AI evidence checks are not enabled."},503);
+    const{churchId,field,proposedValue}=await c.req.json();
+    if(typeof churchId!=="string"||!["phone","serviceTimes"].includes(field)||typeof proposedValue!=="string")return c.json({error:"Choose a pending phone or service-times edit."},400);
+    const ex=await kv.get(`suggestions:${churchId}`);
+    const pending=reviewConsensus(ex?.submissions??[]).find(([f,d])=>f===field&&d?.value===proposedValue);
+    if(!pending)return c.json({error:"This proposal changed or is no longer pending. Refresh the queue."},409);
+    const st=regionFromChurchId(churchId);
+    if(!st)return c.json({error:"Church not found"},404);
+    const churches=await getChurches(st);const church=Array.isArray(churches)?churches.find((ch:any)=>ch.id===churchId):null;
+    if(!church)return c.json({error:"Church not found"},404);
+    if(!church.website)return c.json({error:"This church needs a verified website before evidence can be checked."},422);
+    const input=JSON.stringify([churchId,field,proposedValue,church.name,church.address,church.city,church.website]);
+    const hash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(input)))).map(b=>b.toString(16).padStart(2,"0")).join("");
+    const cacheKey=`review-evidence:${hash}`;const cached=await kv.get(cacheKey);
+    if(cached&&Date.now()-Date.parse(cached.checkedAt)<86400000)return c.json({evidence:cached});
+    if(!(await ipRateLimit("review-ai",modKeyHash(getModKey(c)),10,3600000))||!(await ipRateLimit("review-ai-global","all",100,86400000)))return c.json({error:"Evidence check limit reached. Review manually or try again later."},429);
+    const evidence=await checkChurchEvidence(church,field,proposedValue);
+    await kv.set(cacheKey,evidence);
+    return c.json({evidence});
+  }catch(e){console.error("AI evidence check failed",e instanceof Error?e.message:"unknown");return c.json({error:"Evidence could not be checked. Review the church website manually."},502);}
+});
 
 const moderateApproveSuggestionHandler=async(c:any)=>{
   try{

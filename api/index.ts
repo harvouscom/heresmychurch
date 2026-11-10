@@ -5,6 +5,7 @@
  * (supabase/functions/make-server-283d8046/app.ts). Deno-style imports in that code
  * (npm:, jsr:) are mapped to npm packages by `alias` in api/wrangler.jsonc.
  */
+import { setReviewAi, type AiBinding } from "../supabase/functions/make-server-283d8046/review-evidence.ts";
 import app from "../supabase/functions/make-server-283d8046/app.ts";
 import { setEnv, setOgImageRenderer, setWaitUntil } from "../supabase/functions/make-server-283d8046/runtime.ts";
 import { setR2Binding } from "../supabase/functions/make-server-283d8046/r2.ts";
@@ -19,6 +20,7 @@ const PREFIX = "/make-server-283d8046";
 interface Env {
   [name: string]: unknown;
   /** hmc-data bucket (static files); replaces the S3 keys the Supabase function uses. */
+  AI?: AiBinding;
   HMC_DATA?: R2Bucket;
   /** Main store: KV rows, audit log, monthly snapshots. */
   HMC_DB?: D1Database;
@@ -44,6 +46,7 @@ export default {
       const v = env[name];
       return typeof v === "string" ? v : undefined;
     });
+    setReviewAi(env.AI ?? null);
     setWaitUntil((p) => ctx.waitUntil(p));
     setR2Binding(env.HMC_DATA ?? null);
     setD1(env.HMC_DB ?? null);

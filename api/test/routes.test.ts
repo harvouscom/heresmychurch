@@ -283,3 +283,13 @@ describe("Lookup routes", () => {
     });
   });
 });
+
+describe("reviewer AI access", () => {
+  it("requires moderator authentication and does not run without an AI binding", async () => {
+    const body = JSON.stringify({churchId:"TX-1001",field:"phone",proposedValue:"5125550199"});
+    const denied = await call("/moderate/evidence", {method:"POST",headers:{"content-type":"application/json"},body});
+    expect(denied.status).toBe(401);
+    const unavailable = await call("/moderate/evidence", {method:"POST",headers:{"x-moderator-key":"mod-test","content-type":"application/json"},body});
+    expect(unavailable.status).toBe(503);
+  });
+});

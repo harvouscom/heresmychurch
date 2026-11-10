@@ -1561,3 +1561,17 @@ export async function fetchStateReportList(
   if (!res.ok) return [];
   return res.json();
 }
+
+export type ReviewEvidence = {
+  verdict: "supported" | "contradicted" | "insufficient_evidence";
+  reason: string; quote: string | null; sourceUrl: string | null; checkedAt: string;
+};
+export async function fetchReviewEvidence(moderatorKey: string, churchId: string, field: string, proposedValue: string): Promise<ReviewEvidence> {
+  const res = await fetchWithTimeout(`${BASE_URL}/moderate/evidence`, {
+    method: "POST", headers: { ...headers, "x-moderator-key": moderatorKey },
+    body: JSON.stringify({ churchId, field, proposedValue }), timeoutMs: 60000,
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || "Evidence could not be checked.");
+  return body.evidence;
+}
