@@ -38,7 +38,7 @@ npx vitest run --config api/vitest.config.ts api/test/church-portal.test.ts api/
 npx vite build
 ```
 
-Before production rollout, deploy frontend and API together and rehearse delivery using a controlled listed inbox. Check claim, replacement review, invalidation after contact change, sign-out, and expired links. These changes are implemented locally; this work does not itself deploy production.
+Before production rollout, deploy frontend and API together and rehearse delivery using a controlled listed inbox. Check claim, replacement review, invalidation after contact change, sign-out, and expired links. Deploy the frontend and API together through the guarded release scripts after merging the pull request.
 
 ## Private attendance calibration
 
