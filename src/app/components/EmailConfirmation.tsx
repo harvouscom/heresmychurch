@@ -35,7 +35,7 @@ export function EmailConfirmationCard({ church }: { church: Church }) {
     {(status.serviceTimesConfirmedAt || status.locationConfirmedAt) && <p className="email-update-source">Confirmed through the church’s listed email.</p>}
     {sent ? <div className="email-update-sent" role="status"><span className="email-update-icon"><Check size={14} /></span><div><strong>Check your inbox</strong><p>Confirm your request using the link we sent. It may take a few minutes.</p></div></div> : status.enabled && <>
       <button type="button" className="email-update-trigger" aria-expanded={open} aria-controls={`email-form-${church.id}`} onClick={() => { setOpen(!open); setError(""); }}>
-        <Bell size={14} /><span>Get confirmed service times</span>{open ? <X size={13} /> : <ChevronRight size={14} />}
+        <Bell size={14} /><span>{church.serviceTimes?.trim() ? "Notify me when these times are verified" : "Email me when service times are confirmed"}</span>{open ? <X size={13} /> : <ChevronRight size={14} />}
       </button>
       {open && <form id={`email-form-${church.id}`} className="email-update-form" onSubmit={async e => {
         e.preventDefault(); setBusy(true); setError("");

@@ -80,6 +80,7 @@ export function HmcDialog({
       <DialogPrimitive.Portal>
         <div {...STOP_HANDLERS}>
           <DialogPrimitive.Overlay
+            onClick={(event) => { if (event.target === event.currentTarget && closeOnBackdrop && isPresent) onClose(); }}
             className={cn(
               "hmc-dialog-backdrop fixed inset-0 bg-[#0B0618]/35 backdrop-blur-sm",
               isPresent
