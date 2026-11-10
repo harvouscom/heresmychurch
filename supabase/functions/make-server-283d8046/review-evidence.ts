@@ -60,7 +60,7 @@ export function pageText(html: string): string {
 
 async function fetchPage(url: URL, host: string, fetcher: typeof fetch): Promise<{url: string; text: string}> {
   for (let i=0; i<3; i++) {
-    if (url.hostname !== host) throw new Error("The church website redirects to another domain; review it manually.");
+    if (url.hostname.replace(/^www\./, "") !== host.replace(/^www\./, "")) throw new Error("The church website redirects to another domain; review it manually.");
     await checkDns(url.hostname, fetcher);
     const r = await fetcher(url.toString(), { redirect: "manual", signal: AbortSignal.timeout(8000),
       headers: { "User-Agent": "HeresMyChurch-Evidence/1.0 (+https://heresmychurch.com)", accept: "text/html" } });

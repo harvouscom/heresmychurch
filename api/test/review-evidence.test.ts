@@ -32,6 +32,11 @@ describe("AI evidence boundaries", () => {
     await expect(checkChurchEvidence({name:"First",website:source.url},"phone","5125550199",redirect as any)).rejects.toThrow("another domain");
     expect(run).not.toHaveBeenCalled();
   });
+  it("allows the official website to canonicalize between www and the bare domain", async () => {
+    setReviewAi({run: async () => ({response:{verdict:"supported",reason:"The homepage states this time.",quote:"Sunday worship starts at 10 AM."}})});
+    const fetcher=vi.fn(async (url:any)=>String(url).includes("cloudflare-dns.com") ? Response.json({Status:0,Answer:[{type:1,data:"8.8.8.8"}]}) : String(url)==="https://church.org/" ? new Response(null,{status:301,headers:{location:"https://www.church.org/"}}) : new Response(`<p>${source.text}</p>`,{headers:{"content-type":"text/html"}}));
+    expect(await checkChurchEvidence({name:"First",website:source.url},"serviceTimes","Sun 10 AM",fetcher as any)).toMatchObject({verdict:"supported",sourceUrl:"https://www.church.org/"});
+  });
   it("does not fetch or call AI for unsupported fields", async () => {
     const run=vi.fn();setReviewAi({run});const fetcher=vi.fn();
     await expect(checkChurchEvidence({name:"First",website:source.url},"name","New Church",fetcher as any)).rejects.toThrow("phone numbers");
