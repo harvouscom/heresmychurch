@@ -1,3 +1,5 @@
+> **Production cutover completed November 9, 2026.** The live API now uses Cloudflare D1/R2 and has no Supabase URL configured. The old Supabase function remains write-blocked as a rollback snapshot. See [the verified cutover record](../CLOUDFLARE-CUTOVER.md). The rehearsal status and phases below are historical.
+
 > **Status:** in progress, started 2026-11-05. Presence is live on the Durable Object. The D1 store and tooling are deployed but off, and the staging rehearsal passed. Production data stays on Supabase until the cutover. Written 2026-10-18 after a full audit; the corrections below come from a second audit on 2026-11-05 and **override the phases further down** where they differ.
 
 ## Rehearsal results (2026-11-05, staging, real data)

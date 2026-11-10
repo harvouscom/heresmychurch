@@ -10,7 +10,7 @@ export type AiBinding = { run(model: string, input: Record<string, unknown>): Pr
 let ai: AiBinding | null = null;
 export function setReviewAi(binding: AiBinding | null): void { ai = binding; }
 export function reviewAiAvailable(): boolean { return ai !== null; }
-const MODEL = "@cf/meta/llama-3.1-8b-instruct";
+const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_BYTES = 1_000_000;
 
 export function officialUrl(value: string): URL {
