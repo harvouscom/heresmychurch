@@ -59,7 +59,7 @@ export function createGlobe(canvas, data, opts = {}) {
     // opts.scale zooms in, for a closer, flatter horizon where the land reads larger.
     // opts.top is the room above the limb, so the atmosphere glow can fade out before the canvas edge.
     const R = Math.min(W * 0.66, 1300 * dpr) * (opts.scale ?? 1);
-    return { W, H, R, cx: W / 2, cy: R + (opts.top ?? 36) * dpr };
+    return { W, H, R, cx: W / 2, cy: opts.centerY == null ? R + (opts.top ?? 36) * dpr : H * opts.centerY };
   }
 
   function renderShade() {

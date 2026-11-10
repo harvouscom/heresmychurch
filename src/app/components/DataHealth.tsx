@@ -20,7 +20,7 @@ export function DataHealthPage() {
   return <PortalShell wide showGlobeBackdrop={false}>
     <header className="health-hero health-hero-focused">
       <div className="health-hero-copy">
-        <h1>Data health in <em>{regionName}.</em></h1>
+        <h1>Church data in <em>{regionName}.</em></h1>
         <p>Help keep local church listings useful, complete, and up to date.</p>
         <label className="email-field health-region-control">Explore a region
           <span className="health-region-picker">{country && <PlaceFlag abbrev={region} countryCode={country.code} size="md" />}

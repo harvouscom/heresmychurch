@@ -26,3 +26,8 @@
 @media(max-width:360px){.portal-nav .portal-brand{font-size:11px;gap:7px}.portal-nav .portal-brand img{width:24px;height:24px}.portal-nav>div{gap:10px}.portal-nav>div a{font-size:9px}}
 
 .health-globe-location{min-width:180px;width:max-content}.health-globe-location>span:not(.inline-flex){flex:1}
+
+/* A larger regional close-up; the canvas fades at its edges, labels stay outside it. */
+.health-region-globe{max-width:520px;aspect-ratio:1.05}.health-region-globe canvas{mask-image:radial-gradient(ellipse 66% 64% at 50% 46%,#000 65%,#000c 82%,transparent 100%);-webkit-mask-image:radial-gradient(ellipse 66% 64% at 50% 46%,#000 65%,#000c 82%,transparent 100%)}.health-region-focus-glow{position:absolute;inset:5% -3% 10%;border-radius:50%;background:radial-gradient(ellipse,#7d42b32e,transparent 68%);pointer-events:none}.health-region-globe .health-globe-location{bottom:8px}
+@media(max-width:600px){.health-region-globe{width:min(100%,400px);aspect-ratio:1.05;margin-top:10px}.health-region-focus-glow{inset:5% 0 10%}}
+.health-region-globe canvas{mask-image:linear-gradient(to right,transparent,#000 9%,#000 91%,transparent),linear-gradient(to bottom,transparent,#000 8%,#000 85%,transparent);mask-composite:intersect;-webkit-mask-image:linear-gradient(to right,transparent,#000 9%,#000 91%,transparent),linear-gradient(to bottom,transparent,#000 8%,#000 85%,transparent);-webkit-mask-composite:source-in}
