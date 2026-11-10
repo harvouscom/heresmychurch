@@ -48,6 +48,7 @@ import {
 import { normalizeSearchText, searchTable, setSearchTableReady, syncSearchRegion } from "./search-table.ts";
 import { queryMonthlyRows, upsertMonthlyRows } from "./monthly.ts";
 import { checkChurchEvidence, reviewAiAvailable } from "./review-evidence.ts";
+import { dispatchPublications, hasPublicationQueue, requestPublications, publicationHealth, validPublicationTarget, releasePublication } from "./publication.ts";
 import { registerMigrateRoutes } from "./admin-migrate.ts";
 import { r2Enabled, r2PutJson } from "./r2.ts";
 import { env, renderOgImage, waitUntil } from "./runtime.ts";
@@ -6063,6 +6064,13 @@ kv.onKvWrite((keys,kind)=>{
 });
 
 function schedulePublish(target:string){
+  if(hasPublicationQueue()){
+    if(!_publishDrain){
+      _publishDrain=new Promise(r=>setTimeout(r,2000)).then(()=>dispatchPublications()).then(()=>{}).catch(e=>console.error("publication_dispatch_failed",e instanceof Error?e.message:"unknown")).finally(()=>{_publishDrain=null;});
+      waitUntil(_publishDrain);
+    }
+    return;
+  }
   _publishPending.add(target);
   if(_publishDrain)return;
   _publishDrain=drainPublishQueue().finally(()=>{
@@ -6082,7 +6090,7 @@ async function drainPublishQueue(){
   }
 }
 
-async function publishTarget(target:string){
+export async function publishTarget(target:string){
   if(target==="states"){
     await r2PutJson("states.json",await buildStatesPayload(false),STATIC_CACHE_CONTROL);
     return;
@@ -6092,6 +6100,24 @@ async function publishTarget(target:string){
   if(!body)return;
   await r2PutJson(`churches/${st}.json`,body,STATIC_CACHE_CONTROL);
 }
+
+export async function enqueueFullPublication():Promise<number>{
+  const meta=await getMeta(false);
+  const targets=["states",...[...new Set(listPopulated(meta?.stateCounts||{}).map(p=>p.abbrev==="DC"?"MD":p.abbrev))].sort().map(r=>`region:${r}`)];
+  await requestPublications(targets);
+  return targets.length;
+}
+app.get(`${P}/moderate/operations`,async(c)=>{
+  if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+  return c.json({publication:await publicationHealth(),queueConfigured:hasPublicationQueue()});
+});
+app.post(`${P}/moderate/operations/retry`,async(c)=>{
+  if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+  const{target}=await c.req.json();
+  if(!validPublicationTarget(target))return c.json({error:"Invalid target"},400);
+  await requestPublications([target]);await releasePublication(target);
+  await dispatchPublications();return c.json({queued:true,target});
+});
 
 // Full republish, a few regions per call (each region build reads its whole list from Postgres).
 // Loop with ?offset=<next> until next is null. See scripts/publish-static.mjs.
@@ -6104,10 +6130,17 @@ app.post(`${P}/admin/publish-static`,async(c)=>{
     const meta=await getMeta(false);
     const regions=[...new Set(listPopulated(meta?.stateCounts||{}).map(p=>p.abbrev==="DC"?"MD":p.abbrev))].sort();
     const published:string[]=[];const failed:{target:string;error:string}[]=[];
+    const queued:string[]=[];
     const targets=[...(offset===0?["states"]:[]),...regions.slice(offset,offset+limit).map(r=>`region:${r}`)];
-    for(const t of targets){try{await publishTarget(t);published.push(t);}catch(e){failed.push({target:t,error:String(e)});}}
+    const direct=c.req.query("direct")==="1";
+    if(direct&&!env("MAINTENANCE_READONLY"))return c.json({error:"Direct publication is only available during maintenance."},400);
+    if(hasPublicationQueue()&&!direct){
+      await requestPublications(targets);queued.push(...targets);await dispatchPublications();
+    }else{
+      for(const t of targets){try{await publishTarget(t);published.push(t);}catch(e){failed.push({target:t,error:String(e)});}}
+    }
     const next=offset+limit<regions.length?offset+limit:null;
-    return c.json({published,failed,next,total:regions.length});
+    return c.json({published,queued,failed,next,total:regions.length});
   }catch(e){return serverError(c,e);}
 });
 

@@ -30,7 +30,7 @@ if (!modKey) {
 let offset = 0;
 let failures = 0;
 for (;;) {
-  const res = await fetch(`${apiBase}/admin/publish-static?offset=${offset}&limit=${batch}`, {
+  const res = await fetch(`${apiBase}/admin/publish-static?offset=${offset}&limit=${batch}${process.env.HMC_PUBLISH_DIRECT === "1" ? "&direct=1" : ""}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${anonKey}`,
@@ -46,7 +46,7 @@ for (;;) {
   }
   for (const f of body.failed || []) console.error(`  failed ${f.target}: ${f.error}`);
   failures += (body.failed || []).length;
-  console.log(`published ${body.published.join(", ") || "(none)"} [${Math.min(body.next ?? body.total, body.total)}/${body.total}]`);
+  console.log(`${body.queued?.length ? "queued " + body.queued.join(", ") : "published " + (body.published.join(", ") || "(none)")} [${Math.min(body.next ?? body.total, body.total)}/${body.total}]`);
   if (body.next == null) break;
   offset = body.next;
 }

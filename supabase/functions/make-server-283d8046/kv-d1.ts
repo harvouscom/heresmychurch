@@ -4,7 +4,8 @@
 // D1 caps a value at 2 MB and the largest church lists are over 4 MB, so big values spill to the
 // private HMC_KV bucket. Values are JSON text, measured in UTF-8 bytes.
 import { type D1Statement, getD1, getKvBucket } from "./bindings.ts";
-import { waitUntil } from "./runtime.ts";
+import { retireObjectStatement } from "./recovery.ts";
+import { publicationStatements } from "./publication.ts";
 
 export const SPILL_BYTES = 900 * 1024;
 const KEY_CHUNK = 1000;
@@ -75,12 +76,6 @@ async function resolveSpilled(key: string, r2Key: string): Promise<string> {
 const UPSERT_SQL = `INSERT INTO kv (key, value, r2_key, size, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)
   ON CONFLICT(key) DO UPDATE SET value = excluded.value, r2_key = excluded.r2_key, size = excluded.size, updated_at = excluded.updated_at`;
 
-function deleteObjectsLater(r2Keys: Array<string | null | undefined>): void {
-  const keys = r2Keys.filter((k): k is string => !!k);
-  if (!keys.length) return;
-  waitUntil(getKvBucket().delete(keys).catch((e) => console.warn("kv: couldn't delete old R2 objects:", e)));
-}
-
 type Prepared = { key: string; json: string; size: number; r2Key: string | null };
 
 /** Writes any spilled value to R2 first, so a row never points at an object that doesn't exist. */
@@ -101,7 +96,7 @@ function upsertStatements(p: Prepared, now: number): D1Statement[] {
   ];
 }
 
-/** Upserts, then removes the R2 objects the rows used to point at. */
+/** Atomically records retired files, the new values, and publication work. */
 async function writeAll(prepared: Prepared[]): Promise<void> {
   const db = getD1();
   const now = Date.now();
@@ -122,13 +117,11 @@ async function writeAll(prepared: Prepared[]): Promise<void> {
 
   for (const g of groups) {
     const keys = JSON.stringify(g.map((p) => p.key));
-    const results = await withRetry(() =>
-      db.batch([
-        db.prepare("SELECT r2_key FROM kv WHERE key IN (SELECT value FROM json_each(?1)) AND r2_key IS NOT NULL").bind(keys),
-        ...g.flatMap((p) => upsertStatements(p, now)),
-      ]),
-    );
-    deleteObjectsLater(((results[0]?.results ?? []) as Array<{ r2_key: string }>).map((r) => r.r2_key));
+    await withRetry(() => db.batch([
+      retireObjectStatement(keys,now),
+      ...g.flatMap((p) => upsertStatements(p,now)),
+      ...publicationStatements(g.map(p=>p.key),"set",now),
+    ]));
   }
 }
 
@@ -198,9 +191,11 @@ export const mdel = async (keys: string[]): Promise<void> => {
   const now = Date.now();
   for (let i = 0; i < keys.length; i += KEY_CHUNK) {
     const chunk = JSON.stringify(keys.slice(i, i + KEY_CHUNK));
-    const results = await withRetry(() =>
+    await withRetry(() =>
       db.batch([
-        db.prepare("DELETE FROM kv WHERE key IN (SELECT value FROM json_each(?1)) RETURNING r2_key").bind(chunk),
+        retireObjectStatement(chunk,now),
+        ...publicationStatements(keys.slice(i,i+KEY_CHUNK),"del",now),
+        db.prepare("DELETE FROM kv WHERE key IN (SELECT value FROM json_each(?1))").bind(chunk),
         db
           .prepare(
             `INSERT INTO kv_tombstones (key, deleted_at) SELECT value, ?2 FROM json_each(?1) WHERE true
@@ -209,7 +204,6 @@ export const mdel = async (keys: string[]): Promise<void> => {
           .bind(chunk, now),
       ]),
     );
-    deleteObjectsLater(((results[0]?.results ?? []) as Array<{ r2_key: string | null }>).map((r) => r.r2_key));
   }
 };
 
