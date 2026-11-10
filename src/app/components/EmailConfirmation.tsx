@@ -46,7 +46,7 @@ export function EmailConfirmationCard({ church }: { church: Church }) {
         <div className="email-update-input-row"><div className="email-input-wrap"><Mail size={13} aria-hidden="true" /><input id={`email-input-${church.id}`} type="email" autoComplete="email" placeholder="Your email address" required maxLength={254} value={email} onChange={e => setEmail(e.target.value)} className="email-input" aria-describedby={`email-note-${church.id}`} disabled={busy} /></div>
           <button disabled={busy} className="email-button email-button-small">{busy ? <LoaderCircle size={13} className="email-spin" /> : <ArrowRight size={13} />}<span>{busy ? "Sending…" : "Notify me"}</span></button>
         </div>
-        <p id={`email-note-${church.id}`} className="email-update-note">One email when confirmed. No marketing or sharing your address. Request expires in 90 days.</p>
+        <p id={`email-note-${church.id}`} className="email-update-note">One email when confirmed. No marketing or sharing your address. Request expires in 14 days.</p>
         {error && <p role="alert" className="email-error">{error}</p>}
       </form>}
     </>}
@@ -112,12 +112,12 @@ export function EmailConfirmationPage() {
         <p className="email-review-note">Service times are published when you confirm. Location changes go to review.</p>
         <button disabled={busy} className="email-button email-page-primary">{busy ? <LoaderCircle size={14} className="email-spin" /> : <Check size={14} />}{busy ? "Saving…" : "Confirm details"}</button>
       </form> : <>
-        {!stop && <div className="email-page-details"><p><Bell size={14} />One update when service times are confirmed</p><p><ShieldCheck size={14} />Your email stays private. No marketing.</p></div>}
-        <button disabled={busy} className="email-button email-page-primary" onClick={() => act(stop ? "stop" : "subscribe")}>{busy ? <LoaderCircle size={14} className="email-spin" /> : stop ? <Bell size={14} /> : <Check size={14} />}{busy ? "Working…" : stop ? "Stop requests" : "Confirm my request"}</button>
+        {!stop && <div className="email-page-details"><p><Bell size={14} />One update when service times are confirmed</p><p><ShieldCheck size={14} />Your email stays private. No marketing.</p><p><Clock3 size={14} />Request expires after 14 days</p></div>}
+        <div className="email-page-actions"><button disabled={busy} className="email-button email-page-primary" onClick={() => act(stop ? "stop" : "subscribe")}>{busy ? <LoaderCircle size={14} className="email-spin" /> : stop ? <Bell size={14} /> : <Check size={14} />}{busy ? "Working…" : stop ? "Stop requests" : "Confirm my request"}</button>{!stop && <button disabled={busy} className="email-cancel" aria-label="Cancel request and delete my email" title="Cancel request and delete my email" onClick={() => act("cancel")}>Cancel request</button>}</div>
       </>)}
       {error && <p role="alert" className="email-error email-page-error">{error}</p>}
-      {outcome && <a href="/world" className="email-button email-page-primary">Back to the map<ArrowRight size={14} /></a>}
-      {!incomplete && !staff && !stop && (!outcome || outcome === "subscribe") && <div className="email-page-footer"><p><Clock3 size={12} />Expires after 90 days</p><button disabled={busy} className="email-cancel" aria-label="Cancel request and delete my email" onClick={() => act("cancel")}>Cancel &amp; delete email</button></div>}
+      {outcome && <div className="email-page-actions"><a href="/world" className="email-button email-page-primary">Back to the map<ArrowRight size={14} /></a>{outcome === "subscribe" && <button disabled={busy} className="email-cancel" aria-label="Cancel request and delete my email" title="Cancel request and delete my email" onClick={() => act("cancel")}>Cancel request</button>}</div>}
+
     </section>
     <a className="email-back" href="/world"><ArrowLeft size={13} />Explore the map</a>
   </div></main>;

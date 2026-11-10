@@ -41,6 +41,7 @@ describe("church email confirmation", () => {
     const visitor = credentials(sent[0], "subscribe");
     expect((await call("action", { ...visitor, action: "preview" })).status).toBe(403);
     expect((await call("action", { ...visitor, action: "subscribe" })).status).toBe(200);
+    expect((await kv.get(visitor.key)).expires - (await kv.get(visitor.key)).confirmed).toBe(14 * 86400000);
     await dispatchConfirmationEmails();
     expect(sent).toHaveLength(2);
     expect(sent[1].to).toEqual(["office@example.org"]);
@@ -102,6 +103,19 @@ describe("church email confirmation", () => {
     const before = sent.length;
     await Promise.all([dispatchConfirmationEmails(), dispatchConfirmationEmails()]);
     expect(sent.slice(before).filter(message => message.to.includes("concurrent@example.org"))).toHaveLength(1);
+  });
+
+  it("expires older visitor requests at 14 days even with a legacy expiry", async () => {
+    await call("request", { churchId: "TX-123", email: "legacy@example.org" });
+    await dispatchConfirmationEmails();
+    const creds = credentials(sent.find(message => message.to.includes("legacy@example.org")), "subscribe");
+    const row = await kv.get(creds.key);
+    row.confirmed = Date.now() - 15 * 86400000;
+    row.expires = Date.now() + 75 * 86400000;
+    await kv.set(creds.key, row);
+    expect((await call("action", { ...creds, action: "subscribe" })).status).toBe(410);
+    await dispatchConfirmationEmails();
+    expect(await kv.get(creds.key)).toBeUndefined();
   });
 
 });

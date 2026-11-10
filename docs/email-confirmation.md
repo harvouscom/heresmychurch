@@ -17,12 +17,12 @@ Provider contract: https://developers.cloudflare.com/email-service/api/send-emai
 ## Behavior
 
 - The listing card requests an email address. An initial email asks the visitor to explicitly confirm; simply opening a link cannot opt in or mutate a listing.
-- A confirmed visitor queues outreach to the church's current listed email, never an address supplied in the visitor request. No contact means the visitor remains waiting for up to 90 days.
+- A confirmed visitor queues outreach to the church's current listed email, never an address supplied in the visitor request. No contact means the visitor remains waiting for up to 14 days.
 - Outreach is grouped by church into 30-day calendar buckets. Repeated requests share the review link for that bucket. A church can permanently stop outreach with the stop link. Bucket boundaries may put two requests less than 30 days apart.
 - Staff can publish normalized service times through a scoped link. Address corrections use the existing moderated suggestion queue. Service-time confirmation preserves any relocation warning. Church confirmation never approves closures or other unrelated fields.
 - An unchanged location can be confirmed separately. A changed location is not marked confirmed by the service-time submission; it remains under the existing moderation process.
 - Confirmation records store the exact service-time and location values. Public status suppresses confirmation when the current listing differs. Proof contains no email address or access token.
-- Visitors receive one email after a subsequent matching service-time confirmation. Requests can be cancelled using the original confirmation link. Visitor addresses are deleted after delivery, cancellation, or expiry; unconfirmed requests expire after 48 hours, confirmed requests after 90 days, staff review links after 30 days. Expired rows are removed on dispatch.
+- Visitors receive one email after a subsequent matching service-time confirmation. Requests can be cancelled using the original confirmation link. Visitor addresses are deleted after delivery, cancellation, or expiry; unconfirmed requests expire after 48 hours, confirmed requests after 14 days, staff review links after 30 days. Expired rows are removed on dispatch.
 - Delivery is attempted by the minute schedule with a 25-message budget per invocation. Failures remain queued for retry, under a D1 dispatch lease that prevents overlapping scheduled invocations. Private tokens live in URL fragments and POST bodies rather than query strings. Don't add body logging to these endpoints.
 
 ## Verification

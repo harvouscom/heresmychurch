@@ -7,6 +7,10 @@ import { getChurches, regionFromChurchId } from "./church-keys.ts";
 const DAY = 86400000;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PREFIX = "email-confirmation:";
+// Also shorten previously issued visitor requests to the current retention limit.
+function expiresAt(row: any): number {
+  return row.kind === "visitor" && row.confirmed ? Math.min(row.expires, row.confirmed + 14 * DAY) : row.expires;
+}
 const site = () => (env("EMAIL_SITE_URL") || "https://heresmychurch.com").replace(/\/$/, "");
 export type ConfirmationEmailBinding = {
   send(message: { from: string; to: string; subject: string; text: string }): Promise<{ messageId: string }>;
@@ -59,7 +63,7 @@ async function dispatchPendingConfirmationEmails(started: number) {
   const rows = await kv.getByPrefix(PREFIX);
   let sends = 0;
   for (const row of rows) {
-    if (row.expires < Date.now()) { await kv.del(row.key); continue; }
+    if (expiresAt(row) < Date.now()) { await kv.del(row.key); continue; }
     if (sends >= 25 || Date.now() - started > 45000) break;
     try {
       const church = await churchById(row.churchId);
@@ -111,7 +115,7 @@ export function registerEmailConfirmationRoutes(app: Hono, prefix: string, deps:
     if (!EMAIL.test(email) || email.length > 254 || typeof body.churchId !== "string") return c.json({ error: "Enter a valid email address." }, 400);
     const church = await churchById(body.churchId);
     if (!church) return c.json({ error: "Church not found." }, 404);
-    const key = `${PREFIX}visitor:${await emailDigest(`${church.id}:${email}:${Math.floor(Date.now() / (90 * DAY))}`)}`;
+    const key = `${PREFIX}visitor:${await emailDigest(`${church.id}:${email}:${Math.floor(Date.now() / (14 * DAY))}`)}`;
     const existing = await kv.get(key);
     if (!existing || existing.expires < Date.now()) await kv.set(key, { key, kind: "visitor", churchId: church.id, email, expires: Date.now() + 2 * DAY });
     return c.json({ success: true });
@@ -125,17 +129,17 @@ export function registerEmailConfirmationRoutes(app: Hono, prefix: string, deps:
     const { key, token, action } = body;
     if (typeof key !== "string" || !key.startsWith(PREFIX) || key.length > 180 || typeof token !== "string" || token !== await signature(key)) return c.json({ error: "Invalid link." }, 403);
     const row = await kv.get(key);
-    if (!row || row.expires < Date.now()) return c.json({ error: "This link has expired." }, 410);
+    if (!row || expiresAt(row) < Date.now()) return c.json({ error: "This link has expired." }, 410);
     const church = await churchById(row.churchId);
     if (!church) return c.json({ error: "Church not found." }, 404);
     if (action === "cancel") { await kv.del(key); return c.json({ success: true }); }
     if (row.kind === "visitor" && action === "subscribe") {
-      if (!row.confirmed) { row.confirmed = Date.now(); row.expires = Date.now() + 90 * DAY; await kv.set(key, row); }
+      if (!row.confirmed) { row.confirmed = Date.now(); row.expires = Date.now() + 14 * DAY; await kv.set(key, row); }
       if (EMAIL.test(church.email || "") && !await kv.get(`email-stop:${church.id}`)) {
         const staffKey = `${PREFIX}staff:${await emailDigest(`${church.id}:${church.email.trim().toLowerCase()}:${Math.floor(Date.now() / (30 * DAY))}`)}`;
         if (!await kv.get(staffKey)) await kv.set(staffKey, { key: staffKey, kind: "staff", churchId: church.id, email: church.email.trim().toLowerCase(), expires: Date.now() + 30 * DAY });
       }
-      return c.json({ success: true, message: "We'll email you when service times are confirmed. You can cancel using this link. Requests expire after 90 days." });
+      return c.json({ success: true, message: "We'll email you when service times are confirmed. You can cancel using this link. Requests expire after 14 days." });
     }
     if (row.kind !== "staff" || church.email?.trim().toLowerCase() !== row.email) return c.json({ error: "This link is no longer valid." }, 403);
     if (action === "stop") { await kv.set(`email-stop:${church.id}`, { stoppedAt: Date.now() }); return c.json({ success: true, message: "Church confirmation requests stopped." }); }

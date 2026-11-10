@@ -198,7 +198,7 @@ export function PrivacyPolicyPage() {
                 or filter results; refer to your browser or OS settings to revoke access at any time.
               </li>
               <li>
-                <span className="font-medium text-stone-800">Church update requests.</span> If you request a service-time update, we store your email privately to confirm the request and send one notification. We never share your email with the church or subscribe you to marketing. Unconfirmed requests expire after 48 hours; confirmed requests expire after 90 days. We delete your address after notification, cancellation, or expiry. You can cancel using the link in your confirmation email.
+                <span className="font-medium text-stone-800">Church update requests.</span> If you request a service-time update, we store your email privately to confirm the request and send one notification. We never share your email with the church or subscribe you to marketing. Unconfirmed requests expire after 48 hours; confirmed requests expire after 14 days. We delete your address after notification, cancellation, or expiry. You can cancel using the link in your confirmation email.
               </li>
               <li>
                 <span className="font-medium text-stone-800">Communications.</span> If you email us (for example at{" "}
