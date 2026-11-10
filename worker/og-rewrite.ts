@@ -302,7 +302,7 @@ export async function rewriteForBots(
   let meta: OgMeta = {
     title: "Here's My Church",
     description: DEFAULT_DESCRIPTION,
-    image: `${SITE_URL}/og-image.png`,
+    image: `${SITE_URL}/og-image.png?v=20261110-about`,
     url: SITE_URL,
   };
 
