@@ -34,7 +34,8 @@ export const router = createBrowserRouter([
     Component: RootLayout,
     ErrorBoundary: RouteError,
     children: [
-      { path: "/church-portal", lazy: async () => ({ Component: (await import("./components/ChurchPortal")).ChurchPortalPage }) },
+      { path: "/for-churches", lazy: async () => ({ Component: (await import("./components/ChurchPortal")).ChurchPortalPage }) },
+      { path: "/church-portal", lazy: async () => ({ Component: (await import("./components/ChurchPortal")).LegacyChurchPortalRedirect }) },
       { path: "/data-health/attendance-review", lazy: async () => ({ Component: (await import("./components/PrivateAttendance")).AttendanceReviewPage }) },
       { path: "/data-health", lazy: async () => ({ Component: (await import("./components/DataHealth")).DataHealthPage }) },
       { path: "/email-confirmation", lazy: async () => ({ Component: (await import("./components/EmailConfirmation")).EmailConfirmationPage }) },

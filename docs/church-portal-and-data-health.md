@@ -2,9 +2,9 @@
 
 ## Routes
 
-- `/church-portal`: introduction, listing preview, inbox sign-in, explicit claim, and edit form.
-- `/church-portal?church=ID&name=NAME`: request access from a listing. Name is presentation only; the server resolves the ID and recipient independently.
-- `/church-portal#token=TOKEN`: private 24-hour editing grant. The token is removed from the address bar on initial load and held only in page memory. Reopen the inbox link to return after a refresh.
+- `/for-churches`: introduction, listing preview, inbox sign-in, explicit claim, and edit form.
+- `/for-churches?church=ID&name=NAME`: request access from a listing. Name is presentation only; the server resolves the ID and recipient independently.
+- `/for-churches#token=TOKEN`: private 24-hour editing grant. The token is removed from the address bar on initial load and held only in page memory. Reopen the inbox link to return after a refresh.
 - `/data-health?region=TX`: public regional dashboard. Regions across supported countries are selectable. Search, missing details, open suggestion fields, duplicate candidates, and incremental rows are available.
 
 The map listing includes “Manage this listing” and an inbox-based “Church claimed” badge. The summary panel links to Data health. Ownership and the existing completeness-based Verified label remain distinct.
@@ -61,3 +61,5 @@ Both pages omit decorative eyebrow text. Selects use an inset custom chevron rat
 ## Region-focused data health header
 
 The data-health page uses its own contained globe in the header, centered on the selected region’s configured bounds, with state/country flags and a wrapping location label. It does not use the portal’s full-page globe backdrop. The globe remains pointed at the selected region; changing the region updates the title, flag, globe, and data together. Completeness now lives in a four-column statistics row (two columns on small screens), with methodology in an expandable note. The header and table switch to single-column/mobile rows at 600px; controls and long labels can shrink and wrap without extending the page horizontally.
+
+The public church-facing route is `/for-churches`. Older `/church-portal` links redirect while preserving their query and private token fragment; the internal API prefix remains `church-portal`.

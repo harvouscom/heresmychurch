@@ -1,6 +1,6 @@
 # Future: Church claim portal and data quality dashboard
 
-Originally captured as future ideas. The initial implementation is now available locally at `/church-portal` and `/data-health`; see [implementation and operating notes](../church-portal-and-data-health.md). Production deployment and a controlled-inbox delivery rehearsal remain separate rollout steps.
+Originally captured as future ideas. The initial implementation is now available locally at `/for-churches` and `/data-health`; see [implementation and operating notes](../church-portal-and-data-health.md). Production deployment and a controlled-inbox delivery rehearsal remain separate rollout steps.
 
 ## Church claim & keep-accurate portal
 
