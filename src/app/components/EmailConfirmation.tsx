@@ -94,13 +94,12 @@ export function EmailConfirmationPage() {
       else { setMessage(result.message || "Your request has been cancelled and your email deleted."); setOutcome(action as "subscribe" | "save" | "stop" | "cancel"); }
     } catch (err) { setError(err instanceof Error ? err.message : "Please try again."); } finally { setBusy(false); }
   }
-  const title = incomplete ? "A little link trouble" : outcome === "subscribe" ? "You’re on the list" : outcome === "cancel" ? "Request cancelled" : outcome === "save" ? "Thanks for the update" : outcome === "stop" ? "Requests stopped" : staff ? "Help people plan a visit" : stop ? "Stop confirmation requests?" : "One step closer to Sunday";
-  const description = incomplete ? "Open the full link from your email to continue." : outcome ? message : staff ? "Review your church’s service times and location so visitors can arrive with confidence." : stop ? "We’ll stop sending requests to confirm this church’s details." : "Confirm your request and we’ll email you when this church’s service times are confirmed.";
+  const title = incomplete ? "A little link trouble" : outcome === "subscribe" ? "Request confirmed" : outcome === "cancel" ? "Request cancelled" : outcome === "save" ? "Thanks for the update" : outcome === "stop" ? "Requests stopped" : staff ? "Help people plan a visit" : stop ? "Stop confirmation requests?" : "Confirm your email request";
+  const description = incomplete ? "Open the full link from your email to continue." : outcome ? message : staff ? "Review your church’s service times and location so visitors can arrive with confidence." : stop ? "We’ll stop sending requests to confirm this church’s details." : "We’ll send you one email when this church’s service times are confirmed.";
   return <main className="email-page"><EmailPageBackdrop /><div className="email-page-shell">
     <a href="/world" className="email-wordmark"><img src={appIcon} alt="" width={30} height={30} />Here’s My Church</a>
     <section className="email-page-card" aria-labelledby="email-page-title">
-      <div className={`email-page-symbol${outcome ? " is-success" : ""}`}>{outcome ? <CheckCheck size={22} /> : staff ? <ChurchIcon size={22} /> : <Mail size={22} />}</div>
-      <p className="email-eyebrow">{staff ? "Church details" : "Email updates"}</p>
+      <div className="email-card-heading"><span className={`email-page-symbol${outcome ? " is-success" : ""}`}>{outcome ? <CheckCheck size={15} /> : staff ? <ChurchIcon size={15} /> : <Mail size={15} />}</span><p className="email-eyebrow">{staff ? "Church details" : "Service-time updates"}</p></div>
       <h1 id="email-page-title">{title}</h1>
       <p className="email-page-description" role={outcome ? "status" : undefined}>{description}</p>
       {!incomplete && !outcome && (staff ? !church ? <button disabled={busy} onClick={() => act("preview")} className="email-button email-page-primary">{busy ? <LoaderCircle size={14} className="email-spin" /> : <ArrowRight size={14} />}Review church details</button> : <form className="email-review-form" onSubmit={e => { e.preventDefault(); act("save", { serviceTimes: times, locationCorrect: correct, address, original: church }); }}>
