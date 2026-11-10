@@ -9,13 +9,13 @@ import {
 } from "./church-data";
 import {
   Church as ChurchIcon,
+  Info,
   Users,
   Globe,
   Navigation,
   ExternalLink,
   Copy,
   Check,
-  BookOpen,
   Search,
   Pencil,
   Clock,
@@ -49,7 +49,7 @@ import { getCountry } from "../config/countries";
 import { lazyComponent } from "./ui/lazy-component";
 import { toast } from "sonner";
 import { friendlyError } from "../lib/friendly-error";
-import { useScrollEdges } from "./ui/hmc-dialog";
+import { HmcDialog, HmcDialogBody, HmcDialogTitle, useScrollEdges } from "./ui/hmc-dialog";
 
 const SuggestEditForm = lazyComponent(() => import("./SuggestEditForm").then((m) => m.SuggestEditForm));
 /** Church or minimal summary for cross-state main campus link; both have state and shortId for navigation. */
@@ -186,8 +186,8 @@ function ServiceTimesCard({
     <div className="rounded-xl p-3 bg-white/5 border border-white/5">
       <div className="flex items-center gap-2 mb-2">
         <Clock size={16} className="text-purple-400" />
-        <span className="text-xs uppercase tracking-wider text-white/60 font-semibold">
-          Service Times
+        <span className="text-xs text-white/60 font-medium">
+          Service times
           {tz && (
             <span className="ml-1 normal-case tracking-normal text-white/55">({tz})</span>
           )}
@@ -199,19 +199,19 @@ function ServiceTimesCard({
         )}
       </div>
       {grouped.length > 0 ? (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {grouped.map((group) => (
-            <div key={group.day} className="flex items-baseline gap-3">
+            <div key={group.day} className="flex items-baseline gap-2">
               <span className="text-white/50 text-sm font-semibold flex-shrink-0">
                 {group.dayFull.includes("–") || group.dayFull.length <= 3
                   ? group.dayFull
                   : group.dayFull.slice(0, 3)}
               </span>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 {group.services.map((svc, i) => (
                   <span
                     key={i}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-500/10 text-white/80 border border-purple-500/10 tabular-nums"
+                    className="px-2 py-1 rounded-md text-xs font-medium bg-purple-500/10 text-white/80 border border-purple-500/10 tabular-nums"
                   >
                     <TimeWithBlinkingColon time={svc.time} />
                     {svc.label && (
@@ -290,6 +290,13 @@ export function ChurchDetailPanel({
 }: ChurchDetailPanelProps) {
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
+  const [showTraditionInfo, setShowTraditionInfo] = useState(false);
+  const traditionInfoButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { setShowTraditionInfo(false); }, [church.id]);
+  const closeTraditionInfo = () => {
+    setShowTraditionInfo(false);
+    requestAnimationFrame(() => traditionInfoButtonRef.current?.focus());
+  };
   useEffect(() => {
     onEditFormOpenChange?.(showEditForm);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -495,19 +502,34 @@ export function ChurchDetailPanel({
 
   return (
     <div
-      className="h-full flex flex-col overflow-hidden rounded-panel bg-hmc-surface shadow-hmc-panel"
+      className="church-profile h-full flex flex-col overflow-hidden rounded-panel bg-hmc-surface shadow-hmc-panel"
     >
+      {showTraditionInfo && DENOMINATION_FACTS[denomGroup] && (
+        <HmcDialog onClose={closeTraditionInfo} elevated className="max-w-sm">
+          <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-3">
+            <HmcDialogTitle className="text-lg font-medium text-white">
+              {church.denomination}
+            </HmcDialogTitle>
+            <CloseButton onClick={closeTraditionInfo} size="md" />
+          </div>
+          <HmcDialogBody className="px-5 pb-6">
+            <p className="text-sm leading-relaxed text-hmc-text-muted">
+              {DENOMINATION_FACTS[denomGroup]}
+            </p>
+          </HmcDialogBody>
+        </HmcDialog>
+      )}
       {/* Header */}
-      <div className="flex-shrink-0 px-5 pt-5 pb-4 border-b border-white/10">
+      <div className="church-profile-hero flex-shrink-0 px-5 pt-6 pb-5 border-b border-white/10">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <h2 className="text-white font-semibold text-xl leading-tight line-clamp-2 text-pretty">
+            <h2 className="text-white font-semibold text-2xl leading-tight line-clamp-2 text-pretty">
               {church.name}
             </h2>
             {(church.homeCampusId || otherCampuses.length > 0 || fullAddress) && (
               <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 {church.homeCampusId && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-caption font-semibold uppercase tracking-wider bg-purple-500/25 text-purple-300 border border-purple-500/30">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-purple-500/25 text-purple-300 border border-purple-500/30">
                     Campus
                   </span>
                 )}
@@ -515,9 +537,9 @@ export function ChurchDetailPanel({
                   <button
                     type="button"
                     onClick={() => document.getElementById("other-campuses")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                    className="inline-flex items-center px-2 py-0.5 rounded-md text-caption font-semibold uppercase tracking-wider bg-purple-500/25 text-purple-300 border border-purple-500/30 hover:bg-purple-500/35 transition-colors cursor-pointer"
+                    className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-purple-500/25 text-purple-300 border border-purple-500/30 hover:bg-purple-500/35 transition-colors cursor-pointer"
                   >
-                    Multiple Campuses
+                    Multiple campuses
                   </button>
                 )}
                 {fullAddress && (
@@ -597,103 +619,11 @@ export function ChurchDetailPanel({
       </div>
 
       {/* Scrollable content */}
-      <div ref={scrollContainerRef} className="hmc-scroll-edges flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-4 space-y-4">
-        {/* Reaction bar (Netflix-style thumbs) — above service times */}
-        {!reactionsLoading && (
-          <div className="flex flex-col gap-2">
-            <span className="text-caption uppercase tracking-wider text-white/60 font-semibold">
-              How do you feel about this church?
-            </span>
-            <div className="flex gap-2">
-              {(
-                [
-                  {
-                    reaction: "not_for_me" as ReactionType,
-                    label: "Not for me",
-                    Icon: ThumbsDown,
-                    animate: { x: [0, -4, 4, -3, 3, 0] },
-                    transition: { duration: 0.4 },
-                  },
-                  {
-                    reaction: "like" as ReactionType,
-                    label: "I like it",
-                    Icon: ThumbsUp,
-                    animate: { scale: [1, 1.3, 0.95, 1.05, 1] },
-                    transition: { duration: 0.4 },
-                  },
-                  {
-                    reaction: "love" as ReactionType,
-                    label: "I love it",
-                    Icon: Heart,
-                    animate: { scale: [1, 1.4, 1], rotate: [0, -10, 10, -5, 0] },
-                    transition: { duration: 0.5 },
-                  },
-                ] as const
-              ).map(({ reaction, label, Icon, animate, transition }) => {
-                const isSelected = myReaction === reaction;
-                const restState = reaction === "love" ? { scale: 1, rotate: 0 } : reaction === "like" ? { scale: 1 } : { x: 0 };
-                return (
-                  <motion.button
-                    key={reaction}
-                    type="button"
-                    onClick={() => handleReaction(reaction)}
-                    disabled={isReacting}
-                    className={`group flex-1 flex flex-col items-center gap-2 px-3 py-2.5 rounded-xl border transition-colors min-w-0 ${
-                      isSelected
-                        ? "bg-purple-600 border-purple-600 text-white"
-                        : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white/80"
-                    }`}
-                  >
-                    <motion.span
-                      key={reactionAnimKeys[reaction]}
-                      initial={false}
-                      animate={reactionAnimKeys[reaction] > 0 ? animate : restState}
-                      transition={transition}
-                      className={`inline-flex items-center justify-center transition-all duration-200 ${
-                        isSelected
-                          ? "fill-white stroke-white"
-                          : "fill-white stroke-white group-hover:fill-purple-400 group-hover:stroke-purple-400 group-hover:scale-110 group-hover:rotate-6"
-                      }`}
-                    >
-                      <Icon size={20} strokeWidth={1.5} className="fill-inherit stroke-inherit" />
-                    </motion.span>
-                    <span className="text-[13px] sm:text-sm font-medium truncate w-full text-center">
-                      {label}
-                    </span>
-                  </motion.button>
-                );
-              })}
-            </div>
-            {/* Overall summary from reactions */}
-            {(() => {
-              const total = counts.not_for_me + counts.like + counts.love;
-              const dominant =
-                counts.love >= counts.like && counts.love >= counts.not_for_me
-                  ? "love"
-                  : counts.like >= counts.not_for_me
-                    ? "like"
-                    : "not_for_me";
-              const message =
-                total === 0
-                  ? "No reactions yet"
-                  : dominant === "love"
-                    ? "Overall people love this church."
-                    : dominant === "like"
-                      ? "Overall people like this church."
-                      : "Reactions are mixed.";
-              return (
-                <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/10">
-                  <p className="text-white/70 text-sm font-medium text-center">{message}</p>
-                </div>
-              );
-            })()}
-            {reactionError && (
-              <p className="text-red-400/80 text-xs">Failed to save — check your connection and try again.</p>
-            )}
-          </div>
-        )}
-
-        {/* Primary: Service Times first */}
+      <div ref={scrollContainerRef} className="hmc-scroll-edges flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-3 space-y-3">
+        <div>
+          <h3 className="text-sm font-medium text-white">Plan your visit</h3>
+        </div>
+        {/* Primary: Service times first */}
         {church.serviceTimes && (
           <ServiceTimesCard serviceTimes={church.serviceTimes} lat={church.lat} lng={church.lng} />
         )}
@@ -702,24 +632,36 @@ export function ChurchDetailPanel({
 
         {/* Primary: Core stats — 2-col grid for attendance + denomination */}
         <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/5">
+          <div className="rounded-lg px-3 py-2 bg-white/5 border border-white/5">
             <div className="flex items-center gap-1.5 mb-1">
               <Users size={13} className="text-purple-400 flex-shrink-0" />
-              <span className="text-caption uppercase tracking-wider text-white/60 font-semibold">Attendance*</span>
+              <span className="text-xs text-white/60 font-medium">Attendance*</span>
             </div>
-            <div className="text-white text-base font-semibold">~{church.attendance.toLocaleString()}</div>
+            <div className="text-white text-sm font-semibold">~{church.attendance.toLocaleString()}</div>
             <div className="flex items-center gap-1.5 mt-0.5">
               <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: sizeCat.color }} />
               <span className="text-white/50 text-xs">{sizeCat.label}</span>
             </div>
-            <div className="text-white/60 text-caption mt-1">* Estimated weekly number</div>
+            <div className="text-white/60 text-caption mt-1">* Estimated weekly</div>
           </div>
-          <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/5">
+          <div className="rounded-lg px-3 py-2 bg-white/5 border border-white/5">
             <div className="flex items-center gap-1.5 mb-1">
               <ChurchIcon size={13} className="text-purple-400 flex-shrink-0" />
-              <span className="text-caption uppercase tracking-wider text-white/60 font-semibold">Denomination</span>
+              <span className="text-xs text-white/60 font-medium">Denomination</span>
+              {DENOMINATION_FACTS[denomGroup] && (
+                <button
+                  ref={traditionInfoButtonRef}
+                  type="button"
+                  aria-label={`About the ${church.denomination} tradition`}
+                  aria-haspopup="dialog"
+                  onClick={() => setShowTraditionInfo(true)}
+                  className="ml-auto -my-1 -mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white/50 hover:text-purple-200 hover:bg-white/10 transition-colors focus-visible:outline-2 focus-visible:outline-purple-400"
+                >
+                  <Info size={14} />
+                </button>
+              )}
             </div>
-            <div className="text-white text-base font-medium">{church.denomination === "Other" || church.denomination === "Unknown" ? "Unspecified" : church.denomination}</div>
+            <div className="text-white text-sm font-medium">{church.denomination === "Other" || church.denomination === "Unknown" ? "Unspecified" : church.denomination}</div>
             <div className="text-white/60 text-xs mt-0.5">{sameDenomCount.toLocaleString()} similar in state</div>
           </div>
         </div>
@@ -727,12 +669,12 @@ export function ChurchDetailPanel({
         {/* Languages — single language: simple line with icon; multiple: badges */}
         {church.languages && church.languages.length > 0 && (
           church.languages.length === 1 ? (
-            <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/10 flex items-center gap-2">
+            <div className="rounded-lg px-3 py-2 bg-white/5 border border-white/10 flex items-center gap-2">
               <Languages size={14} className="text-purple-400 flex-shrink-0" />
               <span className="text-sm text-white/90">{church.languages[0]}</span>
             </div>
           ) : (
-            <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/10 flex items-center gap-2">
+            <div className="rounded-lg px-3 py-2 bg-white/5 border border-white/10 flex items-center gap-2">
               <Languages size={14} className="text-purple-400 flex-shrink-0" />
               <div className="flex flex-wrap gap-1.5 min-w-0 flex-1">
                 {church.languages.map((lang) => (
@@ -756,10 +698,10 @@ export function ChurchDetailPanel({
 
         {/* Secondary: Ministries (compact) */}
         {church.ministries && church.ministries.length > 0 && (
-          <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/5">
+          <div className="rounded-lg px-3 py-2 bg-white/5 border border-white/5">
             <div className="flex items-center gap-2 mb-1.5">
               <Heart size={14} className="text-purple-400 flex-shrink-0" />
-              <span className="text-xs uppercase tracking-wider text-white/60 font-semibold">Ministries</span>
+              <span className="text-xs text-white/60 font-medium">Ministries</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {church.ministries.map((m) => (
@@ -773,10 +715,10 @@ export function ChurchDetailPanel({
 
         {/* Secondary: Contact (compact) */}
         {(church.pastorName || church.phone || church.email) && (
-          <div className="rounded-lg px-3 py-2.5 bg-white/5 border border-white/5">
+          <div className="rounded-lg px-3 py-2 bg-white/5 border border-white/5">
             <div className="flex items-center gap-2 mb-1.5">
               <User size={14} className="text-purple-400 flex-shrink-0" />
-              <span className="text-xs uppercase tracking-wider text-white/60 font-semibold">Contact</span>
+              <span className="text-xs text-white/60 font-medium">Contact</span>
             </div>
             <div className="space-y-1">
               {church.pastorName && (
@@ -814,80 +756,144 @@ export function ChurchDetailPanel({
           );
         })()}
 
-        {/* Action buttons */}
-        <div className="flex flex-col gap-2">
+        <div className="pt-6 border-t border-white/10">
+          <h3 className="text-sm font-medium text-white mb-3">Your experience</h3>
+        {/* Reactions are secondary to visiting information. */}
+        {!reactionsLoading && (
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-1 rounded-xl border border-white/10 p-1" role="group" aria-label="Your reaction to this church">
+              {(
+                [
+                  {
+                    reaction: "not_for_me" as ReactionType,
+                    label: "Not for me",
+                    Icon: ThumbsDown,
+                    animate: { x: [0, -4, 4, -3, 3, 0] },
+                    transition: { duration: 0.4 },
+                  },
+                  {
+                    reaction: "like" as ReactionType,
+                    label: "I like it",
+                    Icon: ThumbsUp,
+                    animate: { scale: [1, 1.3, 0.95, 1.05, 1] },
+                    transition: { duration: 0.4 },
+                  },
+                  {
+                    reaction: "love" as ReactionType,
+                    label: "I love it",
+                    Icon: Heart,
+                    animate: { scale: [1, 1.4, 1], rotate: [0, -10, 10, -5, 0] },
+                    transition: { duration: 0.5 },
+                  },
+                ] as const
+              ).map(({ reaction, label, Icon, animate, transition }) => {
+                const isSelected = myReaction === reaction;
+                const restState = reaction === "love" ? { scale: 1, rotate: 0 } : reaction === "like" ? { scale: 1 } : { x: 0 };
+                return (
+                  <motion.button
+                    key={reaction}
+                    type="button"
+                    onClick={() => handleReaction(reaction)}
+                    disabled={isReacting}
+                    aria-pressed={isSelected}
+                    aria-label={`${label}, ${counts[reaction]} reactions`}
+                    className={`group flex-1 flex items-center justify-center gap-1.5 px-1.5 py-2 rounded-lg transition-colors min-w-0 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-400 ${
+                      isSelected
+                        ? "bg-purple-500/25 text-purple-100"
+                        : "text-white/60 hover:bg-white/5 hover:text-white"
+                    }`}
+                  >
+                    <motion.span
+                      key={reactionAnimKeys[reaction]}
+                      initial={false}
+                      animate={reactionAnimKeys[reaction] > 0 ? animate : restState}
+                      transition={transition}
+                      className="inline-flex shrink-0 items-center justify-center"
+                    >
+                      <Icon size={14} strokeWidth={1.75} />
+                    </motion.span>
+                    <span className="text-xs font-medium whitespace-nowrap">
+                      {label}
+                    </span>
+                    {counts[reaction] > 0 && <span className="text-xs tabular-nums opacity-70">{counts[reaction]}</span>}
+                  </motion.button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-white/50" role="status">
+              {myReaction
+                ? "Your reaction is saved. Tap it again to remove."
+                : counts.not_for_me + counts.like + counts.love === 0
+                  ? "Know this church? Be the first to react."
+                  : `${(counts.not_for_me + counts.like + counts.love).toLocaleString()} reactions from the community`}
+            </p>
+            {reactionError && (
+              <p className="text-red-400/80 text-xs">Failed to save — check your connection and try again.</p>
+            )}
+          </div>
+        )}
+
+        </div>
+
+        {/* Listing accuracy is distinct from personal experience. */}
+        <div className="flex flex-col gap-2 pt-5">
+          <h3 className="text-sm font-medium text-white mb-1">Keep the details up to date</h3>
+          <div className="grid grid-cols-2 gap-1 rounded-xl border border-white/10 p-1" role="group" aria-label="Update church details">
           {/* All info looks correct */}
           <button
+            aria-label={confirmed ? "Church details confirmed, thank you" : "All church info looks correct"}
             onClick={handleConfirmData}
             disabled={confirming || confirmed}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-green-500/10 hover:bg-green-500/20 border border-green-500/15 transition-colors group disabled:opacity-70"
+            className="min-w-0 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg hover:bg-white/5 transition-colors group disabled:opacity-70 focus-visible:outline-2 focus-visible:outline-purple-400"
           >
             {confirmed ? (
               <>
                 <Check size={15} className="text-green-400" />
-                <span className="text-green-400 text-sm font-medium">Data confirmed, thank you!</span>
+                <span className="text-green-400 text-xs font-medium">Confirmed, thanks!</span>
               </>
             ) : (
               <>
                 <ShieldCheck size={15} className="text-green-400 group-hover:text-green-300 transition-colors" />
-                <span className="text-green-300 text-sm font-medium group-hover:text-green-200 transition-colors">
-                  All info looks correct
+                <span className="text-white/80 text-xs font-medium group-hover:text-white transition-colors">
+                  Looks correct
                 </span>
               </>
             )}
           </button>
 
-          {/* Update Church Info */}
+          {/* Update church info */}
           <button
+            aria-label={missingFieldCount > 0 ? `Update church info, ${missingFieldCount} missing fields` : "Update church info"}
             onClick={() => { setEditFocusField(null); setShowEditForm(true); }}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/20 transition-colors group"
+            className="min-w-0 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg hover:bg-white/5 transition-colors group focus-visible:outline-2 focus-visible:outline-purple-400"
           >
             <Pencil size={15} className="text-purple-400 group-hover:text-purple-300 transition-colors" />
-            <span className="text-purple-300 text-sm font-medium group-hover:text-purple-200 transition-colors">
-              Update Church Info
+            <span className="text-white/80 text-xs font-medium group-hover:text-white transition-colors">
+              Update info
             </span>
             {missingFieldCount > 0 && (
-              <span className="text-caption px-1.5 py-0.5 rounded-full bg-pink-500/20 text-white font-medium">
-                {missingFieldCount} missing
+              <span className="text-caption px-1.5 py-0.5 rounded-full bg-white/8 text-white/60 font-medium">
+                {missingFieldCount}
               </span>
             )}
           </button>
+          </div>
         </div>
 
-        {/* Denomination fact */}
-        {DENOMINATION_FACTS[denomGroup] && (
-          <div className="rounded-xl p-4 bg-purple-900/30 border border-purple-500/15">
-            <div className="flex items-start gap-2.5">
-              <BookOpen
-                size={16}
-                className="text-purple-400 flex-shrink-0 mt-0.5"
-              />
-              <div>
-                <span className="text-xs uppercase tracking-wider text-purple-400/70 font-semibold block mb-1">
-                  Did you know?
-                </span>
-                <p className="text-white/60 text-sm leading-relaxed">
-                  {DENOMINATION_FACTS[denomGroup]}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Recent Changes */}
+        {/* Recent changes */}
         {correctionHistory.length > 0 && (
-          <div>
+          <div className="pt-5">
             <div className="flex items-center gap-2 mb-2">
               <Clock size={15} className="text-purple-400" />
-              <span className="text-xs uppercase tracking-wider text-white/60 font-semibold">
-                Recent Changes
+              <span className="text-xs text-white/60 font-medium">
+                Recent changes
               </span>
             </div>
             <div className="space-y-1.5">
               {correctionHistory.slice(0, 5).map((entry, i) => (
                 <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03]">
                   <Check size={12} className="text-green-400/60 flex-shrink-0" />
-                  <span className="text-white/50 text-xs font-medium capitalize">{entry.field === "serviceTimes" ? "Service Times" : entry.field === "pastorName" ? "Pastor" : entry.field === "homeCampusId" ? "Link to main campus" : entry.field}</span>
+                  <span className="text-white/50 text-xs font-medium capitalize">{entry.field === "serviceTimes" ? "Service times" : entry.field === "pastorName" ? "Pastor" : entry.field === "homeCampusId" ? "Link to main campus" : entry.field}</span>
                   <span className="text-white/55 text-xs ml-auto">{formatTimeAgo(entry.appliedAt)}</span>
                 </div>
               ))}
@@ -897,11 +903,11 @@ export function ChurchDetailPanel({
 
         {/* Other campuses */}
         {otherCampuses.length > 0 && (
-          <div id="other-campuses">
+          <div id="other-campuses" className="pt-5">
             <div className="flex items-center gap-2 mb-3">
               <Building2 size={15} className="text-purple-400" />
-              <span className="text-xs uppercase tracking-wider text-white/60 font-semibold">
-                Other Campuses
+              <span className="text-xs text-white/60 font-medium">
+                Other campuses
               </span>
             </div>
             <div className="space-y-1.5">
@@ -935,11 +941,11 @@ export function ChurchDetailPanel({
 
         {/* Main campus (when this church is a campus) */}
         {(mainCampusSameState || mainCampusCrossState) && (
-          <div>
+          <div className="pt-5">
             <div className="flex items-center gap-2 mb-3">
               <Home size={15} className="text-purple-400" />
-              <span className="text-xs uppercase tracking-wider text-white/60 font-semibold">
-                Main Campus
+              <span className="text-xs text-white/60 font-medium">
+                Main campus
               </span>
             </div>
             <div className="space-y-1.5">
@@ -984,11 +990,11 @@ export function ChurchDetailPanel({
 
         {/* Nearby churches */}
         {nearbyChurches.length > 0 && (
-          <div>
+          <div className="pt-6 border-t border-white/10">
             <div className="flex items-center gap-2 mb-3">
               <Navigation size={15} className="text-purple-400" />
-              <span className="text-xs uppercase tracking-wider text-white/60 font-semibold">
-                Nearby Churches
+              <span className="text-xs text-white/60 font-medium">
+                Nearby churches
               </span>
             </div>
             <div className="space-y-1.5">
@@ -1037,9 +1043,7 @@ export function ChurchDetailPanel({
         {/* Data source note */}
         <div className="pt-3 border-t border-white/5">
           <p className="text-white/55 text-xs leading-relaxed text-center">
-            Data sourced from OpenStreetMap. Attendance figures are estimates
-            based on building footprint area, denomination averages, capacity
-            data, and regional population scaling.
+            Source: OpenStreetMap · Attendance estimated
           </p>
           {church.lastVerified && (
             <p className="text-white/55 text-xs mt-1 text-center flex items-center justify-center gap-1">
@@ -1089,7 +1093,7 @@ function InlineModerationSection({
 
   return (
     <div className="rounded-xl p-4 bg-purple-500/10 border border-purple-500/20 space-y-3">
-      <p className="text-caption uppercase tracking-widest text-purple-400/80 font-semibold flex items-center gap-1.5">
+      <p className="text-caption text-purple-400/80 font-semibold flex items-center gap-1.5">
         <Shield size={11} className="text-purple-400" />
         Pending Changes
       </p>
@@ -1103,11 +1107,11 @@ function InlineModerationSection({
         const proposedIsUrl = isWebsite && /^https?:\/\//i.test(s.proposedValue);
         return (
           <div key={id} className="space-y-1">
-            <span className="text-purple-300 text-caption uppercase tracking-wider font-semibold">
+            <span className="text-purple-300 text-caption font-semibold">
               {MOD_FIELD_LABELS[s.field] || s.field}
             </span>
             {s.alreadyApplied && (
-              <p className="text-caption uppercase tracking-wider text-amber-400/90 font-medium">Already applied</p>
+              <p className="text-caption text-amber-400/90 font-medium">Already applied</p>
             )}
             {s.currentValue != null && s.currentValue !== "" && (
               <p className="text-white/50 text-xs">

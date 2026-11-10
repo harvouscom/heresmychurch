@@ -1,3 +1,13 @@
+# Public search and answer-engine retrieval is welcome.
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: Claude-SearchBot
+User-agent: Claude-User
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+Allow: /
+
+# Other crawlers retain the site's existing open-access policy.
 User-agent: *
 Allow: /
 

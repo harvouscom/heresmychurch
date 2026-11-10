@@ -177,7 +177,7 @@ export function StateTooltip({
   const title = info?.name || hoveredState;
   return (
     <div
-      className={`fixed z-[var(--z-tooltips)] rounded-menu px-4 py-3 bg-hmc-surface-glass backdrop-blur-md border border-hmc-border shadow-hmc-menu ${interactive ? "" : "pointer-events-none"}`}
+      className={`map-control-surface fixed z-[var(--z-tooltips)] rounded-2xl px-3.5 py-3 backdrop-blur-md border border-hmc-border shadow-hmc-pill ${interactive ? "" : "pointer-events-none"}`}
       style={{
         left: tooltipPos.x + 16,
         top: tooltipPos.y - 40,
@@ -195,7 +195,7 @@ export function StateTooltip({
         <PlaceFlag abbrev={hoveredState} countryCode={countryCode} size="sm" />
         {title}
       </div>
-      <div className="text-xs text-purple-300 mt-0.5">
+      <div className="text-xs text-white/60 mt-1">
         {info?.isPopulated
           ? `${info.churchCount.toLocaleString()} churches`
           : unpopulatedLabel}
@@ -262,11 +262,11 @@ export function CountyTooltip({
         />
       )}
       {data.name && (
-        <div className="text-sm font-semibold text-white">
+        <div className="text-sm font-medium text-white">
           {data.name}
         </div>
       )}
-      <div className={data.name ? "text-xs text-purple-300 mt-0.5" : "text-sm text-white"}>
+      <div className={data.name ? "text-xs text-white/60 mt-1" : "text-sm text-white"}>
         {data.churchCount.toLocaleString()} churches · 1 per {data.peoplePer.toLocaleString()} people
       </div>
       {pinned && onViewCounty && (
@@ -322,7 +322,7 @@ export function ChurchTooltip({
           className="absolute -right-4 -top-4 shadow-hmc-pill transition-colors bg-hmc-surface-glass backdrop-blur-md"
         />
       )}
-      <div className="text-sm font-semibold text-white">
+      <div className="text-sm font-medium text-white">
         {church.name}
       </div>
       {displayLocation && (

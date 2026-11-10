@@ -2,7 +2,7 @@
  * Cloudflare Worker for heresmychurch.com: serves the Vite build (dist/) as static
  * assets, plus the bits Netlify used to do at the edge:
  *   - www → apex and legacy /state/*, /country/* redirects
- *   - og-rewrite: per-page meta tags + crawlable HTML for social/search bots
+ *   - og-rewrite: initial church/map HTML for everyone; report previews for crawlers
  *   - geo-inject: visitor country / US state as <meta> tags for landing
  *
  * Hashed bundles (/assets/*) skip the Worker entirely (wrangler.jsonc run_worker_first).

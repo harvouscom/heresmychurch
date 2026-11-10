@@ -1,23 +1,12 @@
 import { churchMapPath } from "./map-paths";
 import { getChurchUrlSegment } from "../components/url-utils";
-import { resolveRegionByAbbrev } from "../config/countries";
+import { getCountry, getRegion, resolveRegionByAbbrev } from "../config/countries";
 
-const CHURCH_JSONLD_ID = "church-jsonld";
+import { churchTitle, churchDescription, churchSchema, PROFILE_SCHEMA_ID, type ChurchProfile, type ChurchPlace } from "../../../shared/church-profile";
+const CHURCH_JSONLD_ID = PROFILE_SCHEMA_ID;
 const SITE = "https://heresmychurch.com";
 
-export type ChurchSeoInput = {
-  id: string;
-  shortId?: string;
-  name: string;
-  city?: string;
-  state?: string;
-  country?: string;
-  address?: string;
-  website?: string;
-  denomination?: string;
-  lat: number;
-  lng: number;
-};
+export type ChurchSeoInput = ChurchProfile & { id: string; name: string; lat: number; lng: number };
 
 function resolveCountryCode(church: ChurchSeoInput, countryCode?: string): string {
   if (countryCode) return countryCode.toUpperCase();
@@ -34,52 +23,21 @@ export function churchCanonicalUrl(
   const region = (church.state || "").toUpperCase();
   if (!region) return null;
   const cc = resolveCountryCode(church, countryCode);
-  const seg = getChurchUrlSegment(church, region, cc);
+  const seg = getChurchUrlSegment({ id: church.id, shortId: church.shortId == null ? undefined : String(church.shortId) }, region, cc);
   return `${SITE}${churchMapPath(cc, region, seg)}`;
 }
 
-export function churchMetaDescription(church: ChurchSeoInput, countryCode?: string): string {
+function profilePlace(church: ChurchSeoInput, countryCode?: string): ChurchPlace {
   const cc = resolveCountryCode(church, countryCode);
   const region = (church.state || "").toUpperCase();
-  const resolved = resolveRegionByAbbrev(region);
-  const regionName = resolved?.region.name ?? region;
-  const place = [church.city, regionName, cc === "US" ? null : resolved?.country.name]
-    .filter(Boolean)
-    .join(", ");
-  const denom = (church.denomination || "").trim();
-  return [place, denom || null].filter(Boolean).join(" · ");
+  return { cc, region, regionName: getRegion(cc, region)?.name || region,
+    countryName: getCountry(cc)?.name || cc, url: churchCanonicalUrl(church, cc) || SITE };
 }
-
-/** Build schema.org Place/Church JSON-LD payload. */
-export function buildChurchJsonLd(
-  church: ChurchSeoInput,
-  countryCode?: string,
-): Record<string, unknown> | null {
-  const url = churchCanonicalUrl(church, countryCode);
-  if (!url) return null;
-  const cc = resolveCountryCode(church, countryCode);
-  const address: Record<string, unknown> = {
-    "@type": "PostalAddress",
-    addressCountry: cc,
-  };
-  if (church.address) address.streetAddress = church.address;
-  if (church.city) address.addressLocality = church.city;
-  if (church.state) address.addressRegion = church.state;
-
-  const payload: Record<string, unknown> = {
-    "@context": "https://schema.org",
-    "@type": ["Church", "Place"],
-    name: church.name,
-    address,
-    geo: {
-      "@type": "GeoCoordinates",
-      latitude: church.lat,
-      longitude: church.lng,
-    },
-    url,
-  };
-  if (church.website) payload.sameAs = church.website;
-  return payload;
+export function churchMetaDescription(church: ChurchSeoInput, countryCode?: string): string {
+  return churchDescription(church, profilePlace(church, countryCode));
+}
+export function buildChurchJsonLd(church: ChurchSeoInput, countryCode?: string): Record<string, unknown> | null {
+  return churchCanonicalUrl(church, countryCode) ? churchSchema(church, profilePlace(church, countryCode)) : null;
 }
 
 function setMeta(selector: string, attr: string, content: string) {
@@ -104,7 +62,7 @@ export function syncChurchDocumentSeo(
 
   const url = churchCanonicalUrl(church, countryCode);
   const description = churchMetaDescription(church, countryCode);
-  const title = `${church.name} -- ${church.city || church.state || "Church"} | Here's My Church`;
+  const title = churchTitle(church, profilePlace(church, countryCode));
   document.title = title;
 
   if (description) {
@@ -112,8 +70,8 @@ export function syncChurchDocumentSeo(
     setMeta('meta[property="og:description"]', "content", description);
     setMeta('meta[name="twitter:description"]', "content", description);
   }
-  setMeta('meta[property="og:title"]', "content", church.name);
-  setMeta('meta[name="twitter:title"]', "content", church.name);
+  setMeta('meta[property="og:title"]', "content", title);
+  setMeta('meta[name="twitter:title"]', "content", title);
   if (url) {
     setMeta('meta[property="og:url"]', "content", url);
     setMeta('meta[name="twitter:url"]', "content", url);

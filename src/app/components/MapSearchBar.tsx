@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { Search, ChevronRight, MapPin, ChevronDown, ChevronUp, Plus } from "lucide-react";
+import { Search, ChevronRight, MapPin, ChevronDown, ChevronUp, Plus, Globe, Check, Church as ChurchIcon } from "lucide-react";
 import { ThreeDotLoader } from "./ThreeDotLoader";
 import { geoAlbersUsa } from "d3-geo";
 import type { Church, StateInfo } from "./church-data";
@@ -12,13 +12,14 @@ import { STATE_NAMES } from "./map-constants";
 import { CloseButton } from "./ui/close-button";
 import { matchQueryToChurch } from "./church-search-match";
 import { findCountyNameForPoint } from "./county-resolve";
-import { getCountry } from "../config/countries";
+import { getCountry, getRegion } from "../config/countries";
 import { PlaceFlag } from "./PlaceFlag";
 import { friendlyError } from "../lib/friendly-error";
 
 const VIEWPORT_ZOOM_THRESHOLD = 1.5;
 
 interface MapSearchBarProps {
+  peopleWithYou?: number | null;
   churches: Church[];
   states: StateInfo[];
   focusedState: string | null;
@@ -65,6 +66,7 @@ const MAX_RESULTS_STATE_SCOPED = 100;
 const DEBOUNCE_MS = 300;
 
 export function MapSearchBar({
+  peopleWithYou = null,
   churches,
   states,
   focusedState,
@@ -96,6 +98,7 @@ export function MapSearchBar({
   // Region filter for country view; country filter for world view
   const [stateFilter, setStateFilter] = useState<string | null>(null);
   const [countryFilter, setCountryFilter] = useState<string | null>(null);
+  const [placeQuery, setPlaceQuery] = useState("");
   const [showStateDropdown, setShowStateDropdown] = useState(false);
   const stateDropdownRef = useRef<HTMLDivElement>(null);
   const detectedStateAppliedRef = useRef(false);
@@ -467,12 +470,23 @@ export function MapSearchBar({
     ? (countryFilter
         ? (populatedCountries.find((c) => c.code === countryFilter)?.name || countryFilter)
         : "Country")
-    : (stateFilter || regionNounOneTitle);
+    : (stateFilter ? (states.find(state=>state.abbrev===stateFilter)?.name || stateFilter) : regionNounOneTitle);
+  const placeOptions = isWorld
+    ? populatedCountries.map(country=>({id:country.code,name:country.name,count:country.churchCount}))
+    : populatedStates.map(state=>({id:state.abbrev,name:state.name || STATE_NAMES[state.abbrev] || state.abbrev,count:state.churchCount}));
+  const matchingPlaces = placeOptions.filter(place=>(place.name+" "+place.id).toLowerCase().includes(placeQuery.trim().toLowerCase()));
+  const choosePlace = (id: string | null) => {
+    if (isWorld) setCountryFilter(id);
+    else setStateFilter(id);
+    setShowStateDropdown(false);
+    setPlaceQuery("");
+    inputRef.current?.focus();
+  };
 
   return (
     <div
       ref={containerRef}
-      className="relative z-30 w-[min(440px,70svw)] pointer-events-auto"
+      className="relative z-30 w-full max-w-[440px] pointer-events-auto"
     >
       {/* Collapsed state — just a search icon button */}
       {collapsed ? (
@@ -490,72 +504,47 @@ export function MapSearchBar({
         </button>
       ) : (
         <>
-      {/* Place filter dropdown — country (world) or region (country view) */}
+      {/* Search scope shares the map header's violet surface and compact hierarchy. */}
       {showStateDropdown && showPlaceFilter && (
         <div
           ref={stateDropdownRef}
-          className="mb-2 rounded-xl shadow-hmc-panel overflow-hidden max-h-[min(40dvh,calc(100dvh-var(--hmc-keyboard,0px)-9rem))] overflow-y-auto bg-hmc-surface-glass backdrop-blur-md"
+          className="map-control-surface mb-2 rounded-3xl border border-purple-300/20 shadow-hmc-panel overflow-hidden"
+          onKeyDown={e=>{
+            if(e.key==="Escape") { e.stopPropagation(); setShowStateDropdown(false); inputRef.current?.focus(); }
+          }}
         >
-          <div className="px-3 py-2 text-caption font-medium text-white/55 uppercase tracking-wider border-b border-white/5">
-            {isWorld ? "Filter by country" : "Filter by " + regionNounOne}
+          <div className="px-4 pt-4 pb-3 border-b border-white/10">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="map-summary-icon h-8 w-8 shrink-0 rounded-xl flex items-center justify-center text-purple-200">{isWorld ? <Globe size={16}/> : <MapPin size={16}/>}</span>
+              <div className="flex-1 min-w-0"><h3 className="text-sm font-medium text-white">Where to search</h3><p className="text-xs text-white/50 mt-0.5">{isWorld ? "Choose a country" : `Choose a ${regionNounOne}`}</p></div>
+              <CloseButton ariaLabel="Close search area selector" onClick={()=>{setShowStateDropdown(false);inputRef.current?.focus();}} />
+            </div>
+            <label className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 focus-within:border-purple-300/40">
+              <Search size={14} className="shrink-0 text-purple-200/50"/>
+              <input autoFocus value={placeQuery} onChange={e=>setPlaceQuery(e.target.value)} placeholder={isWorld ? "Find a country…" : `Find a ${regionNounOne}…`} aria-label={isWorld ? "Find a country" : `Find a ${regionNounOne}`} className="w-full min-w-0 bg-transparent text-sm text-white placeholder:text-white/40 outline-none"/>
+            </label>
           </div>
-          <button
-            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors ${
-              !activePlaceFilter ? "bg-purple-500/20 text-purple-300" : "text-white/70 hover:bg-white/5"
-            }`}
-            onClick={() => {
-              if (isWorld) setCountryFilter(null);
-              else setStateFilter(null);
-              setShowStateDropdown(false);
-            }}
-          >
-            <MapPin size={12} className="flex-shrink-0 opacity-50" />
-            {isWorld ? "All countries" : "All " + (getCountry(countryCode)?.regionNoun.many ?? "states")}
-          </button>
-          {isWorld
-            ? populatedCountries.map((c) => (
-                <button
-                  key={c.code}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors ${
-                    countryFilter === c.code ? "bg-purple-500/20 text-purple-300" : "text-white/70 hover:bg-white/5"
-                  }`}
-                  onClick={() => {
-                    setCountryFilter(c.code);
-                    setShowStateDropdown(false);
-                    inputRef.current?.focus();
-                  }}
-                >
-                  <PlaceFlag abbrev={c.code} size="sm" />
-                  <span className="flex-1 min-w-0 truncate">{c.name}</span>
-                  <span className="text-caption text-white/55 tabular-nums flex-shrink-0">
-                    {c.churchCount.toLocaleString()}
-                  </span>
-                </button>
-              ))
-            : populatedStates.map((s) => (
-                <button
-                  key={s.abbrev}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors ${
-                    stateFilter === s.abbrev ? "bg-purple-500/20 text-purple-300" : "text-white/70 hover:bg-white/5"
-                  }`}
-                  onClick={() => {
-                    setStateFilter(s.abbrev);
-                    setShowStateDropdown(false);
-                    inputRef.current?.focus();
-                  }}
-                >
-                  <PlaceFlag abbrev={s.abbrev} size="sm" />
-                  <span className="w-5 text-caption text-white/55 font-mono flex-shrink-0">{s.abbrev}</span>
-                  <span className="min-w-0 truncate">{STATE_NAMES[s.abbrev] || s.name || s.abbrev}</span>
-                </button>
-              ))}
+          <div className="max-h-[min(36dvh,calc(100dvh-var(--hmc-keyboard,0px)-17rem))] overflow-y-auto overscroll-contain p-1.5">
+            <button type="button" aria-pressed={!activePlaceFilter} onClick={()=>choosePlace(null)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm transition-colors ${!activePlaceFilter ? "bg-purple-400/15 text-purple-100" : "text-white/70 hover:bg-white/5"}`}>
+              <Globe size={15} className="shrink-0 text-purple-200/60"/>
+              <span className="flex-1">{isWorld ? "All countries" : "All "+(getCountry(countryCode)?.regionNoun.many ?? "states")}</span>
+              {!activePlaceFilter && <Check size={14} className="text-purple-200"/>}
+            </button>
+            {matchingPlaces.map(place=><button type="button" key={place.id} aria-pressed={activePlaceFilter===place.id} onClick={()=>choosePlace(place.id)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm transition-colors ${activePlaceFilter===place.id ? "bg-purple-400/15 text-purple-100" : "text-white/75 hover:bg-white/5"}`}>
+              <PlaceFlag abbrev={place.id} countryCode={isWorld ? "WORLD" : countryCode} size="sm"/>
+              <span className="min-w-0 flex-1 truncate">{place.name}</span>
+              <span className="text-xs text-white/40 tabular-nums">{place.count.toLocaleString()}</span>
+              {activePlaceFilter===place.id && <Check size={14} className="shrink-0 text-purple-200"/>}
+            </button>)}
+            {!matchingPlaces.length && <p className="px-3 py-5 text-center text-xs text-white/50">No matching places. Try another name.</p>}
+          </div>
         </div>
       )}
 
       {/* Results dropdown — rendered above the input */}
       {showDropdown && !showStateDropdown && resultsDropdownVisible && (
         <div
-          className="mb-2 rounded-panel border border-hmc-border shadow-hmc-menu overflow-hidden max-h-[min(50dvh,calc(100dvh-var(--hmc-keyboard,0px)-9rem))] overflow-y-auto bg-hmc-surface-glass backdrop-blur-md p-1 animate-in fade-in-0 slide-in-from-bottom-1 duration-150"
+          className="map-control-surface search-results-panel mb-2 rounded-panel border border-hmc-border shadow-hmc-menu overflow-hidden max-h-[min(50dvh,calc(100dvh-var(--hmc-keyboard,0px)-9rem))] flex flex-col backdrop-blur-md animate-in fade-in-0 slide-in-from-bottom-1 duration-150"
         >
           {/* State view: local results */}
           {focusedState && (
@@ -595,22 +584,23 @@ export function MapSearchBar({
                   )}
                 </div>
               ) : (
-                <div className="py-1">
+                <div className="min-h-0 overflow-y-auto overscroll-contain p-1.5">
                   {localResults.map((ch, i) => (
                     <button
                       key={ch.id}
-                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-row text-left transition-colors ${
-                        i === selectedIndex ? "bg-white/10" : "hover:bg-white/6"
+                      className={`map-search-result group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${
+                        i === selectedIndex ? "bg-purple-400/12" : "hover:bg-white/5"
                       }`}
                       onMouseEnter={() => setSelectedIndex(i)}
                       onClick={() => handleSelectLocal(ch)}
                     >
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-purple-300/8 text-purple-200/60"><ChurchIcon size={15} /></span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm text-white font-medium truncate">
+                        <div className="text-[13px] leading-5 text-white/90 font-medium truncate">
                           {ch.name}
                         </div>
                         {(ch.address || ch.city || getFallbackLocation(ch, localChurchCountyById.get(ch.id))) && (
-                          <div className="text-xs text-white/60 truncate">
+                          <div className="text-xs text-white/45 truncate mt-0.5">
                             {formatAddressWithCity(ch.address, ch.city) || getFallbackLocation(ch, localChurchCountyById.get(ch.id))}
                           </div>
                         )}
@@ -660,19 +650,17 @@ export function MapSearchBar({
             <>
               {activePlaceFilter && query.trim().length >= 2 && (
                 // Scope can be set automatically from the visitor's location; say so.
-                <div className="flex items-center justify-between gap-2 px-3 py-1.5 mb-1 rounded-lg bg-white/5 text-caption">
-                  <span className="text-white/60 truncate">
-                    Searching {isWorld ? placeFilterLabel : (STATE_NAMES[stateFilter!] || stateFilter)} only
-                  </span>
+                <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-2.5 border-b border-white/8 bg-white/[0.025] text-xs">
+                  <span className="flex items-center gap-1.5 text-white/50 min-w-0"><MapPin size={12} className="shrink-0" /><span className="truncate">{placeFilterLabel} only</span></span>
                   <button
                     type="button"
                     onClick={() => {
                       if (isWorld) setCountryFilter(null);
                       else setStateFilter(null);
                     }}
-                    className="flex-shrink-0 font-medium text-purple-300 hover:text-purple-200 coarse:py-2"
+                    aria-label={isWorld ? "Search worldwide" : `Search all churches in ${getCountry(countryCode)?.name ?? "the country"}`} className="inline-flex shrink-0 items-center gap-1 rounded-md text-purple-200/85 hover:text-white focus-visible:outline-2 focus-visible:outline-purple-300 coarse:py-1"
                   >
-                    {isWorld ? "Search worldwide" : `Search all of ${getCountry(countryCode)?.name ?? "the country"}`}
+                    {isWorld ? "All countries" : `All ${getCountry(countryCode)?.regionNoun.many ?? "states"}`}<ChevronRight size={12} />
                   </button>
                 </div>
               )}
@@ -718,24 +706,25 @@ export function MapSearchBar({
                   )}
                 </div>
               ) : remoteResults.length > 0 ? (
-                <div className="py-1">
+                <div className="min-h-0 overflow-y-auto overscroll-contain p-1.5">
                   {remoteResults.map((r, i) => (
                     <button
                       key={`${r.state}-${r.id}`}
-                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-row text-left transition-colors ${
-                        i === selectedIndex ? "bg-white/10" : "hover:bg-white/6"
+                      className={`map-search-result group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${
+                        i === selectedIndex ? "bg-purple-400/12" : "hover:bg-white/5"
                       }`}
                       onMouseEnter={() => setSelectedIndex(i)}
                       onClick={() => handleSelectRemote(r)}
                     >
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-purple-300/8 text-purple-200/60"><ChurchIcon size={15} /></span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm text-white font-medium truncate">
+                        <div className="text-[13px] leading-5 text-white/90 font-medium truncate">
                           {r.name}
                         </div>
                         {(r.address || r.city || r.state || r.country || getFallbackLocation(r, remoteChurchCountyByKey.get(`${r.state}-${r.id}`))) && (
-                          <div className="text-xs text-white/60 truncate inline-flex items-center gap-1.5 max-w-full">
+                          <div className="text-xs text-white/45 truncate inline-flex items-center gap-1.5 max-w-full mt-0.5">
                             {isWorld && r.country ? (
-                              <PlaceFlag abbrev={r.country} size="sm" />
+                              <PlaceFlag abbrev={r.country} countryCode="WORLD" size="sm" />
                             ) : null}
                             <span className="truncate">
                               {displayLocationLabel(r.locationLabel)
@@ -743,7 +732,7 @@ export function MapSearchBar({
                                 || getFallbackLocation(
                                     r,
                                     remoteChurchCountyByKey.get(`${r.state}-${r.id}`),
-                                    STATE_NAMES[r.state] || getCountry(r.country)?.regions[r.state]?.name,
+                                    getRegion(r.country || countryCode, r.state)?.name || STATE_NAMES[r.state],
                                   )
                                 || (STATE_NAMES[r.state] || r.state)}
                               {isWorld && r.country
@@ -790,31 +779,31 @@ export function MapSearchBar({
 
       {/* Search input */}
       <div
-        className={`flex items-center gap-2.5 rounded-full px-4 py-3 transition-all bg-hmc-surface-glass backdrop-blur-md border shadow-hmc-pill ${
-          isFocused ? "border-hmc-brand-soft/50 ring-4 ring-hmc-brand-soft/15" : "border-hmc-border"
+        className={`map-control-surface flex items-center gap-2.5 rounded-2xl px-4 py-3 transition-all backdrop-blur-md border shadow-hmc-pill ${
+          isFocused ? "border-purple-300/40 ring-2 ring-purple-300/10" : "border-hmc-border"
         }`}
       >
         {/* Place filter chip — country on world view, region on country view */}
         {showPlaceFilter && (
           <button
             type="button"
-            onClick={() => setShowStateDropdown((v) => !v)}
+            onClick={() => { setPlaceQuery(""); setShowStateDropdown((v) => !v); }}
             aria-label={activePlaceFilter ? `Search scope: ${placeFilterLabel}. Change scope` : "Choose where to search"}
             aria-expanded={showStateDropdown}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 transition-colors max-w-[9.5rem] ${
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium flex-shrink-0 transition-colors max-w-[8rem] focus-visible:outline-2 focus-visible:outline-purple-300 ${
               activePlaceFilter
-                ? "bg-purple-500/30 text-purple-200 hover:bg-purple-500/40"
-                : "bg-white/8 text-white/60 hover:bg-white/12 hover:text-white/60"
+                ? "bg-purple-400/20 text-purple-100 hover:bg-purple-400/30"
+                : "bg-white/5 text-white/65 hover:bg-white/10 hover:text-white"
             }`}
           >
             {isWorld && countryFilter ? (
-              <PlaceFlag abbrev={countryFilter} size="sm" />
-            ) : null}
+              <PlaceFlag abbrev={countryFilter} countryCode="WORLD" size="sm" />
+            ) : isWorld ? <Globe size={13} className="shrink-0 text-purple-200/60"/> : <MapPin size={13} className="shrink-0 text-purple-200/60"/>}
             <span className="truncate">{placeFilterLabel}</span>
             <ChevronDown size={10} className={`transition-transform flex-shrink-0 ${showStateDropdown ? "rotate-180" : ""}`} />
           </button>
         )}
-        <Search size={17} className="text-purple-400 flex-shrink-0" />
+        <Search size={17} className="text-purple-200/60 flex-shrink-0" />
         <input
           ref={inputRef}
           type="text"
@@ -835,8 +824,19 @@ export function MapSearchBar({
                   ? `Search in ${STATE_NAMES[stateFilter] || stateFilter}…`
                   : "Find a church…"
           }
-          className="flex-1 bg-transparent text-white text-[15px] text-ellipsis placeholder:text-sm placeholder:text-white/75 outline-none min-w-0"
+          className="flex-1 bg-transparent text-white text-sm text-ellipsis placeholder:text-sm placeholder:text-white/50 outline-none min-w-0"
         />
+        {peopleWithYou != null && !isFocused && !query && !showStateDropdown && (
+          <span
+            className="ml-auto flex shrink-0 items-center gap-1.5 border-l border-white/10 pl-3 text-xs text-white/50"
+            title={`${peopleWithYou} ${peopleWithYou === 1 ? "person" : "people"} with you now`}
+            aria-label={`${peopleWithYou} ${peopleWithYou === 1 ? "person" : "people"} with you now`}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
+            <span className="tabular-nums">{peopleWithYou.toLocaleString()}</span>
+            <span className="hidden sm:inline">with you</span>
+          </span>
+        )}
         {query.trim().length > 0 && (
           <button
             type="button"

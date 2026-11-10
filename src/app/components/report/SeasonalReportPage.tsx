@@ -25,7 +25,8 @@ import {
   reportScopePhrase,
   reportUnitNoun,
 } from "./report-scope";
-import { ReportTOC } from "./ReportTOC";
+import { ReportGlobe } from "./ReportGlobe";
+import { ReportNavigator, ReportOverview, ReportCoverageGrid } from "./ReportExplorer";
 import {
   SeasonalReportGenerationFaqBrief,
   SeasonalReportMethodologyFaqDetails,
@@ -311,12 +312,12 @@ function Section({
     <section
       ref={ref}
       id={id}
-      className="scroll-mt-12 mb-8 sm:mb-10 rounded-none bg-white p-6 sm:p-10 shadow-[0_1px_4px_rgba(0,0,0,0.06),0_4px_16px_rgba(0,0,0,0.04)]"
+      className="report-section scroll-mt-12 mb-12 sm:mb-16"
       style={{
         opacity: visible ? 1 : 0,
         transform: visible
-          ? "rotate(-0.3deg)"
-          : "translateY(16px) rotate(0deg)",
+          ? "translateY(0)"
+          : "translateY(16px)",
         transition: reducedMotion
           ? "opacity 0.2s ease-out, transform 0.2s ease-out"
           : "opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1), transform 0.48s cubic-bezier(0.22, 1, 0.36, 1)",
@@ -340,15 +341,15 @@ function SectionHeading({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6">
+    <div className="report-section-heading mb-6">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
           {Icon && (
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-100/60">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-purple-100 bg-white">
               <Icon className="h-4 w-4 text-purple-700" />
             </div>
           )}
-          <h2 className="text-xl font-semibold text-stone-900 sm:text-2xl tracking-tight">{title}</h2>
+          <h2 className="text-xl font-medium text-stone-900 sm:text-2xl tracking-tight">{title}</h2>
         </div>
         {action && <div className="shrink-0">{action}</div>}
       </div>
@@ -376,7 +377,7 @@ function Delta({ value, label, suffix = "" }: { value: number; label: string; su
 function ChangeSummary({ changes, previousSlug }: { changes: SeasonalReportChanges; previousSlug: string }) {
   return (
     <div className="mb-8 rounded-2xl bg-white p-6 sm:p-10">
-      <h2 className="text-xl font-semibold text-stone-900 sm:text-2xl tracking-tight">What Changed</h2>
+      <h2 className="text-xl font-medium text-stone-900 sm:text-2xl tracking-tight">What Changed</h2>
       <p className="text-pretty mt-2 text-sm text-stone-500">Since the{" "}
         <Link to={`/report/${previousSlug}`} className="text-purple-600 hover:text-purple-800 underline underline-offset-2">
           previous report
@@ -445,7 +446,7 @@ function TrendingSection({
       <div className="space-y-4">
         {!hasContent && (
           <div className="rounded-xl bg-hmc-card-light px-5 py-4 ring-1 ring-hmc-line">
-            <h3 className="mb-2 text-lg font-semibold text-stone-900">What to expect</h3>
+            <h3 className="mb-2 text-sm font-medium text-stone-900">What to expect</h3>
             <p className="text-pretty text-sm leading-relaxed text-stone-700/80">
               {!changes
                 ? "Trend comparisons appear once a previous report exists. Future reports will show state growth, denomination share shifts, and data quality movers."
@@ -455,7 +456,7 @@ function TrendingSection({
         )}
         {growing.length > 0 && (
           <div className="rounded-xl bg-hmc-card-light px-5 py-4 ring-1 ring-hmc-line">
-            <h3 className="mb-3 text-lg font-semibold text-stone-900">Fastest-Growing States</h3>
+            <h3 className="mb-3 text-sm font-medium text-stone-900">Fastest-Growing States</h3>
             <div className="space-y-2.5">
               {growing.map((s, i) => (
                 <div key={s.abbrev} className="flex items-center justify-between gap-3 text-sm">
@@ -477,7 +478,7 @@ function TrendingSection({
 
         {(gainers.length > 0 || losers.length > 0) && (
           <div className="rounded-xl bg-hmc-card-light px-5 py-4 ring-1 ring-hmc-line">
-            <h3 className="mb-3 text-lg font-semibold text-stone-900">Denomination Share Shifts</h3>
+            <h3 className="mb-3 text-sm font-medium text-stone-900">Denomination Share Shifts</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <h4 className="mb-2 text-sm font-semibold text-green-700">Gainers</h4>
@@ -507,7 +508,7 @@ function TrendingSection({
 
         {movers.length > 0 && (
           <div className="rounded-xl bg-hmc-card-light px-5 py-4 ring-1 ring-hmc-line">
-            <h3 className="mb-3 text-lg font-semibold text-stone-900">Data Quality Movers</h3>
+            <h3 className="mb-3 text-sm font-medium text-stone-900">Data Quality Movers</h3>
             <div className="space-y-2.5">
               {movers.map((s, i) => (
                 <div key={s.abbrev} className="flex items-center justify-between gap-3 text-sm">
@@ -538,11 +539,11 @@ const INSIGHT_COLORS = {
 function Insight({ children, eyebrow = "Key Finding", color = "purple" }: { children: React.ReactNode; eyebrow?: string; color?: keyof typeof INSIGHT_COLORS }) {
   const c = INSIGHT_COLORS[color];
   return (
-    <div className={`my-8 rounded-xl ${c.bg} px-5 py-4`}>
-      <span className={`text-caption font-bold uppercase tracking-widest ${c.eyebrow}`}>
+    <div className={`report-insight my-6 rounded-2xl ${c.bg} px-5 py-4`}>
+      <span className="text-xs font-medium text-purple-700">
         {eyebrow}
       </span>
-      <p className="text-pretty mt-1.5 text-sm sm:text-base text-stone-700/70 leading-relaxed">
+      <p className="text-pretty mt-1.5 text-sm text-stone-600 leading-relaxed">
         {children}
       </p>
     </div>
@@ -561,7 +562,7 @@ function DataQualityBreakdownTable({
   const colPct = kind === "county" ? "% of county" : "% of state";
   return (
     <div className="mt-10">
-      <h3 className="mb-2 text-lg font-semibold text-stone-900">
+      <h3 className="mb-2 text-sm font-medium text-stone-900">
         {kind === "county" ? "Counties needing the most review" : "States needing the most review"}
       </h3>
       <p className="text-pretty mb-4 text-sm text-stone-700/70">
@@ -656,7 +657,7 @@ function DenominationBreakdownByRegionTable({
 
   return (
     <div className="mt-10">
-      <h3 className="mb-2 text-lg font-semibold text-stone-900">{mapTitle}</h3>
+      <h3 className="mb-2 text-sm font-medium text-stone-900">{mapTitle}</h3>
       <p className="text-pretty mb-4 text-sm text-stone-700/70">{mapHint}</p>
       {kind === "county" && stateAbbrev ? (
         <CountyChoroplethMap
@@ -1075,7 +1076,7 @@ function StateVsOtherStatesComparison({ report }: { report: SeasonalReport }) {
       </div>
 
       <div>
-        <h3 className="mb-3 text-lg font-semibold text-stone-900">Snapshot vs other states</h3>
+        <h3 className="mb-3 text-sm font-medium text-stone-900">Snapshot vs other states</h3>
         <div className="overflow-x-auto rounded-xl border border-stone-200/60">
           <table className="w-full min-w-[520px] text-sm">
             <thead>
@@ -1304,7 +1305,7 @@ export function SeasonalReportPage() {
     }
     return list;
   }, [report]);
-  const { activeSection, scrollProgress, scrollTo } = useReportScrollspy(
+  const { activeSection, scrollTo } = useReportScrollspy(
     report?.generatedAt,
     tocSections
   );
@@ -1573,13 +1574,13 @@ export function SeasonalReportPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background animate-in fade-in duration-500">
+    <div className="reports-page min-h-screen animate-in fade-in duration-500">
       {/* Condensed header */}
-      <header>
-        <div className="mx-auto max-w-3xl px-6 py-8 sm:py-10">
+      <header className="report-hero report-hero-immersive">
+        <div className="report-header-inner">
           <div className="flex items-center justify-between">
             <Link
-              to={isExcerptMode ? selfReportPath() : "/"}
+              to={isExcerptMode ? selfReportPath() : "/reports"}
               className="inline-flex items-center gap-2 text-sm text-stone-400 hover:text-purple-600 transition-colors"
             >
               <div className="w-6 h-6 rounded overflow-hidden shrink-0">
@@ -1588,13 +1589,15 @@ export function SeasonalReportPage() {
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              {isExcerptMode ? "Full report" : "Explore the map"}
+              {isExcerptMode ? "Full report" : "All reports"}
             </Link>
             <span className="text-xs text-stone-400">{new Date(r.generatedAt).toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
           </div>
           {!isExcerptMode && (
-            <>
-              <h1 className="mt-8 text-2xl font-bold text-stone-900 sm:text-4xl tracking-tight leading-[1.1]">
+            <div className="report-hero-stage">
+              <ReportGlobe report={r} />
+              <div className="report-hero-copy">
+              <h1 className="text-3xl font-medium text-white sm:text-5xl tracking-tight leading-[1.08] text-balance">
                 {isRegionReport(r.scope)
                   ? `The State of Churches in ${r.stateName ?? r.stateAbbrev ?? "This Region"}`
                   : (r.subtitle?.trim() || `The State of Churches in ${reportPlaceTitle(r)}`)}
@@ -1604,7 +1607,22 @@ export function SeasonalReportPage() {
                   ? `A ${reportUnitNoun(r).one}-level view of mapped churches, data quality, and community momentum.`
                   : `Here's My Church (HMC) is building the most accurate directory of Christian churches in ${reportPlaceLabel(r)} — crowd-sourced and 100% free.`}
               </p>
-            </>
+
+              <nav aria-label="Report shortcuts" className="mt-6 flex flex-wrap gap-2">
+                <a href="#big-picture" className="report-topic">The big picture ↓</a>
+              </nav>
+              </div>
+              <dl className="report-hero-metrics">
+                <div>
+                  <dt className="text-xs text-purple-200/70">Churches in this snapshot</dt>
+                  <dd className="mt-1 text-2xl sm:text-3xl font-medium tabular-nums text-white">{bp.totalChurches.toLocaleString()}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-purple-200/70">Listings needing review</dt>
+                  <dd className="mt-1 text-2xl sm:text-3xl font-medium tabular-nums text-white">{dq.pctNeedsReview}%</dd>
+                </div>
+              </dl>
+            </div>
           )}
           {isExcerptMode && (
             <div className="mt-8 rounded-xl border border-amber-200/70 bg-amber-100/80 px-4 py-3 sm:px-5">
@@ -1617,8 +1635,21 @@ export function SeasonalReportPage() {
       </header>
 
       {/* Body: TOC floats left of centered content */}
-      <div className="mx-auto max-w-3xl px-6 pt-3 sm:pt-4">
-        <main>
+      <div className={isExcerptMode ? "mx-auto max-w-3xl px-4 sm:px-6 pt-8 sm:pt-12" : "report-reading-layout"}>
+        {!isExcerptMode && <aside className="hidden lg:block"><ReportNavigator sections={tocSections} active={activeSection} onNavigate={scrollTo} /></aside>}
+        <main className="min-w-0">
+            {!isExcerptMode && <nav className="report-mobile-nav lg:hidden" aria-label="Report topics">
+              <label htmlFor="report-topic-select" className="text-xs font-medium text-stone-500 shrink-0">Jump to</label>
+              <select id="report-topic-select" value={activeSection} onChange={e => {
+                const section = tocSections.find(section => section.id === e.target.value);
+                if (section) scrollTo(section.id);
+              }} className="min-w-0 flex-1 text-sm text-purple-800 bg-transparent py-2">
+                {tocSections.map(section => <option key={section.id} value={section.id}>{section.label}</option>)}
+              </select>
+              <Link to="/reports" className="text-xs text-stone-500 shrink-0">All reports ↗</Link>
+            </nav>}
+            {!isExcerptMode && <ReportOverview report={r} onNavigate={scrollTo} />}
+
             {/* ── Changes from previous report (non-launch only) ── */}
             {!isExcerptMode && r.changes && r.previousSlug && (
               <ChangeSummary changes={r.changes} previousSlug={r.previousSlug} />
@@ -1631,6 +1662,7 @@ export function SeasonalReportPage() {
                 description={copy.bigPicture.description}
                 icon={sectionIconFor("big-picture")}
               />
+              {isExcerptMode && (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:[&>*]:min-w-0">
                 <StatCard
                   value={bp.totalChurches}
@@ -1650,6 +1682,7 @@ export function SeasonalReportPage() {
                   hint="Missing name, address, or website/email/phone"
                 />
               </div>
+              )}
 
               {/* Community involvement */}
               <div className="mt-6 rounded-2xl bg-gradient-to-br from-green-50 via-emerald-50/80 to-green-50/90 px-5 py-5 ring-1 ring-green-100/80 sm:px-6">
@@ -1774,95 +1807,35 @@ export function SeasonalReportPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <StatCard
                   value={`${dq.pctNeedsReview}%`}
-                  label="Need More Data"
+                  label="Need more data"
                   sub={`${dq.totalNeedsReview.toLocaleString()} churches`}
                   color="pink"
                   hint="Missing name, address, or website/email/phone — you can help fix this"
                 />
                 <StatCard
                   value={`${(100 - dq.pctNeedsReview).toFixed(1)}%`}
-                  label="Have Core Info"
-                  sub="Name + street address"
+                  label="Have core info"
+                  sub="Name, address & contact details"
                   color="pink"
                   hint="Has name, address, and at least one contact method"
                 />
               </div>
-              {(dq.pctWithWebsite != null ||
-                dq.pctWithContactPath != null ||
-                dq.pctWithServiceTimes != null) && (
-                <div className="mt-6">
-                  <h3 className="mb-3 text-lg font-semibold text-stone-900">Discoverability</h3>
-                  <div className="rounded-xl bg-hmc-card-light px-5 py-4 ring-1 ring-hmc-line">
-                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-base">
-                      {dq.pctWithWebsite != null && (
-                        <span className="inline-flex items-center gap-1.5 text-stone-700">
-                          <Link2 className="h-4 w-4 text-purple-500/70" aria-hidden />
-                          <span className="tabular-nums text-lg font-bold text-purple-700">{dq.pctWithWebsite}%</span> website
-                        </span>
-                      )}
-                      {dq.pctWithPhone != null && (
-                        <span className="inline-flex items-center gap-1.5 text-stone-700">
-                          <Phone className="h-4 w-4 text-purple-500/70" aria-hidden />
-                          <span className="tabular-nums text-lg font-bold text-purple-700">{dq.pctWithPhone}%</span> phone
-                        </span>
-                      )}
-                      {dq.pctWithContactPath != null && (
-                        <span className="inline-flex items-center gap-1.5 text-stone-700">
-                          <SearchCheck className="h-4 w-4 text-purple-500/70" aria-hidden />
-                          <span className="tabular-nums text-lg font-bold text-purple-700">{dq.pctWithContactPath}%</span> website or phone
-                        </span>
-                      )}
-                      {dq.pctWithServiceTimes != null && (
-                        <span className="inline-flex items-center gap-1.5 text-stone-700">
-                          <Clock className="h-4 w-4 text-purple-500/70" aria-hidden />
-                          <span className="tabular-nums text-lg font-bold text-purple-700">{dq.pctWithServiceTimes}%</span> service times
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-              {(dq.campusCount != null ||
-                dq.pctWithMinistries != null ||
-                dq.pctWithBuildingFootprint != null ||
-                dq.pctVerifiedLast90Days != null) && (
-                <div className="mt-6">
-                  <h3 className="mb-3 text-lg font-semibold text-stone-900">Detail & confidence</h3>
-                  <div className="rounded-xl bg-hmc-card-light px-5 py-4 ring-1 ring-hmc-line">
-                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-base">
-                      {dq.campusCount != null && (
-                        <span className="inline-flex items-center gap-1.5 text-stone-700">
-                          <GitBranch className="h-4 w-4 text-purple-500/70" aria-hidden />
-                          <span className="tabular-nums text-lg font-bold text-purple-700">{dq.campusCount.toLocaleString()}</span> campuses
-                          {dq.campusPct != null && <span className="text-stone-500 text-sm ml-1">({dq.campusPct}%)</span>}
-                        </span>
-                      )}
-                      {dq.pctWithMinistries != null && (
-                        <span className="inline-flex items-center gap-1.5 text-stone-700">
-                          <Tags className="h-4 w-4 text-purple-500/70" aria-hidden />
-                          <span className="tabular-nums text-lg font-bold text-purple-700">{dq.pctWithMinistries}%</span> ministries
-                        </span>
-                      )}
-                      {dq.pctWithBuildingFootprint != null && (
-                        <span className="inline-flex items-center gap-1.5 text-stone-700">
-                          <Footprints className="h-4 w-4 text-purple-500/70" aria-hidden />
-                          <span className="tabular-nums text-lg font-bold text-purple-700">{dq.pctWithBuildingFootprint}%</span> building footprint
-                        </span>
-                      )}
-                      {dq.pctVerifiedLast90Days != null && dq.pctVerifiedLast365Days != null && (
-                        <span className="inline-flex items-center gap-1.5 text-stone-700">
-                          <CalendarCheck className="h-4 w-4 text-purple-500/70" aria-hidden />
-                          <span className="tabular-nums text-lg font-bold text-purple-700">{dq.pctVerifiedLast365Days}%</span> touched this year
-                          <span className="text-stone-500 text-sm ml-1">({dq.pctVerifiedLast90Days}% last 90d)</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
+              <ReportCoverageGrid title="Can people find these churches?" items={[
+                {label:"Website",value:dq.pctWithWebsite},
+                {label:"Phone",value:dq.pctWithPhone},
+                {label:"Website or phone",value:dq.pctWithContactPath},
+                {label:"Service times",value:dq.pctWithServiceTimes},
+              ]} />
+              <ReportCoverageGrid title="How much do we know?" items={[
+                {label:"Ministry details",value:dq.pctWithMinistries},
+                {label:"Building footprints",value:dq.pctWithBuildingFootprint},
+                {label:"Updated in the last year",value:dq.pctVerifiedLast365Days},
+                {label:"Updated in the last 90 days",value:dq.pctVerifiedLast90Days},
+              ]} />
+              {dq.campusCount != null && <p className="mt-3 text-xs text-stone-500">{dq.campusCount.toLocaleString()} linked campuses{dq.campusPct != null ? ` · ${dq.campusPct}% of mapped churches` : ""}</p>}
               {(dq.attendanceMedian != null && dq.attendanceMedian > 0) && (
                 <div className="mt-8">
-                  <h3 className="mb-3 text-lg font-semibold text-stone-900">Estimated attendance distribution</h3>
+                  <h3 className="mb-3 text-sm font-medium text-stone-900">Estimated attendance distribution</h3>
                   <p className="text-pretty mb-4 text-sm text-stone-700/70">
                     Among churches with an estimate &gt; 0 — median and quartiles (not the megachurch-only spotlight list).
                   </p>
@@ -1885,7 +1858,7 @@ export function SeasonalReportPage() {
               )}
               {dq.topMinistries && dq.topMinistries.length > 0 && (
                 <div className="mt-8">
-                  <h3 className="mb-4 text-lg font-semibold text-stone-900">Top ministry tags</h3>
+                  <h3 className="mb-4 text-sm font-medium text-stone-900">Top ministry tags</h3>
                   <HorizontalBarChart
                     data={dq.topMinistries.slice(0, 12).map((m) => ({
                       label: m.name,
@@ -1919,7 +1892,7 @@ export function SeasonalReportPage() {
                 }
               />
               <div className="mt-8">
-                <h3 className="mb-4 text-lg font-semibold text-stone-900">What's Missing?</h3>
+                <h3 className="mb-4 text-sm font-medium text-stone-900">What's Missing?</h3>
                 <HorizontalBarChart
                   data={missingByFieldForChart.map((f) => ({
                     label: f.field,
@@ -1974,7 +1947,7 @@ export function SeasonalReportPage() {
               ) : null}
               <div className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-2">
                 <div>
-                  <h3 className="mb-3 text-lg font-semibold text-stone-900">
+                  <h3 className="mb-3 text-sm font-medium text-stone-900">
                     {r.scope === "state"
                       ? "Most Churched Counties"
                       : `Most Churched ${reportUnitNoun(r).many.charAt(0).toUpperCase()}${reportUnitNoun(r).many.slice(1)}`}
@@ -1988,7 +1961,7 @@ export function SeasonalReportPage() {
                   />
                 </div>
                 <div>
-                  <h3 className="mb-3 text-lg font-semibold text-stone-900">
+                  <h3 className="mb-3 text-sm font-medium text-stone-900">
                     {r.scope === "state"
                       ? "Least Churched Counties"
                       : `Least Churched ${reportUnitNoun(r).many.charAt(0).toUpperCase()}${reportUnitNoun(r).many.slice(1)}`}
@@ -2033,7 +2006,7 @@ export function SeasonalReportPage() {
 
               {dn.regionalPatterns.length > 0 && (
                 <div className="mt-8">
-                  <h3 className="mb-2 text-lg font-semibold text-stone-900">
+                  <h3 className="mb-2 text-sm font-medium text-stone-900">
                     Where denominations run deep
                   </h3>
                   <p className="text-pretty mb-5 text-sm text-stone-700/70">
@@ -2114,7 +2087,7 @@ export function SeasonalReportPage() {
               </div>
               {dv.languageDistribution.length > 0 && (
                 <div className="mt-8">
-                  <h3 className="mb-4 text-lg font-semibold text-stone-900">
+                  <h3 className="mb-4 text-sm font-medium text-stone-900">
                     Top Non-English Languages
                   </h3>
                   <HorizontalBarChart
@@ -2132,7 +2105,7 @@ export function SeasonalReportPage() {
                 if (!bilingualRows.length) return null;
                 return (
                 <div className="mt-8">
-                  <h3 className="mb-4 text-lg font-semibold text-stone-900">
+                  <h3 className="mb-4 text-sm font-medium text-stone-900">
                     {r.scope === "state" ? "Most Multilingual Counties" : "Most Multilingual States"}
                   </h3>
                   <HorizontalBarChart
@@ -2192,7 +2165,7 @@ export function SeasonalReportPage() {
               </div>
               <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
                 <div>
-                  <h3 className="mb-4 text-lg font-semibold text-stone-900">
+                  <h3 className="mb-4 text-sm font-medium text-stone-900">
                     Largest by Attendance
                   </h3>
                   <div className="space-y-4">
@@ -2222,7 +2195,7 @@ export function SeasonalReportPage() {
                   </div>
                 </div>
                 <div>
-                  <h3 className="mb-4 text-lg font-semibold text-stone-900">
+                  <h3 className="mb-4 text-sm font-medium text-stone-900">
                     Smallest Congregations
                   </h3>
                   <div className="space-y-4">
@@ -2259,7 +2232,7 @@ export function SeasonalReportPage() {
                 icon={sectionIconFor("takeaways")}
                 action={!isExcerptMode ? renderShareAction("takeaways") : undefined}
               />
-              <div className="space-y-4">
+              <div className="report-takeaway-grid">
                 <Takeaways report={r} />
               </div>
             </Section>)}
@@ -2305,7 +2278,7 @@ export function SeasonalReportPage() {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="inline-flex items-center gap-2 font-medium text-stone-900">
-                          <PlaceFlag abbrev={state.abbrev} size="sm" />
+                          <PlaceFlag abbrev={state.abbrev} countryCode={isWorldReport(r.scope,r.countryCode) ? "WORLD" : r.countryCode || "US"} size="sm" />
                           {state.name}
                         </span>
                         <span className="text-xs text-purple-700">{state.churchCount.toLocaleString()} churches</span>
@@ -2449,7 +2422,7 @@ export function SeasonalReportPage() {
 
             {/* ── FAQ ── */}
             {renderSection("common-questions", <div id="common-questions" className="mt-10 mb-6">
-              <h2 className="text-lg font-semibold text-stone-900 sm:text-xl tracking-tight">
+              <h2 className="text-sm font-medium text-stone-900 sm:text-xl tracking-tight">
                 Common Questions
               </h2>
               <p className="text-pretty mt-1.5 text-sm text-stone-500">
@@ -2629,13 +2602,6 @@ export function SeasonalReportPage() {
           </main>
         </div>
 
-      {/* Floating TOC pill — works on all screen sizes */}
-      {!isExcerptMode && <ReportTOC
-        activeSection={activeSection}
-        scrollProgress={scrollProgress}
-        onNavigate={scrollTo}
-        sections={tocSections}
-      />}
     </div>
   );
 }
@@ -2650,6 +2616,7 @@ function StateRankingsTable({
   stateAbbrev?: string;
   data: SeasonalReport["stateRankings"];
 }) {
+  const [filter, setFilter] = useState("");
   const [sortKey, setSortKey] = useState<keyof SeasonalReport["stateRankings"][0]>("churchCount");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
@@ -2669,7 +2636,7 @@ function StateRankingsTable({
     );
   }
 
-  const sorted = [...data].sort((a, b) => {
+  const sorted = data.filter(row => (row.name+" "+row.abbrev).toLowerCase().includes(filter.toLowerCase())).sort((a, b) => {
     const av = a[sortKey];
     const bv = b[sortKey];
     if (typeof av === "number" && typeof bv === "number") {
@@ -2697,7 +2664,12 @@ function StateRankingsTable({
   ];
 
   return (
-    <div className="max-h-[min(420px,55vh)] overflow-auto rounded-xl border border-stone-200/60">
+    <div className="report-table-card">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-stone-100">
+        <input value={filter} onChange={e=>setFilter(e.target.value)} aria-label="Find a place in the rankings" placeholder={kind==="county" ? "Find a county…" : "Find a place…"} className="text-sm bg-transparent outline-none min-w-0 flex-1 rounded focus-visible:outline-2 focus-visible:outline-purple-300" />
+        <span className="text-xs text-stone-400 shrink-0" role="status">{sorted.length} of {data.length}</span>
+      </div>
+      <div className="max-h-[min(420px,55vh)] overflow-auto">
       <table className="w-full text-sm">
         <thead className="sticky top-0 z-10">
           <tr className="border-b border-stone-200/60 bg-hmc-card-light">
@@ -2729,6 +2701,7 @@ function StateRankingsTable({
           </tr>
         </thead>
         <tbody>
+          {!sorted.length && <tr><td colSpan={5} className="py-8 text-center text-sm text-stone-500">No matching places. Try another name.</td></tr>}
           {sorted.map((row, i) => (
             <tr
               key={row.abbrev}
@@ -2774,6 +2747,7 @@ function StateRankingsTable({
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

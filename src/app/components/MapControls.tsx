@@ -1,15 +1,15 @@
 "use client";
 
 import {
-  ZoomIn,
-  ZoomOut,
+  Plus,
+  Minus,
   RotateCcw,
   Filter,
   Key,
   Info,
   CircleHelp,
   ScrollText,
-  ChevronUp,
+  Ellipsis,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
@@ -73,21 +73,21 @@ export function MapControls({
   const zoomOutDisabled = zoom <= minZoom;
   const sizeClass = compact ? "w-8 h-8" : "w-9 h-9";
   const iconSize = compact ? 14 : 16;
-  const gapClass = compact ? "gap-1.5" : "gap-2";
+  const gapClass = "gap-1";
 
   /** Round map control: glass when idle, brand purple when its panel is open. */
   const controlClass = (active = false) =>
     [
       sizeClass,
-      "rounded-full flex items-center justify-center shrink-0 border shadow-hmc-pill backdrop-blur-md transition-[background-color,color,border-color,transform] duration-150 enabled:active:scale-90",
+      "rounded-lg flex items-center justify-center shrink-0 transition-[background-color,color,transform] duration-150 enabled:active:scale-95 focus-visible:outline-2 focus-visible:outline-purple-400",
       "disabled:opacity-30 disabled:cursor-not-allowed",
       active
-        ? "bg-hmc-brand border-hmc-brand text-white"
-        : "bg-hmc-surface-glass border-hmc-border text-hmc-lilac hover:bg-hmc-surface-raised hover:text-white",
+        ? "bg-purple-500/25 text-white"
+        : "text-purple-100/65 hover:bg-white/10 hover:text-white",
     ].join(" ");
 
   return (
-    <div className={`flex flex-col ${gapClass}`}>
+    <div className={`map-control-surface flex flex-col ${gapClass} rounded-2xl border border-white/10 p-1 shadow-hmc-pill backdrop-blur-md`} role="group" aria-label="Map controls">
       {/* Always visible: zoom + refresh */}
       <button
         type="button"
@@ -97,7 +97,7 @@ export function MapControls({
         aria-label="Zoom in"
         className={controlClass()}
       >
-        <ZoomIn size={iconSize} />
+        <Plus size={iconSize} />
       </button>
       <button
         type="button"
@@ -107,7 +107,7 @@ export function MapControls({
         aria-label="Zoom out"
         className={controlClass()}
       >
-        <ZoomOut size={iconSize} />
+        <Minus size={iconSize} />
       </button>
       <button
         type="button"
@@ -129,10 +129,7 @@ export function MapControls({
         title={moreOpen ? "Close options" : "More options"}
         className={controlClass(moreOpen)}
       >
-        <ChevronUp
-          size={iconSize}
-          className={`transition-transform duration-200 ${moreOpen ? "rotate-180" : ""}`}
-        />
+        <Ellipsis size={iconSize} />
       </button>
 
       <AnimatePresence initial={false}>

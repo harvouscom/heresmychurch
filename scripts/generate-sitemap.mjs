@@ -5,14 +5,14 @@
  * - public/sitemap.xml — sitemap index
  * - public/sitemaps/core.xml — homepage, countries, regions, reports, privacy
  * - public/sitemaps/metros.xml — /metro + /metro/{slug}
- * - public/sitemaps/churches-{CC}-{REGION}.xml — church deep links (US by default)
+ * - public/sitemaps/churches-{CC}-{REGION}.xml — church deep links (all populated countries by default)
  *
  * Also syncs worker/lib/us-metros.generated.ts from src/app/data/us-metros.json.
  *
  * Env (optional):
  *   HMC_FUNCTIONS_BASE_URL — e.g. https://PROJECT.supabase.co/functions/v1/make-server-283d8046
  *   HMC_SUPABASE_ANON_KEY — Supabase anon key (same as client; public)
- *   HMC_SITEMAP_CHURCHES=all — include non-US region church URLs (slower builds)
+ *   HMC_SITEMAP_CHURCHES=us — limit church URLs to the US for a faster local build
  */
 import { writeFileSync, readFileSync, mkdirSync, rmSync } from "fs";
 import { fileURLToPath } from "url";
@@ -166,7 +166,7 @@ function writeStatesSnapshot(statesData) {
 
 /**
  * Regions to include in church URL sitemaps.
- * Default: US only (build-time + crawl budget). Set HMC_SITEMAP_CHURCHES=all for intl too.
+ * Default: all populated countries. Set HMC_SITEMAP_CHURCHES=us for a faster local build.
  */
 async function listPopulatedRegions(apiBase, headers, intlCountries) {
   /** @type {{ cc: string, region: string }[]} */
@@ -182,7 +182,7 @@ async function listPopulatedRegions(apiBase, headers, intlCountries) {
     for (const region of STATE_ABBREVS) out.push({ cc: "US", region });
   }
 
-  const includeIntl = (process.env.HMC_SITEMAP_CHURCHES || "us").toLowerCase() === "all";
+  const includeIntl = (process.env.HMC_SITEMAP_CHURCHES || "all").toLowerCase() === "all";
   if (!includeIntl) return out;
 
   const countriesData = await fetchJson(apiBase, headers, "/churches/countries");
@@ -221,7 +221,7 @@ ${urls
   .map(
     (u) => `  <url>
     <loc>${u.loc}</loc>
-    <lastmod>${now}</lastmod>
+    ${u.lastmod ? `<lastmod>${u.lastmod}</lastmod>` : ""}
     <changefreq>${u.changefreq}</changefreq>
     <priority>${u.priority}</priority>
   </url>`,
@@ -379,9 +379,12 @@ async function main() {
         priority: "0.5",
       }));
     if (!urls.length) return;
-    const fileName = `churches-${cc}-${region}.xml`;
-    writeFileSync(join(SITEMAPS_DIR, fileName), urlsetXml(urls, now), "utf8");
-    churchSitemapFiles.push(fileName);
+    for (let start = 0; start < urls.length; start += 45000) {
+      const part = start ? `-${Math.floor(start / 45000) + 1}` : "";
+      const fileName = `churches-${cc}-${region}${part}.xml`;
+      writeFileSync(join(SITEMAPS_DIR, fileName), urlsetXml(urls.slice(start, start + 45000), now), "utf8");
+      churchSitemapFiles.push(fileName);
+    }
     churchUrlCount += urls.length;
   });
 
