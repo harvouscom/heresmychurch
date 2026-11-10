@@ -5,9 +5,9 @@
  *
  *  1. Website suggestion (moderated): must stay out of every public read, appear in
  *     the moderation queue with its tool name, and be gone after rejecting.
- *  2. Service times suggestion (goes live on one vote): must report applied and be
- *     stored, then the original value is restored. The church needs existing service
- *     times, because a blank value can't be restored.
+ *  2. Service-time replacement stays pending and leaves the accepted value intact.
+ *     Approving the original value exercises the write/audit/publish path without
+ *     publishing the probe time.
  *
  * Usage: node scripts/lookup-review-check.mjs <churchId>
  * Env:   LOOKUP_INTERNAL_KEY, MODERATOR_KEY (required)
@@ -52,8 +52,8 @@ const before = await stored();
 if (!before) { console.error(`${churchId} not found in stored data`); process.exit(2); }
 const region = before.state;
 if (!before.serviceTimes) { console.error(`${churchId} has no service times, so step 2 couldn't restore. Pick another church.`); process.exit(2); }
-if ((await queue()).some((s) => s.churchId === churchId && s.field === "website")) {
-  console.error(`${churchId} already has a pending website suggestion. Rejecting it here would lose it, so stopping.`);
+if ((await queue()).some((s) => s.churchId === churchId && ["website", "serviceTimes"].includes(s.field))) {
+  console.error(`${churchId} already has a pending website or service-time suggestion. Rejecting it here would lose it, so stopping.`);
   process.exit(2);
 }
 
@@ -80,19 +80,21 @@ try {
 }
 check(!(await queue()).some((s) => s.churchId === churchId && s.field === "website"), "gone from the queue after rejecting");
 
-console.log(`\n2. Live field (serviceTimes) on ${churchId}`);
+console.log(`\n2. Service-time replacement on ${churchId}`);
 const original = before.serviceTimes;
 const probeTimes = original.includes("6:17 AM") ? "Sun 6:43 AM" : "Sun 6:17 AM";
 try {
-  const live = await suggest("serviceTimes", probeTimes);
-  check(live.status === 200 && live.body?.applied === true, "reported as applied");
+  const proposed = await suggest("serviceTimes", probeTimes);
+  check(proposed.status === 200 && proposed.body?.applied === false && proposed.body?.needsModeration === true, "replacement waits for review");
+  check((await stored())?.serviceTimes === original, "accepted value stays unchanged");
+  check((await queue()).some((s) => s.churchId === churchId && s.field === "serviceTimes" && s.proposedValue === probeTimes), "replacement appears in the review queue");
+  const approved = await req("/moderate/approve/suggestion", { method: "POST", headers: modHeaders, body: JSON.stringify({ churchId, field: "serviceTimes", value: original }) });
+  check(approved.status === 200 && approved.body?.applied === true, "moderator can retain and publish the original value");
   await sleep(1000);
-  check((await stored())?.serviceTimes === probeTimes, "stored value matches what was sent");
+  check((await stored())?.serviceTimes === original, "original value retained");
 } finally {
-  const back = await suggest("serviceTimes", original);
-  check(back.status === 200, "restore accepted");
-  await sleep(1000);
-  check((await stored())?.serviceTimes === original, "original value restored");
+  const item = (await queue()).find((s) => s.churchId === churchId && s.field === "serviceTimes");
+  if (item) await req("/moderate/reject/suggestion", { method: "POST", headers: modHeaders, body: JSON.stringify({ churchId, field: "serviceTimes" }) });
 }
 
 console.log(failures ? `\n${failures} check(s) failed.` : "\nAll checks passed.");
