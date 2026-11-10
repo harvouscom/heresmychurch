@@ -1,5 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, Bell, Check, CheckCheck, ChevronRight, Church as ChurchIcon, Clock3, LoaderCircle, Mail, MapPin, ShieldCheck, X } from "lucide-react";
 import type { Church } from "./church-data";
+import "./email-confirmation.css";
+import appIcon from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
+
 const BASE = ((import.meta.env.VITE_HMC_API_BASE_URL as string | undefined) || "https://api.heresmychurch.com").replace(/\/$/, "");
 async function post(path: string, body: unknown) {
   const res = await fetch(`${BASE}/email-confirmation/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -7,71 +11,114 @@ async function post(path: string, body: unknown) {
   if (!res.ok) throw new Error(result.error || "Please try again later.");
   return result;
 }
-const inputStyle = "w-full rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-sm text-white";
+interface ConfirmationStatus { enabled: boolean; serviceTimesConfirmedAt?: number; locationConfirmedAt?: number }
+interface ReviewChurch { name: string; serviceTimes: string; address: string; city: string }
+const date = (value: number) => new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+
 export function EmailConfirmationCard({ church }: { church: Church }) {
-  const [status, setStatus] = useState<any>(null);
+  const [status, setStatus] = useState<ConfirmationStatus | null>(null);
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
-  const [message, setMessage] = useState("");
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     let active = true;
-    setStatus(null); setOpen(false); setMessage(""); setEmail("");
+    setStatus(null); setOpen(false); setSent(false); setError(""); setEmail("");
     fetch(`${BASE}/email-confirmation/status/${encodeURIComponent(church.id)}`).then(r => r.ok ? r.json() : null).then(data => { if (active) setStatus(data); }).catch(() => {});
     return () => { active = false; };
   }, [church.id, church.serviceTimes, church.address]);
   if (!status?.enabled && !status?.serviceTimesConfirmedAt) return null;
-  return <section className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
-    {status.serviceTimesConfirmedAt && <p className="text-xs text-emerald-300">Service times confirmed through church email · {new Date(status.serviceTimesConfirmedAt).toLocaleDateString()}</p>}
-    {status.locationConfirmedAt && <p className="text-xs text-emerald-300">Listed location confirmed through church email · {new Date(status.locationConfirmedAt).toLocaleDateString()}</p>}
-    {status.enabled && !open && <button type="button" className="text-sm text-purple-300 underline" onClick={() => setOpen(true)}>Notify me when service times are confirmed</button>}
-    {open && <form className="space-y-2" onSubmit={async e => {
-      e.preventDefault(); setBusy(true); setMessage("");
-      try { await post("request", { churchId: church.id, email }); setMessage("Check your inbox to confirm your request. Delivery may take a few minutes."); setOpen(false); }
-      catch (error) { setMessage(error instanceof Error ? error.message : "Please try again."); } finally { setBusy(false); }
-    }}>
-      <label className="block text-sm text-white" htmlFor="confirmation-email">Your email</label>
-      <input id="confirmation-email" type="email" autoComplete="email" required maxLength={254} value={email} onChange={e => setEmail(e.target.value)} className={inputStyle} />
-      <p className="text-xs text-white/60">One update when confirmed. No marketing, and your address is never shared with the church. Request expires after 90 days.</p>
-      <button disabled={busy} className="rounded-lg bg-purple-600 px-3 py-2 text-sm text-white disabled:opacity-50">{busy ? "Requesting…" : "Email me when confirmed"}</button>
-    </form>}
-    {message && <p role="status" className="text-sm text-white/80">{message}</p>}
+  return <section className="email-update" aria-label="Service time email updates">
+    {status.serviceTimesConfirmedAt && <p className="email-update-proof"><ShieldCheck size={13} />Service times confirmed · {date(status.serviceTimesConfirmedAt)}</p>}
+    {status.locationConfirmedAt && <p className="email-update-proof"><MapPin size={13} />Location confirmed · {date(status.locationConfirmedAt)}</p>}
+    {(status.serviceTimesConfirmedAt || status.locationConfirmedAt) && <p className="email-update-source">Confirmed through the church’s listed email.</p>}
+    {sent ? <div className="email-update-sent" role="status"><span className="email-update-icon"><Check size={14} /></span><div><strong>Check your inbox</strong><p>Confirm your request using the link we sent. It may take a few minutes.</p></div></div> : status.enabled && <>
+      <button type="button" className="email-update-trigger" aria-expanded={open} aria-controls={`email-form-${church.id}`} onClick={() => { setOpen(!open); setError(""); }}>
+        <Bell size={14} /><span>Get confirmed service times</span>{open ? <X size={13} /> : <ChevronRight size={14} />}
+      </button>
+      {open && <form id={`email-form-${church.id}`} className="email-update-form" onSubmit={async e => {
+        e.preventDefault(); setBusy(true); setError("");
+        try { await post("request", { churchId: church.id, email }); setSent(true); setOpen(false); }
+        catch (err) { setError(err instanceof Error ? err.message : "Please try again."); } finally { setBusy(false); }
+      }}>
+        <label className="email-sr-only" htmlFor={`email-input-${church.id}`}>Your email address</label>
+        <div className="email-update-input-row"><div className="email-input-wrap"><Mail size={13} aria-hidden="true" /><input id={`email-input-${church.id}`} type="email" autoComplete="email" placeholder="Your email address" required maxLength={254} value={email} onChange={e => setEmail(e.target.value)} className="email-input" aria-describedby={`email-note-${church.id}`} disabled={busy} /></div>
+          <button disabled={busy} className="email-button email-button-small">{busy ? <LoaderCircle size={13} className="email-spin" /> : <ArrowRight size={13} />}<span>{busy ? "Sending…" : "Notify me"}</span></button>
+        </div>
+        <p id={`email-note-${church.id}`} className="email-update-note">One email when confirmed. No marketing or sharing your address. Request expires in 90 days.</p>
+        {error && <p role="alert" className="email-error">{error}</p>}
+      </form>}
+    </>}
   </section>;
+}
+
+function EmailPageBackdrop() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    let disposed = false;
+    let globe: { destroy(): void } | undefined;
+    Promise.all([import("./report/lookup-particle-globe"), import("./report/globe-cells.json")]).then(([renderer, cells]) => {
+      if (disposed || !canvasRef.current) return;
+      globe = renderer.createGlobe(canvasRef.current, cells.default, { lat: 26, lng: -38, top: 50, scale: 1.15, driftSpeed: 0.012 });
+    }).catch(() => { /* The CSS horizon remains when the decorative canvas cannot load. */ });
+    return () => { disposed = true; globe?.destroy(); };
+  }, []);
+  return <div className="email-page-backdrop" aria-hidden="true"><div className="email-page-horizon"><canvas ref={canvasRef} /></div></div>;
 }
 
 export function EmailConfirmationPage() {
   const [params] = useState(() => Object.fromEntries(new URLSearchParams(window.location.hash.slice(1))));
-  const [church, setChurch] = useState<any>(null);
+  const [church, setChurch] = useState<ReviewChurch | null>(null);
   const [times, setTimes] = useState("");
   const [address, setAddress] = useState("");
   const [correct, setCorrect] = useState(false);
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
+  const [outcome, setOutcome] = useState<"subscribe" | "save" | "stop" | "cancel" | null>(null);
+  const staff = params.mode === "staff";
+  const stop = params.mode === "stop";
+  const incomplete = !params.key || !params.token;
+  useEffect(() => {
+    const previous = document.title;
+    document.title = "Email updates | Here’s My Church";
+    return () => { document.title = previous; };
+  }, []);
   async function act(action: string, extra = {}) {
-    setBusy(true); setMessage("");
+    setBusy(true); setError("");
     try {
       const result = await post("action", { ...params, action, ...extra });
-      if (result.completed) { setDone(true); setMessage("These details have already been submitted. Thank you."); }
+      if (result.completed) { setOutcome("save"); setMessage("These details have already been submitted. Thank you for helping visitors plan a visit."); }
       else if (result.church) { setChurch(result.church); setTimes(result.church.serviceTimes); setAddress([result.church.address, result.church.city].filter(Boolean).join(", ")); }
-      else { setMessage(result.message || "Your request has been cancelled."); setDone(action !== "subscribe"); }
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Please try again."); } finally { setBusy(false); }
+      else { setMessage(result.message || "Your request has been cancelled and your email deleted."); setOutcome(action as "subscribe" | "save" | "stop" | "cancel"); }
+    } catch (err) { setError(err instanceof Error ? err.message : "Please try again."); } finally { setBusy(false); }
   }
-  return <main className="min-h-screen bg-[#13111c] px-5 py-16 text-white"><div className="mx-auto max-w-lg space-y-5">
-    <a href="/world" className="text-purple-300">Here's My Church</a>
-    <h1 className="text-2xl font-semibold">{params.mode === "staff" ? "Help people plan a visit" : params.mode === "stop" ? "Stop church confirmation requests" : "Confirm your email update request"}</h1>
-    {!params.key || !params.token ? <p>This link is incomplete. Please open the full link from your email.</p> : !done && <>
-      {params.mode === "staff" ? !church ? <button disabled={busy} onClick={() => act("preview")} className="rounded bg-purple-600 px-4 py-2">Review church details</button> : <form className="space-y-4" onSubmit={e => { e.preventDefault(); act("save", { serviceTimes: times, locationCorrect: correct, address, original: church }); }}>
-        <h2 className="text-xl">{church.name}</h2>
-        <label className="block">Worship service days and times<textarea required maxLength={1000} value={times} onChange={e => setTimes(e.target.value)} placeholder="Sunday 9 am and 11 am" className={inputStyle} /></label>
-        <p>Listed location: {church.address || "Not listed"}, {church.city}</p>
-        <label className="flex gap-2"><input type="checkbox" checked={correct} onChange={e => setCorrect(e.target.checked)} />I confirm this is our current worship location.</label>
-        {!correct && <label className="block">Correct street address, city, and region<textarea required maxLength={600} value={address} onChange={e => setAddress(e.target.value)} className={inputStyle} /></label>}
-        <p className="text-sm text-white/60">Service times will be published. Location corrections go to review. This link confirms access to the church's listed email contact.</p>
-        <button disabled={busy} className="rounded bg-purple-600 px-4 py-2">{busy ? "Saving…" : "Confirm details"}</button>
-      </form> : <button disabled={busy} className="rounded bg-purple-600 px-4 py-2" onClick={() => act(params.mode === "stop" ? "stop" : "subscribe")}>{busy ? "Working…" : params.mode === "stop" ? "Stop requests" : "Confirm my request"}</button>}
-      {params.mode !== "staff" && params.mode !== "stop" && <button disabled={busy} className="block text-sm text-white/70 underline" onClick={() => act("cancel")}>Cancel my update request and delete my email</button>}
-    </>}
-    {message && <p role="status">{message}</p>}
+  const title = incomplete ? "A little link trouble" : outcome === "subscribe" ? "You’re on the list" : outcome === "cancel" ? "Request cancelled" : outcome === "save" ? "Thanks for the update" : outcome === "stop" ? "Requests stopped" : staff ? "Help people plan a visit" : stop ? "Stop confirmation requests?" : "One step closer to Sunday";
+  const description = incomplete ? "Open the full link from your email to continue." : outcome ? message : staff ? "Review your church’s service times and location so visitors can arrive with confidence." : stop ? "We’ll stop sending requests to confirm this church’s details." : "Confirm your request and we’ll email you when this church’s service times are confirmed.";
+  return <main className="email-page"><EmailPageBackdrop /><div className="email-page-shell">
+    <a href="/world" className="email-wordmark"><img src={appIcon} alt="" width={30} height={30} />Here’s My Church</a>
+    <section className="email-page-card" aria-labelledby="email-page-title">
+      <div className={`email-page-symbol${outcome ? " is-success" : ""}`}>{outcome ? <CheckCheck size={22} /> : staff ? <ChurchIcon size={22} /> : <Mail size={22} />}</div>
+      <p className="email-eyebrow">{staff ? "Church details" : "Email updates"}</p>
+      <h1 id="email-page-title">{title}</h1>
+      <p className="email-page-description" role={outcome ? "status" : undefined}>{description}</p>
+      {!incomplete && !outcome && (staff ? !church ? <button disabled={busy} onClick={() => act("preview")} className="email-button email-page-primary">{busy ? <LoaderCircle size={14} className="email-spin" /> : <ArrowRight size={14} />}Review church details</button> : <form className="email-review-form" onSubmit={e => { e.preventDefault(); act("save", { serviceTimes: times, locationCorrect: correct, address, original: church }); }}>
+        <div className="email-church-name"><ChurchIcon size={15} /><h2>{church.name}</h2></div>
+        <label className="email-field">Worship service days and times<textarea required maxLength={1000} value={times} onChange={e => setTimes(e.target.value)} placeholder="Sunday 9 am and 11 am" className="email-input" rows={3} /></label>
+        <div className="email-location"><MapPin size={14} /><div><span>Listed worship location</span><p>{church.address || "Not listed"}{church.city ? `, ${church.city}` : ""}</p></div></div>
+        <label className="email-check"><input type="checkbox" checked={correct} onChange={e => setCorrect(e.target.checked)} /><span>This is our current worship location.</span></label>
+        {!correct && <label className="email-field">Correct street address, city, and region<textarea required maxLength={600} value={address} onChange={e => setAddress(e.target.value)} className="email-input" rows={2} /></label>}
+        <p className="email-review-note">Service times are published when you confirm. Location changes go to review.</p>
+        <button disabled={busy} className="email-button email-page-primary">{busy ? <LoaderCircle size={14} className="email-spin" /> : <Check size={14} />}{busy ? "Saving…" : "Confirm details"}</button>
+      </form> : <>
+        {!stop && <div className="email-page-details"><p><Bell size={14} />One update when service times are confirmed</p><p><ShieldCheck size={14} />Your email stays private. No marketing.</p></div>}
+        <button disabled={busy} className="email-button email-page-primary" onClick={() => act(stop ? "stop" : "subscribe")}>{busy ? <LoaderCircle size={14} className="email-spin" /> : stop ? <Bell size={14} /> : <Check size={14} />}{busy ? "Working…" : stop ? "Stop requests" : "Confirm my request"}</button>
+      </>)}
+      {error && <p role="alert" className="email-error email-page-error">{error}</p>}
+      {outcome && <a href="/world" className="email-button email-page-primary">Back to the map<ArrowRight size={14} /></a>}
+      {!incomplete && !staff && !stop && (!outcome || outcome === "subscribe") && <div className="email-page-footer"><p><Clock3 size={12} />Expires after 90 days</p><button disabled={busy} className="email-cancel" aria-label="Cancel request and delete my email" onClick={() => act("cancel")}>Cancel &amp; delete email</button></div>}
+    </section>
+    <a className="email-back" href="/world"><ArrowLeft size={13} />Explore the map</a>
   </div></main>;
 }
