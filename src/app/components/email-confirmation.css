@@ -67,10 +67,10 @@ textarea.email-input{resize:vertical;min-height:66px}
 .email-wordmark>img{display:block;width:30px;height:30px;border-radius:9px;object-fit:cover;box-shadow:0 3px 12px rgba(0,0,0,.2)}
 .email-page-backdrop{position:fixed;inset:0;overflow:hidden;pointer-events:none;background:radial-gradient(ellipse 800px 400px at 50% 75%,rgba(124,58,237,.24),transparent 72%),radial-gradient(ellipse 640px 290px at 50% 0%,rgba(124,58,237,.1),transparent 70%)}
 .email-page-backdrop::before{content:"";position:absolute;inset:0;background:radial-gradient(rgba(196,181,253,.2) 1px,transparent 1.3px) center/14px 14px;mask-image:radial-gradient(ellipse at 50% 35%,transparent 22%,#000 100%);opacity:.55}
-.email-page-horizon{position:absolute;left:50%;bottom:-70px;transform:translateX(-50%);width:max(100%,900px);height:clamp(320px,52vh,600px);mask-image:linear-gradient(#000 45%,transparent 100%);opacity:.75}
+.email-page-horizon{position:absolute;left:50%;bottom:40px;transform:translateX(-50%);width:max(100%,900px);height:clamp(320px,52vh,600px);mask-image:linear-gradient(#000 45%,transparent 100%);opacity:.75}
 .email-page-horizon::before{content:"";position:absolute;left:0;right:0;top:32px;height:180px;background:radial-gradient(ellipse at 50% 80%,rgba(139,92,246,.23),transparent 70%);filter:blur(20px)}
 .email-page-horizon canvas{position:relative;width:100%;height:100%;display:block}
-@media(max-width:600px){.email-page-horizon{bottom:-20px;opacity:.5}.email-page-backdrop::before{opacity:.35}}
+@media(max-width:600px){.email-page-horizon{bottom:80px;opacity:.5}.email-page-backdrop::before{opacity:.35}}
 .email-page-actions{display:flex;align-items:center;gap:12px;margin-top:23px}
 .email-page-actions .email-page-primary{flex:1;width:auto;min-width:0;margin-top:0}
 .email-page-actions .email-cancel{font-size:11px;min-height:36px}
