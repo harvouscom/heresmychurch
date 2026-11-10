@@ -34,13 +34,13 @@ function CommunityImpactCard({
   if (stats.totalCorrections === 0 && stats.churchesImproved === 0 && trending.length === 0) return null;
   return (
     <section className={`review-impact ${className}`.trim()} aria-label="Community impact">
-      <div className="flex items-center gap-2 text-xs text-white/65 mb-2">
-        <ShieldCheck size={14} className="text-emerald-300/80" />
-        <h3 className="text-xs font-medium">Community impact</h3>
+      <div className="review-impact-heading">
+        <span className="review-impact-symbol"><ShieldCheck size={16} /></span>
+        <div><h3 className="text-xs font-medium text-emerald-100">Community impact</h3><p className="text-caption text-white/50 mt-0.5">A more accurate map, together.</p></div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex items-baseline gap-1.5 flex-wrap"><span className="text-lg text-white font-medium tabular-nums">{stats.totalCorrections.toLocaleString()}</span><span className="text-xs text-white/50">corrections</span></div>
-        <div className="flex items-baseline gap-1.5 flex-wrap border-l border-white/10 pl-3"><span className="text-lg text-white font-medium tabular-nums">{stats.churchesImproved.toLocaleString()}</span><span className="text-xs text-white/50">churches improved</span></div>
+      <div className="review-impact-metrics">
+        <div className="review-impact-metric"><CheckCircle2 size={15} className="text-emerald-300/80" /><strong>{stats.totalCorrections.toLocaleString()}</strong><span>corrections</span></div>
+        <div className="review-impact-metric"><MapPin size={15} className="text-purple-300" /><strong>{stats.churchesImproved.toLocaleString()}</strong><span>churches improved</span></div>
       </div>
       {trending.length > 0 && <div className="mt-2 pt-2 border-t border-white/8">
         <p className="text-xs text-white/40 mb-1.5">Updated in the last 30 days</p>
@@ -172,7 +172,7 @@ function IncompleteChurchesList({
   }
 
   return (
-    <div className="space-y-2">
+    <div>
       {/* Search input */}
       <div className="relative mb-3">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/55" />
@@ -213,25 +213,25 @@ function IncompleteChurchesList({
                 type="button"
                 disabled={!onChurchClick}
                 key={ch.id}
-                className={`review-church-row w-full text-left rounded-xl px-3.5 py-3 disabled:cursor-default ${
+                className={`review-church-row w-full text-left px-3 py-2 disabled:cursor-default ${
                   onChurchClick ? "cursor-pointer hover:bg-white/[0.05] transition-colors group" : ""
                 }`}
                 onClick={() => onChurchClick && onChurchClick(ch)}
               >
                 <div className="flex items-center gap-2">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-white text-sm font-medium truncate group-hover:text-purple-300 transition-colors">
-                        {ch.name}
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <h3 className="review-church-name text-white text-sm font-medium group-hover:text-purple-300 transition-colors">
+                        {ch.name || "Unnamed church"}
                       </h3>
                       {ch.city && (
-                        <span className="text-white/55 text-caption flex items-center gap-0.5 flex-shrink-0">
+                        <span className="text-white/45 text-caption flex items-center gap-0.5">
                           <MapPin size={8} />
                           {ch.city}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-white/45 mt-1">Missing {missing.map(field => field.toLowerCase()).join(" & ")}</p>
+                    <p className="text-caption text-white/45 mt-0.5">Missing {missing.map(field => field.toLowerCase()).join(" & ")}</p>
                   </div>
                   {onChurchClick && (
                     <ChevronRight size={14} className="text-white/50 flex-shrink-0 group-hover:text-white/60 transition-colors" />
@@ -344,7 +344,7 @@ export function NationalReviewModal({
             const pct = state.total ? Math.round(state.needsReview / state.total * 1000) / 10 : 0;
             return <button type="button" key={abbrev} className="review-region-row w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left group" onClick={() => { onClose(); onSelectState(abbrev); }}>
               <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-white/5 shrink-0"><PlaceFlag abbrev={abbrev} countryCode={countryCode} size="sm" /></span>
-              <span className="flex-1 min-w-0"><span className="block text-sm text-white font-medium truncate group-hover:text-purple-200">{regionName(abbrev)}</span><span className="block text-xs text-white/45 mt-1 tabular-nums">{state.needsReview.toLocaleString()} of {state.total.toLocaleString()} listings</span></span>
+              <span className="flex-1 min-w-0"><span className="block text-sm text-white font-medium truncate group-hover:text-purple-200">{regionName(abbrev)}</span><span className="block text-caption text-white/45 mt-0.5 tabular-nums">{state.needsReview.toLocaleString()} of {state.total.toLocaleString()} listings</span></span>
               <span className="text-sm text-purple-200 tabular-nums font-medium">{pct}%</span><ChevronRight size={14} className="text-white/30 shrink-0" />
             </button>;
           })}</div>}
