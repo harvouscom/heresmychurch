@@ -24,7 +24,7 @@ On November 9, 2026, eight visible reviewed changes were saved sequentially thro
 
 ## Rollout
 
-Apply migration `0003_edit_versions_review_index.sql` before deploying the new Worker. Briefly pause writes while the old Worker drains, then reopen writes with the new code. Queue a full publication using the existing authenticated publishing script to backfill projections; public reads remain available. Monitor `review_index_regions` and `publish_outbox` until the expected regions are complete.
+Apply migration `0003_edit_versions_review_index.sql` before deploying the new Worker. Briefly pause writes while the old Worker drains, then reopen writes with the new code. Run `scripts/backfill-review-index.mjs` with the moderator key supplied privately to backfill only the review projection. The tool skips regions whose source revision is already indexed and retries temporary service failures. The normal publication queue also keeps the projection current; public reads remain available. Monitor `review_index_regions` and `publish_outbox` until the expected regions are complete.
 
 The pre-index production moderation request took 234,084 ms with zero pending items.
 

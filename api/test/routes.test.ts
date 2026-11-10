@@ -318,3 +318,10 @@ describe("simultaneous moderator decisions",()=>{
   expect((await kv.get("churches:US:TX")).find((ch:any)=>ch.id===id).name).toBe("Before");
  });
 });
+
+describe("review-index maintenance",()=>{
+ it("requires moderator access and validates its cursor",async()=>{
+  expect((await call("/moderate/review-index/backfill",{method:"POST"})).status).toBe(401);
+  const res=await call("/moderate/review-index/backfill?offset=invalid",{method:"POST",headers:{"x-moderator-key":"mod-test"}});expect(res.status).toBe(400);
+ });
+});

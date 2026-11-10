@@ -52,3 +52,8 @@ export async function indexedReviewView(regions:string[],neededIds:Set<string>,g
  }));}
  return {churches,reverify,fallbackRegions:fallback.length};
 }
+
+export async function reviewIndexCurrent(region:string):Promise<boolean>{
+ const row=await getD1().prepare("SELECT r.complete,r.source_revision,coalesce(k.revision,0) AS current_revision FROM review_index_regions r LEFT JOIN kv k ON k.key=?1 WHERE r.region=?2").bind(churchesKey(regionCountry(region),region),region).first<any>();
+ return row?.complete===1&&row.source_revision===row.current_revision;
+}

@@ -49,7 +49,7 @@ import { normalizeSearchText, searchTable, setSearchTableReady, syncSearchRegion
 import { queryMonthlyRows, upsertMonthlyRows } from "./monthly.ts";
 import { checkChurchEvidence, reviewAiAvailable } from "./review-evidence.ts";
 import { dispatchPublications, hasPublicationQueue, requestPublications, publicationHealth, validPublicationTarget, releasePublication } from "./publication.ts";
-import { indexedReviewView, refreshReviewIndex } from "./review-index.ts";
+import { indexedReviewView, refreshReviewIndex, reviewIndexCurrent } from "./review-index.ts";
 import { usesD1 } from "./kv-backend.ts";
 import { EditConflictError, snapshotOf, proposalVersion, currentReviewValue } from "./edit-versions.ts";
 import { registerMigrateRoutes } from "./admin-migrate.ts";
@@ -875,7 +875,7 @@ const P="/make-server-283d8046";
 
 // Maintenance freeze (MAINTENANCE_READONLY): reads keep working, and anything that changes data
 // gets a clean 503. The exempt routes are what a cutover itself needs, and check the moderator key.
-const FREEZE_EXEMPT=new Set([`${P}/churches/search/backfill`,`${P}/admin/publish-static`]);
+const FREEZE_EXEMPT=new Set([`${P}/churches/search/backfill`,`${P}/admin/publish-static`,`${P}/moderate/review-index/backfill`]);
 app.use("*",async(c,next)=>{
   const m=c.req.method;
   if(!env("MAINTENANCE_READONLY")||m==="GET"||m==="HEAD"||m==="OPTIONS")return next();
@@ -3511,6 +3511,21 @@ const moderatePendingHandler=async(c:any)=>{
     return c.json({pendingSuggestions,pendingChurches,pendingReverifyChurches,inReviewSuggestions,inReviewChurches});
   }catch(e){return serverError(c,e);}
 };
+// Index-only maintenance avoids rebuilding every public file merely to seed moderation metadata.
+app.post(`${P}/moderate/review-index/backfill`,async(c)=>{
+ try{
+  if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+  if(!usesD1())return c.json({error:"Review indexing requires D1"},503);
+  const offsetRaw=c.req.query("offset")??"0";
+  if(!/^\d+$/.test(offsetRaw))return c.json({error:"Invalid offset"},400);
+  const regions=await moderationRegions(),offset=Number(offsetRaw),region=regions[offset];
+  if(!region)return c.json({regions:[],next:null,total:regions.length});
+  if(await reviewIndexCurrent(region))return c.json({regions:[{region,ready:true,unchanged:true}],next:offset+1<regions.length?offset+1:null,total:regions.length});
+  const churches=await getChurches(region);
+  const ready=await refreshReviewIndex(region,Array.isArray(churches)?churches:[]);
+  return c.json({regions:[{region,ready,churchCount:Array.isArray(churches)?churches.length:0}],next:offset+1<regions.length?offset+1:null,total:regions.length});
+ }catch(e){return serverError(c,e);}
+});
 app.get(`${P}/moderate/pending`,moderatePendingHandler);
 app.get("/moderate/pending",moderatePendingHandler);
 
