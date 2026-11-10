@@ -6,10 +6,12 @@
  * (npm:, jsr:) are mapped to npm packages by `alias` in api/wrangler.jsonc.
  */
 import { setReviewAi, type AiBinding } from "../supabase/functions/make-server-283d8046/review-evidence.ts";
-import app from "../supabase/functions/make-server-283d8046/app.ts";
+import app, { publishTarget, enqueueFullPublication } from "../supabase/functions/make-server-283d8046/app.ts";
 import { setEnv, setOgImageRenderer, setWaitUntil } from "../supabase/functions/make-server-283d8046/runtime.ts";
 import { setR2Binding } from "../supabase/functions/make-server-283d8046/r2.ts";
 import { setD1, setKvBucket, setSearchD1 } from "../supabase/functions/make-server-283d8046/bindings.ts";
+import { setPublicationQueue, dispatchPublications, publishQueuedTarget, publicationHealth, releasePublication, validPublicationTarget } from "../supabase/functions/make-server-283d8046/publication.ts";
+import { collectRetiredObjects } from "../supabase/functions/make-server-283d8046/recovery.ts";
 import { generateOgImage } from "./og-image.ts";
 import { handlePresence } from "./presence.ts";
 
@@ -30,18 +32,13 @@ interface Env {
   HMC_KV?: R2Bucket;
   /** Live visitor counts. */
   PRESENCE?: DurableObjectNamespace;
+  PUBLICATIONS?: Queue<{target:string}>;
 }
 
 // og-image.tsx is Deno-only (esm.sh React + og_edge); Workers use workers-og.
 setOgImageRenderer(generateOgImage);
 
-export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    // Bypasses the Hono app: this needs no store, and must keep working if the store is down.
-    if (new URL(request.url).pathname === "/presence" && env.PRESENCE) {
-      return handlePresence(request, env.PRESENCE);
-    }
-
+function configure(env:Env,ctx:ExecutionContext):void {
     setEnv((name) => {
       const v = env[name];
       return typeof v === "string" ? v : undefined;
@@ -53,6 +50,13 @@ export default {
     setSearchD1(env.HMC_SEARCH_DB ?? null);
     setKvBucket(env.HMC_KV ?? null);
 
+    setPublicationQueue(env.PUBLICATIONS ?? null);
+ }
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    if(new URL(request.url).pathname==="/presence"&&env.PRESENCE)return handlePresence(request,env.PRESENCE);
+    configure(env,ctx);
     // Routes are mounted under /make-server-283d8046 (the Supabase function name);
     // accept bare paths too, so api.heresmychurch.com/churches/TX works.
     const url = new URL(request.url);
@@ -61,5 +65,29 @@ export default {
     }
 
     return app.fetch(new Request(url.toString(), request), env, ctx);
+  },
+  async queue(batch:MessageBatch<{target:string}>,env:Env,ctx:ExecutionContext):Promise<void>{
+    configure(env,ctx);
+    for(const message of batch.messages){
+      const target=message.body?.target;
+      if(!validPublicationTarget(target)){console.error("publication_invalid_message");message.ack();continue;}
+      if(env.MAINTENANCE_READONLY){await releasePublication(target);message.ack();continue;}
+      try{await publishQueuedTarget(target,publishTarget);message.ack();}
+      catch(e){
+        console.error(JSON.stringify({event:"publication_failed",target,attempt:message.attempts,error:e instanceof Error?e.message:"unknown"}));
+        message.retry({delaySeconds:Math.min(900,30*2**Math.min(message.attempts-1,5))});
+      }
+    }
+  },
+  async scheduled(controller:ScheduledController,env:Env,ctx:ExecutionContext):Promise<void>{
+    configure(env,ctx);
+    if(env.MAINTENANCE_READONLY)return;
+    if(controller.cron==="0 9 * * *")await enqueueFullPublication();
+    await dispatchPublications();
+    if(new Date(controller.scheduledTime).getUTCMinutes()===0)await collectRetiredObjects();
+    const health=await publicationHealth() as any;
+    if(health.summary?.blocked||health.summary?.oldest_requested_at<Date.now()-900000){
+      if(health.summary?.pending)console.warn(JSON.stringify({event:"publication_attention",...health.summary}));
+    }
   },
 };

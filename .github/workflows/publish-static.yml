@@ -1,9 +1,7 @@
 name: Republish static files
 
 on:
-  schedule:
-    # Daily at 09:00 UTC, outside the usual traffic peak
-    - cron: '0 9 * * *'
+  # Daily publishing now runs inside Cloudflare; retain this manual recovery action.
   workflow_dispatch: {}
 
 jobs:

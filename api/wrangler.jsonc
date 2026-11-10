@@ -27,6 +27,11 @@
     "MAINTENANCE_READONLY": ""
   },
   "ai": { "binding": "AI" },
+  "triggers": { "crons": ["* * * * *", "0 9 * * *"] },
+  "queues": {
+    "producers": [{ "binding": "PUBLICATIONS", "queue": "hmc-publications" }],
+    "consumers": [{ "queue": "hmc-publications", "max_batch_size": 1, "max_batch_timeout": 1, "max_concurrency": 1, "max_retries": 6, "dead_letter_queue": "hmc-publication-failures" }]
+  },
   "routes": [{ "pattern": "api.heresmychurch.com", "custom_domain": true }],
   // Static files (states.json, churches/{REGION}.json); r2.ts prefers this over S3 keys.
   // HMC_KV holds large KV values, some with IPs, so it stays private: never point it at hmc-data.

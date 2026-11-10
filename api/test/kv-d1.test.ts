@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setKvBucket } from "../../supabase/functions/make-server-283d8046/bindings.ts";
 import * as kv from "../../supabase/functions/make-server-283d8046/kv.ts";
 import { SPILL_BYTES, prefixUpperBound } from "../../supabase/functions/make-server-283d8046/kv-d1.ts";
+import { collectRetiredObjects, RECOVERY_RETENTION_MS } from "../../supabase/functions/make-server-283d8046/recovery.ts";
 import { type Harness, startHarness } from "./harness.ts";
 
 let h: Harness;
@@ -10,6 +11,8 @@ afterAll(async () => { await h.mf.dispose(); });
 beforeEach(async () => {
   await h.db.prepare("DELETE FROM kv").run();
   await h.db.prepare("DELETE FROM kv_tombstones").run();
+  await h.db.prepare("DELETE FROM r2_retired_objects").run();
+  await h.db.prepare("DELETE FROM publish_outbox").run();
   setKvBucket(h.bucket);
   h.vars.MAINTENANCE_READONLY = "";
 });
@@ -104,23 +107,24 @@ describe("spilling to R2", () => {
     expect(await kv.get("churches:US:TX")).toEqual(churches);
   });
 
-  it("deletes the old object when replaced or removed", async () => {
-    await h.flush();
-    const start = await objectCount();
-    await kv.set("big", ofBytes(SPILL_BYTES + 5));
-    await kv.set("big", ofBytes(SPILL_BYTES + 6));
-    await h.flush();
-    expect(await objectCount()).toBe(start + 1);
-
-    await kv.set("big", "small now");
-    await h.flush();
+  it("retains replaced and removed objects through the recovery window", async () => {
+    const start=await objectCount();
+    const big=ofBytes(SPILL_BYTES+5);
+    await kv.set("recover",big);const original=await row("recover");
+    await kv.set("recover","new value");
+    expect(await h.bucket.get(original.r2_key)).not.toBeNull();
+    expect(await collectRetiredObjects()).toBe(0);
+    // Simulate D1 point-in-time recovery: its old row points at the retained immutable file.
+    await h.db.prepare("UPDATE kv SET value=NULL,r2_key=?1,size=?2 WHERE key='recover'").bind(original.r2_key,original.size).run();
+    expect(await kv.get("recover")).toBe(big);
+    expect(await collectRetiredObjects(Date.now()+RECOVERY_RETENTION_MS+1000)).toBe(0);
+    await h.db.prepare("UPDATE r2_retired_objects SET delete_after=0").run();
+    expect(await collectRetiredObjects()).toBe(0);
+    await kv.del("recover");
+    expect(await collectRetiredObjects(Date.now()+1000)).toBe(0);
+    expect(await h.bucket.get(original.r2_key)).not.toBeNull();
+    expect(await collectRetiredObjects(Date.now()+RECOVERY_RETENTION_MS+1000)).toBe(1);
     expect(await objectCount()).toBe(start);
-
-    await kv.set("big", ofBytes(SPILL_BYTES + 7));
-    await kv.del("big");
-    await h.flush();
-    expect(await objectCount()).toBe(start);
-    expect(await kv.get("big")).toBeUndefined();
   });
 
   it("re-reads the row when the object was replaced mid-read", async () => {
