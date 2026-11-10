@@ -10,7 +10,7 @@ export function DataHealthPage() {
   const [params, setParams] = useSearchParams(); const region = (params.get('region') || 'TX').toUpperCase();
   const [data, setData] = useState<any>(null), [error, setError] = useState(''), [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(''), [filter, setFilter] = useState('all'), [limit, setLimit] = useState(50), [retry, setRetry] = useState(0);
-  useEffect(() => { document.title = 'Data health | Here’s My Church'; }, []);
+  useEffect(() => { document.title = 'Improve the map | Here’s My Church'; }, []);
   useEffect(() => { const controller = new AbortController(); setLoading(true); setError(''); setData(null); setLimit(50); portalRequest(`data-health/${encodeURIComponent(region)}`, undefined, controller.signal).then(setData).catch(e => { if (!controller.signal.aborted) setError(e.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); }); return () => controller.abort(); }, [region, retry]);
   const rows = useMemo(() => (data?.rows || []).filter((r: any) => `${r.name} ${r.city}`.toLowerCase().includes(search.toLowerCase()) && (filter === 'all' || filter === 'gaps' && r.score < 100 || filter === 'suggestions' && r.openSuggestions > 0 || filter === 'duplicates' && r.possibleDuplicate)).sort((a: any, b: any) => a.score - b.score || a.name.localeCompare(b.name)), [data, search, filter]);
   const country = Object.values(COUNTRIES).find(c => c.regions[region]);
@@ -33,7 +33,7 @@ export function DataHealthPage() {
       </div>
       {country && regionConfig && <DataHealthGlobe region={regionConfig} countryCode={country.code} countryName={country.name} />}
     </header>
-    <section className="health-workspace health-workspace-focused" aria-label="Regional data health">
+    <section className="health-workspace health-workspace-focused" aria-label="Regional church data">
       <div className="health-metrics health-metrics-focused">
         <div><span>Average completeness</span><strong>{loading || !data?.total ? '—' : `${data.averageScore}%`}</strong><small>Across six listing details</small></div>
         <div><span>Church listings</span><strong>{count(data?.total)}</strong><small>In {regionName}</small></div>

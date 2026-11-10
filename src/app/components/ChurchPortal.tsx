@@ -10,7 +10,7 @@ import { PortalChurchPreview } from './PortalChurchPreview';
 import { portalRequest } from './portal-api';
 export { PORTAL_BASE, portalRequest } from './portal-api';
 export function PortalShell({ children, wide = false, point, showGlobeBackdrop = true }: { children: React.ReactNode; wide?: boolean; showGlobeBackdrop?: boolean; point?: { lat: number; lng: number } }) {
-  return <main className={`portal-page ${wide ? 'portal-wide' : ''}`}>{showGlobeBackdrop ? <EmailPageBackdrop point={point} /> : <div className="portal-ambient" aria-hidden="true" />}<div className="portal-shell"><nav className="portal-nav" aria-label="Main navigation"><Link to="/" className="portal-brand"><img src={logo} alt="" />Here’s My Church</Link><div className="portal-nav-links"><NavLink to="/data-health">Church data</NavLink><NavLink to="/for-churches">For churches</NavLink></div></nav>{import.meta.env.DEV && <p className="portal-local-note">Local preview · sample data</p>}{children}<footer className="portal-footer"><Link to="/"><ArrowLeft size={13} /> Back to the map</Link><span>A little care. A more welcoming map.</span></footer></div></main>;
+  return <main className={`portal-page ${wide ? 'portal-wide' : ''}`}>{showGlobeBackdrop ? <EmailPageBackdrop point={point} /> : <div className="portal-ambient" aria-hidden="true" />}<div className="portal-shell"><nav className="portal-nav" aria-label="Main navigation"><Link to="/" className="portal-brand"><img src={logo} alt="" />Here’s My Church</Link><div className="portal-nav-links"><NavLink to="/improve-the-map">Improve the map</NavLink><NavLink to="/for-churches">For churches</NavLink></div></nav>{import.meta.env.DEV && <p className="portal-local-note">Local preview · sample data</p>}{children}<footer className="portal-footer"><Link to="/"><ArrowLeft size={13} /> Back to the map</Link><span>A little care. A more welcoming map.</span></footer></div></main>;
 }
 export function ChurchClaimCard({ church }: { church: ChurchType }) {
   const [claimed, setClaimed] = useState(false);
@@ -59,4 +59,9 @@ export function ChurchPortalPage() {
 export function LegacyChurchPortalRedirect() {
   const location = useLocation();
   return <Navigate replace to={`/for-churches${location.search}${location.hash}`} />;
+}
+
+export function LegacyDataHealthRedirect() {
+  const location = useLocation();
+  return <Navigate replace to={`/improve-the-map${location.search}${location.hash}`} />;
 }
