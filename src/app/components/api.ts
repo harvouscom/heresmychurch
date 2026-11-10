@@ -1247,6 +1247,7 @@ export interface PendingSuggestionItem {
   churchId: string;
   field: string;
   proposedValue: string;
+  reviewVersion?: string;
   currentValue: string | null;
   votes: number;
   submissions: { value: string; count: number }[];
@@ -1324,15 +1325,19 @@ export async function fetchModeratorPending(
   return res.json();
 }
 
+function reviewChangedError():Error {return Object.assign(new Error("This item changed. Review the latest values before trying again."),{code:"EDIT_CONFLICT"});}
+
 export async function moderateApproveSuggestion(
   moderatorKey: string,
   churchId: string,
-  field: string
+  field: string,
+  reviewVersion?: string
 ): Promise<{ success: boolean }> {
   const res = await fetchWithTimeout(
     `${BASE_URL}/moderate/approve/suggestion?key=${encodeURIComponent(moderatorKey)}`,
-    { method: "POST", headers, body: JSON.stringify({ churchId, field }), timeoutMs: MODERATE_ACTION_TIMEOUT_MS }
+    { method: "POST", headers, body: JSON.stringify({ churchId, field, reviewVersion }), timeoutMs: MODERATE_ACTION_TIMEOUT_MS }
   );
+  if (res.status === 409) throw reviewChangedError();
   if (res.status === 401) throw new Error("Invalid review key");
   if (!res.ok) throw new Error(`Failed to approve: ${res.status}`);
   return res.json();
@@ -1342,12 +1347,14 @@ export async function moderateApproveSuggestionWithValue(
   moderatorKey: string,
   churchId: string,
   field: string,
-  value: string
+  value: string,
+  reviewVersion?: string
 ): Promise<{ success: boolean }> {
   const res = await fetchWithTimeout(
     `${BASE_URL}/moderate/approve/suggestion?key=${encodeURIComponent(moderatorKey)}`,
-    { method: "POST", headers, body: JSON.stringify({ churchId, field, value }), timeoutMs: MODERATE_ACTION_TIMEOUT_MS }
+    { method: "POST", headers, body: JSON.stringify({ churchId, field, value, reviewVersion }), timeoutMs: MODERATE_ACTION_TIMEOUT_MS }
   );
+  if (res.status === 409) throw reviewChangedError();
   if (res.status === 401) throw new Error("Invalid review key");
   if (!res.ok) throw new Error(`Failed to approve: ${res.status}`);
   return res.json();
@@ -1356,12 +1363,14 @@ export async function moderateApproveSuggestionWithValue(
 export async function moderateRejectSuggestion(
   moderatorKey: string,
   churchId: string,
-  field: string
+  field: string,
+  reviewVersion?: string
 ): Promise<{ success: boolean }> {
   const res = await fetchWithTimeout(
     `${BASE_URL}/moderate/reject/suggestion?key=${encodeURIComponent(moderatorKey)}`,
-    { method: "POST", headers, body: JSON.stringify({ churchId, field }), timeoutMs: MODERATE_ACTION_TIMEOUT_MS }
+    { method: "POST", headers, body: JSON.stringify({ churchId, field, reviewVersion }), timeoutMs: MODERATE_ACTION_TIMEOUT_MS }
   );
+  if (res.status === 409) throw reviewChangedError();
   if (res.status === 401) throw new Error("Invalid review key");
   if (!res.ok) throw new Error(`Failed to reject: ${res.status}`);
   return res.json();

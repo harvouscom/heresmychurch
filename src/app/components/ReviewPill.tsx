@@ -100,6 +100,7 @@ export function ReviewPill({
       return true;
     } catch (err: any) {
       if (optimisticKey) setOptimisticRemoved((prev) => { const n = new Set(prev); n.delete(optimisticKey); return n; });
+      if(err?.code==="EDIT_CONFLICT")onRefresh();
       setError(friendlyError(err));
       return false;
     } finally {
@@ -301,7 +302,7 @@ export function ReviewPill({
                                 <div className="flex gap-2 flex-wrap">
                                   <button
                                     onClick={() => handleAction(
-                                      () => moderateApproveSuggestionWithValue(moderatorKey, s.churchId, s.field, editing.value),
+                                      () => moderateApproveSuggestionWithValue(moderatorKey, s.churchId, s.field, editing.value, s.reviewVersion),
                                       `edit-${actionId}`,
                                       `s:${s.churchId}:${s.field}`
                                     ).then((ok) => ok && setEditing(null))}
@@ -355,7 +356,7 @@ export function ReviewPill({
                                     Edit
                                   </button>
                                   <button
-                                    onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.churchId, s.field), actionId, `s:${s.churchId}:${s.field}`)}
+                                    onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.churchId, s.field, s.reviewVersion), actionId, `s:${s.churchId}:${s.field}`)}
                                     disabled={isActing}
                                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-caption font-medium transition-colors disabled:opacity-50"
                                   >
@@ -363,7 +364,7 @@ export function ReviewPill({
                                     Approve
                                   </button>
                                   <button
-                                    onClick={() => handleAction(() => moderateRejectSuggestion(moderatorKey, s.churchId, s.field), actionId, `s:${s.churchId}:${s.field}`)}
+                                    onClick={() => handleAction(() => moderateRejectSuggestion(moderatorKey, s.churchId, s.field, s.reviewVersion), actionId, `s:${s.churchId}:${s.field}`)}
                                     disabled={isActing}
                                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-caption font-medium transition-colors disabled:opacity-50"
                                   >
@@ -571,7 +572,7 @@ export function ReviewPill({
                                 <div className="flex gap-2 flex-wrap">
                                   <button
                                     onClick={() => handleAction(
-                                      () => moderateApproveSuggestionWithValue(moderatorKey, s.churchId, s.field, editing.value),
+                                      () => moderateApproveSuggestionWithValue(moderatorKey, s.churchId, s.field, editing.value, s.reviewVersion),
                                       `edit-${actionId}`,
                                       `s:${s.churchId}:${s.field}`
                                     ).then((ok) => ok && setEditing(null))}
@@ -626,7 +627,7 @@ export function ReviewPill({
                                       Edit
                                     </button>
                                     <button
-onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.churchId, s.field), actionId, `s:${s.churchId}:${s.field}`)}
+onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.churchId, s.field, s.reviewVersion), actionId, `s:${s.churchId}:${s.field}`)}
                                     disabled={isActing}
                                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 text-caption font-medium transition-colors disabled:opacity-50"
                                   >
@@ -634,7 +635,7 @@ onClick={() => handleAction(() => moderateApproveSuggestion(moderatorKey, s.chur
                                     Approve
                                   </button>
                                   <button
-                                    onClick={() => handleAction(() => moderateRejectSuggestion(moderatorKey, s.churchId, s.field), actionId, `s:${s.churchId}:${s.field}`)}
+                                    onClick={() => handleAction(() => moderateRejectSuggestion(moderatorKey, s.churchId, s.field, s.reviewVersion), actionId, `s:${s.churchId}:${s.field}`)}
                                       disabled={isActing}
                                       className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-caption font-medium transition-colors disabled:opacity-50"
                                     >

@@ -49,6 +49,9 @@ import { normalizeSearchText, searchTable, setSearchTableReady, syncSearchRegion
 import { queryMonthlyRows, upsertMonthlyRows } from "./monthly.ts";
 import { checkChurchEvidence, reviewAiAvailable } from "./review-evidence.ts";
 import { dispatchPublications, hasPublicationQueue, requestPublications, publicationHealth, validPublicationTarget, releasePublication } from "./publication.ts";
+import { indexedReviewView, refreshReviewIndex, reviewIndexCurrent } from "./review-index.ts";
+import { usesD1 } from "./kv-backend.ts";
+import { EditConflictError, snapshotOf, proposalVersion, currentReviewValue } from "./edit-versions.ts";
 import { registerMigrateRoutes } from "./admin-migrate.ts";
 import { r2Enabled, r2PutJson } from "./r2.ts";
 import { env, renderOgImage, waitUntil } from "./runtime.ts";
@@ -583,7 +586,7 @@ function addShortIds(ch:any[],st:string):any[]{return ch.map((c:any)=>({...c,sho
 
 // ── Search index (include shortId so search returns unique segment per church) ──
 function buildIdx(ch:any[]){return ch.map((c:any)=>({id:c.id,shortId:c.shortId,n:c.name||"",c:c.city||"",d:c.denomination||"",a:c.attendance||0,ad:c.address||"",la:c.lat||0,lo:c.lng||0,w:c.website||"",st:c.serviceTimes||"",p:c.phone||"",e:c.email||""}));}
-async function writeIdx(st:string,ch:any[]){const idx=buildIdx(ch);await setSidx(st,idx);await syncSearchRegion(regionCountry(st),st,idx);await persistStateReviewStats(st,ch);}
+async function writeIdx(st:string,ch:any[],fromPublication=false){if(hasPublicationQueue()&&!fromPublication)return;const idx=buildIdx(ch);await setSidx(st,idx);await syncSearchRegion(regionCountry(st),st,idx);await persistStateReviewStats(st,ch);}
 
 // Preserve user/community-submitted fields when overwriting cache (populate force, refresh-attendance).
 const USER_FIELDS_TO_PRESERVE=["shortId","homeCampusId","website","serviceTimes","languages","ministries","pastorName","phone","email","lastVerified","buildingSqft","listingStatus","relocatedFrom","relocatedTo"] as const;
@@ -863,6 +866,7 @@ app.use("*",async(c,next)=>{
 const SERVER_ERROR_MSG="Something went wrong. Please try again.";
 // Log the real error server-side; never send internal error text to clients.
 function serverError(c:any,e:unknown){
+  if(e instanceof EditConflictError)return c.json({error:e.message,code:e.code},409);
   console.error(`${c.req.method} ${c.req.path} failed:`,e);
   return c.json({error:SERVER_ERROR_MSG},500);
 }
@@ -871,7 +875,7 @@ const P="/make-server-283d8046";
 
 // Maintenance freeze (MAINTENANCE_READONLY): reads keep working, and anything that changes data
 // gets a clean 503. The exempt routes are what a cutover itself needs, and check the moderator key.
-const FREEZE_EXEMPT=new Set([`${P}/churches/search/backfill`,`${P}/admin/publish-static`]);
+const FREEZE_EXEMPT=new Set([`${P}/churches/search/backfill`,`${P}/admin/publish-static`,`${P}/moderate/review-index/backfill`]);
 app.use("*",async(c,next)=>{
   const m=c.req.method;
   if(!env("MAINTENANCE_READONLY")||m==="GET"||m==="HEAD"||m==="OPTIONS")return next();
@@ -1994,7 +1998,7 @@ async function finalizePopulate(st:string,ch:any[],ex:any,force:boolean){
   }
   if(force&&Array.isArray(ex)&&ex.length)mergeUserFieldsFromExisting(ex,ch);
   const chWithShort=addShortIdsUnique(ch,st);
-  await setChurches(st,chWithShort);await writeIdx(st,chWithShort);
+  await setChurches(st,chWithShort,undefined,ex);await writeIdx(st,chWithShort);
   void recordChurchAudit({state:st,action:"state_populated",old_value:Array.isArray(ex)?{churchCount:ex.length}:undefined,new_value:{churchCount:ch.length},source:"populate",actor_type:"system"});
   const meta=(await getMeta(false))||{stateCounts:{}};meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,ch.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();
   await invalidateReviewStatsCache();
@@ -2173,7 +2177,7 @@ app.post(`${P}/admin/refresh-attendance`,async(c)=>{
         const existing=await getChurches(st);
         if(Array.isArray(existing)&&existing.length)mergeUserFieldsFromExisting(existing,ch);
         const chWithShort=addShortIdsUnique(ch,st);
-        await setChurches(st,chWithShort);await writeIdx(st,chWithShort);
+        await setChurches(st,chWithShort,undefined,existing);await writeIdx(st,chWithShort);
         void recordChurchAudit({state:st,action:"state_refreshed",old_value:Array.isArray(existing)?{churchCount:existing.length}:undefined,new_value:{churchCount:chWithShort.length},source:"refresh",actor_type:"system"});
         if(meta){meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,ch.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
         refreshed++;
@@ -2381,7 +2385,7 @@ app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
       const filtered=ch.filter((x:any)=>!isBlockedDenomination(x.denomination));
       const removed=ch.length-filtered.length;
       if(removed>0){
-        await setChurches(st,filtered,cc);
+        await setChurches(st,filtered,cc,ch);
         await writeIdx(st,filtered);
         setCount(sc,st,filtered.length,cc);
         removedTotal+=removed;
@@ -2454,7 +2458,7 @@ app.post(`${P}/admin/remove-churches-by-name`,async(c)=>{
         const filtered=ch.filter((x:any)=>norm((x.name||"").trim())!==target);
         const r=ch.length-filtered.length;
         if(r>0){
-          await setChurches(st,filtered,cc);
+          await setChurches(st,filtered,cc,ch);
           await writeIdx(st,filtered);
           setCount(sc,st,filtered.length,cc);
           removedMain+=r;
@@ -2668,13 +2672,13 @@ function applyCalibrationToChurches(churches:any[],cal:{medians:Record<string,nu
 
 type ApplyResult={updated:boolean;state?:string;churches?:any[];corrections?:Record<string,any>;previousValues?:Record<string,string>};
 type AuditContext={source:string;actorIp?:string;actorModKey?:string};
-async function applyApprovedCorrections(churchId:string,con:Record<string,any>,auditContext?:AuditContext):Promise<ApplyResult>{
+async function applyApprovedCorrections(churchId:string,con:Record<string,any>,auditContext?:AuditContext,sourceChurches?:any[]):Promise<ApplyResult>{
   const corrections:Record<string,any>={};
   for(const[field,data]of Object.entries(con)){if((data as any).approved&&(data as any).value!==null)corrections[field]=(data as any).value;}
   if(!Object.keys(corrections).length)return {updated:false};
   const st=regionFromChurchId(churchId);
   if(!st||!isValidRegion(st))return {updated:false};
-  const churches=await getChurches(st);
+  const churches=sourceChurches??await getChurches(st);
   if(!Array.isArray(churches))return {updated:false};
   const auditEntries:{field:string;oldVal:unknown;newVal:unknown}[]=[];
   const previousValues:Record<string,string>={};
@@ -2852,9 +2856,20 @@ async function submitSuggestionCore(opts:{churchId:string;field:string;value:unk
     const shown=held?consensus(ex.submissions,{held:"only"}):con;
     return{ok:true,field,consensus:shown[field],allFields:con,applied:false,needsModeration:true};
   }
-  const safeCon:Record<string,any>={};
-  for(const[f,d]of Object.entries(con)){if(!SENSITIVE_FIELDS.includes(f))safeCon[f]=d;}
-  const applied=await applyApprovedCorrections(churchId,safeCon,{source:auditSource,actorIp:actorKey});
+  // Apply only this field, using the listing snapshot from before the vote was stored.
+  // An unrelated submission must never sweep another field's old votes onto a newer listing.
+  const safeCon:Record<string,any>={[field]:con[field]};
+  let applied:ApplyResult;
+  try{applied=await applyApprovedCorrections(churchId,safeCon,{source:auditSource,actorIp:actorKey},churches);}
+  catch(e){
+    if(!(e instanceof EditConflictError))throw e;
+    const latest=await kv.get(k);
+    const vote=latest?.submissions?.find((s:any)=>s.ip===actorKey&&s.field===field&&s.value===storeValue&&!isHeldVote(s));
+    if(!vote)throw e;
+    vote.needsModeration=true;await kv.set(k,latest);
+    const shown=consensus(latest.submissions,{held:"only"}),publicCon=consensus(latest.submissions);
+    return{ok:true,field,consensus:shown[field],allFields:publicCon,applied:false,needsModeration:true};
+  }
   if(applied.updated&&applied.state&&applied.churches&&applied.corrections){void runDeferredIndexAndStats(applied.state,applied.churches,churchId,applied.corrections).catch(()=>{});}
   // Attendance is averaged across votes, so it never equals one submission.
   return{ok:true,field,consensus:con[field],allFields:con,applied:applied.updated&&(field==="attendance"||con[field]?.value===storeValue)};
@@ -3405,7 +3420,10 @@ const moderatePendingHandler=async(c:any)=>{
         }
       }
     }
-    const regionList=[...statesNeeded];
+    const neededIds=new Set<string>();
+    for(const entry of Array.isArray(allSuggestions)?allSuggestions:[]){if(entry?.churchId&&reviewConsensus(entry.submissions??[]).some(([,d])=>d?.votes>0&&d.value!==null))neededIds.add(entry.churchId);}
+    const indexed=usesD1()?await indexedReviewView(await moderationRegions(),neededIds,st=>getChurches(st)):null;
+    const regionList=indexed?[]:[...statesNeeded];
     const churchKeys=regionList.map(st=>churchesKey(regionCountry(st),st));
     const churchesByState=new Map<string,any[]>();
     for(let i=0;i<churchKeys.length;i+=MODERATE_BATCH){
@@ -3424,8 +3442,9 @@ const moderatePendingHandler=async(c:any)=>{
           if(d&&d.votes>0&&d.value!==null){
             const st=regionFromChurchId(entry.churchId);
             let currentValue:string|null=null;
-            let ch:any=null;
-            if(st&&isValidRegion(st)){
+            let ch:any=indexed?.churches.get(entry.churchId)??null;
+            if(indexed&&ch){currentValue=f==="address"||f==="reportRelocated"?[ch.address,ch.city,ch.state].filter(Boolean).join(", "):String(ch[f]||"");}
+            if(!indexed&&st&&isValidRegion(st)){
               const churches=churchesByState.get(st);
               if(Array.isArray(churches)){ch=churches.find((x:any)=>x.id===entry.churchId);if(ch){if(f==="address"||f==="reportRelocated")currentValue=[ch.address,ch.city,ch.state].filter(Boolean).join(", ");else if(f==="name")currentValue=String(ch.name??"");else if(f==="website")currentValue=String(ch.website??"");else currentValue=String(ch[f]||"");}}
             }
@@ -3438,14 +3457,20 @@ const moderatePendingHandler=async(c:any)=>{
               if(storedPrev!=null&&String(storedPrev).trim()!==""){currentValue=String(storedPrev);alreadyApplied=true;}
               else continue;
             }
-            pendingSuggestions.push({churchId:entry.churchId,field:f,proposedValue:d.value,currentValue,churchName:ch?.name,churchCity:ch?.city,churchState:ch?.state,churchShortId:ch?.shortId,votes:d.votes,submissions:d.submissions||[],clients:lookupClients(entry.submissions,f),alreadyApplied,relocatedTo:ch?.relocatedTo,listingStatus:ch?.listingStatus});
+            pendingSuggestions.push({churchId:entry.churchId,field:f,proposedValue:d.value,currentValue,churchName:ch?.name,churchCity:ch?.city,churchState:ch?.state,churchShortId:ch?.shortId,votes:d.votes,submissions:d.submissions||[],clients:lookupClients(entry.submissions,f),alreadyApplied,relocatedTo:ch?.relocatedTo,listingStatus:ch?.listingStatus,reviewVersion:await proposalVersion(entry,f,currentReviewValue(ch,f,st))});
           }
         }
       }
     }
     const pendingChurches:any[]=[];
     const pendingReverifyChurches:any[]=[];
-    const modRegions=await moderationRegions();
+    if(indexed){
+      const seen=new Map<string,any>();
+      for(const store of await kv.getByPrefix("pending-churches:")){for(const ch of Array.isArray(store?.churches)?store.churches:[]){const old=seen.get(ch.id);seen.set(ch.id,{...ch,approved:!!(ch.approved||old?.approved),state:ch.state||regionFromChurchId(ch.id)});}}
+      pendingChurches.push(...[...seen.values()].filter(ch=>!ch.approved));
+      pendingReverifyChurches.push(...indexed.reverify.map(ch=>({churchId:ch.id,shortId:ch.shortId,name:ch.name,city:ch.city,state:ch.state,address:ch.address||"",relocatedTo:ch.relocatedTo,listingStatus:ch.listingStatus})));
+    }
+    const modRegions=indexed?[]:await moderationRegions();
     for(let i=0;i<modRegions.length;i+=MODERATE_BATCH){
       const batch=modRegions.slice(i,i+MODERATE_BATCH);
       const pendingKeys=batch.map(st=>`pending-churches:${regionCountry(st)}:${st}`);
@@ -3486,6 +3511,21 @@ const moderatePendingHandler=async(c:any)=>{
     return c.json({pendingSuggestions,pendingChurches,pendingReverifyChurches,inReviewSuggestions,inReviewChurches});
   }catch(e){return serverError(c,e);}
 };
+// Index-only maintenance avoids rebuilding every public file merely to seed moderation metadata.
+app.post(`${P}/moderate/review-index/backfill`,async(c)=>{
+ try{
+  if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+  if(!usesD1())return c.json({error:"Review indexing requires D1"},503);
+  const offsetRaw=c.req.query("offset")??"0";
+  if(!/^\d+$/.test(offsetRaw))return c.json({error:"Invalid offset"},400);
+  const regions=await moderationRegions(),offset=Number(offsetRaw),region=regions[offset];
+  if(!region)return c.json({regions:[],next:null,total:regions.length});
+  if(await reviewIndexCurrent(region))return c.json({regions:[{region,ready:true,unchanged:true}],next:offset+1<regions.length?offset+1:null,total:regions.length});
+  const churches=await getChurches(region);
+  const ready=await refreshReviewIndex(region,Array.isArray(churches)?churches:[]);
+  return c.json({regions:[{region,ready,churchCount:Array.isArray(churches)?churches.length:0}],next:offset+1<regions.length?offset+1:null,total:regions.length});
+ }catch(e){return serverError(c,e);}
+});
 app.get(`${P}/moderate/pending`,moderatePendingHandler);
 app.get("/moderate/pending",moderatePendingHandler);
 
@@ -3543,10 +3583,14 @@ app.post(`${P}/moderate/evidence`,async(c)=>{
 const moderateApproveSuggestionHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
-    const{churchId,field,value:editedValue}=await c.req.json();
+    const{churchId,field,value:editedValue,reviewVersion}=await c.req.json();
     if(!churchId||!field)return c.json({error:"Missing churchId or field"},400);
     const k=`suggestions:${churchId}`;const ex=await kv.get(k);
     if(!ex||!Array.isArray(ex.submissions))return c.json({error:"No suggestions found"},404);
+    const reviewedRegion=regionFromChurchId(churchId);
+    const reviewedChurches=reviewedRegion?await getChurches(reviewedRegion):null;
+    const reviewedChurch=Array.isArray(reviewedChurches)?reviewedChurches.find((ch:any)=>ch.id===churchId):null;
+    if(reviewVersion!==undefined&&reviewVersion!==await proposalVersion(ex,field,currentReviewValue(reviewedChurch,field,reviewedRegion)))throw new EditConflictError();
     let valueToApply:any;
     if(editedValue!==undefined&&editedValue!==null&&String(editedValue).trim()!==""){
       valueToApply=String(editedValue).trim();
@@ -3579,7 +3623,7 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
         if(!geo)return c.json({error:"Could not geocode new address"},400);
         addrObj.lat=geo.lat;addrObj.lng=geo.lng;
       }
-      const mainChurches=await getChurches(st);
+      const mainChurches=reviewedChurches??await getChurches(st);
       if(!Array.isArray(mainChurches))return c.json({error:"Church list not found"},404);
       const source=mainChurches.find((x:any)=>x.id===churchId);
       if(!source)return c.json({error:"Church not found"},404);
@@ -3633,13 +3677,13 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
       const st=regionFromChurchId(churchId);
       if(!st||!isValidRegion(st))return c.json({error:"Invalid church ID"},400);
       let auditChurchName:string|null=null;let auditChurchCityState:string|null=null;
-      const mainChurches=await getChurches(st);
+      const mainChurches=reviewedChurches??await getChurches(st);
       if(Array.isArray(mainChurches)){
         const ch=mainChurches.find((x:any)=>x.id===churchId);
         if(ch){auditChurchName=ch.name||null;auditChurchCityState=[ch.city,ch.state].filter(Boolean).join(", ")||null;}
         const filtered=mainChurches.filter((x:any)=>x.id!==churchId);
         if(filtered.length!==mainChurches.length){
-          await setChurches(st,filtered);
+          await setChurches(st,filtered,undefined,mainChurches);
           await writeIdx(st,filtered);
           const meta=await getMeta(false);if(meta){meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,filtered.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
         }
@@ -3661,7 +3705,7 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
     }
     const singleCon:Record<string,any>={};
     singleCon[field]={approved:true,value:valueToApply,votes:0,needed:THR};
-    const applied=await applyApprovedCorrections(churchId,singleCon,{source:"moderate_approve",actorModKey:getModKey(c)});
+    const applied=await applyApprovedCorrections(churchId,singleCon,{source:"moderate_approve",actorModKey:getModKey(c)},reviewedChurches??undefined);
     if(applied.previousValues){ex.previousValues=ex.previousValues||{};for(const[f,val]of Object.entries(applied.previousValues))ex.previousValues[f]=val;}
     ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
     await kv.set(k,ex);
@@ -3676,10 +3720,14 @@ app.post("/moderate/approve/suggestion",moderateApproveSuggestionHandler);
 const moderateRejectSuggestionHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
-    const{churchId,field}=await c.req.json();
+    const{churchId,field,reviewVersion}=await c.req.json();
     if(!churchId||!field)return c.json({error:"Missing churchId or field"},400);
     const k=`suggestions:${churchId}`;const ex=await kv.get(k);
     if(!ex||!Array.isArray(ex.submissions))return c.json({error:"No suggestions found"},404);
+    const reviewedRegion=regionFromChurchId(churchId);
+    const reviewedChurches=reviewedRegion?await getChurches(reviewedRegion):null;
+    const reviewedChurch=Array.isArray(reviewedChurches)?reviewedChurches.find((ch:any)=>ch.id===churchId):null;
+    if(reviewVersion!==undefined&&reviewVersion!==await proposalVersion(ex,field,currentReviewValue(reviewedChurch,field,reviewedRegion)))throw new EditConflictError();
     const heldRej=(consensus(ex.submissions,{held:"only"})[field] as any)?.value;
     const rejectedVal=heldRej??(consensus(ex.submissions)[field] as any)?.value;
     ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
@@ -4675,7 +4723,7 @@ app.post(`${P}/migrate/apply-pending`,async(c)=>{
         mainChurches.push({id:pc.id,shortId:pc.shortId||toShortId(pc.id,st),name:pc.name,address:pc.address,city:pc.city,state:st,lat:pc.lat,lng:pc.lng,denomination:pc.denomination,attendance:pc.attendance,website:pc.website,serviceTimes:pc.serviceTimes,languages:pc.languages,ministries:pc.ministries,pastorName:pc.pastorName,phone:pc.phone,email:pc.email,lastVerified:Date.now()});
         churchesMerged++;added=true;
       }
-      if(added){const unique=addShortIdsUnique(mainChurches,st);await setChurches(st,unique);await writeIdx(st,unique);}
+      if(added){const unique=addShortIdsUnique(mainChurches,st);await setChurches(st,unique,undefined,mainChurches);await writeIdx(st,unique);}
       await setPending(st,store);
     }
     return c.json({success:true,correctionsApplied,churchesMerged});
@@ -6096,6 +6144,9 @@ export async function publishTarget(target:string){
     return;
   }
   const st=target.slice("region:".length);
+  const churches=await getChurches(st);
+  if(Array.isArray(churches))await writeIdx(st,churches,true);
+  if(usesD1())await refreshReviewIndex(st,Array.isArray(churches)?churches:[]);
   const body=await buildRegionPayload(st);
   if(!body)return;
   await r2PutJson(`churches/${st}.json`,body,STATIC_CACHE_CONTROL);
@@ -6348,7 +6399,7 @@ app.post(`${P}/churches/populate-fill/:state`,async(c)=>{
     const apply=c.req.query("apply")==="true";
     if(apply&&churchesChanged){
       const withShort=addShortIdsUnique(churches,st);
-      await setChurches(st,withShort);await writeIdx(st,withShort);await invalidateReviewStatsCache();
+      await setChurches(st,withShort,undefined,churches);await writeIdx(st,withShort);await invalidateReviewStatsCache();
       void recordChurchAudit({state:st,action:"state_populated",new_value:{filled,churchesChanged},source:"populate_fill",actor_type:"system"});
     }
     if(apply)await kv.del(STAGE(st));
