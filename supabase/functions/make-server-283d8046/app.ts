@@ -1,3 +1,4 @@
+import { registerEmailConfirmationRoutes } from "./email-confirmation.ts";
 import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import * as kv from "./kv.ts";
@@ -2716,8 +2717,8 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>,a
         else if(f==="reportClosed"||f==="reportDuplicate"||f==="reportOutOfScope"||f==="reportRelocated"){/* report fields applied via dedicated handlers */}
         else{(ch as any)[f]=v;}
       }
-      // Resolving a pending_reverify listing: any approved field edit clears the flag.
-      if((ch as any).listingStatus==="pending_reverify"){
+      // Service-time email confirmation cannot resolve a relocation warning.
+      if((ch as any).listingStatus==="pending_reverify" && auditContext?.source!=="church_email_update"){
         delete (ch as any).listingStatus;
         auditEntries.push({field:"listingStatus",oldVal:"pending_reverify",newVal:null});
       }
@@ -2933,6 +2934,22 @@ async function confirmChurchCore(opts:{churchId:string;actorKey:string;auditSour
   stats.totalConfirmations=(stats.totalConfirmations||0)+1;stats.lastUpdated=Date.now();await kv.set("community:stats",stats);
   return{ok:true,success:true,totalConfirmations:existing.confirmations.length};
 }
+
+registerEmailConfirmationRoutes(app, P, {
+  rateLimit: c => ipRateLimit("email-confirmation", cip(c), 10, 3600000),
+  save: async (id, times, address, actor) => {
+    const prepared = prepareSuggestion(id, "serviceTimes", times);
+    if (!prepared.ok) throw new Error("Invalid service times");
+    if (address) {
+      const proposal = await submitSuggestionCore({ churchId: id, field: "address", value: address, actorKey: actor, auditSource: "church_email_update" });
+      if (!proposal.ok) throw new Error("Could not queue location correction");
+    }
+    const applied = await applyApprovedCorrections(id, { serviceTimes: { approved: true, value: prepared.storeValue } }, { source: "church_email_update" });
+    if (!applied.updated) throw new Error("Church no longer available");
+    if (applied.state && applied.churches && applied.corrections) await runDeferredIndexAndStats(applied.state, applied.churches, id, applied.corrections);
+    return prepared.storeValue;
+  },
+});
 
 app.post(`${P}/suggestions`,async(c)=>{
   try{

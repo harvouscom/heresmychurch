@@ -1,3 +1,4 @@
+import { EmailConfirmationCard } from "./EmailConfirmation";
 import type { Church, HomeCampusSummary } from "./church-data";
 import {
   getSizeCategory,
@@ -696,6 +697,8 @@ export function ChurchDetailPanel({
         {church.serviceTimes && (
           <ServiceTimesCard serviceTimes={church.serviceTimes} lat={church.lat} lng={church.lng} />
         )}
+
+        <EmailConfirmationCard key={church.id} church={church} />
 
         {/* Primary: Core stats — 2-col grid for attendance + denomination */}
         <div className="grid grid-cols-2 gap-2">
