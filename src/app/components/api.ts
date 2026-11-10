@@ -1340,7 +1340,10 @@ export async function moderateApproveSuggestion(
   if (res.status === 409) throw reviewChangedError();
   if (res.status === 401) throw new Error("Invalid review key");
   if (!res.ok) throw new Error(`Failed to approve: ${res.status}`);
-  return res.json();
+  const result = await res.json();
+  markDataWritten();
+  window.dispatchEvent(new Event("hmc:listing-changed"));
+  return result;
 }
 
 export async function moderateApproveSuggestionWithValue(
@@ -1357,7 +1360,10 @@ export async function moderateApproveSuggestionWithValue(
   if (res.status === 409) throw reviewChangedError();
   if (res.status === 401) throw new Error("Invalid review key");
   if (!res.ok) throw new Error(`Failed to approve: ${res.status}`);
-  return res.json();
+  const result = await res.json();
+  markDataWritten();
+  window.dispatchEvent(new Event("hmc:listing-changed"));
+  return result;
 }
 
 export async function moderateRejectSuggestion(
@@ -1386,7 +1392,10 @@ export async function moderateApproveChurch(
   );
   if (res.status === 401) throw new Error("Invalid review key");
   if (!res.ok) throw new Error(`Failed to approve church: ${res.status}`);
-  return res.json();
+  const result = await res.json();
+  markDataWritten();
+  window.dispatchEvent(new Event("hmc:listing-changed"));
+  return result;
 }
 
 export async function moderateRejectChurch(
@@ -1399,7 +1408,10 @@ export async function moderateRejectChurch(
   );
   if (res.status === 401) throw new Error("Invalid review key");
   if (!res.ok) throw new Error(`Failed to reject church: ${res.status}`);
-  return res.json();
+  const result = await res.json();
+  markDataWritten();
+  window.dispatchEvent(new Event("hmc:listing-changed"));
+  return result;
 }
 
 export async function addToInReview(
