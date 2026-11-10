@@ -759,13 +759,13 @@ function FactsList({
                   <span className="text-white/50 text-caption uppercase tracking-wide font-medium block">
                     {fact.label}
                   </span>
-                  <div className="flex flex-col items-start mt-0.5 gap-1">
+                  <div className="fact-details">
                     <span className="flex items-center gap-1.5 min-w-0">
                       {fact.abbrev && (
                         <PlaceFlag abbrev={fact.abbrev} countryCode={countryCode} size="sm" />
                       )}
                       <span
-                        className={`text-white text-xs font-semibold break-words ${
+                        className={`fact-primary text-white text-sm font-semibold ${
                           isClickable ? "group-hover:text-purple-300" : ""
                         } transition-colors`}
                       >
@@ -773,7 +773,7 @@ function FactsList({
                       </span>
                     </span>
                     {fact.secondary ? (
-                      <span className="text-white/55 text-caption font-medium break-words">
+                      <span className="fact-secondary text-white/55 text-caption font-medium">
                         {fact.secondary}
                       </span>
                     ) : null}
