@@ -132,7 +132,7 @@ export function registerEmailConfirmationRoutes(app: Hono, prefix: string, deps:
     if (row.kind === "visitor" && action === "subscribe") {
       if (!row.confirmed) { row.confirmed = Date.now(); row.expires = Date.now() + 90 * DAY; await kv.set(key, row); }
       if (EMAIL.test(church.email || "") && !await kv.get(`email-stop:${church.id}`)) {
-        const staffKey = `${PREFIX}staff:${await emailDigest(`${church.id}:${Math.floor(Date.now() / (30 * DAY))}`)}`;
+        const staffKey = `${PREFIX}staff:${await emailDigest(`${church.id}:${church.email.trim().toLowerCase()}:${Math.floor(Date.now() / (30 * DAY))}`)}`;
         if (!await kv.get(staffKey)) await kv.set(staffKey, { key: staffKey, kind: "staff", churchId: church.id, email: church.email.trim().toLowerCase(), expires: Date.now() + 30 * DAY });
       }
       return c.json({ success: true, message: "We'll email you when service times are confirmed. You can cancel using this link. Requests expire after 90 days." });
