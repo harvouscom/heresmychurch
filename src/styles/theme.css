@@ -591,3 +591,8 @@ html:has(.hmc-church-seo), body:has(.hmc-church-seo) { overflow: auto; height: a
 .review-region-row:focus-visible, .review-church-row:focus-visible { outline: 2px solid #c084fc; outline-offset: 2px; }
 .search-results-panel { background: linear-gradient(145deg, #291842f5, #1b102ff5); }
 .map-search-result:focus-visible { outline: 2px solid #c084fc; outline-offset: -2px; background: #c084fc12; }
+
+/* A framed flag serves as the report's geographic edition mark. */
+.report-edition{position:relative;z-index:2;display:flex;align-items:center;gap:12px;min-width:0;flex-shrink:0;margin-left:16px}.report-edition time{font-size:12px;line-height:1.4;color:#b9a6ce;white-space:nowrap}.report-edition-flag{display:grid;place-items:center;flex-shrink:0;width:58px;height:42px;padding:6px;box-sizing:border-box;border:1px solid #d8b4fe30;border-radius:11px;background:linear-gradient(145deg,#302044c9,#170e28ed);box-shadow:inset 0 1px 0 #ffffff14,0 5px 20px #08031250,0 0 22px #a78bfa0d;color:#d8b4fe}.report-edition-flag>span{width:100%!important;height:100%!important;background:transparent!important;border-radius:4px}.report-edition-flag img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 1px 2px #0004)}
+@media(max-width:480px){.report-edition{gap:8px;margin-left:10px}.report-edition-flag{width:47px;height:36px;padding:5px;border-radius:9px}.report-edition time{font-size:11px}}
+@media print{.report-edition-flag{box-shadow:none}}
