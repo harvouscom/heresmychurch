@@ -24,7 +24,7 @@
     "STORE_BACKEND": "d1",
     // Any non-empty value pauses writes while reads keep working.
     "AI_REVIEW_ENABLED": "1",
-    "MAINTENANCE_READONLY": "1"
+    "MAINTENANCE_READONLY": ""
   },
   "ai": { "binding": "AI" },
   "triggers": { "crons": ["* * * * *", "0 9 * * *"] },
