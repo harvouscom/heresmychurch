@@ -293,8 +293,17 @@ export function SummaryPanel({
             >
               All reports
             </Link>
-            <Link to="/data-health" onClick={onClose} className="shrink-0 py-2 text-xs text-white/55 hover:text-white transition-colors rounded focus-visible:outline-2 focus-visible:outline-purple-300">Data health</Link>
+
           </div>
+          <Link
+            to={focusedState ? `/improve-the-map?region=${encodeURIComponent(focusedState)}` : "/improve-the-map"}
+            onClick={onClose}
+            className="flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 py-2.5 text-xs text-white/75 hover:text-white hover:bg-white/5 transition-colors focus-visible:outline-2 focus-visible:outline-purple-300"
+          >
+            <ShieldCheck size={14} className="shrink-0 text-purple-200/75" />
+            <span className="flex-1">Improve the map</span>
+            <ArrowUpRight size={13} className="shrink-0 text-purple-200/60" />
+          </Link>
           {summaryStats.type === "national" && reportScopeCode === "US" && (
             <NationalPreviousReportsExpand previous={previousNationalReports} onNavigate={onClose} />
           )}

@@ -1591,7 +1591,14 @@ export function SeasonalReportPage() {
               </svg>
               {isExcerptMode ? "Full report" : "All reports"}
             </Link>
-            <span className="text-xs text-stone-400">{new Date(r.generatedAt).toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
+            <div className="report-edition">
+              <span className="report-edition-flag" aria-hidden="true" title={reportPlaceTitle(r)}>
+                {isWorldReport(r.scope, r.countryCode)
+                  ? <Globe size={24} strokeWidth={1.3} />
+                  : <PlaceFlag abbrev={isRegionReport(r.scope) && r.stateAbbrev ? r.stateAbbrev : (r.countryCode || "US")} countryCode={isRegionReport(r.scope) ? (r.countryCode || "US") : "WORLD"} size="md" />}
+              </span>
+              <time dateTime={r.generatedAt}>{new Date(r.generatedAt).toLocaleDateString("en-US", { month: "long", year: "numeric" })}</time>
+            </div>
           </div>
           {!isExcerptMode && (
             <div className="report-hero-stage">

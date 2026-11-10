@@ -21,7 +21,8 @@
     "parity:api": "node scripts/api-parity.mjs",
     "contract:api": "node scripts/api-contract.mjs",
     "migrate:d1": "node scripts/migrate-to-d1.mjs",
-    "test:api": "vitest run --config api/vitest.config.ts"
+    "test:api": "vitest run --config api/vitest.config.ts",
+    "generate:og": "node scripts/generate-social-preview.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

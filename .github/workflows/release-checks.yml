@@ -22,7 +22,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Map, SEO, input, and production-source regression checks
         run: pnpm exec vitest run --config worker/vitest.config.ts
-      - name: Email and public API integration checks
-        run: pnpm exec vitest run --config api/vitest.config.ts api/test/email-confirmation.test.ts api/test/routes.test.ts
+      - name: API, church portal, and private attendance integration checks
+        run: pnpm exec vitest run --config api/vitest.config.ts
       - name: Build frontend
         run: pnpm exec vite build

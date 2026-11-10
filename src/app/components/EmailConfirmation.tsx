@@ -53,17 +53,21 @@ export function EmailConfirmationCard({ church }: { church: Church }) {
   </section>;
 }
 
-function EmailPageBackdrop() {
+export function EmailPageBackdrop({ point }: { point?: { lat: number; lng: number } } = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const pointRef = useRef(point); pointRef.current = point;
+  const globeRef = useRef<{ destroy(): void; select(point: { lat: number; lng: number }): void } | null>(null);
   useEffect(() => {
     let disposed = false;
-    let globe: { destroy(): void } | undefined;
     Promise.all([import("./report/lookup-particle-globe"), import("./report/globe-cells.json")]).then(([renderer, cells]) => {
       if (disposed || !canvasRef.current) return;
-      globe = renderer.createGlobe(canvasRef.current, cells.default, { lat: 26, lng: -38, top: 50, scale: 1.15, driftSpeed: 0.012 });
+      const globe = renderer.createGlobe(canvasRef.current, cells.default, { lat: 26, lng: -38, top: 50, scale: 1.15, driftSpeed: 0.012, pinOffset: 30 });
+      globeRef.current = globe;
+      if (pointRef.current) globe.select(pointRef.current);
     }).catch(() => { /* The CSS horizon remains when the decorative canvas cannot load. */ });
-    return () => { disposed = true; globe?.destroy(); };
+    return () => { disposed = true; globeRef.current?.destroy(); globeRef.current = null; };
   }, []);
+  useEffect(() => { if (point) globeRef.current?.select(point); }, [point?.lat, point?.lng]);
   return <div className="email-page-backdrop" aria-hidden="true"><div className="email-page-horizon"><canvas ref={canvasRef} /></div></div>;
 }
 

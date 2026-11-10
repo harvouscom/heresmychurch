@@ -187,6 +187,9 @@ export function PrivacyPolicyPage() {
                 and service times) and related technical metadata needed for moderation and fraud prevention.
               </li>
               <li>
+                <span className="font-medium text-stone-800">Private attendance feedback.</span> Church staff can optionally share a typical-week attendance range and context through their listed inbox. The report and review notes stay private to HMC maintainers and expire after 180 days. A maintainer may use that information to adjust the publicly displayed estimate; the raw reported range is not published.
+              </li>
+              <li>
                 <span className="font-medium text-stone-800">Approximate &quot;active visitors&quot; on the map.</span>{" "}
                 To show a live count, the site assigns a random identifier stored in your browser (
                 <code className="text-xs bg-stone-100 px-1 py-0.5 rounded">localStorage</code>) and syncs presence
