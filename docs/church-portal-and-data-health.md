@@ -57,3 +57,7 @@ The current review queue shows the first 100 pending reports; refreshing after r
 The generic portal rotates through the same real-church sample and US/world alternation pattern as Lookup’s hero. The slimmed snapshot is in `src/app/data/portal-demo-churches.json`; source snapshot date: November 10, 2026. Each US state or international country is visited once per round. Hover, keyboard focus, an explicit pause control, a hidden tab, offscreen cards, and reduced-motion preferences stop automatic changes. The globe follows the selected church’s coordinates. A church-specific URL and authenticated session show only that church, including before sign-in. The new public listing preview endpoint returns no private attendance report or inbox data.
 
 Both pages omit decorative eyebrow text. Selects use an inset custom chevron rather than the default platform arrow.
+
+## Region-focused data health header
+
+The data-health page uses its own contained globe in the header, centered on the selected region’s configured bounds, with state/country flags and a wrapping location label. It does not use the portal’s full-page globe backdrop. The globe remains pointed at the selected region; changing the region updates the title, flag, globe, and data together. Completeness now lives in a four-column statistics row (two columns on small screens), with methodology in an expandable note. The header and table switch to single-column/mobile rows at 600px; controls and long labels can shrink and wrap without extending the page horizontally.
