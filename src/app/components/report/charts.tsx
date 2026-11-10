@@ -122,13 +122,13 @@ function Tooltip({
 const STAT_COLORS = {
   purple: {
     value: "text-purple-700",
-    label: "text-purple-900",
+    label: "text-stone-600",
     card: "bg-hmc-card-light",
     sub: "text-stone-500",
   },
   pink: {
-    value: "text-pink-600",
-    label: "text-pink-900",
+    value: "text-purple-700",
+    label: "text-stone-600",
     card: "bg-hmc-card-light",
     sub: "text-stone-500",
   },
@@ -160,19 +160,19 @@ export function StatCard({
 
   return (
     <div
-      className={`flex w-full min-w-0 flex-col items-center gap-1 text-center rounded-xl px-6 py-5 ${c.card}`}
+      className={`report-metric flex w-full min-w-0 flex-col gap-1 rounded-2xl px-5 py-5 ${c.card}`}
     >
       {isNumber ? (
-        <span ref={counter.ref} className={`block w-full text-3xl font-bold tabular-nums sm:text-4xl ${c.value}`} />
+        <span ref={counter.ref} className={`block w-full text-3xl font-medium tracking-tight tabular-nums sm:text-4xl ${c.value}`} />
       ) : (
-        <span className={`block w-full text-3xl font-bold tabular-nums sm:text-4xl ${c.value}`}>{value}</span>
+        <span className={`block w-full text-3xl font-medium tracking-tight tabular-nums sm:text-4xl ${c.value}`}>{value}</span>
       )}
-      <span className={`block w-full text-sm font-medium ${c.label}`}>{label}</span>
+      <span className={`order-first mb-2 block w-full text-xs font-medium ${c.label}`}>{label}</span>
       {sub != null && sub !== "" && (
         <div className={`block w-full text-xs ${c.sub}`}>{sub}</div>
       )}
       {hint != null && hint !== "" && (
-        <div className="block w-full text-caption text-stone-400 mt-1 text-pretty">{hint}</div>
+        <div className="block w-full text-xs text-stone-400 mt-2 leading-relaxed text-pretty">{hint}</div>
       )}
     </div>
   );
@@ -210,6 +210,8 @@ export function HorizontalBarChart({
   height?: number;
   showPct?: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const rows = expanded ? data : data.slice(0,6);
   const max = maxValue ?? Math.max(...data.map((d) => d.value), 1);
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref);
@@ -235,19 +237,20 @@ export function HorizontalBarChart({
   useTapOutside(ref, hovered !== null, dismiss);
 
   return (
-    <div ref={ref} className="flex flex-col gap-2">
+    <div ref={ref} className="report-bar-chart flex flex-col gap-4">
       {tooltip && (
         <Tooltip x={tooltip.x} y={tooltip.y}>
           <span className="font-medium">{tooltip.label}</span>
           <span className="ml-1.5 text-purple-300">{tooltip.value}</span>
         </Tooltip>
       )}
-      {data.map((d, i) => {
+      {rows.map((d, i) => {
         const dimmed = hovered !== null && hovered !== i;
         return (
           <div
             key={d.label}
-            className="flex items-center gap-3 cursor-default"
+            className="report-bar-row cursor-default"
+            aria-label={`${d.label}: ${d.value.toLocaleString()}${d.pct != null ? `, ${d.pct}%` : ""}`}
             onMouseEnter={(e) => select(i, d, e)}
             onMouseLeave={dismiss}
             onClick={(e) => { hovered === i ? dismiss() : select(i, d, e); }}
@@ -256,16 +259,16 @@ export function HorizontalBarChart({
               transition: "opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
             }}
           >
-            <span className="w-28 shrink-0 text-right text-sm text-stone-600 truncate sm:w-40">
+            <span className="report-bar-label text-xs text-stone-600">
               {d.label}
             </span>
-            <div className="relative flex-1 overflow-hidden rounded" style={{ height }}>
-              <div className="absolute inset-0 rounded bg-stone-200/50" />
+            <div className="report-bar-track relative overflow-hidden rounded-full" style={{ height: Math.min(height,8) }}>
+              <div className="absolute inset-0 rounded-full bg-stone-100" />
               <div
-                className="absolute inset-y-0 left-0 origin-left rounded"
+                className="absolute inset-y-0 left-0 origin-left rounded-full"
                 style={{
-                  backgroundColor: color,
-                  width: `${Math.max((d.value / max) * 100, 1)}%`,
+                  background: `linear-gradient(90deg, ${color}, #c4b5fd)`,
+                  width: `${Math.min(100, Math.max((d.value / max) * 100, d.value > 0 ? 1 : 0))}%`,
                   transform: reduced || inView ? "scaleX(1)" : "scaleX(0)",
                   transition: reduced
                     ? "none"
@@ -276,7 +279,7 @@ export function HorizontalBarChart({
               />
             </div>
             <span
-              className="w-16 shrink-0 text-right text-sm font-medium tabular-nums text-stone-700"
+              className="report-bar-value text-right text-xs font-medium tabular-nums text-stone-700"
               style={{
                 opacity: reduced || inView ? (dimmed ? 0.35 : 1) : 0,
                 transition: reduced ? "none" : `opacity 0.22s ease-out ${Math.min(i * 0.012, 0.14) + 0.06}s`,
@@ -287,6 +290,9 @@ export function HorizontalBarChart({
           </div>
         );
       })}
+      {data.length > 6 && <button type="button" onClick={()=>setExpanded(value=>!value)} aria-expanded={expanded} className="self-start mt-1 rounded-lg text-xs font-medium text-purple-700 hover:text-purple-900 focus-visible:outline-2 focus-visible:outline-purple-400">
+        {expanded ? "Show fewer" : `Show all ${data.length}`} <span aria-hidden>{expanded ? "↑" : "↓"}</span>
+      </button>}
     </div>
   );
 }
@@ -527,7 +533,7 @@ export function ChoroplethMap({
   return (
     <div
       ref={ref}
-      className="w-full relative"
+      className="report-map-card w-full relative"
       style={{
         opacity: reduced || inView ? 1 : 0,
         transition: reduced ? "none" : "opacity 0.2s ease-out",
@@ -803,7 +809,7 @@ export function CountyChoroplethMap({
   return (
     <div
       ref={wrapperRef}
-      className="w-full relative"
+      className="report-map-card w-full relative"
       style={{
         opacity: reduced || inView ? 1 : 0,
         transition: reduced ? "none" : "opacity 0.2s ease-out",

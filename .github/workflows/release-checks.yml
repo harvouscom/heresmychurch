@@ -1,0 +1,28 @@
+name: Release checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - run: pnpm install --frozen-lockfile
+      - name: Map, SEO, input, and production-source regression checks
+        run: pnpm exec vitest run --config worker/vitest.config.ts
+      - name: Email and public API integration checks
+        run: pnpm exec vitest run --config api/vitest.config.ts api/test/email-confirmation.test.ts api/test/routes.test.ts
+      - name: Build frontend
+        run: pnpm exec vite build

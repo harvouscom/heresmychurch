@@ -34,6 +34,7 @@ export const router = createBrowserRouter([
     Component: RootLayout,
     ErrorBoundary: RouteError,
     children: [
+      { path: "/email-confirmation", lazy: async () => ({ Component: (await import("./components/EmailConfirmation")).EmailConfirmationPage }) },
       { path: "/", Component: ChurchMapPage, ErrorBoundary: RouteError },
       { path: "/world", Component: ChurchMapPage, ErrorBoundary: RouteError },
       {

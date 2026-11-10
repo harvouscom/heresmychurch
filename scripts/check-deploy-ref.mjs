@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Refuses a production API deploy from a checkout that could undo what's live.
+ * Refuses a production deploy from a checkout that could undo what's live.
  *
  * Deploying from a stale branch drops bindings and vars, and during the move off Supabase it
- * could send writes back to Postgres. Requires a clean tree that contains the latest origin/main.
+ * could send writes back to Postgres. Requires a clean tree at exactly the latest origin/main.
  * Run from package.json before `wrangler deploy` and `supabase functions deploy`.
  *
  * Emergency override, for a deliberate rollback: HMC_DEPLOY_FORCE=1
@@ -22,9 +22,9 @@ try {
   git("fetch", "origin", "main", "--quiet");
   if (git("status", "--porcelain")) problems.push("the working tree has uncommitted changes");
   try {
-    git("merge-base", "--is-ancestor", "origin/main", "HEAD");
+    if (git("rev-parse", "HEAD") !== git("rev-parse", "origin/main")) throw new Error("unmerged release");
   } catch {
-    problems.push(`HEAD (${git("rev-parse", "--short", "HEAD")}) doesn't contain origin/main (${git("rev-parse", "--short", "origin/main")})`);
+    problems.push(`HEAD (${git("rev-parse", "--short", "HEAD")}) is not the current merged origin/main (${git("rev-parse", "--short", "origin/main")})`);
   }
 } catch (e) {
   problems.push(`couldn't check git state: ${e.message}`);

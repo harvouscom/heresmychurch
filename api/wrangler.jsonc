@@ -17,6 +17,8 @@
   "limits": { "cpu_ms": 300000 },
   "vars": {
     // Tells app.ts it runs behind Cloudflare, so cf-connecting-ip can be trusted for client IPs.
+    "EMAIL_FROM": "updates@mail.heresmychurch.com",
+    "EMAIL_CONFIRMATION_ENABLED": "1",
     "HMC_RUNTIME": "worker",
     "R2_ACCOUNT_ID": "ec934baa29eb81459ffeaf18ba044b9e",
     "R2_BUCKET": "hmc-data",
@@ -27,6 +29,7 @@
     "MAINTENANCE_READONLY": ""
   },
   "ai": { "binding": "AI" },
+  "send_email": [{ "name": "CONFIRMATION_EMAIL", "allowed_sender_addresses": ["updates@mail.heresmychurch.com"] }],
   "triggers": { "crons": ["* * * * *", "0 9 * * *"] },
   "queues": {
     "producers": [{ "binding": "PUBLICATIONS", "queue": "hmc-publications" }],

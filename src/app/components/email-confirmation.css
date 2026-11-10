@@ -1,0 +1,78 @@
+/* Scoped controls share the map's violet surfaces and compact spacing. */
+.email-update{border:1px solid var(--hmc-border,rgba(255,255,255,.08));border-radius:12px;background:rgba(255,255,255,.025);overflow:hidden;color:#fff}
+.email-update-trigger{display:flex;align-items:center;gap:7px;width:100%;padding:9px 11px;color:#d8b4fe;font-size:12px;font-weight:500;line-height:1.4;text-align:left;transition:background .15s}
+.email-update-trigger:hover{background:rgba(168,85,247,.08)}
+.email-update-trigger>span{flex:1}
+.email-update-form{padding:0 10px 10px}
+.email-update-input-row{display:flex;gap:6px;align-items:stretch}
+.email-input-wrap{position:relative;min-width:0;flex:1}
+.email-input-wrap>svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#b8a7ce;pointer-events:none}
+.email-input{display:block;box-sizing:border-box;width:100%;min-width:0;min-height:34px;padding:7px 10px;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:rgba(255,255,255,.045);color:#fff;font:inherit;font-size:12px;line-height:1.5;transition:border-color .15s,background .15s;outline:none}
+.email-input-wrap .email-input{padding-left:30px}
+.email-input::placeholder{color:rgba(233,213,255,.45)}
+.email-input:hover{border-color:rgba(255,255,255,.21)}
+.email-input:focus{border-color:#a475d1;background:rgba(255,255,255,.07);box-shadow:0 0 0 2px rgba(168,85,247,.12)}
+textarea.email-input{resize:vertical;min-height:66px}
+.email-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;padding:8px 14px;border:1px solid rgba(216,180,254,.2);border-radius:10px;background:#6b3e9c;color:#fff;font-size:12px;font-weight:600;line-height:1.4;text-decoration:none;transition:background .15s,border-color .15s;cursor:pointer;white-space:nowrap}
+.email-button:hover{background:#7b4dac;border-color:rgba(216,180,254,.4)}
+.email-button:disabled,.email-cancel:disabled{opacity:.5;cursor:wait}
+.email-button-small{min-height:34px;padding:6px 10px;font-size:11px;border-radius:9px}
+.email-button-small svg{order:2}
+.email-update-note{margin:7px 1px 0;color:rgba(233,213,255,.55);font-size:10px;line-height:1.5}
+.email-update-proof{display:flex;align-items:center;gap:6px;padding:8px 10px 0;color:#a7dfc5;font-size:10px;line-height:1.4}
+.email-update-source{padding:4px 10px 7px;color:rgba(233,213,255,.5);font-size:10px;line-height:1.4}
+.email-update-sent{display:flex;align-items:flex-start;gap:8px;padding:10px}
+.email-update-icon{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:25px;height:25px;border-radius:8px;background:rgba(134,239,172,.1);color:#a7dfc5}
+.email-update-sent strong{display:block;font-size:12px;font-weight:500;line-height:1.5}
+.email-update-sent p{margin:2px 0 0;font-size:11px;line-height:1.5;color:rgba(233,213,255,.6)}
+.email-error{margin-top:8px;color:#f4b3bb;font-size:12px;line-height:1.5}
+.email-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.email-page{position:fixed;inset:0;overflow:auto;overscroll-behavior:contain;box-sizing:border-box;min-height:100dvh;padding:clamp(32px,12vh,120px) 20px 40px;background:#05020f;color:#f6f0ff}
+.email-page-shell{position:relative;z-index:1;width:100%;max-width:420px;margin:0 auto}
+.email-wordmark{display:flex;align-items:center;justify-content:center;gap:9px;width:fit-content;margin:0 auto 23px;color:#e4d7f4;font-size:14px;font-weight:600;text-decoration:none}
+.email-wordmark>span{display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:10px;background:rgba(201,160,220,.1);color:#c9a0dc}
+.email-page-card{padding:27px;border:1px solid rgba(216,180,254,.12);border-radius:20px;background:rgba(25,13,45,.91);backdrop-filter:blur(16px);box-shadow:0 16px 60px rgba(0,0,0,.25)}
+.email-page-symbol{display:flex;align-items:center;justify-content:center;width:28px;height:28px;flex-shrink:0;border:1px solid rgba(216,180,254,.13);border-radius:8px;background:rgba(201,160,220,.09);color:#d7b4eb}
+.email-page-symbol.is-success{color:#a7dfc5;background:rgba(134,239,172,.07);border-color:rgba(134,239,172,.13)}
+.email-eyebrow{margin:0 0 7px;color:#bca4d5;font-size:10px;line-height:1.4;font-weight:600;letter-spacing:.1em;text-transform:uppercase}
+.email-page-card h1{margin:0;font-size:24px;line-height:1.2;font-weight:600;letter-spacing:-.035em;text-wrap:balance}
+.email-page-description{margin:11px 0 0;color:#c0b0d2;font-size:13px;line-height:1.7;text-wrap:pretty}
+.email-page-details{display:grid;gap:9px;margin:21px 0 0}
+.email-page-details p{display:flex;align-items:center;gap:8px;margin:0;color:#cbbbdc;font-size:11px;line-height:1.5}
+.email-page-details svg{flex-shrink:0;color:#ad90c7}
+.email-page-primary{width:100%;margin-top:23px;min-height:37px}
+.email-cancel{padding:8px 5px;white-space:nowrap;color:rgba(255,255,255,.6);font-size:10px;line-height:1.5;text-decoration:none;background:none;border:0;border-radius:5px;cursor:pointer}
+.email-cancel:hover{color:rgba(255,255,255,.85);text-decoration:underline;text-underline-offset:3px}
+.email-back{display:flex;align-items:center;justify-content:center;gap:6px;width:fit-content;margin:20px auto 0;padding:4px;color:rgba(255,255,255,.6);font-size:11px;text-decoration:none}
+.email-back:hover{color:rgba(255,255,255,.85)}
+.email-review-form{display:grid;gap:15px;margin-top:22px}
+.email-church-name{display:flex;align-items:center;gap:8px;padding-bottom:13px;border-bottom:1px solid rgba(255,255,255,.08);color:#d8b4fe}
+.email-church-name h2{margin:0;font-size:14px;line-height:1.5;font-weight:500;color:#eee3fa}
+.email-field{display:grid;gap:7px;font-size:11px;font-weight:500;line-height:1.5;color:#c9b5db}
+.email-location{display:flex;align-items:flex-start;gap:8px;padding:10px;border-radius:10px;background:rgba(255,255,255,.03);color:#b8a0ca}
+.email-location>svg{flex-shrink:0;margin-top:2px}
+.email-location span{font-size:10px;line-height:1.4}
+.email-location p{margin:3px 0 0;color:#e1d2ed;font-size:12px;line-height:1.5}
+.email-check{display:flex;align-items:flex-start;gap:8px;color:#d2c1e1;font-size:11px;line-height:1.5;cursor:pointer}
+.email-check input{width:14px;height:14px;margin:1px 0 0;accent-color:#a475d1;flex-shrink:0}
+.email-review-note{margin:0;color:#a68fb9;font-size:10px;line-height:1.6}
+.email-review-form .email-page-primary{margin-top:0}
+.email-page-error{padding:10px;border:1px solid rgba(244,179,187,.15);border-radius:9px;background:rgba(244,179,187,.04)}
+@keyframes email-spin{to{transform:rotate(360deg)}}
+.email-spin{animation:email-spin 1s linear infinite}
+@media(pointer:coarse){.email-button,.email-update-trigger,.email-input{min-height:40px}.email-cancel,.email-back{min-height:36px;display:inline-flex;align-items:center;justify-content:center}.email-back{display:flex}}
+@media(max-width:420px){.email-page{padding:30px 16px}.email-page-card{padding:23px}.email-page-card h1{font-size:23px}.email-update-input-row{gap:5px}.email-button-small{padding-inline:9px}}
+@media(prefers-reduced-motion:reduce){.email-spin{animation:none}.email-button,.email-input,.email-update-trigger{transition:none}}
+
+.email-wordmark>img{display:block;width:30px;height:30px;border-radius:9px;object-fit:cover;box-shadow:0 3px 12px rgba(0,0,0,.2)}
+.email-page-backdrop{position:fixed;inset:0;overflow:hidden;pointer-events:none;background:radial-gradient(ellipse 800px 400px at 50% 75%,rgba(124,58,237,.24),transparent 72%),radial-gradient(ellipse 640px 290px at 50% 0%,rgba(124,58,237,.1),transparent 70%)}
+.email-page-backdrop::before{content:"";position:absolute;inset:0;background:radial-gradient(rgba(196,181,253,.2) 1px,transparent 1.3px) center/14px 14px;mask-image:radial-gradient(ellipse at 50% 35%,transparent 22%,#000 100%);opacity:.55}
+.email-page-horizon{position:absolute;left:50%;bottom:40px;transform:translateX(-50%);width:max(100%,900px);height:clamp(320px,52vh,600px);mask-image:linear-gradient(#000 45%,transparent 100%);opacity:.75}
+.email-page-horizon::before{content:"";position:absolute;left:0;right:0;top:32px;height:180px;background:radial-gradient(ellipse at 50% 80%,rgba(139,92,246,.23),transparent 70%);filter:blur(20px)}
+.email-page-horizon canvas{position:relative;width:100%;height:100%;display:block}
+@media(max-width:600px){.email-page-horizon{bottom:80px;opacity:.5}.email-page-backdrop::before{opacity:.35}}
+.email-page-actions{display:flex;align-items:center;gap:12px;margin-top:23px}
+.email-page-actions .email-page-primary{flex:1;width:auto;min-width:0;margin-top:0}
+.email-page-actions .email-cancel{font-size:11px;min-height:36px}
+.email-card-heading{display:flex;align-items:center;gap:8px;margin-bottom:13px}
+.email-card-heading .email-eyebrow{margin:0}

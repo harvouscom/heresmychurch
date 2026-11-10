@@ -1,9 +1,12 @@
-import { AnimatePresence, motion, useDragControls } from "motion/react";
+import { AnimatePresence, motion, useDragControls, useReducedMotion } from "motion/react";
 import {
   Church as ChurchIcon,
   ArrowLeft,
   ChevronDown,
   CheckCheck,
+  Globe,
+  MapPin,
+  ArrowUpRight,
 } from "lucide-react";
 import type { Church, StateInfo } from "./church-data";
 import { churchMeetsVerifiedListingCriteria, churchNeedsReview } from "./church-data";
@@ -59,6 +62,7 @@ import type { ChurchClickTarget } from "./ChurchDetailPanel";
 import { fetchNationalReviewStats, fetchModeratorPending, fetchSpecialReportEaster2026 } from "./api";
 import type { SpecialReportEaster2026Church } from "./api";
 import type { NationalReviewStatsResponse, ModeratorPendingResponse } from "./api";
+import { useTouchPreview } from "./hooks/useTouchPreview";
 import { useIsMobile, useIsPhone } from "./ui/use-mobile";
 import { PendingAlertsPill } from "./PendingAlertsPill";
 import { ThreeDotLoader } from "./ThreeDotLoader";
@@ -69,7 +73,7 @@ type ModerationPendingData = Pick<
   "pendingSuggestions" | "pendingChurches" | "inReviewSuggestions" | "inReviewChurches"
 >;
 import { reportIssueEnabled } from "../config/pendingAlerts";
-import { useReducer, useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useReducer, useEffect, useMemo, useState, useCallback, useRef, type ReactNode } from "react";
 import logoImg from "../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 import { Easter2026SpecialReportBlurbModal } from "./special-report/Easter2026SpecialReportBlurbModal";
 import { lazyComponent } from "./ui/lazy-component";
@@ -178,8 +182,9 @@ export function ChurchMap({
   navigateToStateOnly,
 }: ChurchMapProps) {
   const isMobile = useIsMobile();
+  const shouldPreviewMapClick = useTouchPreview();
   // Phones get a full-width bottom sheet; tablets/narrow windows a floating card
-  // in the bottom-right corner; desktop a full-height panel on the right.
+  // in the bottom-right corner; desktop uses the same shorter floating card.
   const isPhone = useIsPhone();
   const isWorld = viewLevel === "world";
 
@@ -280,6 +285,7 @@ export function ChurchMap({
     navigateToCounty,
     navigateToStateOnly,
     isMobile,
+    shouldPreviewMapClick,
   });
 
   const intlFocusedAdmin2 =
@@ -444,6 +450,8 @@ export function ChurchMap({
     }
   }, [isIntl, selectedChurch, routeStateAbbrev, countryCode]);
 
+  useEffect(() => () => syncChurchDocumentSeo(null), []);
+
   const handleIntlCountyClick = useCallback(
     (admin2Id: string) => {
       if (!routeStateAbbrev) return;
@@ -473,8 +481,8 @@ export function ChurchMap({
       d.setHoveredChurch(null);
       const st = (routeStateAbbrev ?? church.state ?? "").toUpperCase();
       if (!st) return;
-      if (isMobile) {
-        // Preview pin on mobile — same UX as US; confirm opens church view.
+      if (shouldPreviewMapClick()) {
+        // Touch preview follows the input device, even on a large tablet.
         d.handleChurchDotClick(church, e);
         return;
       }
@@ -482,7 +490,7 @@ export function ChurchMap({
     },
     [
       isIntl,
-      isMobile,
+      shouldPreviewMapClick,
       routeStateAbbrev,
       countryCode,
       navigateToChurchWithContext,
@@ -1200,9 +1208,9 @@ export function ChurchMap({
             // whenever a window resize crossed the breakpoint.
             key="church-detail-panel"
             className={`absolute z-40 ${
-              isPhone ? "bottom-0 left-0 right-0" : isMobile ? "bottom-0 right-0" : "top-0 right-0 bottom-0"
+              isPhone ? "bottom-0 left-0 right-0" : "bottom-0 right-0"
             }`}
-            style={isMobile ? { height: sheetHeight, bottom: "var(--hmc-keyboard, 0px)", width: isPhone ? undefined : DETAIL_PANEL_WIDTH } : { width: DETAIL_PANEL_WIDTH }}
+            style={isMobile ? { height: sheetHeight, bottom: "var(--hmc-keyboard, 0px)", width: isPhone ? undefined : DETAIL_PANEL_WIDTH } : { width: DETAIL_PANEL_WIDTH, height: "min(68dvh, 720px)" }}
             initial={isMobile ? { y: "100%" } : { x: "100%" }}
             animate={isMobile ? { y: 0 } : { x: 0 }}
             exit={isMobile ? { y: "100%" } : { x: "100%" }}
@@ -1227,7 +1235,7 @@ export function ChurchMap({
               </div>
             )}
             <div
-              className={isPhone ? "px-4 pb-[max(1rem,env(safe-area-inset-bottom))]" : isMobile ? "pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-0" : "pt-4 pr-4 pb-4 pl-0"}
+              className={isPhone ? "px-4 pb-[max(1rem,env(safe-area-inset-bottom))]" : isMobile ? "pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-0" : "pr-4 pb-4 pl-0"}
               style={{ width: isPhone ? "100%" : DETAIL_PANEL_WIDTH, height: isMobile ? sheetHeight : "100%" }}
             >
               <ChurchDetailPanel
@@ -1606,6 +1614,17 @@ function MapArea({
       )}
 
       <div className="flex-1 relative min-h-0">
+      {!isLoadingVisible && (
+        <button
+          type="button"
+          onClick={onShowAbout}
+          aria-label="About Here's My Church"
+          title="Here's My Church"
+          className="absolute top-[max(1rem,env(safe-area-inset-top))] left-[max(1rem,env(safe-area-inset-left))] z-30 hidden sm:flex h-9 w-9 items-center justify-center rounded-xl opacity-65 hover:opacity-100 focus-visible:opacity-100 transition-opacity focus-visible:outline-2 focus-visible:outline-purple-500"
+        >
+          <img src={logoImg} alt="" className="h-8 w-8 rounded-lg shadow-sm" />
+        </button>
+      )}
       {/* Top row: header pill only (secondary controls moved to bottom-left cluster); z-40 so summary stacks above All states + MapControls (z-30). pointer-events-none so click-outside hits the catcher. */}
       {/* Hidden while a church card is open: the state count competes with the card (and
           overlaps it below the md breakpoint). Fades back when the card closes. */}
@@ -1680,28 +1699,11 @@ function MapArea({
                     if (!v) { d.setShowFilterPanel(false); d.setShowLegend(false); }
                     return !v;
                   });
-                }}
-              />
-
-              {/* Pending errors + announcements — below header pill (not in review view) */}
-              {!d.showSummary && (
-                <div className="mt-1.5 flex flex-wrap items-center justify-center gap-2">
-                  <PendingAlertsPill
-                    open={showAlertsPanel}
-                    onOpenChange={onAlertsPanelChange}
-                    showProposeForm={showProposeForm}
-                    showReportIssue={showReportIssue}
-                  />
-                  <AnnouncementsPill
-                    open={showAnnouncementsPanel}
-                    onOpenChange={onAnnouncementsPanelChange}
-                  />
-                </div>
-              )}
-
+                }}              >
               <AnimatePresence>
                 {d.showSummary && (
                   <SummaryPanel
+                    embedded
                     summaryStats={
                       isWorld
                         ? computeWorldSummary(worldCountries, nationalReviewStats)
@@ -1765,6 +1767,25 @@ function MapArea({
                   />
                 )}
               </AnimatePresence>
+              </HeaderPill>
+
+              {/* Pending errors + announcements — below header pill (not in review view) */}
+              {!d.showSummary && (
+                <div className="mt-1.5 flex flex-wrap items-center justify-center gap-2">
+                  <PendingAlertsPill
+                    open={showAlertsPanel}
+                    onOpenChange={onAlertsPanelChange}
+                    showProposeForm={showProposeForm}
+                    showReportIssue={showReportIssue}
+                  />
+                  <AnnouncementsPill
+                    open={showAnnouncementsPanel}
+                    onOpenChange={onAnnouncementsPanelChange}
+                  />
+                </div>
+              )}
+
+
             </>
           )}
         </div>
@@ -1989,7 +2010,7 @@ function MapArea({
       )}
 
       {!isLoadingVisible && (
-        <div className="absolute left-[max(1rem,env(safe-area-inset-left))] bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex flex-col gap-2 items-start pointer-events-none">
+        <div className="absolute left-[max(1rem,env(safe-area-inset-left))] bottom-[calc(max(1rem,env(safe-area-inset-bottom))+var(--hmc-keyboard,0px))] z-30 flex flex-col gap-2 items-start pointer-events-none">
           <div className="pointer-events-auto flex flex-col gap-2 items-start">
           {/* Location is the map (dimmed neighbors) + HeaderPill; zoom-out/reset goes up. */}
           {!selectedChurch && (
@@ -2075,25 +2096,13 @@ function MapArea({
 
       {!isLoadingVisible && !d.showFilterPanel && !d.showLegend && (
         <div
-          className={`absolute left-6 right-6 md:left-12 md:right-12 z-40 flex flex-col items-center gap-2.5 pointer-events-none ${selectedChurch ? (isMobile ? "top-[80px] md:top-auto md:bottom-[max(2rem,env(safe-area-inset-bottom))]" : "md:bottom-[max(2rem,env(safe-area-inset-bottom))]") : "bottom-[calc(max(0.75rem,env(safe-area-inset-bottom))+var(--hmc-keyboard,0px))] md:bottom-[calc(max(2rem,env(safe-area-inset-bottom))+var(--hmc-keyboard,0px))] transition-[bottom] duration-300 ease-out"}`}
+          className={`absolute left-[4.5rem] right-4 md:left-12 md:right-12 z-40 flex flex-col items-center gap-2.5 pointer-events-none ${selectedChurch ? (isMobile ? "top-[80px] md:top-auto md:bottom-[max(2rem,env(safe-area-inset-bottom))]" : "md:bottom-[max(2rem,env(safe-area-inset-bottom))]") : "bottom-[calc(max(1rem,env(safe-area-inset-bottom))+var(--hmc-keyboard,0px))] transition-[bottom] duration-300 ease-out"}`}
         >
-          {/* People with you now — bottom of map; hidden on church view (mobile and desktop) */}
-          {!selectedChurch && ((activePeople + activeBots) > 1 || (isLocalhost && (activePeople + activeBots) >= 1)) && (() => {
-            const withYou = (activePeople + activeBots) - 1; // exclude self so "people with you" = others only
-            const label = withYou === 0 ? "0 people with you now" : withYou === 1 ? "1 person with you now" : `${withYou.toLocaleString()} people with you now`;
-            return (
-              <div className="pointer-events-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full min-w-0 truncate bg-green-500/5 border border-green-500/10 backdrop-blur-md" style={{ boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 0 rgba(0, 0, 0, 0.1)" }}>
-                <span className="relative flex h-1.5 w-1.5 flex-shrink-0" aria-hidden>
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-600 opacity-75" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-600" />
-                </span>
-                <span className="text-green-700 text-caption font-medium truncate">{label}</span>
-              </div>
-            );
-          })()}
           {!selectedChurch && (
             <div className="pointer-events-none w-full max-w-full flex flex-col items-center">
             <MapSearchBar
+              peopleWithYou={((activePeople + activeBots) > 1 || (isLocalhost && (activePeople + activeBots) >= 1))
+                ? Math.max(0, activePeople + activeBots - 1) : null}
               churches={
                 isWorld
                   ? []
@@ -2175,6 +2184,7 @@ function HeaderPill({
   onShowVerification,
   onShowNationalReviewModal,
   onToggle,
+  children,
 }: {
   focusedState: string | null;
   focusedStateName: string;
@@ -2189,6 +2199,7 @@ function HeaderPill({
   /** Show national/world % needing review under the pill. Defaults to country view (no region focus). */
   showReviewPercentage?: boolean;
   showSummary: boolean;
+  children?: ReactNode;
   /** Region/county need-review share (0–100). */
   pendingReviewPercentage?: number;
   nationalReviewStats: NationalReviewStatsResponse | null;
@@ -2199,6 +2210,9 @@ function HeaderPill({
   onShowNationalReviewModal: () => void;
   onToggle: () => void;
 }) {
+  const reducedMotion = useReducedMotion();
+  const titleMeasureRef = useRef<HTMLDivElement>(null);
+  const [closedWidth, setClosedWidth] = useState(260);
   const [showLoading, setShowLoading] = useState(loading);
   const loadingStartedAt = useRef<number | null>(loading ? Date.now() : null);
 
@@ -2231,18 +2245,31 @@ function HeaderPill({
   const showNationalReviewRow =
     (showReviewPercentage ?? (!focusedState && !placeLabel)) && !focusedState;
   const countryLabel = placeLabel ?? getCountry(countryCode)?.name ?? countryCode;
-  // The asterisk footnotes the summary's "Not all churches may be represented yet".
-  const readyCount = (
-    <span title="Not every church is listed yet">
-      {(focusedState ? filteredCount : totalChurches).toLocaleString()} churches
-      <span aria-hidden="true">*</span>
-      <span className="sr-only"> (not every church is listed yet)</span>
-    </span>
-  );
+  const locationName = focusedCountyName || (focusedState ? focusedStateName : countryLabel);
+  const scopeKey = `${countryCode}:${focusedState ?? ""}:${focusedCountyName ?? ""}`;
+  const ScopeIcon = focusedCountyName ? MapPin : focusedState ? ChurchIcon : Globe;
+  const reviewPercent = showLocalReviewRow
+    ? pendingReviewPercentage
+    : nationalStatsMatch ? nationalReviewPercentage : null;
+  useEffect(() => {
+    const title = titleMeasureRef.current;
+    if (!title) return;
+    const measure = () => setClosedWidth(Math.ceil(title.getBoundingClientRect().width) + 98);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(title);
+    return () => observer.disconnect();
+  }, [scopeKey, showLoading, filteredCount, totalChurches]);
+
   return (
-    <div className="rounded-full shadow-hmc-pill transition-shadow hover:shadow-hmc-menu cursor-pointer w-auto max-w-full">
+    <motion.div
+      initial={false}
+      animate={{ width: showSummary ? Math.max(360, closedWidth) : closedWidth }}
+      transition={{ duration: reducedMotion ? 0 : .26, delay: reducedMotion || showSummary ? 0 : .24, ease: [.22, 1, .36, 1] }}
+      className="map-summary-shell rounded-3xl shadow-hmc-pill cursor-pointer max-w-full"
+    >
       <div
-        className="flex flex-col items-center rounded-full w-full min-w-0 overflow-hidden bg-hmc-surface-glass backdrop-blur-md border border-hmc-border transition-colors hover:border-hmc-border-strong"
+        className="map-summary-surface relative isolate flex flex-col items-center rounded-3xl w-full min-w-0 overflow-hidden backdrop-blur-md border border-purple-300/25 transition-colors hover:border-purple-300/50"
       >
       {/* Main row — toggles summary */}
       <div
@@ -2256,97 +2283,64 @@ function HeaderPill({
             onToggle();
           }
         }}
-        className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-5 py-2.5 w-full min-w-0 rounded-full"
+        className="relative flex items-center gap-2.5 px-4 py-2.5 w-full min-w-0 rounded-2xl focus-visible:outline-2 focus-visible:outline-purple-400"
       >
-        <span className="relative flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center text-purple-300">
-          <ChurchIcon
-            size={18}
-            className={`absolute transition-opacity duration-300 ${showLoading ? "opacity-0" : "opacity-100"}`}
-          />
-          <span
-            className={`absolute flex items-center justify-center transition-opacity duration-300 ${showLoading ? "opacity-100" : "opacity-0"}`}
-            aria-hidden={!showLoading}
-          >
-            <ThreeDotLoader size={14} className="bg-purple-300" />
-          </span>
+        <span className="map-summary-icon relative flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-purple-100">
+          {showLoading ? <ThreeDotLoader size={16} className="bg-purple-200" /> : <ScopeIcon size={16} strokeWidth={1.5} />}
         </span>
-        {focusedState ? (
-          <span className="text-white text-sm font-display text-pretty min-w-0 truncate flex items-center gap-1.5">
-            <span
-              key={showLoading ? "loading" : "ready"}
-              className="font-medium whitespace-nowrap animate-in fade-in duration-300"
-            >
-              {showLoading ? "Loading churches" : readyCount}
-              {" in "}
-            </span>
-            <span className="text-white font-medium min-w-0 truncate">
-              <span className="truncate">
-                {focusedCountyName || focusedStateName}
-              </span>
-            </span>
-          </span>
-        ) : (
-          <span className="text-white text-sm font-display text-pretty min-w-0 truncate">
-            <span
-              key={showLoading ? "loading" : "ready"}
-              className="font-medium animate-in fade-in duration-300"
-            >
-              {showLoading ? "Loading churches" : readyCount}
-            </span>
-            {" in "}
-            <span className="text-purple-300 font-medium">
-              {countryLabel}
-            </span>
-          </span>
-        )}
+        <motion.div
+          key={scopeKey}
+          initial={reducedMotion ? false : { opacity: 0, y: 3 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: .22 }}
+          className="min-w-0 flex-1 text-left overflow-hidden"
+        >
+          <div ref={titleMeasureRef} className="inline-flex w-max items-baseline gap-1.5 text-sm whitespace-nowrap">
+            {showLoading ? <span className="text-white/60">Loading churches…</span> : (
+              <>
+                <span className="font-medium tabular-nums text-white">
+                  {(focusedState ? filteredCount : totalChurches).toLocaleString()}
+                </span>
+                <span className="text-white/60">churches in</span>
+              </>
+            )}
+            <span className="font-medium text-purple-100 truncate max-w-[min(35vw,14rem)]" title={locationName}>{locationName}</span>
+            <span className="sr-only"> (not every church is listed yet)</span>
+          </div>
+        </motion.div>
         <ChevronDown
           size={16}
           className={`text-white/60 transition-transform duration-200 flex-shrink-0 ${showSummary ? "rotate-180" : ""}`}
         />
       </div>
 
-      {/* Review row — hide stale percentages while the main count is still loading */}
-      {showLocalReviewRow && (
+      {(showLocalReviewRow || showNationalReviewRow) && (
         <button
           type="button"
+          disabled={showLoading}
           onClick={(e) => {
             e.stopPropagation();
-            if (!showLoading) onShowVerification();
+            if (showLocalReviewRow) onShowVerification();
+            else onShowNationalReviewModal();
           }}
-          aria-disabled={showLoading || undefined}
-          className={`flex items-center justify-center gap-1.5 w-full min-w-0 px-5 pb-1.5 -mt-1.5 rounded-b-full transition-opacity ${
-            showLoading ? "opacity-70 cursor-default" : "hover:opacity-80"
-          }`}
+          className="relative flex items-center justify-between gap-3 w-full px-4 pt-1.5 pb-2 text-xs text-purple-100/75 bg-white/[0.03] border-t border-white/10 hover:bg-white/[0.07] transition-colors disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-purple-400"
         >
-          <span className="text-pink-300 text-caption font-medium min-w-0 truncate inline-flex items-center gap-1">
-            {showLoading ? (
-              <>
-                <ThreeDotLoader size={10} className="bg-pink-300" />
-                <span>need review</span>
-              </>
-            ) : (
-              `${pendingReviewPercentage}% need review`
-            )}
+          <span>{showLoading || (reviewPercent == null && nationalReviewStatsLoading)
+            ? "Checking data quality…"
+            : reviewPercent == null ? "Explore data quality" : `${reviewPercent}% need review`}</span>
+          <span className="inline-flex items-center gap-1 text-purple-200">
+            Review <ArrowUpRight size={12} aria-hidden />
           </span>
+          {reviewPercent != null && !showLoading && (
+            <span aria-hidden className="absolute bottom-0 inset-x-0 h-0.5 bg-white/5">
+              <span className="block h-full bg-gradient-to-r from-violet-500 via-purple-300 to-pink-300 transition-[width] duration-700" style={{ width: `${Math.min(100, Math.max(0, reviewPercent))}%` }} />
+            </span>
+          )}
         </button>
       )}
-      {showNationalReviewRow && (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onShowNationalReviewModal(); }}
-          className="flex items-center justify-center gap-1.5 w-full min-w-0 px-5 pb-1.5 -mt-1.5 rounded-b-full hover:opacity-80 transition-opacity"
-        >
-          <span className="text-pink-300 text-caption font-medium min-w-0 truncate inline-flex items-center gap-1">
-            {nationalStatsMatch
-              ? <span>{nationalReviewPercentage}% need review</span>
-              : nationalReviewStatsLoading
-                ? <><ThreeDotLoader size={10} className="bg-pink-300" /> <span>need review</span></>
-                : "—% need review"}
-          </span>
-        </button>
-      )}
+      {children}
       </div>
-    </div>
+    </motion.div>
   );
 }
 

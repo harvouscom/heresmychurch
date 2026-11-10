@@ -18,6 +18,7 @@
 import { memo, useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import {
   Map as MaplibreMap,
+  Marker,
   setWorkerUrl,
   type GeoJSONSource,
   type MapMouseEvent,
@@ -1886,6 +1887,23 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   const selectedChurch = selectedChurchId ? churchByIdRef.current.get(selectedChurchId) : undefined;
   const selectedLng = selectedChurch?.lng;
   const selectedLat = selectedChurch?.lat;
+
+  // Lookup's selected-location ripple: 8px → 32px over 1.6 seconds.
+  // A single anchored element avoids repainting the full church layer per frame.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || selectedLng == null || selectedLat == null) return;
+    const element = document.createElement("div");
+    element.className = "church-location-pulse";
+    element.setAttribute("aria-hidden", "true");
+    const ring = document.createElement("span");
+    element.appendChild(ring);
+    const marker = new Marker({ element, anchor: "center" })
+      .setLngLat([selectedLng, selectedLat])
+      .addTo(map);
+    return () => { marker.remove(); };
+  }, [selectedChurchId, selectedLng, selectedLat]);
+
 
   // Prefer the route-derived region so the camera moves the moment a state is
   // clicked, rather than waiting for the loading overlay to release

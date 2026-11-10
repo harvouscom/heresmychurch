@@ -13,7 +13,7 @@ import {
 import logoImg from "../../../assets/a94bce1cf0860483364d5d9c353899b7da8233e7.png";
 
 const EMAIL = "hey@heresmychurch.com";
-const EFFECTIVE_DATE = "April 3, 2026";
+const EFFECTIVE_DATE = "November 10, 2026";
 
 type Icon = ComponentType<{ className?: string }>;
 
@@ -198,6 +198,9 @@ export function PrivacyPolicyPage() {
                 or filter results; refer to your browser or OS settings to revoke access at any time.
               </li>
               <li>
+                <span className="font-medium text-stone-800">Church update requests.</span> If you request a service-time update, we store your email privately to confirm the request and send one notification. We never share your email with the church or subscribe you to marketing. Unconfirmed requests expire after 48 hours; confirmed requests expire after 14 days. We delete your address after notification, cancellation, or expiry. You can cancel using the link in your confirmation email.
+              </li>
+              <li>
                 <span className="font-medium text-stone-800">Communications.</span> If you email us (for example at{" "}
                 <a href={`mailto:${EMAIL}`} className="text-purple-600 hover:text-purple-800 underline underline-offset-2">
                   {EMAIL}
@@ -265,6 +268,9 @@ export function PrivacyPolicyPage() {
                 <span className="font-medium text-stone-800">OpenStreetMap and related tools</span> provide map data and,
                 when you add a church by address, may receive geocoding queries (for example via Nominatim) subject to
                 their policies.
+              </li>
+              <li>
+                <span className="font-medium text-stone-800">Cloudflare Email Service</span> delivers requested confirmation and update emails and processes recipient addresses and delivery records. Provider logs follow its retention policies.
               </li>
               <li>
                 <span className="font-medium text-stone-800">Fathom</span> processes analytics as described above.

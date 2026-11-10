@@ -52,6 +52,7 @@ interface UseChurchMapDataArgs {
   navigateToCounty: (stateAbbrev: string, countyFips: string) => void;
   navigateToStateOnly: (stateAbbrev: string) => void;
   isMobile?: boolean;
+  shouldPreviewMapClick: () => boolean;
 }
 
 // ── Module-level pure function (was useCallback with [] deps) ──
@@ -78,6 +79,7 @@ export function useChurchMapData({
   navigateToCounty,
   navigateToStateOnly,
   isMobile,
+  shouldPreviewMapClick,
 }: UseChurchMapDataArgs) {
   // ── Core data + map-view state (consolidated reducer — absorbs old useMapView) ──
   const [ds, dd] = useReducer(dataReducer, initialDataState);
@@ -1115,7 +1117,7 @@ export function useChurchMapData({
 
   const handleChurchDotClick = (church: Church, e?: { clientX: number; clientY: number }) => {
     ui.setHoveredChurch(null);
-    if (isMobile) {
+    if (shouldPreviewMapClick()) {
       const pos = e ? { x: e.clientX, y: e.clientY } : ui.tooltipPos;
       ui.setPinnedPreview(church, pos);
     } else {
@@ -1143,7 +1145,7 @@ export function useChurchMapData({
       if (abbrev !== focusedState) navigateToState(abbrev);
       return;
     }
-    if (isMobile) {
+    if (shouldPreviewMapClick()) {
       const pos = e ? { x: e.clientX, y: e.clientY } : ui.tooltipPos;
       ui.setPinnedStatePreview(abbrev, pos);
     } else {
@@ -1153,7 +1155,7 @@ export function useChurchMapData({
 
   const handleCountyClick = (fips: string, e?: { clientX: number; clientY: number }) => {
     if (!focusedState) return;
-    if (isMobile) {
+    if (shouldPreviewMapClick()) {
       const pos = e ? { x: e.clientX, y: e.clientY } : ui.tooltipPos;
       ui.setPinnedCountyPreview(fips, pos);
     } else {

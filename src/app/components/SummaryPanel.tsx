@@ -1,4 +1,4 @@
-import { motion } from "motion/react";
+import { motion, useReducedMotion, useIsPresent } from "motion/react";
 import { useRef } from "react";
 import { useScrollEdges } from "./ui/hmc-dialog";
 import {
@@ -11,6 +11,9 @@ import {
   BarChart3,
   ChevronDown,
   FileText,
+  List,
+  Plus,
+  ArrowUpRight,
   MapPin,
   ShieldCheck,
   Check,
@@ -71,6 +74,7 @@ export type CountyStatsForSummary = {
 };
 
 interface SummaryPanelProps {
+  embedded?: boolean;
   summaryStats: SummaryStats;
   focusedState: string | null;
   focusedStateName: string;
@@ -97,6 +101,7 @@ interface SummaryPanelProps {
 }
 
 export function SummaryPanel({
+  embedded = false,
   summaryStats,
   focusedState,
   focusedStateName,
@@ -116,6 +121,23 @@ export function SummaryPanel({
   admin2Noun = "counties",
   boundaryAttribution,
 }: SummaryPanelProps) {
+  const reducedMotion = useReducedMotion();
+  const isPresent = useIsPresent();
+  const [panelHeight, setPanelHeight] = useState(() =>
+    typeof window === "undefined" ? 500 : Math.max(160, Math.min(window.innerHeight * .65, window.innerHeight - 144)));
+  useEffect(() => {
+    const resize = () => {
+      const height = window.visualViewport?.height ?? window.innerHeight;
+      setPanelHeight(Math.max(160, Math.min(height * .65, height - 144)));
+    };
+    resize();
+    window.addEventListener("resize", resize);
+    window.visualViewport?.addEventListener("resize", resize);
+    return () => {
+      window.removeEventListener("resize", resize);
+      window.visualViewport?.removeEventListener("resize", resize);
+    };
+  }, []);
   const [latestReportSlug, setLatestReportSlug] = useState<string>("launch-2026");
   const [seasonalReports, setSeasonalReports] = useState<SeasonalReportSummary[]>([]);
   const reportScopeCode = countryCode === "WORLD" ? "WORLD" : (countryCode || "US").toUpperCase();
@@ -138,20 +160,34 @@ export function SummaryPanel({
       : reportScopeCode === "US"
         ? "U.S."
         : (getCountry(reportScopeCode)?.name || reportScopeCode);
+  const summaryReportHref = summaryStats.type === "state" && countryCode === "US" && focusedState
+    ? `/report/state/${focusedState}/${latestReportSlug}`
+    : seasonalReports.length > 0
+      ? reportPath({ slug: latestReportSlug, countryCode: reportScopeCode })
+      : null;
+  const summaryReportLabel = summaryStats.type === "state" && focusedState
+    ? `${focusedStateName} report`
+    : `${countryReportLabel} report`;
   const countyData = focusedCounty && countyStats?.byFips[focusedCounty];
   const scrollRef = useRef<HTMLDivElement>(null);
   useScrollEdges(scrollRef);
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -8, scale: 0.97 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -8, scale: 0.97 }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
-      className="mt-2 rounded-panel shadow-hmc-panel overflow-hidden w-[min(360px,calc(100vw-3.5rem))] max-h-[min(70dvh,calc(100dvh-var(--hmc-keyboard,0px)-6rem))] flex flex-col bg-hmc-surface-glass backdrop-blur-md"
+      initial={reducedMotion ? false : { opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: embedded ? panelHeight : "auto" }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{
+        height: { duration: reducedMotion ? 0 : .3, delay: reducedMotion || !isPresent ? 0 : .12, ease: [.22, 1, .36, 1] },
+        opacity: { duration: reducedMotion ? 0 : .14, delay: reducedMotion || !isPresent ? 0 : .18 },
+      }}
+      style={embedded ? { width: "min(360px, calc(100vw - 2rem))", flexShrink: 0, alignSelf: "center", pointerEvents: isPresent ? "auto" : "none" } : undefined}
+      className={embedded
+        ? "overflow-hidden w-full max-h-[min(65dvh,calc(100dvh-var(--hmc-keyboard,0px)-9rem))] flex flex-col border-t border-white/10 cursor-auto"
+        : "mt-2 rounded-panel shadow-hmc-panel overflow-hidden w-[min(360px,calc(100vw-3.5rem))] max-h-[min(70dvh,calc(100dvh-var(--hmc-keyboard,0px)-6rem))] flex flex-col bg-hmc-surface-glass backdrop-blur-md"}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-white/8 flex-shrink-0">
+      {/* The shared map header is also the collapse control when embedded. */}
+      {!embedded && <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-white/8 flex-shrink-0">
         <span className="text-xs font-medium text-white uppercase tracking-widest">
           {focusedCounty && countyData
             ? `${countyData.name}, ${focusedStateName}`
@@ -162,7 +198,7 @@ export function SummaryPanel({
                 : "Summary"}
         </span>
         <CloseButton onClick={onClose} />
-      </div>
+      </div>}
 
       <div ref={scrollRef} className="hmc-scroll-edges px-5 py-4 space-y-4 overflow-y-auto overscroll-contain flex-1 min-h-0">
         {focusedCounty && countyData ? (
@@ -235,87 +271,62 @@ export function SummaryPanel({
         </div>
       </div>
 
-      {/* Country / world seasonal report — pinned bottom (national overview) */}
-      {summaryStats.type === "national" && seasonalReports.length > 0 && (
-        <div className="px-5 pb-4 pt-3 border-t border-white/8 flex-shrink-0 space-y-2">
-          <Link
-            to={reportPath({ slug: latestReportSlug, countryCode: reportScopeCode })}
-            className="w-full py-2.5 rounded-xl text-xs font-semibold text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 transition-colors cursor-pointer flex items-center justify-center gap-2"
-            onClick={onClose}
-          >
-            <FileText size={13} />
-            View {countryReportLabel} Report
-          </Link>
-          {reportScopeCode === "US" && (
-            <NationalPreviousReportsExpand
-              previous={previousNationalReports}
-              onNavigate={onClose}
-            />
-          )}
-          <Link
-            to="/reports"
-            onClick={onClose}
-            className="w-full py-2.5 rounded-xl text-xs font-semibold text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 transition-colors cursor-pointer flex items-center justify-center"
-            role="button"
-          >
-            All reports
-          </Link>
-        </div>
-      )}
-
-      {/* Action buttons — pinned bottom (state/region view only) */}
-      {summaryStats.type === "state" && (
-        <div className="px-5 pb-4 pt-3 border-t border-white/8 flex-shrink-0 space-y-2">
-          {countryCode === "US" && focusedState && (
+      {/* A compact footer separates report navigation from contribution actions. */}
+      {(summaryStats.type === "state" || summaryReportHref) && (
+        <div className="px-4 pt-3 pb-4 border-t border-white/10 flex-shrink-0 space-y-3">
+          <div className="flex items-center gap-3">
+            {summaryReportHref && (
+              <Link
+                to={summaryReportHref}
+                onClick={onClose}
+                className="min-w-0 flex-1 flex items-center gap-2 rounded-xl px-3 py-2.5 bg-purple-400/10 hover:bg-purple-400/20 border border-purple-300/15 transition-colors focus-visible:outline-2 focus-visible:outline-purple-300"
+              >
+                <FileText size={14} className="shrink-0 text-purple-200" />
+                <span className="text-xs font-medium text-white truncate">{summaryReportLabel}</span>
+                <ArrowUpRight size={13} className="ml-auto shrink-0 text-purple-200/60" />
+              </Link>
+            )}
             <Link
-              to={`/report/state/${focusedState}/${latestReportSlug}`}
-              className="w-full py-2.5 rounded-xl text-xs font-semibold text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 transition-colors cursor-pointer flex items-center justify-center gap-2"
+              to="/reports"
               onClick={onClose}
+              className="shrink-0 py-2 text-xs text-white/55 hover:text-white transition-colors rounded focus-visible:outline-2 focus-visible:outline-purple-300"
             >
-              <FileText size={13} />
-              View {focusedState} Report
+              All reports
             </Link>
-          )}
-          {countryCode !== "US" && countryCode !== "WORLD" && seasonalReports.length > 0 && (
-            <Link
-              to={reportPath({ slug: latestReportSlug, countryCode: reportScopeCode })}
-              className="w-full py-2.5 rounded-xl text-xs font-semibold text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 transition-colors cursor-pointer flex items-center justify-center gap-2"
-              onClick={onClose}
-            >
-              <FileText size={13} />
-              View {countryReportLabel} Report
-            </Link>
-          )}
-          <Link
-            to="/reports"
-            onClick={onClose}
-            className="w-full py-2 rounded-xl text-caption font-semibold text-white/70 hover:text-purple-200 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer flex items-center justify-center"
-            role="button"
-          >
-            All reports
-          </Link>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={onShowListModal}
-              className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-purple-300 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/20 transition-colors cursor-pointer"
-            >
-              View Church List
-            </button>
-            <button
-              onClick={onShowAddChurch}
-              className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-purple-300 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/20 transition-colors cursor-pointer"
-            >
-              + Add Your Church
-            </button>
+            <Link to="/data-health" onClick={onClose} className="shrink-0 py-2 text-xs text-white/55 hover:text-white transition-colors rounded focus-visible:outline-2 focus-visible:outline-purple-300">Data health</Link>
           </div>
-          {onShowVerification && (
-            <button
-              onClick={() => { onClose(); onShowVerification(); }}
-              className="w-full py-2.5 rounded-xl text-xs font-semibold text-white bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/15 transition-colors cursor-pointer flex items-center justify-center gap-2"
-            >
-              <ShieldCheck size={13} />
-              Churches Needing Review
-            </button>
+          {summaryStats.type === "national" && reportScopeCode === "US" && (
+            <NationalPreviousReportsExpand previous={previousNationalReports} onNavigate={onClose} />
+          )}
+          {summaryStats.type === "state" && (
+            <div className="flex gap-1 rounded-xl border border-white/10 p-1" role="group" aria-label="Explore and improve the map">
+              <button
+                type="button"
+                onClick={onShowListModal}
+                aria-label="Browse church list"
+                className="flex flex-1 min-w-0 items-center justify-center gap-1.5 rounded-lg py-2 text-xs text-white/70 hover:text-white hover:bg-white/5 transition-colors focus-visible:outline-2 focus-visible:outline-purple-300"
+              >
+                <List size={14} aria-hidden /> Browse
+              </button>
+              <button
+                type="button"
+                onClick={onShowAddChurch}
+                aria-label="Add your church"
+                className="flex flex-1 min-w-0 items-center justify-center gap-1.5 rounded-lg py-2 text-xs text-white/70 hover:text-white hover:bg-white/5 transition-colors focus-visible:outline-2 focus-visible:outline-purple-300"
+              >
+                <Plus size={14} aria-hidden /> Add
+              </button>
+              {onShowVerification && (
+                <button
+                  type="button"
+                  onClick={() => { onClose(); onShowVerification(); }}
+                  aria-label="Review church details"
+                  className="flex flex-1 min-w-0 items-center justify-center gap-1.5 rounded-lg py-2 text-xs text-white/70 hover:text-white hover:bg-white/5 transition-colors focus-visible:outline-2 focus-visible:outline-purple-300"
+                >
+                  <ShieldCheck size={14} aria-hidden /> Review
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
