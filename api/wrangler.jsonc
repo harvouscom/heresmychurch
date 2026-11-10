@@ -24,7 +24,7 @@
     // "supabase" or "d1". See docs/future/move-off-supabase.md.
     "STORE_BACKEND": "supabase",
     // Any non-empty value pauses writes while reads keep working.
-    "MAINTENANCE_READONLY": ""
+    "MAINTENANCE_READONLY": "1"
   },
   "routes": [{ "pattern": "api.heresmychurch.com", "custom_domain": true }],
   // Static files (states.json, churches/{REGION}.json); r2.ts prefers this over S3 keys.
