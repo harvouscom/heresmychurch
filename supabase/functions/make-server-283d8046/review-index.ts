@@ -35,12 +35,16 @@ export async function refreshReviewIndex(region:string,churches:any[]):Promise<b
 }
 export async function indexedReviewView(regions:string[],neededIds:Set<string>,getRegion:(region:string)=>Promise<any>):Promise<{churches:Map<string,any>;reverify:any[];fallbackRegions:number}>{
  const db=getD1();
- const {results:readyRows}=await db.prepare("SELECT region FROM review_index_regions WHERE complete=1").all<{region:string}>();
- const ready=new Set((readyRows??[]).map(r=>r.region));
- const churches=new Map<string,any>();const ids=[...neededIds];
- for(let i=0;i<ids.length;i+=100){const {results}=await db.prepare("SELECT c.doc FROM review_churches c JOIN review_index_regions r ON r.region=c.region WHERE r.complete=1 AND c.church_id IN(SELECT value FROM json_each(?1))").bind(JSON.stringify(ids.slice(i,i+100))).all<{doc:string}>();for(const row of results??[]){const ch=JSON.parse(row.doc);churches.set(ch.id,ch);}}
- const {results}=await db.prepare("SELECT c.doc FROM review_churches c JOIN review_index_regions r ON r.region=c.region WHERE r.complete=1 AND c.listing_status='pending_reverify'").all<{doc:string}>();
- const reverify=(results??[]).map(row=>JSON.parse(row.doc));
+ // Read readiness and the matching metadata in one D1 snapshot.
+ const [readyResult,targetResult,reverifyResult]=await db.batch([
+  db.prepare("SELECT region FROM review_index_regions WHERE complete=1"),
+  db.prepare("SELECT c.doc FROM review_churches c JOIN review_index_regions r ON r.region=c.region WHERE r.complete=1 AND c.church_id IN(SELECT value FROM json_each(?1))").bind(JSON.stringify([...neededIds])),
+  db.prepare("SELECT c.doc FROM review_churches c JOIN review_index_regions r ON r.region=c.region WHERE r.complete=1 AND c.listing_status='pending_reverify'"),
+ ]);
+ const ready=new Set((readyResult.results??[]).map((r:any)=>r.region));
+ const churches=new Map<string,any>();
+ for(const row of targetResult.results??[]){const ch=JSON.parse(row.doc);churches.set(ch.id,ch);}
+ const reverify=(reverifyResult.results??[]).map((row:any)=>JSON.parse(row.doc));
  const fallback=regions.filter(region=>!ready.has(region));
  for(let i=0;i<fallback.length;i+=3){await Promise.all(fallback.slice(i,i+3).map(async region=>{
   const list=await getRegion(region);if(!Array.isArray(list)||!list.length){await refreshReviewIndex(region,[]);return;}

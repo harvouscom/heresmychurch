@@ -51,7 +51,7 @@ import { checkChurchEvidence, reviewAiAvailable } from "./review-evidence.ts";
 import { dispatchPublications, hasPublicationQueue, requestPublications, publicationHealth, validPublicationTarget, releasePublication } from "./publication.ts";
 import { indexedReviewView, refreshReviewIndex } from "./review-index.ts";
 import { usesD1 } from "./kv-backend.ts";
-import { EditConflictError, snapshotOf, proposalVersion } from "./edit-versions.ts";
+import { EditConflictError, snapshotOf, proposalVersion, currentReviewValue } from "./edit-versions.ts";
 import { registerMigrateRoutes } from "./admin-migrate.ts";
 import { r2Enabled, r2PutJson } from "./r2.ts";
 import { env, renderOgImage, waitUntil } from "./runtime.ts";
@@ -2672,13 +2672,13 @@ function applyCalibrationToChurches(churches:any[],cal:{medians:Record<string,nu
 
 type ApplyResult={updated:boolean;state?:string;churches?:any[];corrections?:Record<string,any>;previousValues?:Record<string,string>};
 type AuditContext={source:string;actorIp?:string;actorModKey?:string};
-async function applyApprovedCorrections(churchId:string,con:Record<string,any>,auditContext?:AuditContext):Promise<ApplyResult>{
+async function applyApprovedCorrections(churchId:string,con:Record<string,any>,auditContext?:AuditContext,sourceChurches?:any[]):Promise<ApplyResult>{
   const corrections:Record<string,any>={};
   for(const[field,data]of Object.entries(con)){if((data as any).approved&&(data as any).value!==null)corrections[field]=(data as any).value;}
   if(!Object.keys(corrections).length)return {updated:false};
   const st=regionFromChurchId(churchId);
   if(!st||!isValidRegion(st))return {updated:false};
-  const churches=await getChurches(st);
+  const churches=sourceChurches??await getChurches(st);
   if(!Array.isArray(churches))return {updated:false};
   const auditEntries:{field:string;oldVal:unknown;newVal:unknown}[]=[];
   const previousValues:Record<string,string>={};
@@ -2856,9 +2856,20 @@ async function submitSuggestionCore(opts:{churchId:string;field:string;value:unk
     const shown=held?consensus(ex.submissions,{held:"only"}):con;
     return{ok:true,field,consensus:shown[field],allFields:con,applied:false,needsModeration:true};
   }
-  const safeCon:Record<string,any>={};
-  for(const[f,d]of Object.entries(con)){if(!SENSITIVE_FIELDS.includes(f))safeCon[f]=d;}
-  const applied=await applyApprovedCorrections(churchId,safeCon,{source:auditSource,actorIp:actorKey});
+  // Apply only this field, using the listing snapshot from before the vote was stored.
+  // An unrelated submission must never sweep another field's old votes onto a newer listing.
+  const safeCon:Record<string,any>={[field]:con[field]};
+  let applied:ApplyResult;
+  try{applied=await applyApprovedCorrections(churchId,safeCon,{source:auditSource,actorIp:actorKey},churches);}
+  catch(e){
+    if(!(e instanceof EditConflictError))throw e;
+    const latest=await kv.get(k);
+    const vote=latest?.submissions?.find((s:any)=>s.ip===actorKey&&s.field===field&&s.value===storeValue&&!isHeldVote(s));
+    if(!vote)throw e;
+    vote.needsModeration=true;await kv.set(k,latest);
+    const shown=consensus(latest.submissions,{held:"only"}),publicCon=consensus(latest.submissions);
+    return{ok:true,field,consensus:shown[field],allFields:publicCon,applied:false,needsModeration:true};
+  }
   if(applied.updated&&applied.state&&applied.churches&&applied.corrections){void runDeferredIndexAndStats(applied.state,applied.churches,churchId,applied.corrections).catch(()=>{});}
   // Attendance is averaged across votes, so it never equals one submission.
   return{ok:true,field,consensus:con[field],allFields:con,applied:applied.updated&&(field==="attendance"||con[field]?.value===storeValue)};
@@ -3446,7 +3457,7 @@ const moderatePendingHandler=async(c:any)=>{
               if(storedPrev!=null&&String(storedPrev).trim()!==""){currentValue=String(storedPrev);alreadyApplied=true;}
               else continue;
             }
-            pendingSuggestions.push({churchId:entry.churchId,field:f,proposedValue:d.value,currentValue,churchName:ch?.name,churchCity:ch?.city,churchState:ch?.state,churchShortId:ch?.shortId,votes:d.votes,submissions:d.submissions||[],clients:lookupClients(entry.submissions,f),alreadyApplied,relocatedTo:ch?.relocatedTo,listingStatus:ch?.listingStatus,reviewVersion:await proposalVersion(entry,f)});
+            pendingSuggestions.push({churchId:entry.churchId,field:f,proposedValue:d.value,currentValue,churchName:ch?.name,churchCity:ch?.city,churchState:ch?.state,churchShortId:ch?.shortId,votes:d.votes,submissions:d.submissions||[],clients:lookupClients(entry.submissions,f),alreadyApplied,relocatedTo:ch?.relocatedTo,listingStatus:ch?.listingStatus,reviewVersion:await proposalVersion(entry,f,currentReviewValue(ch,f,st))});
           }
         }
       }
@@ -3561,7 +3572,10 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
     if(!churchId||!field)return c.json({error:"Missing churchId or field"},400);
     const k=`suggestions:${churchId}`;const ex=await kv.get(k);
     if(!ex||!Array.isArray(ex.submissions))return c.json({error:"No suggestions found"},404);
-    if(reviewVersion!==undefined&&reviewVersion!==await proposalVersion(ex,field))throw new EditConflictError();
+    const reviewedRegion=regionFromChurchId(churchId);
+    const reviewedChurches=reviewedRegion?await getChurches(reviewedRegion):null;
+    const reviewedChurch=Array.isArray(reviewedChurches)?reviewedChurches.find((ch:any)=>ch.id===churchId):null;
+    if(reviewVersion!==undefined&&reviewVersion!==await proposalVersion(ex,field,currentReviewValue(reviewedChurch,field,reviewedRegion)))throw new EditConflictError();
     let valueToApply:any;
     if(editedValue!==undefined&&editedValue!==null&&String(editedValue).trim()!==""){
       valueToApply=String(editedValue).trim();
@@ -3594,7 +3608,7 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
         if(!geo)return c.json({error:"Could not geocode new address"},400);
         addrObj.lat=geo.lat;addrObj.lng=geo.lng;
       }
-      const mainChurches=await getChurches(st);
+      const mainChurches=reviewedChurches??await getChurches(st);
       if(!Array.isArray(mainChurches))return c.json({error:"Church list not found"},404);
       const source=mainChurches.find((x:any)=>x.id===churchId);
       if(!source)return c.json({error:"Church not found"},404);
@@ -3648,7 +3662,7 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
       const st=regionFromChurchId(churchId);
       if(!st||!isValidRegion(st))return c.json({error:"Invalid church ID"},400);
       let auditChurchName:string|null=null;let auditChurchCityState:string|null=null;
-      const mainChurches=await getChurches(st);
+      const mainChurches=reviewedChurches??await getChurches(st);
       if(Array.isArray(mainChurches)){
         const ch=mainChurches.find((x:any)=>x.id===churchId);
         if(ch){auditChurchName=ch.name||null;auditChurchCityState=[ch.city,ch.state].filter(Boolean).join(", ")||null;}
@@ -3676,7 +3690,7 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
     }
     const singleCon:Record<string,any>={};
     singleCon[field]={approved:true,value:valueToApply,votes:0,needed:THR};
-    const applied=await applyApprovedCorrections(churchId,singleCon,{source:"moderate_approve",actorModKey:getModKey(c)});
+    const applied=await applyApprovedCorrections(churchId,singleCon,{source:"moderate_approve",actorModKey:getModKey(c)},reviewedChurches??undefined);
     if(applied.previousValues){ex.previousValues=ex.previousValues||{};for(const[f,val]of Object.entries(applied.previousValues))ex.previousValues[f]=val;}
     ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
     await kv.set(k,ex);
@@ -3695,7 +3709,10 @@ const moderateRejectSuggestionHandler=async(c:any)=>{
     if(!churchId||!field)return c.json({error:"Missing churchId or field"},400);
     const k=`suggestions:${churchId}`;const ex=await kv.get(k);
     if(!ex||!Array.isArray(ex.submissions))return c.json({error:"No suggestions found"},404);
-    if(reviewVersion!==undefined&&reviewVersion!==await proposalVersion(ex,field))throw new EditConflictError();
+    const reviewedRegion=regionFromChurchId(churchId);
+    const reviewedChurches=reviewedRegion?await getChurches(reviewedRegion):null;
+    const reviewedChurch=Array.isArray(reviewedChurches)?reviewedChurches.find((ch:any)=>ch.id===churchId):null;
+    if(reviewVersion!==undefined&&reviewVersion!==await proposalVersion(ex,field,currentReviewValue(reviewedChurch,field,reviewedRegion)))throw new EditConflictError();
     const heldRej=(consensus(ex.submissions,{held:"only"})[field] as any)?.value;
     const rejectedVal=heldRej??(consensus(ex.submissions)[field] as any)?.value;
     ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);

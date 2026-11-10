@@ -79,8 +79,15 @@ export function replaceInPlace(target:any,value:any):void {
  else if(isObject(target)&&isObject(value)){for(const key of Object.keys(target))delete target[key];for(const [key,v]of Object.entries(value))Object.defineProperty(target,key,{value:v,enumerable:true,writable:true,configurable:true});}
 }
 
-export async function proposalVersion(entry:any,field:string):Promise<string>{
- const value=JSON.stringify({submissions:(entry?.submissions??[]).filter((s:any)=>s.field===field),previousValue:entry?.previousValues?.[field]});
+export function currentReviewValue(ch:any,field:string,region?:string|null):unknown {
+ if(!ch)return null;
+ if(field==="address"||field==="reportRelocated")return {address:ch.address??null,city:ch.city??null,state:ch.state??region??null,postcode:ch.postcode??null,lat:ch.lat??null,lng:ch.lng??null};
+ if(["reportClosed","reportDuplicate","reportOutOfScope"].includes(field))return {name:ch.name??null,website:ch.website??null,address:ch.address??null,city:ch.city??null,state:ch.state??region??null,listingStatus:ch.listingStatus??null};
+ return ch[field]??null;
+}
+
+export async function proposalVersion(entry:any,field:string,currentValue?:unknown):Promise<string>{
+ const value=JSON.stringify({currentValue,submissions:(entry?.submissions??[]).filter((s:any)=>s.field===field),previousValue:entry?.previousValues?.[field]});
  return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))).map(v=>v.toString(16).padStart(2,"0")).join("");
 }
 

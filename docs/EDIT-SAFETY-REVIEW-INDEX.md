@@ -6,7 +6,7 @@ KV records now have a monotonic revision. Fresh object/array reads retain an imm
 
 A guarded D1 batch commits the record, recovery-file retirement, publication job, and review-index invalidation together. A stale version aborts the whole batch; retries re-read and merge up to five times. Unused large-file candidates are retained for safe garbage collection. Church-list transformations explicitly carry their source baseline so additions/removals cannot silently replace unrelated concurrent edits. Read-only cached blobs discard write baselines to keep memory bounded.
 
-Each review field has a fingerprint of its proposal data. The review UI sends it when approving or rejecting. A changed proposal gets a 409 response and the UI refreshes the queue. Reviewing one field does not invalidate another field's unchanged proposal. Older clients can still use the endpoints; their stored data writes receive the same revision protection, while proposal-fingerprint checking requires an updated client.
+Each review field has a fingerprint of its proposal data and the displayed current field value. The review UI sends it when approving or rejecting. A changed proposal gets a 409 response and the UI refreshes the queue. Reviewing one field does not invalidate another field's unchanged proposal. Older clients can still use the endpoints; their stored data writes receive the same revision protection, while proposal-fingerprint checking requires an updated client.
 
 Bulk migration helpers retain their explicit overwrite semantics and must not be used to overwrite live data after cutover. The existing migration marker already blocks Postgres-to-D1 recopying.
 
@@ -25,5 +25,7 @@ On November 9, 2026, eight visible reviewed changes were saved sequentially thro
 ## Rollout
 
 Apply migration `0003_edit_versions_review_index.sql` before deploying the new Worker. Briefly pause writes while the old Worker drains, then reopen writes with the new code. Queue a full publication using the existing authenticated publishing script to backfill projections; public reads remain available. Monitor `review_index_regions` and `publish_outbox` until the expected regions are complete.
+
+The pre-index production moderation request took 234,084 ms with zero pending items.
 
 Tests cover simultaneous regional/field edits, field conflicts, additions/removals, first votes, simultaneous moderator decisions and cleanup, correction counts, stale proposal actions, and indexed reads avoiding regional blob loads. Existing recovery and publication tests remain in place.
