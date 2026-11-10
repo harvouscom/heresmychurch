@@ -2975,6 +2975,9 @@ app.get(`${P}/suggestions/pending/:state`,async(c)=>{
     const [regular,community]=await Promise.all([kv.getByPrefix(`suggestions:${st}-`),kv.getByPrefix(`suggestions:community-${st}-`)]);
     const all=[...(Array.isArray(regular)?regular:[]),...(Array.isArray(community)?community:[])];
     const pending:Array<{churchId:string;fields:Record<string,{votes:number;needed:number;topValue:string;submissions:{value:string;count:number}[]}>}>=[];
+    const targets=new Set(all.filter((e:any)=>e?.churchId).map((e:any)=>e.churchId));
+    const indexed=usesD1()?await indexedReviewView([st],targets,r=>getChurches(r)):null;
+    const churches=indexed?indexed.churches:new Map((await getChurches(st)||[]).map((ch:any)=>[ch.id,ch]));
     for(const entry of all){
       if(!entry||!Array.isArray(entry.submissions)||!entry.churchId)continue;
       const con=consensus(entry.submissions);
@@ -2986,6 +2989,7 @@ app.get(`${P}/suggestions/pending/:state`,async(c)=>{
         // Sensitive fields count as approved at THR=1 but still wait for a moderator, and since they no
         // longer overlay onto listings this is the only sign visitors get that an edit was received.
         if(fd.votes>0&&(!fd.approved||SENSITIVE_FIELDS.includes(f)||held[f]?.votes>0)){
+          if(suggestionAlreadySaved(entry,f,fd.value??fd.submissions?.[0]?.value,churches.get(entry.churchId)))continue;
           pf[f]={votes:fd.votes,needed:fd.needed,topValue:fd.submissions?.[0]?.value||"",submissions:fd.submissions||[]};
         }
       }
@@ -3379,6 +3383,20 @@ function valuesMatchForReview(field:string,current:string|null,proposed:string):
   if(field==="website")return a.toLowerCase()===b.toLowerCase();
   return a===b;
 }
+/** Previously accepted votes are history, not a new pending decision. Keep auto-applied changes
+ * with a saved previous value visible until a moderator reviews them, matching the review queue. */
+function suggestionAlreadySaved(entry:any,field:string,value:unknown,church:any):boolean{
+  if(!church||field==="reportRelocated"||value==null)return false;
+  const previous=entry.previousValues?.[field];
+  if(previous!=null&&String(previous).trim()!=="")return false;
+  let proposed=String(value);
+  const current=field==="address"?[church.address,church.city,church.state].filter(Boolean).join(", "):String(church[field]??"");
+  if(field==="address"&&proposed.trim().startsWith("{")){
+    try{const address=JSON.parse(proposed);proposed=[address.address,address.city,address.state].map(v=>String(v??"").trim()).filter(Boolean).join(", ");}catch{}
+  }
+  return valuesMatchForReview(field,current,proposed);
+}
+
 /** Lookup tools behind a field's submissions, as they declared themselves (source lookup:{client}). */
 function lookupClients(subs:any[],field:string):string[]{
   const out=new Set<string>();
@@ -3391,7 +3409,7 @@ function reviewConsensus(subs:any[]):Array<[string,any]>{
   const con=consensus(subs);
   const heldCon=consensus(subs,{held:"only"});
   return[
-    ...SENSITIVE_FIELDS.map((f)=>[f,con[f]] as [string,any]),
+    ...SENSITIVE_FIELDS.map((f)=>[f,heldCon[f]?.votes>0?heldCon[f]:con[f]] as [string,any]),
     ...VF.filter((f)=>!SENSITIVE_FIELDS.includes(f)).map((f)=>[f,heldCon[f]] as [string,any]),
   ];
 }

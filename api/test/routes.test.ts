@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import app from "../../supabase/functions/make-server-283d8046/app.ts";
 import * as kv from "../../supabase/functions/make-server-283d8046/kv.ts";
@@ -323,5 +324,44 @@ describe("review-index maintenance",()=>{
  it("requires moderator access and validates its cursor",async()=>{
   expect((await call("/moderate/review-index/backfill",{method:"POST"})).status).toBe(401);
   const res=await call("/moderate/review-index/backfill?offset=invalid",{method:"POST",headers:{"x-moderator-key":"mod-test"}});expect(res.status).toBe(400);
+ });
+});
+
+
+describe("legacy pending proposals",()=>{
+ const headers={"x-moderator-key":"mod-test"};
+ const vote=(field:string,value:string,extra:any={})=>({ip:"legacy",field,value,timestamp:Date.now(),...extra});
+ async function seed(id:string,submissions:any[],extra:any={}){
+  const churches=await kv.get("churches:US:TX");churches.push({id,name:"Legacy church",state:"TX",city:"Austin",website:"https://accepted.example/",homeCampusId:"TX-1001"});await kv.set("churches:US:TX",churches);
+  await kv.set(`suggestions:${id}`,{churchId:id,submissions,...extra});
+ }
+ it("hides already-saved websites and campus links from public pending while retaining real changes",async()=>{
+  const id="TX-9020";await seed(id,[vote("website","https://accepted.example/"),vote("homeCampusId","TX-1001")]);
+  const pending=await(await call("/suggestions/pending/TX")).json() as any;
+  expect(pending.pending.some((s:any)=>s.churchId===id)).toBe(false);
+  const ex=await kv.get(`suggestions:${id}`);ex.submissions[0].value="https://new.example/";await kv.set(`suggestions:${id}`,ex);
+  const changed=await(await call("/suggestions/pending/TX")).json() as any;
+  expect(changed.pending.find((s:any)=>s.churchId===id).fields.website.topValue).toBe("https://new.example/");
+ });
+ it("retains a matching auto-applied proposal with its previous value until review",async()=>{
+  const id="TX-9021";await seed(id,[vote("website","https://accepted.example/")],{previousValues:{website:"https://old.example/"}});
+  const pending=await(await call("/suggestions/pending/TX")).json() as any;
+  expect(pending.pending.find((s:any)=>s.churchId===id).fields.website).toBeTruthy();
+ });
+ it("shows held sensitive proposals in the moderator queue",async()=>{
+  const id="TX-9022";await seed(id,[vote("website","https://held.example/",{needsModeration:true})]);
+  const queue=await(await call("/moderate/pending",{headers})).json() as any;
+  expect(queue.pendingSuggestions.find((s:any)=>s.churchId===id&&s.field==="website")).toMatchObject({proposedValue:"https://held.example/"});
+ });
+ it("restores missing legacy church IDs without changing votes and makes them reviewable",async()=>{
+  const id="TX-9023",submissions=[vote("website","https://legacy.example/")];await seed(id,submissions);
+  await kv.del(`suggestions:${id}`);
+  await kv.set(`suggestions:${id}`,{submissions});
+  const before=await h.db.prepare("SELECT revision FROM kv WHERE key=?1").bind(`suggestions:${id}`).first();
+  await h.db.prepare(readFileSync("api/migrations/0004_legacy_suggestion_ids.sql","utf8")).run();
+  expect(await kv.get(`suggestions:${id}`)).toEqual({churchId:id,submissions});
+  const after=await h.db.prepare("SELECT revision FROM kv WHERE key=?1").bind(`suggestions:${id}`).first();expect(after.revision).toBe(before.revision+1);
+  const queue=await(await call("/moderate/pending",{headers})).json() as any;
+  expect(queue.pendingSuggestions.some((s:any)=>s.churchId===id&&s.field==="website")).toBe(true);
  });
 });
