@@ -37,6 +37,12 @@ describe("AI evidence boundaries", () => {
     const fetcher=vi.fn(async (url:any)=>String(url).includes("cloudflare-dns.com") ? Response.json({Status:0,Answer:[{type:1,data:"8.8.8.8"}]}) : String(url)==="https://church.org/" ? new Response(null,{status:301,headers:{location:"https://www.church.org/"}}) : new Response(`<p>${source.text}</p>`,{headers:{"content-type":"text/html"}}));
     expect(await checkChurchEvidence({name:"First",website:source.url},"serviceTimes","Sun 10 AM",fetcher as any)).toMatchObject({verdict:"supported",sourceUrl:"https://www.church.org/"});
   });
+  it("reads typical large church pages while keeping a bounded response size", async () => {
+    setReviewAi({run:async()=>({response:{verdict:"supported",reason:"Homepage time.",quote:"Sunday worship starts at 10 AM."}})});
+    const page=(size:number)=>vi.fn(async(url:any)=>String(url).includes("cloudflare-dns.com")?Response.json({Status:0,Answer:[{type:1,data:"8.8.8.8"}]}):new Response(`<script>${"x".repeat(size)}</script><p>${source.text}</p>`,{headers:{"content-type":"text/html"}}));
+    expect(await checkChurchEvidence({name:"First",website:source.url},"serviceTimes","Sun 10 AM",page(900000) as any)).toMatchObject({verdict:"supported"});
+    await expect(checkChurchEvidence({name:"First",website:source.url},"serviceTimes","Sun 10 AM",page(1000001) as any)).rejects.toThrow("too large");
+  });
   it("does not fetch or call AI for unsupported fields", async () => {
     const run=vi.fn();setReviewAi({run});const fetcher=vi.fn();
     await expect(checkChurchEvidence({name:"First",website:source.url},"name","New Church",fetcher as any)).rejects.toThrow("phone numbers");

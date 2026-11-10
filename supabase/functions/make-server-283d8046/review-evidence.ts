@@ -11,7 +11,7 @@ let ai: AiBinding | null = null;
 export function setReviewAi(binding: AiBinding | null): void { ai = binding; }
 export function reviewAiAvailable(): boolean { return ai !== null; }
 const MODEL = "@cf/meta/llama-3.1-8b-instruct";
-const MAX_BYTES = 200_000;
+const MAX_BYTES = 1_000_000;
 
 export function officialUrl(value: string): URL {
   const url = new URL(value);

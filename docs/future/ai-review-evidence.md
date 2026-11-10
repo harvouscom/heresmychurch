@@ -2,7 +2,7 @@
 
 Reviewers can request an evidence check on pending phone and service-time proposals. The API uses a Workers AI binding with `@cf/meta/llama-3.1-8b-instruct` and JSON mode. The feature is enabled only when `AI_REVIEW_ENABLED=1` and the binding is present.
 
-The first version reads the established listing website's homepage only. It accepts HTTPS on the standard port, checks public DNS addresses, limits redirects to the same hostname (allowing its www/bare-domain equivalent), limits response size and extracted text, strips script/style content, and uses fetch timeouts. Unreadable sites, cross-domain redirects, or facts absent from the homepage need manual review. No search-engine results or proposed replacement website are used as evidence.
+The first version reads the established listing website's homepage only. It accepts HTTPS on the standard port, checks public DNS addresses, limits redirects to the same hostname (allowing its www/bare-domain equivalent), limits response size to 1 MB and extracted text to 16,000 characters, strips script/style content, and uses fetch timeouts. Unreadable sites, cross-domain redirects, or facts absent from the homepage need manual review. No search-engine results or proposed replacement website are used as evidence.
 
 The model receives untrusted page text and proposed values, with no mutation tools. Supported/contradicted results require an exact quote that exists in the fetched page; otherwise the result is downgraded to insufficient evidence. A matching quote is not proof of semantic accuracy, currency, or the correct campus: a human must still check those. Results never publish, approve, reject, or change a church record.
 
