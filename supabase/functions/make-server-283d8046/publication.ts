@@ -82,3 +82,12 @@ export async function publicationHealth():Promise<unknown> {
 export async function releasePublication(target:string):Promise<void> {
   await getD1().prepare("UPDATE publish_outbox SET next_dispatch_at=0 WHERE target=?1").bind(target).run();
 }
+
+// A request can nudge accepted work while timer changes propagate or after a brief outage.
+// This only dispatches existing outbox rows; it never creates work from request input.
+let lastDispatchNudge=0;
+export function nudgePublications(wait:(task:Promise<unknown>)=>void,now=Date.now()):void {
+  if(!queue||now-lastDispatchNudge<5000)return;
+  lastDispatchNudge=now;
+  wait(dispatchPublications(now).catch(e=>console.error("publication_dispatch_failed",e instanceof Error?e.message:"unknown")));
+}

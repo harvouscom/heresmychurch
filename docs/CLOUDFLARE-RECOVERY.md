@@ -4,7 +4,7 @@
 
 A KV write and the publication it requires now commit in the same D1 transaction. The outbox coalesces changes per public file and tracks a generation. The queue publishes from the latest stored data; it removes the job only if the generation did not change during the work. A concurrent edit therefore retains its own publication request. Duplicate deliveries after completion are harmless.
 
-`hmc-publications` has one consumer at a time, small batches, delayed retries, and the separate `hmc-publication-failures` dead-letter queue. Queue submission failures leave the D1 outbox intact. A minute cron retries dispatch; claims expire if the dispatcher crashes. Repeated failures become blocked jobs, retained indefinitely in D1 for review even after the queue's failed-message retention expires.
+`hmc-publications` has one consumer at a time, small batches, delayed retries, and the separate `hmc-publication-failures` dead-letter queue. Queue submission failures leave the D1 outbox intact. A minute cron retries dispatch, and ordinary API requests can nudge already-pending work (throttled per Worker instance); claims expire if the dispatcher crashes. Repeated failures become blocked jobs, retained indefinitely in D1 for review even after the queue's failed-message retention expires.
 
 Nightly full publishing runs at 09:00 UTC inside Cloudflare. The old GitHub workflow is manual-only. `scripts/publish-static.mjs` now queues work by default; finishing that script means jobs were queued, not that every public file is already refreshed.
 
@@ -41,3 +41,7 @@ Local integration tests cover transactional rollback of data plus outbox, failed
 A live isolated drill on November 9, 2026 used scratch database `hmc-recovery-drill-00099b49` and a synthetic 950 KB private R2 file. It recorded a D1 bookmark, changed the file pointer, restored the scratch database, and verified the original file content by SHA-256. Production records were untouched. The synthetic drill resources were removed afterward.
 
 Next stages remain separate: per-church record concurrency, an indexed review queue, strict cross-location usage limits and external alert destinations, and evidence extraction from contact/service pages.
+
+## First protected production checkpoint
+
+After deploying retention protection, production `hmc-db` returned recovery bookmark `0000000b-00000006-0000511f-1372703c35fc3ae44b5432baa6021587`. Use this or a later point for the new complete-file recovery guarantee, within D1's available recovery window. The bucket had no object-expiration lifecycle rule; its only rule aborts incomplete multipart uploads.

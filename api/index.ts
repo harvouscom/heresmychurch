@@ -10,7 +10,7 @@ import app, { publishTarget, enqueueFullPublication } from "../supabase/function
 import { setEnv, setOgImageRenderer, setWaitUntil } from "../supabase/functions/make-server-283d8046/runtime.ts";
 import { setR2Binding } from "../supabase/functions/make-server-283d8046/r2.ts";
 import { setD1, setKvBucket, setSearchD1 } from "../supabase/functions/make-server-283d8046/bindings.ts";
-import { setPublicationQueue, dispatchPublications, publishQueuedTarget, publicationHealth, releasePublication, validPublicationTarget } from "../supabase/functions/make-server-283d8046/publication.ts";
+import { setPublicationQueue, dispatchPublications, publishQueuedTarget, publicationHealth, releasePublication, validPublicationTarget, nudgePublications } from "../supabase/functions/make-server-283d8046/publication.ts";
 import { collectRetiredObjects } from "../supabase/functions/make-server-283d8046/recovery.ts";
 import { generateOgImage } from "./og-image.ts";
 import { handlePresence } from "./presence.ts";
@@ -57,6 +57,7 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if(new URL(request.url).pathname==="/presence"&&env.PRESENCE)return handlePresence(request,env.PRESENCE);
     configure(env,ctx);
+    if(!env.MAINTENANCE_READONLY)nudgePublications(p=>ctx.waitUntil(p));
     // Routes are mounted under /make-server-283d8046 (the Supabase function name);
     // accept bare paths too, so api.heresmychurch.com/churches/TX works.
     const url = new URL(request.url);
