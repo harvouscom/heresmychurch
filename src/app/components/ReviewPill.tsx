@@ -1,4 +1,5 @@
 import { CheckCheck, ChevronDown, Check, X, MapPin, Globe, ChevronRight, Pencil, ListEnd } from "lucide-react";
+import { ReviewEvidenceCheck } from "./ReviewEvidenceCheck";
 import { ThreeDotLoader } from "./ThreeDotLoader";
 import { AnimatePresence, motion } from "motion/react";
 import { useState, useEffect } from "react";
@@ -274,6 +275,7 @@ export function ReviewPill({
                                 Current: <span className="text-white/60">{s.currentValue}</span>
                               </p>
                             )}
+                            <ReviewEvidenceCheck key={`${s.churchId}:${s.field}:${s.proposedValue}`} moderatorKey={moderatorKey} churchId={s.churchId} field={s.field} proposedValue={s.proposedValue} />
                             {s.alreadyApplied && (
                               <p className="text-caption uppercase tracking-wider text-amber-400/90 font-medium">Already applied</p>
                             )}
@@ -543,6 +545,7 @@ export function ReviewPill({
                                 Current: <span className="text-white/60">{s.currentValue}</span>
                               </p>
                             )}
+                            <ReviewEvidenceCheck key={`${s.churchId}:${s.field}:${s.proposedValue}`} moderatorKey={moderatorKey} churchId={s.churchId} field={s.field} proposedValue={s.proposedValue} />
                             {s.alreadyApplied && (
                               <p className="text-caption uppercase tracking-wider text-amber-400/90 font-medium">Already applied</p>
                             )}

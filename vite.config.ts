@@ -8,8 +8,6 @@ import react from '@vitejs/plugin-react'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const pkg = JSON.parse(readFileSync(path.join(__dirname, 'package.json'), 'utf-8'))
 
-/** Must match `projectId` in utils/supabase/info.tsx — proxy avoids CORS when calling Edge Functions from localhost */
-const SUPABASE_HOST = 'https://epufchwxofsyuictfufy.supabase.co'
 
 export default defineConfig({
   define: {
@@ -38,13 +36,4 @@ export default defineConfig({
     exclude: ['maplibre-gl'],
   },
 
-  server: {
-    proxy: {
-      '/functions/v1/make-server-283d8046': {
-        target: SUPABASE_HOST,
-        changeOrigin: true,
-        secure: true,
-      },
-    },
-  },
 })

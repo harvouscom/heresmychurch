@@ -50,13 +50,14 @@ The API runs the same Hono app as the Supabase edge function:
 
 Read env only inside functions (never at module scope): Workers expose it per request.
 Routes keep the `/make-server-283d8046` prefix internally; the Worker accepts bare paths too.
-The database stays on Supabase Postgres (supabase-js over HTTP), as does Realtime presence.
+Production storage is Cloudflare D1 (`hmc-db`), with large values in the private `hmc-kv` R2 bucket. Search uses the separate `hmc-search` D1 database. Presence uses a Durable Object. The Supabase endpoint is write-blocked and retained only as a rollback snapshot; the site has no automatic Supabase fallback. See [the cutover record](CLOUDFLARE-CUTOVER.md).
 
 Commands: `pnpm run dev:api` (local, :8790), `pnpm run deploy:api`,
 `pnpm run parity:api [base]` (compares read-only responses with the Supabase function).
 
 Secrets set on `hmc-api` (`wrangler secret put -c api/wrangler.jsonc NAME`):
-SUPABASE_SERVICE_ROLE_KEY, MODERATOR_KEY, PARTNER_API_KEY, TWITTER_WEBHOOK_SECRET.
+MODERATOR_KEY, PARTNER_API_KEY, LOOKUP_INTERNAL_KEY, TWITTER_WEBHOOK_SECRET.
+The old SUPABASE_SERVICE_ROLE_KEY may remain temporarily for deliberate rollback tooling; normal production requests do not use it.
 Plain vars live in `api/wrangler.jsonc`. R2 writes use the `HMC_DATA` bucket binding, so the
 Worker needs no `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` (the Supabase function still uses them).
 

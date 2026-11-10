@@ -8,11 +8,11 @@ export const VOTE_TTL_MS = 365 * 24 * 60 * 60 * 1000;
  *  come from Lookup: a host form can hold personal details. */
 export const LOOKUP_MODERATED_FIELDS = new Set(["email", "pastorName"]);
 
-type Vote = { field?: unknown; source?: unknown; timestamp?: unknown };
+type Vote = { field?: unknown; source?: unknown; timestamp?: unknown; needsModeration?: unknown };
 
-/** True when a vote came through Lookup for a field Lookup may only propose. */
+/** Held replacement proposals and Lookup personal-detail votes never enter public consensus. */
 export function isHeldVote(s: Vote): boolean {
-  return typeof s?.field === "string" && LOOKUP_MODERATED_FIELDS.has(s.field) &&
+  return s?.needsModeration === true || typeof s?.field === "string" && LOOKUP_MODERATED_FIELDS.has(s.field) &&
     typeof s.source === "string" && s.source.startsWith("lookup:");
 }
 
@@ -40,4 +40,10 @@ export function normalizePhone(s: string, cc = "US"): string {
   const d = zeroZero ? digits.slice(2) : digits;
   if (d.length < 8 || d.length > 15) return "";
   return plus || zeroZero ? `+${d}` : d;
+}
+
+/** Only genuinely empty ordinary fields qualify for first-contribution publishing. */
+export function isBlankContributionValue(value: unknown): boolean {
+  return value == null || typeof value === "string" && value.trim() === "" ||
+    Array.isArray(value) && value.length === 0;
 }

@@ -135,12 +135,48 @@ describe("Lookup routes", () => {
   });
 
   it("returns the updated church when a suggestion applies", async () => {
-    const res = await suggest("TX-1001", "serviceTimes", "Sun 11:00 AM");
+    const res = await suggest("TX-1001", "phone", "5125550199");
     expect(res.status).toBe(200);
     const body = await res.json() as any;
     expect(body).toMatchObject({ success: true, applied: true, needsModeration: false });
-    expect(body.church).toMatchObject({ id: "TX-1001", country: "US", serviceTimes: "Sun 11:00 AM" });
+    expect(body.church).toMatchObject({ id: "TX-1001", country: "US", phone: "5125550199" });
     await h.flush();
+  });
+
+  it("holds replacements, exposes them for review, and applies only after approval", async () => {
+    const res = await suggest("TX-1001", "serviceTimes", "Sun 8:00 AM");
+    expect(await res.json()).toMatchObject({ applied: false, needsModeration: true });
+    expect((await stored("TX-1001")).serviceTimes).toBe("Sun 10:00 AM");
+    const pending = await (await call("/suggestions/pending/TX")).json() as any;
+    expect(pending.pending.find((s: any) => s.churchId === "TX-1001").fields.serviceTimes.topValue).toBe("Sun 8:00 AM");
+    const queue = await (await call("/moderate/pending", { headers: MOD })).json() as any;
+    expect(queue.pendingSuggestions.find((s: any) => s.churchId === "TX-1001" && s.field === "serviceTimes")).toMatchObject({ proposedValue: "Sun 8:00 AM" });
+    // Unrelated publishing must not sweep the replacement into the listing.
+    await suggest("TX-1001", "languages", "English");
+    expect((await stored("TX-1001")).serviceTimes).toBe("Sun 10:00 AM");
+    const approved = await call("/moderate/approve/suggestion", { method: "POST", headers: { ...MOD, "content-type": "application/json" }, body: JSON.stringify({ churchId: "TX-1001", field: "serviceTimes" }) });
+    expect(approved.status).toBe(200);
+    expect((await stored("TX-1001")).serviceTimes).toBe("Sun 8:00 AM");
+    // A subsequent disagreement still cannot replace the moderator's decision.
+    expect(await (await suggest("TX-1001", "serviceTimes", "Sun 11:00 AM")).json()).toMatchObject({ applied: false, needsModeration: true });
+    expect((await stored("TX-1001")).serviceTimes).toBe("Sun 8:00 AM");
+    await h.flush();
+  });
+
+  it("holds site replacements and rejection preserves accepted data", async () => {
+    const res = await call("/suggestions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ churchId: "TX-1001", field: "languages", value: "Spanish" }) });
+    expect(await res.json()).toMatchObject({ applied: false, needsModeration: true });
+    const rejected = await call("/moderate/reject/suggestion", { method: "POST", headers: { ...MOD, "content-type": "application/json" }, body: JSON.stringify({ churchId: "TX-1001", field: "languages" }) });
+    expect(rejected.status).toBe(200);
+    expect((await stored("TX-1001")).languages).toEqual(["English"]);
+  });
+
+  it("limits a church across different contributors", async () => {
+    await kv.set("ratelimit:church-suggestion:CA-ON-2001", { count: 20, windowStart: Date.now() });
+    const res = await suggest("CA-ON-2001", "phone", "4165550199", { client: "another-tool", ipHash: "aaaabbbbccccdddd" });
+    expect(res.status).toBe(429);
+    expect((await stored("CA-ON-2001")).phone).toBeUndefined();
+    await kv.del("ratelimit:church-suggestion:CA-ON-2001");
   });
 
   it("takes phone and address corrections outside the US", async () => {
@@ -245,5 +281,15 @@ describe("Lookup routes", () => {
       expect(await stored(body.church.id)).toMatchObject({ id: body.church.id, lat: 43.6501 });
       await h.flush();
     });
+  });
+});
+
+describe("reviewer AI access", () => {
+  it("requires moderator authentication and does not run without an AI binding", async () => {
+    const body = JSON.stringify({churchId:"TX-1001",field:"phone",proposedValue:"5125550199"});
+    const denied = await call("/moderate/evidence", {method:"POST",headers:{"content-type":"application/json"},body});
+    expect(denied.status).toBe(401);
+    const unavailable = await call("/moderate/evidence", {method:"POST",headers:{"x-moderator-key":"mod-test","content-type":"application/json"},body});
+    expect(unavailable.status).toBe(503);
   });
 });

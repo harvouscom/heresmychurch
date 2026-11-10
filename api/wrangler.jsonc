@@ -16,16 +16,17 @@
   // Workers Paid: allow long CPU-bound routes (populate, monthly stats, report generation).
   "limits": { "cpu_ms": 300000 },
   "vars": {
-    "SUPABASE_URL": "https://epufchwxofsyuictfufy.supabase.co",
     // Tells app.ts it runs behind Cloudflare, so cf-connecting-ip can be trusted for client IPs.
     "HMC_RUNTIME": "worker",
     "R2_ACCOUNT_ID": "ec934baa29eb81459ffeaf18ba044b9e",
     "R2_BUCKET": "hmc-data",
     // "supabase" or "d1". See docs/future/move-off-supabase.md.
-    "STORE_BACKEND": "supabase",
+    "STORE_BACKEND": "d1",
     // Any non-empty value pauses writes while reads keep working.
+    "AI_REVIEW_ENABLED": "1",
     "MAINTENANCE_READONLY": ""
   },
+  "ai": { "binding": "AI" },
   "routes": [{ "pattern": "api.heresmychurch.com", "custom_domain": true }],
   // Static files (states.json, churches/{REGION}.json); r2.ts prefers this over S3 keys.
   // HMC_KV holds large KV values, some with IPs, so it stays private: never point it at hmc-data.

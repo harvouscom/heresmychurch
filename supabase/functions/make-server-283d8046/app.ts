@@ -19,7 +19,7 @@ import {
 
 import { INTL_REGIONS } from "./regions-intl.ts";
 import { normalizeServiceTimes, parseServiceTimesToSlots, type ServiceTimeSlot } from "./service-times.ts";
-import { LOOKUP_MODERATED_FIELDS, isHeldVote, liveVotes, normalizePhone } from "./contrib-rules.ts";
+import { LOOKUP_MODERATED_FIELDS, isHeldVote, liveVotes, normalizePhone, isBlankContributionValue } from "./contrib-rules.ts";
 import {
   regionCountry,
   churchesKey,
@@ -47,6 +47,7 @@ import {
 } from "./church-keys.ts";
 import { normalizeSearchText, searchTable, setSearchTableReady, syncSearchRegion } from "./search-table.ts";
 import { queryMonthlyRows, upsertMonthlyRows } from "./monthly.ts";
+import { checkChurchEvidence, reviewAiAvailable } from "./review-evidence.ts";
 import { registerMigrateRoutes } from "./admin-migrate.ts";
 import { r2Enabled, r2PutJson } from "./r2.ts";
 import { env, renderOgImage, waitUntil } from "./runtime.ts";
@@ -841,6 +842,7 @@ app.use(
       "Prefer",
       "x-partner-key",
       "X-Partner-Key",
+      "x-moderator-key",
     ],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     maxAge: 86400,
@@ -2828,14 +2830,23 @@ async function submitSuggestionCore(opts:{churchId:string;field:string;value:unk
   const k=`suggestions:${churchId}`;const ex=(await kv.get(k))||{churchId,submissions:[]};
   if(!ex.churchId)ex.churchId=churchId;
   if(!Array.isArray(ex.submissions))ex.submissions=[];
-  const day=Date.now()-86400000;
-  const r=ex.submissions.find((s:any)=>s.ip===actorKey&&s.field===field&&s.timestamp>day);
-  if(r){r.value=storeValue;r.timestamp=Date.now();r.source=auditSource;}
-  else ex.submissions.push({ip:actorKey,field,value:storeValue,timestamp:Date.now(),source:auditSource});
-  await kv.set(k,ex);const con=consensus(ex.submissions);
+  // Read the stored listing, never a suggestion overlay, before deciding whether an edit can publish.
+  const st=regionFromChurchId(churchId)!;
+  const churches=await getChurches(st);
+  const church=Array.isArray(churches)?churches.find((ch:any)=>ch.id===churchId):null;
+  if(!church)return{ok:false,status:404,error:"Church not found"};
+  const now=Date.now();
+  if(!(await ipRateLimit("church-suggestion",churchId,20,3600000)))return{ok:false,status:429,error:"This church has received many edits. Please try again later."};
   const isSensitive=SENSITIVE_FIELDS.includes(field);
-  // Lookup's email/pastorName votes are held for a moderator (consensus leaves them out of con).
-  const held=LOOKUP_MODERATED_FIELDS.has(field)&&auditSource.startsWith("lookup:");
+  // Replacements and disputes remain proposals; a new vote cannot overwrite the accepted vote.
+  const held=!isSensitive&&(!isBlankContributionValue(church[field])||
+    ex.submissions.some((s:any)=>s.field===field&&s.value!==storeValue)||
+    LOOKUP_MODERATED_FIELDS.has(field)&&auditSource.startsWith("lookup:"));
+  const previous=ex.submissions.find((s:any)=>s.ip===actorKey&&s.field===field&&
+    s.timestamp>now-86400000&&isHeldVote(s)===held);
+  const submission={ip:actorKey,field,value:storeValue,timestamp:now,source:auditSource,needsModeration:held};
+  if(previous)Object.assign(previous,submission);else ex.submissions.push(submission);
+  await kv.set(k,ex);const con=consensus(ex.submissions);
   if(isSensitive||held){
     const shown=held?consensus(ex.submissions,{held:"only"}):con;
     return{ok:true,field,consensus:shown[field],allFields:con,applied:false,needsModeration:true};
@@ -2857,11 +2868,12 @@ function getSuggestionsStatusForChurch(subs:any[]):{
   fields:Record<string,{votes:number;needed:number;approved:boolean;value:string|null;needsModeration:boolean}>;
 }{
   const con=consensus(subs);
+  const held=consensus(subs,{held:"only"});
   const fields:Record<string,{votes:number;needed:number;approved:boolean;value:string|null;needsModeration:boolean}>={};
   for(const f of VF){
-    const d=con[f] as any;
+    const d=(held[f]?.votes>0?held[f]:con[f]) as any;
     if(!d||!(d.votes>0))continue;
-    const sensitive=SENSITIVE_FIELDS.includes(f);
+    const sensitive=SENSITIVE_FIELDS.includes(f)||held[f]?.votes>0;
     // Sensitive: votes mean pending mod (consensus.approved ≠ applied to KV). Non-sensitive: applied when approved.
     fields[f]={
       votes:d.votes??0,
@@ -2951,11 +2963,13 @@ app.get(`${P}/suggestions/pending/:state`,async(c)=>{
       if(!entry||!Array.isArray(entry.submissions)||!entry.churchId)continue;
       const con=consensus(entry.submissions);
       const pf:Record<string,any>={};
-      for(const[f,d]of Object.entries(con)){
+      const held=consensus(entry.submissions,{held:"only"});
+      for(const f of VF){
+        const d=held[f]?.votes>0?held[f]:con[f];
         const fd=d as any;
         // Sensitive fields count as approved at THR=1 but still wait for a moderator, and since they no
         // longer overlay onto listings this is the only sign visitors get that an edit was received.
-        if(fd.votes>0&&(!fd.approved||SENSITIVE_FIELDS.includes(f))){
+        if(fd.votes>0&&(!fd.approved||SENSITIVE_FIELDS.includes(f)||held[f]?.votes>0)){
           pf[f]={votes:fd.votes,needed:fd.needed,topValue:fd.submissions?.[0]?.value||"",submissions:fd.submissions||[]};
         }
       }
@@ -3356,13 +3370,13 @@ function lookupClients(subs:any[],field:string):string[]{
   return[...out];
 }
 
-/** Moderator-review fields with their consensus: SENSITIVE_FIELDS from everyone, plus Lookup's held fields. */
+/** Sensitive fields plus held replacements from every contribution source. */
 function reviewConsensus(subs:any[]):Array<[string,any]>{
   const con=consensus(subs);
   const heldCon=consensus(subs,{held:"only"});
   return[
     ...SENSITIVE_FIELDS.map((f)=>[f,con[f]] as [string,any]),
-    ...[...LOOKUP_MODERATED_FIELDS].map((f)=>[f,heldCon[f]] as [string,any]),
+    ...VF.filter((f)=>!SENSITIVE_FIELDS.includes(f)).map((f)=>[f,heldCon[f]] as [string,any]),
   ];
 }
 /** Every region that can hold a pending add or a re-verify listing: populated regions plus the US states. */
@@ -3499,6 +3513,32 @@ async function removeFromInReviewKV(modKey:string,type:string,churchId:string,fi
   }
 }
 
+// On-demand only: a reviewer chooses when to spend an AI check. Never applies an edit.
+app.post(`${P}/moderate/evidence`,async(c)=>{
+  try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(env("AI_REVIEW_ENABLED")!=="1"||!reviewAiAvailable())return c.json({error:"AI evidence checks are not enabled."},503);
+    const{churchId,field,proposedValue}=await c.req.json();
+    if(typeof churchId!=="string"||!["phone","serviceTimes"].includes(field)||typeof proposedValue!=="string")return c.json({error:"Choose a pending phone or service-times edit."},400);
+    const ex=await kv.get(`suggestions:${churchId}`);
+    const pending=reviewConsensus(ex?.submissions??[]).find(([f,d])=>f===field&&d?.value===proposedValue);
+    if(!pending)return c.json({error:"This proposal changed or is no longer pending. Refresh the queue."},409);
+    const st=regionFromChurchId(churchId);
+    if(!st)return c.json({error:"Church not found"},404);
+    const churches=await getChurches(st);const church=Array.isArray(churches)?churches.find((ch:any)=>ch.id===churchId):null;
+    if(!church)return c.json({error:"Church not found"},404);
+    if(!church.website)return c.json({error:"This church needs a verified website before evidence can be checked."},422);
+    const input=JSON.stringify([churchId,field,proposedValue,church.name,church.address,church.city,church.website]);
+    const hash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(input)))).map(b=>b.toString(16).padStart(2,"0")).join("");
+    const cacheKey=`review-evidence:${hash}`;const cached=await kv.get(cacheKey);
+    if(cached&&Date.now()-Date.parse(cached.checkedAt)<86400000)return c.json({evidence:cached});
+    if(!(await ipRateLimit("review-ai",modKeyHash(getModKey(c)),10,3600000))||!(await ipRateLimit("review-ai-global","all",100,86400000)))return c.json({error:"Evidence check limit reached. Review manually or try again later."},429);
+    const evidence=await checkChurchEvidence(church,field,proposedValue);
+    await kv.set(cacheKey,evidence);
+    return c.json({evidence});
+  }catch(e){console.error("AI evidence check failed",e instanceof Error?e.message:"unknown");return c.json({error:"Evidence could not be checked. Review the church website manually."},502);}
+});
+
 const moderateApproveSuggestionHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
@@ -3510,7 +3550,7 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
     if(editedValue!==undefined&&editedValue!==null&&String(editedValue).trim()!==""){
       valueToApply=String(editedValue).trim();
     }else{
-      const heldD=LOOKUP_MODERATED_FIELDS.has(field)?(consensus(ex.submissions,{held:"only"})[field] as any):null;
+      const heldD=(consensus(ex.submissions,{held:"only"})[field] as any);
       const d=(heldD&&heldD.value!==null?heldD:consensus(ex.submissions)[field]) as any;
       if(!d||d.value===null)return c.json({error:"No value to approve"},400);
       valueToApply=d.value;
@@ -3639,7 +3679,7 @@ const moderateRejectSuggestionHandler=async(c:any)=>{
     if(!churchId||!field)return c.json({error:"Missing churchId or field"},400);
     const k=`suggestions:${churchId}`;const ex=await kv.get(k);
     if(!ex||!Array.isArray(ex.submissions))return c.json({error:"No suggestions found"},404);
-    const heldRej=LOOKUP_MODERATED_FIELDS.has(field)?(consensus(ex.submissions,{held:"only"})[field] as any)?.value:null;
+    const heldRej=(consensus(ex.submissions,{held:"only"})[field] as any)?.value;
     const rejectedVal=heldRej??(consensus(ex.submissions)[field] as any)?.value;
     ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
     await kv.set(k,ex);

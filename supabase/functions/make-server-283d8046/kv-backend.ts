@@ -5,7 +5,7 @@ import * as supabase from "./kv_store.tsx";
 import { env } from "./runtime.ts";
 
 export function usesD1(): boolean {
-  return env("STORE_BACKEND") === "d1";
+  return (env("STORE_BACKEND") ?? (env("HMC_RUNTIME") === "worker" ? "d1" : "supabase")) === "d1";
 }
 
 /** The store itself, with no freeze check or write notifications. kv.ts is what app code should use. */

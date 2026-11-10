@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isHeldVote, liveVotes, normalizePhone, VOTE_TTL_MS } from "../../supabase/functions/make-server-283d8046/contrib-rules.ts";
+import { isBlankContributionValue, isHeldVote, liveVotes, normalizePhone, VOTE_TTL_MS } from "../../supabase/functions/make-server-283d8046/contrib-rules.ts";
 
 describe("normalizePhone", () => {
   it("keeps the 10-digit form for the US and Canada", () => {
@@ -53,5 +53,28 @@ describe("regionFromChurchId", () => {
     expect(regionFromChurchId("community-CA-1793998225776-98s1rx")).toBe("CA");
     expect(regionFromChurchId("community-TX-1793998225776-98s1rx")).toBe("TX");
     expect(regionFromChurchId("community-GB-GREATERLONDON-1793998225776-x")).toBe("GREATERLONDON");
+  });
+});
+
+describe("first contributions", () => {
+  it("recognizes missing values without treating existing numbers or lists as blank", () => {
+    for (const value of [undefined, null, "", "  ", []]) expect(isBlankContributionValue(value)).toBe(true);
+    for (const value of [0, 100, ["English"], "Unknown", "Sun 9 AM"]) expect(isBlankContributionValue(value)).toBe(false);
+  });
+  it("holds replacement proposals from every source", () => {
+    expect(isHeldVote({ field: "phone", source: "suggestion", needsModeration: true })).toBe(true);
+    expect(isHeldVote({ field: "serviceTimes", source: "partner:harvous", needsModeration: true })).toBe(true);
+  });
+});
+
+describe("Cloudflare storage default", () => {
+  it("uses D1 when the Worker has no explicit backend flag", async () => {
+    const { setEnv } = await import("../../supabase/functions/make-server-283d8046/runtime.ts");
+    const { usesD1 } = await import("../../supabase/functions/make-server-283d8046/kv-backend.ts");
+    setEnv((name) => name === "HMC_RUNTIME" ? "worker" : undefined);
+    expect(usesD1()).toBe(true);
+    setEnv((name) => name === "STORE_BACKEND" ? "supabase" : undefined);
+    expect(usesD1()).toBe(false);
+    setEnv(() => undefined);
   });
 });

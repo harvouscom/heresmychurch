@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-07-29T14:18:00Z",
+ "generatedAt": "2026-11-10T03:18:35.754Z",
  "states": [
   {
    "abbrev": "AL",
@@ -22,7 +22,7 @@
    "name": "Arizona",
    "lat": 33.73,
    "lng": -111.43,
-   "churchCount": 1644,
+   "churchCount": 1643,
    "isPopulated": true
   },
   {
@@ -38,7 +38,7 @@
    "name": "California",
    "lat": 36.12,
    "lng": -119.68,
-   "churchCount": 12115,
+   "churchCount": 12113,
    "isPopulated": true
   },
   {
@@ -110,7 +110,7 @@
    "name": "Indiana",
    "lat": 39.85,
    "lng": -86.26,
-   "churchCount": 5141,
+   "churchCount": 5140,
    "isPopulated": true
   },
   {
@@ -174,7 +174,7 @@
    "name": "Michigan",
    "lat": 43.33,
    "lng": -84.54,
-   "churchCount": 6917,
+   "churchCount": 6915,
    "isPopulated": true
   },
   {
@@ -286,7 +286,7 @@
    "name": "Oklahoma",
    "lat": 35.57,
    "lng": -96.93,
-   "churchCount": 4923,
+   "churchCount": 4922,
    "isPopulated": true
   },
   {
@@ -334,7 +334,7 @@
    "name": "Tennessee",
    "lat": 35.75,
    "lng": -86.69,
-   "churchCount": 11057,
+   "churchCount": 11056,
    "isPopulated": true
   },
   {
@@ -390,7 +390,7 @@
    "name": "Wisconsin",
    "lat": 44.27,
    "lng": -89.62,
-   "churchCount": 2596,
+   "churchCount": 2595,
    "isPopulated": true
   },
   {
@@ -402,6 +402,6 @@
    "isPopulated": true
   }
  ],
- "totalChurches": 244578,
+ "totalChurches": 244569,
  "populatedStates": 50
 }

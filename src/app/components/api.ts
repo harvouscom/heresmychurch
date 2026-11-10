@@ -1,19 +1,10 @@
-import { projectId, publicAnonKey } from "/utils/supabase/info";
 import type { Church, StateInfo } from "./church-data";
 import statesSnapshot from "../data/states-snapshot.json";
 import { POP as BUNDLED_POPULATIONS } from "../data/state-populations";
 import { readStoredChurches, writeStoredChurches } from "../lib/church-store";
 
-/**
- * API base. VITE_HMC_API_BASE_URL points at the Cloudflare Worker (https://api.heresmychurch.com);
- * unset, it falls back to the Supabase edge function (in dev via the Vite proxy, avoiding CORS).
- */
-const API_BASE_OVERRIDE = ((import.meta.env.VITE_HMC_API_BASE_URL as string | undefined) || "").replace(/\/$/, "");
-const USING_SUPABASE_API = !API_BASE_OVERRIDE;
-const BASE_URL = API_BASE_OVERRIDE
-  || (import.meta.env.DEV
-    ? "/functions/v1/make-server-283d8046"
-    : `https://${projectId}.supabase.co/functions/v1/make-server-283d8046`);
+/** The Cloudflare API is the default in every build, including local development. */
+const BASE_URL = ((import.meta.env.VITE_HMC_API_BASE_URL as string | undefined) || "https://api.heresmychurch.com").replace(/\/$/, "");
 
 /**
  * Public static copies of hot read endpoints, published to Cloudflare R2 by the edge
@@ -46,15 +37,7 @@ async function fetchStatic<T>(path: string, timeoutMs = 8000): Promise<T | null>
   }
 }
 
-const headers: Record<string, string> = USING_SUPABASE_API
-  ? {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${publicAnonKey}`,
-      /** Supabase Edge Functions expect this alongside Authorization (matches supabase-js). */
-      apikey: publicAnonKey,
-    }
-  : // The Worker API needs no Supabase gateway auth.
-    { "Content-Type": "application/json" };
+const headers: Record<string, string> = { "Content-Type": "application/json" };
 
 // Fetch with timeout via AbortController
 async function fetchWithTimeout(
@@ -1577,4 +1560,18 @@ export async function fetchStateReportList(
   );
   if (!res.ok) return [];
   return res.json();
+}
+
+export type ReviewEvidence = {
+  verdict: "supported" | "contradicted" | "insufficient_evidence";
+  reason: string; quote: string | null; sourceUrl: string | null; checkedAt: string;
+};
+export async function fetchReviewEvidence(moderatorKey: string, churchId: string, field: string, proposedValue: string): Promise<ReviewEvidence> {
+  const res = await fetchWithTimeout(`${BASE_URL}/moderate/evidence`, {
+    method: "POST", headers: { ...headers, "x-moderator-key": moderatorKey },
+    body: JSON.stringify({ churchId, field, proposedValue }), timeoutMs: 60000,
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || "Evidence could not be checked.");
+  return body.evidence;
 }
