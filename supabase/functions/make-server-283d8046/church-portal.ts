@@ -3,7 +3,8 @@ import type { Hono } from 'npm:hono';
 import * as kv from './kv.ts';
 import { getChurches, regionFromChurchId, isValidRegion } from './church-keys.ts';
 import { env } from './runtime.ts';
-import { emailDigest, sendChurchPortalEmail, churchPortalEmailEnabled } from './email-confirmation.ts';
+import { emailDigest, sendChurchPortalEmail, sendChurchEmailChangeEmail, churchPortalEmailEnabled } from './email-confirmation.ts';
+import { claimState, writeClaim, dispatchOwnerDigests } from './church-ownership.ts';
 import { queryAuditByChurch } from './audit.ts';
 
 const DAY = 86400000;
@@ -52,14 +53,38 @@ async function find(id: string) {
 const listedEmail = (ch: any) => String(ch.email || '').trim().toLowerCase();
 const validEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 const listedInbox = (ch: any) => { const email = listedEmail(ch); return validEmail(email) ? { hasEmail: true, emailHint: maskEmail(email) } : { hasEmail: false }; };
-const publicChurch = (ch: any) => ({ id: ch.id, name: ch.name, city: ch.city, state: ch.state, country: ch.country || 'US', denomination: ch.denomination, lat: ch.lat, lng: ch.lng, shortId: ch.shortId, serviceTimes: ch.serviceTimes || '', phone: ch.phone || '', email: ch.email || '', website: ch.website || '' });
-export function registerChurchPortalRoutes(app: Hono, p: string, deps: { pending(entry: any, church: any): number; rateLimit(c: any): Promise<boolean>; submit(id: string, field: string, value: string, actor: string): Promise<any> }) {
+const listText = (v: unknown) => Array.isArray(v) ? v.join(', ') : typeof v === 'string' ? v : '';
+const publicChurch = (ch: any) => ({ id: ch.id, name: ch.name, address: ch.address || '', city: ch.city, state: ch.state, postcode: ch.postcode || '', country: ch.country || 'US', denomination: ch.denomination, lat: ch.lat, lng: ch.lng, shortId: ch.shortId, serviceTimes: ch.serviceTimes || '', phone: ch.phone || '', email: ch.email || '', website: ch.website || '', pastorName: ch.pastorName || '', languages: listText(ch.languages), ministries: listText(ch.ministries) });
+const DAY_MS = 86400000;
+/** A private sign-in link for the listed inbox. Only the token's hash is stored. */
+export async function createChurchLogin(ch: any, emailHash: string, ttlMs = DAY_MS) {
+  const token = crypto.randomUUID() + crypto.randomUUID(); const key = `church-login:${await emailDigest(token)}`;
+  await kv.set(key, { key, churchId: ch.id, emailHash, expires: Date.now() + ttlMs });
+  return token;
+}
+type PortalDeps = {
+  pending(entry: any, church: any): number;
+  rateLimit(c: any): Promise<boolean>;
+  applyOwner(churchId: string, fields: Record<string, string>, emailHash: string): Promise<{ applied: string[]; errors: { field: string; error: string }[] }>;
+  pendingForOwner(ch: any): Promise<any[]>;
+  accept(churchId: string, field: string, value: string, reviewVersion: string | undefined, emailHash: string): Promise<any>;
+  decline(churchId: string, field: string, value: string, reviewVersion: string | undefined, emailHash: string): Promise<any>;
+  setOwnerEmail(churchId: string, email: string, emailHash: string): Promise<boolean>;
+};
+let registeredDeps: PortalDeps | null = null;
+/** Cron: daily digest emails to claimed churches with suggestions waiting for them. */
+export async function runOwnerDigests() {
+  if (!registeredDeps || !churchPortalEmailEnabled()) return 0;
+  const deps = registeredDeps;
+  return dispatchOwnerDigests({ find, pendingFor: async ch => (await deps.pendingForOwner(ch)).length, createLogin: createChurchLogin });
+}
+export function registerChurchPortalRoutes(app: Hono, p: string, deps: PortalDeps) {
+  registeredDeps = deps;
   app.use(`${p}/church-portal/*`, async (c, next) => { c.header('Cache-Control', 'no-store'); c.header('Referrer-Policy', 'no-referrer'); await next(); });
   app.get(`${p}/church-portal/status/:id`, async c => {
     const ch = await find(c.req.param('id')); if (!ch) return c.json({ error: 'Listing not found.' }, 404);
-    const claim = await kv.get(`church-claim:${ch.id}`);
-    const claimed = !!claim && claim.emailHash === await emailDigest(String(ch.email || '').trim().toLowerCase());
-    return c.json({ enabled: churchPortalEmailEnabled(), claimed, ...(claimed ? { claimedAt: claim.at } : {}) });
+    const state = await claimState(ch);
+    return c.json({ enabled: churchPortalEmailEnabled(), claimed: state.claimed, ...(state.claimed ? { claimedAt: state.claimedAt } : {}) });
   });
   app.get(`${p}/church-portal/listing/:id`, async c => {
     const ch = await find(c.req.param('id')); if (!ch) return c.json({ error: 'Listing not found.' }, 404);
@@ -77,14 +102,28 @@ export function registerChurchPortalRoutes(app: Hono, p: string, deps: { pending
     if (validEmail(email)) {
       const cooldown = `church-login-cooldown:${ch.id}`;
       if (Date.now() - Number(await kv.get(cooldown) || 0) >= 15 * 60000) {
-        const token = crypto.randomUUID() + crypto.randomUUID(); const hash = await emailDigest(token);
-        const key = `church-login:${hash}`;
-        await kv.set(key, { key, churchId: ch.id, emailHash: await emailDigest(email), expires: Date.now() + DAY });
+        const token = await createChurchLogin(ch, await emailDigest(email));
+        const key = `church-login:${await emailDigest(token)}`;
         try { await sendChurchPortalEmail(email, ch.name, token); await kv.set(cooldown, Date.now()); }
         catch { await kv.del(key); return c.json({ error: 'Unable to send the link. Please try again later.' }, 503); }
       }
     }
     return c.json({ message: 'If this listing has a contact email, we have sent a private link there. Links expire after 24 hours. If you cannot access that inbox, suggest a contact correction on the map.' });
+  });
+  // Confirms a new contact email from the link sent to that address. The claim moves with it.
+  app.post(`${p}/church-portal/verify-email`, async c => {
+    if (!churchPortalEmailEnabled()) return c.json({ error: 'Church sign-in is unavailable.' }, 503);
+    if (!(await deps.rateLimit(c))) return c.json({ error: 'Too many requests. Please try again later.' }, 429);
+    const body = await c.req.json().catch(() => null);
+    if (typeof body?.token !== 'string' || body.token.length > 150) return c.json({ error: 'Invalid confirmation link.' }, 403);
+    const key = `church-email-change:${await emailDigest(body.token)}`; const change = await kv.get(key);
+    if (!change || change.expires < Date.now()) { if (change) await kv.del(key); return c.json({ error: 'This confirmation link has expired. Request the change again.' }, 403); }
+    const ch = await find(change.churchId);
+    // Only the inbox that asked for the change can hand the listing over.
+    if (!ch || change.fromHash !== await emailDigest(listedEmail(ch))) { await kv.del(key); return c.json({ error: 'The listing contact has changed since this was requested.' }, 409); }
+    if (!(await deps.setOwnerEmail(ch.id, change.newEmail, change.fromHash))) return c.json({ error: 'Unable to update the contact email.' }, 400);
+    await kv.del(key);
+    return c.json({ message: `${ch.name}'s contact email is now ${change.newEmail}. Sign-in links will go there.` });
   });
   app.post(`${p}/church-portal/session`, async c => {
     if (!churchPortalEmailEnabled()) return c.json({ error: 'Church sign-in is unavailable.' }, 503);
@@ -96,30 +135,66 @@ export function registerChurchPortalRoutes(app: Hono, p: string, deps: { pending
     const ch = await find(login.churchId);
     if (!ch || login.emailHash !== await emailDigest(String(ch.email || '').trim().toLowerCase())) return c.json({ error: 'The listing contact has changed. Request a new link.' }, 403);
     if (body.action === 'preview') {
-      const claim = await kv.get(`church-claim:${ch.id}`);
-      return c.json({ church: publicChurch(ch), expires: login.expires, claimed: claim?.emailHash === login.emailHash });
+      return c.json({ church: publicChurch(ch), expires: login.expires, claimed: (await claimState(ch)).claimed });
     }
     if (body.action === 'logout') { await kv.del(key); return c.json({ message: 'Signed out. This link can no longer be used.' }); }
     if (body.action === 'claim') {
       if (!(await listedEmailTrusted(ch))) return c.json({ error: 'This listing’s contact email is waiting for review, so it can’t be claimed yet.' }, 409);
-      await kv.set(`church-claim:${ch.id}`, { emailHash: login.emailHash, at: Date.now() });
+      await writeClaim(ch.id, login.emailHash);
       return c.json({ message: 'Listing claimed through the church’s listed inbox.' });
     }
     if (body.action === 'attendance') {
       const result = await recordPrivateAttendance(ch, login.emailHash, body.report);
       return 'error' in result ? c.json({ error: result.error }, result.status) : c.json(result);
     }
-    if (body.action !== 'save') return c.json({ error: 'Unknown action.' }, 400);
-    const allowed = ['serviceTimes', 'phone', 'email', 'website'];
-    if (!body.fields || typeof body.fields !== 'object' || Array.isArray(body.fields) || Object.keys(body.fields).some(k => !allowed.includes(k)) || Object.values(body.fields).some(v => typeof v !== 'string' || v.length > 2000)) return c.json({ error: 'Invalid listing fields.' }, 400);
-    const results: any[] = [];
-    for (const field of allowed) {
-      const value = body.fields[field];
-      if (value === undefined || value === (ch[field] || '')) continue;
-      const result = await deps.submit(ch.id, field, value, `church-inbox:${hash}`);
-      results.push({ field, ...result });
+    if (body.action === 'pending') return c.json({ pending: await deps.pendingForOwner(ch) });
+    if (body.action === 'accept' || body.action === 'decline') {
+      if (!(await claimState(ch)).claimed) return c.json({ error: 'Claim this listing first.' }, 409);
+      if (typeof body.field !== 'string' || typeof body.value !== 'string') return c.json({ error: 'Choose a suggestion.' }, 400);
+      const reviewVersion = typeof body.reviewVersion === 'string' ? body.reviewVersion : undefined;
+      try {
+        const r = await (body.action === 'accept' ? deps.accept : deps.decline)(ch.id, body.field, body.value, reviewVersion, login.emailHash);
+        if (!r.ok) return c.json({ error: r.error }, r.status);
+      } catch (e: any) { if (e?.code) return c.json({ error: 'This suggestion changed. Refresh and try again.' }, 409); throw e; }
+      const fresh = (await find(ch.id)) || ch;
+      return c.json({ message: body.action === 'accept' ? 'Accepted. The listing is updated.' : 'Declined.', church: publicChurch(fresh), pending: await deps.pendingForOwner(fresh) });
     }
-    return c.json({ results, message: results.some(r => !r.ok) ? 'Some changes could not be submitted. Review the details below.' : results.length ? 'Changes submitted. Updates that require review will appear after approval.' : 'No changes to submit.' });
+    if (body.action !== 'save') return c.json({ error: 'Unknown action.' }, 400);
+    const allowed = ['name', 'address', 'city', 'postcode', 'denomination', 'serviceTimes', 'phone', 'email', 'website', 'pastorName', 'languages', 'ministries'];
+    if (!body.fields || typeof body.fields !== 'object' || Array.isArray(body.fields) || Object.keys(body.fields).some(k => !allowed.includes(k)) || Object.values(body.fields).some(v => typeof v !== 'string' || v.length > 2000)) return c.json({ error: 'Invalid listing fields.' }, 400);
+    // Saving through the listed inbox claims the listing; an unreviewed inbox can't.
+    if (!(await claimState(ch)).claimed) {
+      if (!(await listedEmailTrusted(ch))) return c.json({ error: 'This listing’s contact email is waiting for review, so it can’t be managed yet.' }, 409);
+      await writeClaim(ch.id, login.emailHash);
+    }
+    const current = publicChurch(ch) as Record<string, string>;
+    const changes: Record<string, string> = {};
+    for (const [field, value] of Object.entries(body.fields as Record<string, string>)) if (value.trim() !== String(current[field] ?? '').trim()) changes[field] = value;
+    const results: any[] = [];
+    if (changes.email !== undefined) {
+      const newEmail = changes.email.trim().toLowerCase(); delete changes.email;
+      if (!validEmail(newEmail)) results.push({ field: 'email', ok: false, error: 'Enter a valid email address.' });
+      else {
+        const token = crypto.randomUUID() + crypto.randomUUID();
+        const key = `church-email-change:${await emailDigest(token)}`;
+        await kv.set(key, { key, churchId: ch.id, newEmail, fromHash: login.emailHash, expires: Date.now() + 3 * DAY });
+        try { await sendChurchEmailChangeEmail(newEmail, ch.name, token); results.push({ field: 'email', ok: true, pendingVerification: true }); }
+        catch { await kv.del(key); results.push({ field: 'email', ok: false, error: 'Unable to send the confirmation email.' }); }
+      }
+    }
+    // Street, city and postcode change together as one address.
+    if (changes.address !== undefined || changes.city !== undefined || changes.postcode !== undefined) {
+      const f = body.fields as Record<string, string>;
+      changes.address = JSON.stringify({ address: f.address ?? current.address, city: f.city ?? current.city, state: ch.state, postcode: (f.postcode ?? current.postcode) || undefined });
+      delete changes.city; delete changes.postcode;
+    }
+    if (Object.keys(changes).length) {
+      const r = await deps.applyOwner(ch.id, changes, login.emailHash);
+      for (const f of r.applied) results.push({ field: f, ok: true, applied: true });
+      for (const e of r.errors) results.push({ ok: false, ...e });
+    }
+    const failed = results.some(r => !r.ok), verifying = results.some(r => r.pendingVerification);
+    return c.json({ results, claimed: true, church: publicChurch((await find(ch.id)) || ch), message: failed ? 'Some changes could not be saved. Review the details below.' : results.length ? `Saved. Your listing is updated.${verifying ? ' Check the new inbox to confirm the contact email.' : ''}` : 'No changes to save.' });
   });
   app.get(`${p}/data-health/:region`, async c => {
     const region = c.req.param('region').toUpperCase();

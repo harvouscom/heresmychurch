@@ -8,8 +8,8 @@ let h: Harness;
 const sent: any[] = [];
 const call = (path: string, body?: any) => app.fetch(new Request(`https://api.test/make-server-283d8046/${path}`, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
 const seed = () => kv.set('churches:US:TX', [{ id: 'TX-123', name: 'Grace Church', city: 'Austin', state: 'TX', email: 'office@example.org', phone: '5125550123', serviceTimes: 'Sunday 9am', website: 'https://example.org', address: '123 Main St', lat: 30, lng: -97 }]);
-beforeAll(async () => { h = await startHarness({ CHURCH_PORTAL_ENABLED: '1', EMAIL_FROM: 'test@example.org' }); setConfirmationEmailBinding({ send: vi.fn(async message => { sent.push(message); return { messageId: 'test' }; }) }); });
-beforeEach(async () => { await seed(); await kv.del('ratelimit:church-portal:unknown'); await kv.del('church-login-cooldown:TX-123'); });
+beforeAll(async () => { h = await startHarness({ CHURCH_PORTAL_ENABLED: '1', EMAIL_FROM: 'test@example.org', MODERATOR_KEY: 'mod-test' }); setConfirmationEmailBinding({ send: vi.fn(async message => { sent.push(message); return { messageId: 'test' }; }) }); });
+beforeEach(async () => { await seed(); for (const k of ['ratelimit:church-portal:unknown', 'church-login-cooldown:TX-123', 'church-claim:TX-123', 'suggestions:TX-123', 'owner-digest:TX-123', 'ratelimit:church-suggestion:TX-123', 'ratelimit:suggestion:unknown']) await kv.del(k); });
 afterAll(async () => { setConfirmationEmailBinding(null); await h.flush(); await h.mf.dispose(); });
 async function login() { await call('church-portal/request', { churchId: 'TX-123', email: 'attacker@example.net' }); const url = sent.at(-1).text.split('\n').find((s: string) => s.startsWith('https://')); return new URLSearchParams(new URL(url).hash.slice(1)).get('token'); }
 describe('church portal', () => {
@@ -25,12 +25,68 @@ describe('church portal', () => {
     expect((await (await call('church-portal/status/TX-123')).json() as any).claimed).toBe(false);
     expect(row).toBeTruthy();
   });
-  it('holds replacements for moderation and rejects arbitrary fields', async () => {
-    const token = await login(); expect((await call('church-portal/session', { token, action: 'save', fields: { name: 'Changed' } })).status).toBe(400);
-    const res = await call('church-portal/session', { token, action: 'save', fields: { serviceTimes: 'Sunday 11am' } }); expect(res.status).toBe(200);
-    expect((await kv.get('churches:US:TX'))[0].serviceTimes).toBe('Sunday 9am');
-    expect((await kv.get('suggestions:TX-123')).submissions.some((s: any) => s.field === 'serviceTimes')).toBe(true);
-    const data = await (await call('data-health/TX')).json() as any; expect(data.openSuggestions).toBeGreaterThan(0); expect(JSON.stringify(data)).not.toContain('office@example.org'); expect(JSON.stringify(data)).not.toContain(token);
+  it('applies the verified inbox edits directly, claims the listing, and rejects unknown fields', async () => {
+    const token = await login(); expect((await call('church-portal/session', { token, action: 'save', fields: { attendance: '500' } })).status).toBe(400);
+    await kv.set('suggestions:TX-123', { churchId: 'TX-123', submissions: [{ ip: '9.9.9.9', field: 'serviceTimes', value: 'Sunday 8am', timestamp: Date.now(), source: 'suggestion', needsModeration: true }] });
+    const res = await call('church-portal/session', { token, action: 'save', fields: { serviceTimes: 'Sunday 11am', name: 'Grace Church Austin' } }); expect(res.status).toBe(200);
+    const body = await res.json() as any; expect(body.claimed).toBe(true);
+    const stored = (await kv.get('churches:US:TX'))[0];
+    expect(stored.serviceTimes).not.toBe('Sunday 9am'); expect(stored.name).toBe('Grace Church Austin');
+    // The old visitor proposal on that field is cleared so it can't override the church's own value.
+    expect((await kv.get('suggestions:TX-123')).submissions).toEqual([]);
+    expect((await (await call('church-portal/status/TX-123')).json() as any).claimed).toBe(true);
+    const data = await (await call('data-health/TX')).json() as any; expect(JSON.stringify(data)).not.toContain('office@example.org'); expect(JSON.stringify(data)).not.toContain(token);
+  });
+  it('sends other people\'s edits on a claimed church to the church first, then lets it accept or decline', async () => {
+    const token = await login(); await call('church-portal/session', { token, action: 'claim' });
+    const res = await call('suggestions', { churchId: 'TX-123', field: 'phone', value: '5125559999' });
+    const r = await res.json() as any; expect(r).toMatchObject({ needsModeration: true, reviewBy: 'church' });
+    expect((await kv.get('churches:US:TX'))[0].phone).toBe('5125550123');
+    // Reviewers and the engine don't see it while the church has time to answer.
+    const queue = await (await app.fetch(new Request('https://api.test/make-server-283d8046/moderate/pending', { headers: { 'x-moderator-key': 'mod-test' } }))).json() as any;
+    expect(JSON.stringify(queue)).not.toContain('5125559999');
+    const pending = (await (await call('church-portal/session', { token, action: 'pending' })).json() as any).pending;
+    expect(pending).toEqual([expect.objectContaining({ field: 'phone', value: '5125559999', votes: 1 })]);
+    expect((await call('church-portal/session', { token, action: 'accept', field: 'phone', value: '5125559999', reviewVersion: 'stale' })).status).toBe(409);
+    expect((await call('church-portal/session', { token, action: 'accept', field: 'phone', value: '5125559999', reviewVersion: pending[0].reviewVersion })).status).toBe(200);
+    expect((await kv.get('churches:US:TX'))[0].phone).toBe('5125559999');
+    await call('suggestions', { churchId: 'TX-123', field: 'website', value: 'https://spam.example' });
+    const again = (await (await call('church-portal/session', { token, action: 'pending' })).json() as any).pending;
+    const declined = await call('church-portal/session', { token, action: 'decline', field: 'website', value: again[0].value, reviewVersion: again[0].reviewVersion }); expect(declined.status, JSON.stringify(await declined.clone().json())).toBe(200);
+    expect((await kv.get('churches:US:TX'))[0].website).toBe('https://example.org');
+    expect((await kv.get('suggestions:TX-123')).submissions.filter((s: any) => s.field === 'website')).toEqual([]);
+  });
+  it('hands waiting suggestions to review after the church deadline, and emails a digest', async () => {
+    h.vars.OWNER_REVIEW_DAYS = '0.000001';
+    const token = await login(); await call('church-portal/session', { token, action: 'claim' });
+    await call('suggestions', { churchId: 'TX-123', field: 'phone', value: '5125558888' });
+    await new Promise(r => setTimeout(r, 200));
+    const queue = await (await app.fetch(new Request('https://api.test/make-server-283d8046/moderate/pending', { headers: { 'x-moderator-key': 'mod-test' } }))).json() as any;
+    expect(JSON.stringify(queue)).toContain('5125558888');
+    h.vars.OWNER_REVIEW_DAYS = '';
+    await kv.del('suggestions:TX-123'); await call('suggestions', { churchId: 'TX-123', field: 'phone', value: '5125557777' });
+    const { runOwnerDigests } = await import('../../supabase/functions/make-server-283d8046/church-portal.ts');
+    const before = sent.length; expect(await runOwnerDigests()).toBe(1); expect(sent.length).toBe(before + 1);
+    expect(sent.at(-1).to).toBe('office@example.org'); expect(sent.at(-1).subject).toContain('1 suggested update');
+    expect(await runOwnerDigests()).toBe(0);
+  });
+  it('confirms an owner email change at the new inbox and moves the claim', async () => {
+    const token = await login();
+    const res = await call('church-portal/session', { token, action: 'save', fields: { email: 'pastor@example.org' } });
+    expect(((await res.json()) as any).results[0]).toMatchObject({ field: 'email', pendingVerification: true });
+    expect((await kv.get('churches:US:TX'))[0].email).toBe('office@example.org');
+    expect(sent.at(-1).to).toBe('pastor@example.org');
+    const verify = new URLSearchParams(new URL(sent.at(-1).text.split('\n').find((l: string) => l.startsWith('https://'))).hash.slice(1)).get('verify');
+    expect((await call('church-portal/verify-email', { token: verify })).status).toBe(200);
+    expect((await kv.get('churches:US:TX'))[0].email).toBe('pastor@example.org');
+    expect((await (await call('church-portal/status/TX-123')).json() as any).claimed).toBe(true);
+    // The old inbox's link stops working once the contact changes.
+    expect((await call('church-portal/session', { token, action: 'preview' })).status).toBe(403);
+  });
+  it('exports the claimed flag in region files and the Lookup export', async () => {
+    const token = await login(); await call('church-portal/session', { token, action: 'claim' });
+    const region = await (await app.fetch(new Request('https://api.test/make-server-283d8046/churches/TX'))).json() as any;
+    expect(region.churches.find((c: any) => c.id === 'TX-123')).toMatchObject({ claimed: true });
   });
   it('shows a masked inbox hint so a church can request a link', async () => {
     const d = await (await call('church-portal/listing/TX-123')).json() as any;

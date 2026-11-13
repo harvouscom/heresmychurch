@@ -237,7 +237,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
       if (result.needsModeration) {
         setPendingModeration((prev) => new Set([...prev, field]));
         onPendingSubmitted?.();
-        toast.success("Thanks! Sent for review", { description: `${fieldLabel} will update once it's approved.` });
+        toast.success(result.reviewBy === "church" ? "Thanks! Sent to the church" : "Thanks! Sent for review", { description: result.reviewBy === "church" ? `This church manages its listing, so it reviews ${fieldLabel.toLowerCase()} first.` : `${fieldLabel} will update once it's approved.` });
       } else {
         onChurchUpdated?.();
         toast.success(result.applied ? `${fieldLabel} updated` : "Thanks! Your suggestion was recorded", {
@@ -764,7 +764,7 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
         {/* Info note */}
         <div className="pt-3 border-t border-white/5 text-pretty">
           <p className="text-white/55 text-caption leading-relaxed text-center">
-            Most edits are applied immediately. Changes to name, website, address, or reports (closed, duplicate, relocated, or out of scope) require a brief review.
+            Filling in a missing detail goes live right away. Other changes are checked first, automatically where we can verify them. If the church manages its listing, it reviews suggestions first.
           </p>
         </div>
       </div>
