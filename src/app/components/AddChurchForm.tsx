@@ -110,6 +110,8 @@ interface AddChurchFormProps {
   /** Prefill from a deep link (/add?name=&city=). */
   initialName?: string;
   initialCity?: string;
+  /** Shows "Pick on map": closes the form to drop a pin, carrying what was typed. */
+  onPickOnMap?: (typed: TypedChurchFields) => void;
 }
 
 export function AddChurchForm({
@@ -121,6 +123,7 @@ export function AddChurchForm({
   onChurchAdded,
   initialName = "",
   initialCity = "",
+  onPickOnMap,
 }: AddChurchFormProps) {
   const fieldId = useId();
   const [submitting, setSubmitting] = useState(false);
@@ -364,9 +367,14 @@ export function AddChurchForm({
   };
 
   const inputClass =
-    "w-full bg-white/8 rounded-lg px-3 py-2 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/45";
-  const labelClass =
-    "text-caption uppercase tracking-wider text-white/60 font-semibold";
+    "w-full bg-white/8 rounded-lg px-3 py-2.5 text-white text-xs border border-white/10 focus:border-purple-500/50 focus:outline-none transition-colors placeholder:text-white/45";
+  const labelClass = "block text-xs text-white/70 font-medium mb-1";
+  const sectionClass = "flex items-center gap-2 text-sm font-semibold text-white";
+  const chipClass = (on: boolean) =>
+    `px-2.5 py-1 rounded-full text-caption font-medium transition-all border ${
+      on ? "bg-purple-500/30 border-purple-500/50 text-purple-300" : "bg-white/5 border-white/8 text-white/60 hover:text-white/80 hover:border-white/15"
+    }`;
+  const optionalCount = [denomination, attendance, website.trim(), serviceTimes.trim(), pastorName.trim(), phone.trim(), email.trim()].filter(Boolean).length + (selectedLanguages.size ? 1 : 0) + (selectedMinistries.size ? 1 : 0);
 
   return (
     <HmcDialog onClose={requestClose} closeOnBackdrop={!isDirty} elevated className="w-[95vw] max-w-[560px] bg-hmc-surface-sunken">
@@ -374,24 +382,15 @@ export function AddChurchForm({
         <div className="px-5 pt-5 pb-4 border-b border-white/8 flex-shrink-0">
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-5 h-5 rounded-full bg-purple-500/20 flex items-center justify-center">
-                  <Plus size={10} className="text-purple-400" />
-                </div>
-                <span className="text-caption uppercase tracking-wider text-purple-400/70 font-semibold">
-                  Community Submissions
-                </span>
-              </div>
               <HmcDialogTitle className="text-white font-semibold text-base leading-tight">
-                Add a Church in {stateName}
+                Add a church in {stateName}
               </HmcDialogTitle>
-              <p className="text-white/60 text-caption mt-1 leading-relaxed">
-                Don&apos;t see your church? Add it below and it will appear on the map right away.
+              <p className="text-white/60 text-xs mt-1 leading-relaxed">
+                It shows on the map right away and is checked automatically. Only a name and location are needed.
               </p>
             </div>
             <CloseButton onClick={requestClose} size="md" />
           </div>
-
         </div>
 
         {confirmDiscard && (
@@ -505,298 +504,211 @@ export function AddChurchForm({
 
           {!showSimilarWarning && (
             /* ── Add church form ── */
-            <div className="space-y-3.5">
-              {/* Name (required) */}
-              <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
-                <div className="flex items-center gap-2 mb-2">
-                  <ChurchIcon size={13} className="text-purple-400" />
-                  <label htmlFor={`${fieldId}-church-name`} className={labelClass}>Church name *</label>
-                </div>
+            <div className="space-y-6">
+              {/* 1. The church */}
+              <section className="space-y-2" aria-labelledby={`${fieldId}-sec-name`}>
+                <h3 id={`${fieldId}-sec-name`} className={sectionClass}>
+                  <ChurchIcon size={14} className="text-purple-400" /> The church
+                </h3>
+                <label htmlFor={`${fieldId}-church-name`} className={labelClass}>Name</label>
                 <input id={`${fieldId}-church-name`} aria-required="true"
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g., Grace Community Church"
-                  className={inputClass}
+                  autoComplete="off"
+                  className={`${inputClass} text-sm`}
                 />
                 {typeahead.length > 0 && (
-                  <div className="mt-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2.5" aria-live="polite">
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <p className="text-amber-200/90 text-caption font-semibold uppercase tracking-wider">Already on the map?</p>
-                      <button type="button" onClick={() => setDismissedTypeahead(true)} className="text-white/45 text-caption hover:text-white/70">Not these</button>
+                  <div className="rounded-xl border border-amber-400/25 bg-amber-400/[0.06] p-3" aria-live="polite">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <p className="text-amber-100 text-xs font-semibold">Already on the map? Update it instead.</p>
+                      <button type="button" onClick={() => setDismissedTypeahead(true)} className="whitespace-nowrap text-white/50 text-caption hover:text-white/80">Not these</button>
                     </div>
-                    <ul className="space-y-1.5">
+                    <ul className="space-y-1">
                       {typeahead.map((ch) => (
                         <li key={ch.id}>
                           <button
                             type="button"
                             onClick={() => chooseExisting(ch)}
-                            className="w-full text-left rounded-md px-2 py-1.5 hover:bg-white/5 transition-colors"
+                            className="group w-full flex items-start gap-2 text-left rounded-lg px-2 py-1.5 hover:bg-white/5 transition-colors"
                           >
-                            <span className="block text-white text-xs font-medium">{ch.name}</span>
-                            <span className="block text-white/50 text-caption">{[ch.address, ch.city].filter(Boolean).join(", ") || ch.denomination}</span>
-                            <MatchReasons reasons={ch.matchReasons} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-white text-xs font-medium">{ch.name}</span>
+                              <span className="block text-white/50 text-caption truncate">{[ch.address, ch.city].filter(Boolean).join(", ") || ch.denomination}</span>
+                              <MatchReasons reasons={ch.matchReasons} />
+                            </span>
+                            <span className="text-purple-300 text-caption font-medium opacity-70 group-hover:opacity-100 pt-0.5">That&apos;s it</span>
                           </button>
                         </li>
                       ))}
                     </ul>
-                    <p className="text-white/45 text-caption mt-1.5">Choose one to update it instead. What you&apos;ve typed comes with you.</p>
+                    <p className="text-white/45 text-caption mt-1.5">What you&apos;ve typed comes with you.</p>
                   </div>
                 )}
-              </div>
+              </section>
 
-              {/* Address + City (required — we use these to place the church on the map) */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <MapPin size={13} className="text-purple-400" />
-                    <label htmlFor={`${fieldId}-street-address`} className={labelClass}>Street address *</label>
-                  </div>
-                  <input id={`${fieldId}-street-address`} aria-required="true"
-                    type="text"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    placeholder="123 Main St"
-                    className={inputClass}
-                  />
+              {/* 2. Where it is */}
+              <section className="space-y-2" aria-labelledby={`${fieldId}-sec-where`}>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 id={`${fieldId}-sec-where`} className={sectionClass}>
+                    <MapPin size={14} className="text-purple-400" /> Where it is
+                  </h3>
+                  {onPickOnMap && (
+                    <button
+                      type="button"
+                      onClick={() => onPickOnMap({ ...typedFields(), name: name.trim() })}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-purple-400/30 px-2.5 py-1 text-caption font-medium text-purple-200 hover:bg-purple-500/15 transition-colors"
+                    >
+                      <MapPin size={12} /> Pick on map
+                    </button>
+                  )}
                 </div>
-                <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <MapPin size={13} className="text-purple-400" />
-                    <label htmlFor={`${fieldId}-city`} className={labelClass}>City *</label>
-                  </div>
-                  <input id={`${fieldId}-city`} aria-required="true"
-                    type="text"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    placeholder="Springfield"
-                    className={inputClass}
-                  />
-                </div>
-              </div>
-              <p className="text-caption text-white/60 -mt-1">
-                We&apos;ll look up the location from this address to place the church on the map.
-              </p>
-
-              {/* Denomination + Attendance row */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <ChurchIcon size={13} className="text-purple-400" />
-                    <label htmlFor={`${fieldId}-denomination`} className={labelClass}>Denomination</label>
-                  </div>
-                  <select id={`${fieldId}-denomination`}
-                    value={denomination}
-                    onChange={(e) => setDenomination(e.target.value)}
-                    className={`${inputClass} appearance-none`}
-                  >
-                    <option value="" className="bg-[#1A0E38]">
-                      Select...
-                    </option>
-                    {DENOMINATION_GROUPS.filter((g) => g.label !== "Unspecified").map(
-                      (g) => (
-                        <option
-                          key={g.label}
-                          value={g.label}
-                          className="bg-[#1A0E38]"
-                        >
-                          {g.label}
-                        </option>
-                      )
-                    )}
-                    <option value="Unknown" className="bg-[#1A0E38]">
-                      I don't know
-                    </option>
-                  </select>
-                </div>
-                <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Users size={13} className="text-purple-400" />
-                    <label htmlFor={`${fieldId}-attendance`} className={labelClass}>Attendance</label>
-                  </div>
-                  <input id={`${fieldId}-attendance`}
-                    type="number"
-                    value={attendance}
-                    onChange={(e) => setAttendance(e.target.value)}
-                    placeholder="Est. weekly"
-                    min={1}
-                    max={50000}
-                    className={inputClass}
-                  />
-                </div>
-              </div>
-
-              {/* Website */}
-              <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
-                <div className="flex items-center gap-2 mb-2">
-                  <Globe size={13} className="text-purple-400" />
-                  <label htmlFor={`${fieldId}-website`} className={labelClass}>Website</label>
-                </div>
-                <input id={`${fieldId}-website`}
-                  type="text"
-                  value={website}
-                  onChange={(e) => setWebsite(e.target.value)}
-                  placeholder="https://www.example.com"
-                  className={inputClass}
-                />
-              </div>
-
-              {/* Extended fields toggle */}
-              <button
-                onClick={() => setShowExtended(!showExtended)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/10 hover:border-purple-500/30 hover:bg-white/[0.02] transition-all text-white/60 hover:text-white/60 text-xs"
-              >
-                {showExtended ? "Hide" : "Add"} Service Details, Languages & More
-                <ChevronDown
-                  size={14}
-                  className={`transition-transform duration-200 ${showExtended ? "rotate-180" : ""}`}
-                />
-              </button>
-
-              {showExtended && (
-                <div className="space-y-3.5">
-                  {/* Service Times */}
-                  <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Clock size={13} className="text-purple-400" />
-                      <span className={labelClass}>Service times</span>
-                    </div>
-                    <ServiceTimesInput
-                      value={serviceTimes}
-                      onChange={setServiceTimes}
-                    />
-                  </div>
-
-                  {/* Languages */}
-                  <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Languages size={13} className="text-purple-400" />
-                      <span className={labelClass}>
-                        Languages{selectedLanguages.size > 0 ? ` (${selectedLanguages.size})` : ""}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {COMMON_LANGUAGES.map((lang) => (
-                        <button
-                          key={lang}
-                          onClick={() => toggleLanguage(lang)}
-                          className={`px-2.5 py-1 rounded-full text-caption font-medium transition-all border ${
-                            selectedLanguages.has(lang)
-                              ? "bg-purple-500/30 border-purple-500/50 text-purple-300"
-                              : "bg-white/5 border-white/8 text-white/60 hover:text-white/60 hover:border-white/15"
-                          }`}
-                        >
-                          {selectedLanguages.has(lang) && (
-                            <Check size={9} className="inline mr-0.5" />
-                          )}
-                          {lang}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Ministries */}
-                  <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Heart size={13} className="text-purple-400" />
-                      <span className={labelClass}>
-                        Ministries{selectedMinistries.size > 0 ? ` (${selectedMinistries.size})` : ""}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {COMMON_MINISTRIES.map((ministry) => (
-                        <button
-                          key={ministry}
-                          onClick={() => toggleMinistry(ministry)}
-                          className={`px-2.5 py-1 rounded-full text-caption font-medium transition-all border ${
-                            selectedMinistries.has(ministry)
-                              ? "bg-purple-500/30 border-purple-500/50 text-purple-300"
-                              : "bg-white/5 border-white/8 text-white/60 hover:text-white/60 hover:border-white/15"
-                          }`}
-                        >
-                          {selectedMinistries.has(ministry) && (
-                            <Check size={9} className="inline mr-0.5" />
-                          )}
-                          {ministry}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Pastor + Contact row */}
-                  <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
-                    <div className="flex items-center gap-2 mb-2">
-                      <User size={13} className="text-purple-400" />
-                      <label htmlFor={`${fieldId}-lead-pastor`} className={labelClass}>Lead pastor</label>
-                    </div>
-                    <input id={`${fieldId}-lead-pastor`}
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_11rem] gap-2">
+                  <div>
+                    <label htmlFor={`${fieldId}-street-address`} className={labelClass}>Street address</label>
+                    <input id={`${fieldId}-street-address`} aria-required="true"
                       type="text"
-                      value={pastorName}
-                      onChange={(e) => setPastorName(e.target.value)}
-                      placeholder="Pastor John Smith"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="123 Main St"
+                      autoComplete="street-address"
                       className={inputClass}
                     />
                   </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Phone size={13} className="text-purple-400" />
-                        <label htmlFor={`${fieldId}-phone`} className={labelClass}>Phone</label>
-                      </div>
-                      <input id={`${fieldId}-phone`}
-                        type="tel"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="(555) 123-4567"
-                        className={inputClass}
-                      />
-                    </div>
-                    <div className="rounded-xl p-3.5 bg-white/5 border border-white/5">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Mail size={13} className="text-purple-400" />
-                        <label htmlFor={`${fieldId}-email`} className={labelClass}>Email</label>
-                      </div>
-                      <input id={`${fieldId}-email`}
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="info@church.org"
-                        className={inputClass}
-                      />
-                    </div>
+                  <div>
+                    <label htmlFor={`${fieldId}-city`} className={labelClass}>City</label>
+                    <input id={`${fieldId}-city`} aria-required="true"
+                      type="text"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      placeholder="Springfield"
+                      autoComplete="address-level2"
+                      className={inputClass}
+                    />
                   </div>
                 </div>
-              )}
+                <p className="text-caption text-white/50">
+                  We place the church on the map from its address{onPickOnMap ? ", or you can drop a pin" : ""}.
+                </p>
+              </section>
 
-              {/* Submit button */}
-              <button
-                onClick={handleSubmit}
-                disabled={submitting || !name.trim() || !address.trim() || !city.trim()}
-                className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-30 flex items-center justify-center gap-2"
-                style={{
-                  background:
-                    "linear-gradient(135deg, #6B21A8 0%, #A855F7 100%)",
-                }}
-              >
-                {submitting ? (
-                  <>
-                    <ThreeDotLoader size={16} />
-                    Submitting...
-                  </>
-                ) : (
-                  <>
-                    <Plus size={16} />
-                    Submit Church
-                  </>
+              {/* 3. Optional details */}
+              <section aria-labelledby={`${fieldId}-sec-more`}>
+                <button
+                  type="button"
+                  id={`${fieldId}-sec-more`}
+                  aria-expanded={showExtended}
+                  onClick={() => setShowExtended(!showExtended)}
+                  className="w-full flex items-center gap-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.07] px-3.5 py-3 text-left transition-colors"
+                >
+                  <span className="w-7 h-7 rounded-full bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+                    <Plus size={14} className={`text-purple-300 transition-transform ${showExtended ? "rotate-45" : ""}`} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-white text-xs font-semibold">
+                      Add details people look for{optionalCount > 0 ? ` · ${optionalCount} added` : ""}
+                    </span>
+                    <span className="block text-white/50 text-caption">Service times, website, denomination, languages, contact. All optional.</span>
+                  </span>
+                  <ChevronDown size={14} className={`text-white/50 transition-transform duration-200 ${showExtended ? "rotate-180" : ""}`} />
+                </button>
+
+                {showExtended && (
+                  <div className="space-y-4 pt-4">
+                    <div>
+                      <span className={labelClass}><Clock size={12} className="inline mr-1 -mt-0.5 text-purple-400" />Service times</span>
+                      <ServiceTimesInput value={serviceTimes} onChange={setServiceTimes} />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label htmlFor={`${fieldId}-website`} className={labelClass}><Globe size={12} className="inline mr-1 -mt-0.5 text-purple-400" />Website</label>
+                        <input id={`${fieldId}-website`}
+                          type="url"
+                          value={website}
+                          onChange={(e) => setWebsite(e.target.value)}
+                          placeholder="https://www.example.com"
+                          className={inputClass}
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor={`${fieldId}-denomination`} className={labelClass}>Denomination</label>
+                        <select id={`${fieldId}-denomination`}
+                          value={denomination}
+                          onChange={(e) => setDenomination(e.target.value)}
+                          className={`${inputClass} appearance-none`}
+                        >
+                          <option value="" className="bg-[#1A0E38]">Select…</option>
+                          {DENOMINATION_GROUPS.filter((g) => g.label !== "Unspecified").map((g) => (
+                            <option key={g.label} value={g.label} className="bg-[#1A0E38]">{g.label}</option>
+                          ))}
+                          <option value="Unknown" className="bg-[#1A0E38]">I don&apos;t know</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className={labelClass}><Languages size={12} className="inline mr-1 -mt-0.5 text-purple-400" />Languages{selectedLanguages.size > 0 ? ` (${selectedLanguages.size})` : ""}</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {COMMON_LANGUAGES.map((lang) => (
+                          <button key={lang} type="button" aria-pressed={selectedLanguages.has(lang)} onClick={() => toggleLanguage(lang)} className={chipClass(selectedLanguages.has(lang))}>
+                            {selectedLanguages.has(lang) && <Check size={9} className="inline mr-0.5" />}{lang}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className={labelClass}><Heart size={12} className="inline mr-1 -mt-0.5 text-purple-400" />Ministries{selectedMinistries.size > 0 ? ` (${selectedMinistries.size})` : ""}</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {COMMON_MINISTRIES.map((ministry) => (
+                          <button key={ministry} type="button" aria-pressed={selectedMinistries.has(ministry)} onClick={() => toggleMinistry(ministry)} className={chipClass(selectedMinistries.has(ministry))}>
+                            {selectedMinistries.has(ministry) && <Check size={9} className="inline mr-0.5" />}{ministry}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label htmlFor={`${fieldId}-lead-pastor`} className={labelClass}><User size={12} className="inline mr-1 -mt-0.5 text-purple-400" />Lead pastor</label>
+                        <input id={`${fieldId}-lead-pastor`} type="text" value={pastorName} onChange={(e) => setPastorName(e.target.value)} placeholder="Pastor John Smith" className={inputClass} />
+                      </div>
+                      <div>
+                        <label htmlFor={`${fieldId}-attendance`} className={labelClass}><Users size={12} className="inline mr-1 -mt-0.5 text-purple-400" />Weekly attendance</label>
+                        <input id={`${fieldId}-attendance`} type="number" value={attendance} onChange={(e) => setAttendance(e.target.value)} placeholder="Estimate" min={1} max={50000} className={inputClass} />
+                      </div>
+                      <div>
+                        <label htmlFor={`${fieldId}-phone`} className={labelClass}><Phone size={12} className="inline mr-1 -mt-0.5 text-purple-400" />Phone</label>
+                        <input id={`${fieldId}-phone`} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 123-4567" className={inputClass} />
+                      </div>
+                      <div>
+                        <label htmlFor={`${fieldId}-email`} className={labelClass}><Mail size={12} className="inline mr-1 -mt-0.5 text-purple-400" />Church email</label>
+                        <input id={`${fieldId}-email`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="info@church.org" className={inputClass} />
+                      </div>
+                    </div>
+                    <p className="text-caption text-white/50 -mt-2">
+                      The church email is reviewed before it&apos;s shown, because it&apos;s where the church&apos;s sign-in links go.
+                    </p>
+                  </div>
                 )}
-              </button>
+              </section>
 
-              {/* Info note */}
-              <p className="text-white/50 text-caption leading-relaxed text-center pt-1">
-                Your church will appear on the map immediately. Anyone can
-                suggest corrections to keep the info accurate.
-              </p>
+              {/* Submit */}
+              <div className="space-y-2.5">
+                <button
+                  onClick={handleSubmit}
+                  disabled={submitting || !name.trim() || !address.trim() || !city.trim()}
+                  className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-30 flex items-center justify-center gap-2"
+                  style={{ background: "linear-gradient(135deg, #6B21A8 0%, #A855F7 100%)" }}
+                >
+                  {submitting ? (<><ThreeDotLoader size={16} /> Adding…</>) : (<><Plus size={16} /> Add to the map</>)}
+                </button>
+                <p className="text-white/50 text-caption leading-relaxed text-center">
+                  Anyone can suggest corrections later to keep it accurate.
+                </p>
+              </div>
             </div>
           )}
         </HmcDialogBody>
