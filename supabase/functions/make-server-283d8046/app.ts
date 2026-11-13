@@ -4,7 +4,8 @@ import { registerEmailConfirmationRoutes } from "./email-confirmation.ts";
 import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import * as kv from "./kv.ts";
-import { recordChurchAudit, queryAuditRecent, queryAuditByState, queryAuditByChurch, queryAuditChangesSince } from "./audit.ts";
+import { recordChurchAudit, queryAuditRecent, queryAuditByState, queryAuditByChurch, queryAuditChangesSince, type AuditActorOpts } from "./audit.ts";
+import { getD1 } from "./bindings.ts";
 import { POP } from "./state-populations.ts";
 import {
   countyPopulation,
@@ -2674,7 +2675,7 @@ function applyCalibrationToChurches(churches:any[],cal:{medians:Record<string,nu
 }
 
 type ApplyResult={updated:boolean;state?:string;churches?:any[];corrections?:Record<string,any>;previousValues?:Record<string,string>};
-type AuditContext={source:string;actorIp?:string;actorModKey?:string};
+type AuditContext={source:string;actorIp?:string;actorModKey?:string;actor?:{type:"moderator";key:string}|{type:"system";id:string}|{type:"church";id:string}};
 async function applyApprovedCorrections(churchId:string,con:Record<string,any>,auditContext?:AuditContext,sourceChurches?:any[]):Promise<ApplyResult>{
   const corrections:Record<string,any>={};
   for(const[field,data]of Object.entries(con)){if((data as any).approved&&(data as any).value!==null)corrections[field]=(data as any).value;}
@@ -2731,7 +2732,7 @@ async function applyApprovedCorrections(churchId:string,con:Record<string,any>,a
   }
   if(updated){
     await setChurches(st,churches);
-    if(auditContext){const opts=auditContext.actorModKey?{hashModKey:auditContext.actorModKey}:auditContext.actorIp?{hashIp:auditContext.actorIp}:undefined;for(const e of auditEntries){await recordChurchAudit({church_id:churchId,church_name:auditChurchName,church_city_state:auditChurchCityState,state:st,action:"field_updated",field:e.field,old_value:e.oldVal,new_value:e.newVal,source:auditContext.source},opts);}}
+    if(auditContext){const a=auditContext.actor;const opts:AuditActorOpts|undefined=a?(a.type==="moderator"?{hashModKey:a.key}:{actor:{type:a.type,id:a.id}}):auditContext.actorModKey?{hashModKey:auditContext.actorModKey}:auditContext.actorIp?{hashIp:auditContext.actorIp}:undefined;for(const e of auditEntries){await recordChurchAudit({church_id:churchId,church_name:auditChurchName,church_city_state:auditChurchCityState,state:st,action:"field_updated",field:e.field,old_value:e.oldVal,new_value:e.newVal,source:auditContext.source},opts);}}
     await persistStateReviewStats(st,churches);
     await invalidateReviewStatsCache();
     return {updated:true,state:st,churches,corrections,previousValues};
@@ -2974,6 +2975,8 @@ registerEmailConfirmationRoutes(app, P, {
     }
     const applied = await applyApprovedCorrections(id, { serviceTimes: { approved: true, value: prepared.storeValue } }, { source: "church_email_update" });
     if (!applied.updated) throw new Error("Church no longer available");
+    // The church confirmed these times itself, so older visitor votes must not override them.
+    await clearFieldProposals(id, ["serviceTimes"]);
     if (applied.state && applied.churches && applied.corrections) await runDeferredIndexAndStats(applied.state, applied.churches, id, applied.corrections);
     return prepared.storeValue;
   },
@@ -3645,138 +3648,223 @@ app.post(`${P}/moderate/evidence`,async(c)=>{
   }catch(e){console.error("AI evidence check failed",e instanceof Error?e.message:"unknown");return c.json({error:"Evidence could not be checked. Review the church website manually."},502);}
 });
 
+// ── Review actions ──
+// Callable by a moderator request, the church owner, or the automated engine. Each takes an actor, so
+// the audit log says who decided, and a reviewVersion, so a stale decision can't overwrite a newer edit.
+export type ReviewActor={type:"moderator";key:string}|{type:"system";id:string}|{type:"church";id:string};
+type ReviewResult=
+  |{ok:true;churchId:string;field:string;applied:boolean;value?:any;rejected?:boolean;hidden?:boolean;newChurchId?:string;newChurchShortId?:string}
+  |{ok:false;status:number;error:string};
+function auditOptsFor(actor:ReviewActor):AuditActorOpts{
+  return actor.type==="moderator"?{hashModKey:actor.key}:{actor:{type:actor.type,id:actor.id}};
+}
+async function releaseInReview(actor:ReviewActor,type:"suggestion"|"church",churchId:string,field?:string){
+  if(actor.type==="moderator"&&actor.key)await removeFromInReviewKV(actor.key,type,churchId,field);
+}
+/** Drops proposals on these fields, e.g. after a direct church edit, so an old vote can't override it in the overlay. */
+async function clearFieldProposals(churchId:string,fields:string[]):Promise<void>{
+  const k=`suggestions:${churchId}`;const ex=await kv.get(k);
+  if(!ex||!Array.isArray(ex.submissions))return;
+  const next=ex.submissions.filter((s:any)=>!fields.includes(s.field));
+  if(next.length!==ex.submissions.length){ex.submissions=next;await kv.set(k,ex);}
+}
+const newCommunityId=(st:string,cc:string)=>cc==="US"
+  ?`community-${st}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`
+  :`community-${cc}-${st}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+function uniqueShortId(rows:any[],st:string):string{
+  const existing=new Set(rows.map((c:any)=>c.shortId||toShortId(c.id,c.state||st)));
+  let shortId:string;do{shortId=Math.floor(10000000+Math.random()*90000000).toString();}while(existing.has(shortId));
+  return shortId;
+}
+async function updateRegionCount(st:string,count:number){
+  const meta=await getMeta(false);
+  if(meta){meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,count);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
+}
+
+/** Moves a listing to a new address as a new listing; the old one waits for re-verification. */
+async function relocateListing(o:{churchId:string;st:string;addr:any;rows:any[];actor:ReviewActor;source:string}):Promise<{newId:string;shortId:string}|null>{
+  const{churchId,st,addr,rows}=o;
+  const source=rows.find((x:any)=>x.id===churchId);
+  if(!source)return null;
+  const cc=regionCountry(st);
+  const newId=newCommunityId(st,cc);
+  const shortId=uniqueShortId(rows,st);
+  const newChurch:Record<string,unknown>={
+    id:newId,shortId,name:source.name,address:addr.address,city:addr.city,state:st,country:cc,lat:addr.lat,lng:addr.lng,
+    denomination:source.denomination||"Unknown",attendance:source.attendance||50,website:source.website||"",
+    serviceTimes:source.serviceTimes,languages:source.languages,ministries:source.ministries,pastorName:source.pastorName,
+    phone:source.phone,email:source.email,lastVerified:Date.now(),relocatedFrom:churchId,
+  };
+  const oldAddress=[source.address,source.city,source.state].filter(Boolean).join(", ");
+  source.listingStatus="pending_reverify";
+  source.relocatedTo=newId;
+  for(const f of TRANSFERRED_ON_RELOCATE){delete (source as any)[f];}
+  rows.push(newChurch);
+  await setChurches(st,rows);
+  await writeIdx(st,rows);
+  await updateRegionCount(st,rows.length);
+  await invalidateReviewStatsCache();
+  await queueChurch(newChurch);
+  const opts=auditOptsFor(o.actor);
+  void recordChurchAudit({church_id:churchId,church_name:source.name,church_city_state:[source.city,st].filter(Boolean).join(", "),state:st,action:"church_relocated",field:"reportRelocated",old_value:{address:oldAddress,lat:source.lat,lng:source.lng},new_value:{relocatedTo:newId,address:addr,lat:addr.lat,lng:addr.lng},source:o.source},opts);
+  void recordChurchAudit({church_id:newId,church_name:String(newChurch.name),church_city_state:[addr.city,st].filter(Boolean).join(", "),state:st,action:"church_added",new_value:{name:newChurch.name,city:addr.city,state:st,denomination:newChurch.denomination,relocatedFrom:churchId},source:o.source},opts);
+  return{newId,shortId};
+}
+
+/** Takes a listing off the map but keeps it whole in hidden_churches, so the decision can be undone. */
+async function hideListing(o:{churchId:string;reason:string;value?:unknown;rows?:any[];actor:ReviewActor;source:string;decisionId?:number}):Promise<boolean>{
+  const st=regionFromChurchId(o.churchId);
+  if(!st||!isValidRegion(st))return false;
+  const rows=o.rows??await getChurches(st);
+  let doc:any=null;
+  if(Array.isArray(rows)){
+    doc=rows.find((x:any)=>x.id===o.churchId)||null;
+    if(doc){
+      const filtered=rows.filter((x:any)=>x.id!==o.churchId);
+      await setChurches(st,filtered,undefined,rows);
+      await writeIdx(st,filtered);
+      await updateRegionCount(st,filtered.length);
+    }
+  }
+  const store=await getPending(st);
+  if(store&&Array.isArray(store.churches)&&store.churches.length){
+    const pendingCh=store.churches.find((x:any)=>x.id===o.churchId);
+    if(pendingCh&&!doc)doc=pendingCh;
+    const before=store.churches.length;
+    store.churches=store.churches.filter((x:any)=>x.id!==o.churchId);
+    if(store.churches.length!==before)await setPending(st,store);
+  }
+  if(!doc)return false;
+  await getD1().prepare(`INSERT INTO hidden_churches(church_id,region,doc,reason,decision_id,hidden_at,restored_at) VALUES(?1,?2,?3,?4,?5,?6,NULL)
+    ON CONFLICT(church_id) DO UPDATE SET region=excluded.region,doc=excluded.doc,reason=excluded.reason,decision_id=excluded.decision_id,hidden_at=excluded.hidden_at,restored_at=NULL`)
+    .bind(o.churchId,st,JSON.stringify(doc),o.reason,o.decisionId??null,Date.now()).run();
+  await invalidateReviewStatsCache();
+  void recordChurchAudit({church_id:o.churchId,church_name:doc.name||null,church_city_state:[doc.city,doc.state].filter(Boolean).join(", ")||null,state:st,action:"church_removed",field:o.reason,new_value:o.value??null,source:o.source},auditOptsFor(o.actor));
+  return true;
+}
+
+/** Puts a hidden listing back on the map with its original id. */
+async function restoreListing(o:{churchId:string;actor:ReviewActor;source:string}):Promise<ReviewResult>{
+  const row:any=await getD1().prepare("SELECT region,doc FROM hidden_churches WHERE church_id=?1 AND restored_at IS NULL").bind(o.churchId).first();
+  if(!row)return{ok:false,status:404,error:"No hidden listing to restore"};
+  const st=row.region;const doc=JSON.parse(row.doc);
+  const rows=(await getChurches(st))||[];
+  if(!Array.isArray(rows))return{ok:false,status:404,error:"Church list not found"};
+  if(rows.some((x:any)=>x.id===o.churchId))return{ok:false,status:409,error:"This listing is already on the map"};
+  if(doc.shortId&&rows.some((x:any)=>(x.shortId||toShortId(x.id,x.state||st))===doc.shortId))doc.shortId=uniqueShortId(rows,st);
+  rows.push(doc);
+  await setChurches(st,rows);
+  await writeIdx(st,rows);
+  await updateRegionCount(st,rows.length);
+  await getD1().prepare("UPDATE hidden_churches SET restored_at=?2 WHERE church_id=?1").bind(o.churchId,Date.now()).run();
+  await invalidateReviewStatsCache();
+  void recordChurchAudit({church_id:o.churchId,church_name:doc.name||null,church_city_state:[doc.city,st].filter(Boolean).join(", ")||null,state:st,action:"church_added",new_value:{name:doc.name,city:doc.city,state:st,denomination:doc.denomination,restored:true},source:o.source},auditOptsFor(o.actor));
+  return{ok:true,churchId:o.churchId,field:"listing",applied:true};
+}
+
+async function reviewSnapshot(churchId:string,field:string,reviewVersion?:string){
+  const k=`suggestions:${churchId}`;const ex=await kv.get(k);
+  if(!ex||!Array.isArray(ex.submissions))return null;
+  const region=regionFromChurchId(churchId);
+  const churches=region?await getChurches(region):null;
+  const church=Array.isArray(churches)?churches.find((ch:any)=>ch.id===churchId):null;
+  if(reviewVersion!==undefined&&reviewVersion!==await proposalVersion(ex,field,currentReviewValue(church,field,region)))throw new EditConflictError();
+  return{k,ex,churches:Array.isArray(churches)?churches:null};
+}
+
+/** Approves the pending value (or an edited one) for one field. Throws EditConflictError on a stale reviewVersion. */
+async function approveSuggestion(o:{churchId:string;field:string;value?:unknown;reviewVersion?:string;actor:ReviewActor;source?:string}):Promise<ReviewResult>{
+  const{churchId,field}=o;const source=o.source||"moderate_approve";
+  const snap=await reviewSnapshot(churchId,field,o.reviewVersion);
+  if(!snap)return{ok:false,status:404,error:"No suggestions found"};
+  const{k,ex,churches:reviewedChurches}=snap;
+  let valueToApply:any;
+  if(o.value!==undefined&&o.value!==null&&String(o.value).trim()!==""){
+    valueToApply=String(o.value).trim();
+  }else{
+    const heldD=(consensus(ex.submissions,{held:"only"})[field] as any);
+    const d=(heldD&&heldD.value!==null?heldD:consensus(ex.submissions)[field]) as any;
+    if(!d||d.value===null)return{ok:false,status:400,error:"No value to approve"};
+    valueToApply=d.value;
+  }
+  // Address and relocation approvals need coordinates.
+  if(field==="address"||field==="reportRelocated"){
+    const parsed=parseAddressValue(valueToApply,regionFromChurchId(churchId)||"");
+    if(parsed){
+      if(parsed.lat==null||parsed.lng==null){
+        const geo=await geocodeAddress(parsed.address,parsed.city,parsed.state);
+        if(geo){parsed.lat=geo.lat;parsed.lng=geo.lng;}
+      }
+      valueToApply=JSON.stringify(parsed);
+    }
+  }
+  const finish=async()=>{
+    ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
+    await kv.set(k,ex);
+    await releaseInReview(o.actor,"suggestion",churchId,field);
+  };
+  if(field==="reportRelocated"){
+    const st=regionFromChurchId(churchId);
+    if(!st||!isValidRegion(st))return{ok:false,status:400,error:"Invalid church ID"};
+    const addrObj=parseAddressValue(valueToApply,st);
+    if(!addrObj)return{ok:false,status:400,error:"Invalid address format"};
+    if(!addrObj.address||!addrObj.city||!addrObj.state)return{ok:false,status:400,error:"Street, city, and state are required"};
+    if(addrObj.state!==st)return{ok:false,status:400,error:"New address must be in the same state/region as this church"};
+    if(addrObj.lat==null||addrObj.lng==null){
+      const geo=await geocodeAddress(addrObj.address,addrObj.city,addrObj.state);
+      if(!geo)return{ok:false,status:400,error:"Could not geocode new address"};
+      addrObj.lat=geo.lat;addrObj.lng=geo.lng;
+    }
+    const rows=reviewedChurches??await getChurches(st);
+    if(!Array.isArray(rows))return{ok:false,status:404,error:"Church list not found"};
+    const moved=await relocateListing({churchId,st,addr:addrObj,rows,actor:o.actor,source});
+    if(!moved)return{ok:false,status:404,error:"Church not found"};
+    await finish();
+    return{ok:true,applied:true,churchId,field,value:valueToApply,newChurchId:moved.newId,newChurchShortId:moved.shortId};
+  }
+  if(REMOVAL_REPORT_FIELDS.has(field)){
+    const st=regionFromChurchId(churchId);
+    if(!st||!isValidRegion(st))return{ok:false,status:400,error:"Invalid church ID"};
+    const hidden=await hideListing({churchId,reason:field,value:valueToApply,rows:reviewedChurches??undefined,actor:o.actor,source});
+    await finish();
+    return{ok:true,applied:hidden,hidden,churchId,field,value:valueToApply};
+  }
+  const singleCon:Record<string,any>={[field]:{approved:true,value:valueToApply,votes:0,needed:THR}};
+  const applied=await applyApprovedCorrections(churchId,singleCon,{source,actor:o.actor},reviewedChurches??undefined);
+  if(applied.previousValues){ex.previousValues=ex.previousValues||{};for(const[f,val]of Object.entries(applied.previousValues))ex.previousValues[f]=val;}
+  await finish();
+  if(applied.updated&&applied.state&&applied.churches&&applied.corrections){void runDeferredIndexAndStats(applied.state,applied.churches,churchId,applied.corrections).catch(()=>{});}
+  return{ok:true,applied:applied.updated,churchId,field,value:valueToApply};
+}
+
+/** Rejects a field's proposals. With value, only submissions of that value are dropped, so a competing value survives. */
+async function rejectSuggestion(o:{churchId:string;field:string;value?:string;reviewVersion?:string;actor:ReviewActor;source?:string}):Promise<ReviewResult>{
+  const{churchId,field}=o;
+  const snap=await reviewSnapshot(churchId,field,o.reviewVersion);
+  if(!snap)return{ok:false,status:404,error:"No suggestions found"};
+  const{k,ex}=snap;
+  const heldRej=(consensus(ex.submissions,{held:"only"})[field] as any)?.value;
+  const rejectedVal=o.value??heldRej??(consensus(ex.submissions)[field] as any)?.value;
+  ex.submissions=ex.submissions.filter((s:any)=>!(s.field===field&&(o.value===undefined||s.value===o.value)));
+  await kv.set(k,ex);
+  const st=regionFromChurchId(churchId);
+  if(st&&isValidRegion(st)){void recordChurchAudit({church_id:churchId,state:st,action:"suggestion_rejected",field,new_value:rejectedVal,source:o.source||"moderate_reject"},auditOptsFor(o.actor));}
+  await releaseInReview(o.actor,"suggestion",churchId,field);
+  return{ok:true,applied:false,rejected:true,churchId,field,value:rejectedVal};
+}
+
+const moderatorActor=(c:any):ReviewActor=>({type:"moderator",key:getModKey(c)});
+const reviewResponse=(c:any,r:ReviewResult,extra:Record<string,unknown>={})=>{
+  if(!r.ok)return c.json({error:r.error},r.status);
+  const{ok:_ok,...rest}=r;return c.json({success:true,...rest,...extra});
+};
+
 const moderateApproveSuggestionHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
-    const{churchId,field,value:editedValue,reviewVersion}=await c.req.json();
+    const{churchId,field,value,reviewVersion}=await c.req.json();
     if(!churchId||!field)return c.json({error:"Missing churchId or field"},400);
-    const k=`suggestions:${churchId}`;const ex=await kv.get(k);
-    if(!ex||!Array.isArray(ex.submissions))return c.json({error:"No suggestions found"},404);
-    const reviewedRegion=regionFromChurchId(churchId);
-    const reviewedChurches=reviewedRegion?await getChurches(reviewedRegion):null;
-    const reviewedChurch=Array.isArray(reviewedChurches)?reviewedChurches.find((ch:any)=>ch.id===churchId):null;
-    if(reviewVersion!==undefined&&reviewVersion!==await proposalVersion(ex,field,currentReviewValue(reviewedChurch,field,reviewedRegion)))throw new EditConflictError();
-    let valueToApply:any;
-    if(editedValue!==undefined&&editedValue!==null&&String(editedValue).trim()!==""){
-      valueToApply=String(editedValue).trim();
-    }else{
-      const heldD=(consensus(ex.submissions,{held:"only"})[field] as any);
-      const d=(heldD&&heldD.value!==null?heldD:consensus(ex.submissions)[field]) as any;
-      if(!d||d.value===null)return c.json({error:"No value to approve"},400);
-      valueToApply=d.value;
-    }
-    // For address / relocate approvals, ensure lat/lng coordinates are present (geocode if missing)
-    if(field==="address"||field==="reportRelocated"){
-      const parsed=parseAddressValue(valueToApply,regionFromChurchId(churchId)||"");
-      if(parsed){
-        if(parsed.lat==null||parsed.lng==null){
-          const geo=await geocodeAddress(parsed.address,parsed.city,parsed.state);
-          if(geo){parsed.lat=geo.lat;parsed.lng=geo.lng;}
-        }
-        valueToApply=JSON.stringify(parsed);
-      }
-    }
-    if(field==="reportRelocated"){
-      const st=regionFromChurchId(churchId);
-      if(!st||!isValidRegion(st))return c.json({error:"Invalid church ID"},400);
-      const addrObj=parseAddressValue(valueToApply,st);
-      if(!addrObj)return c.json({error:"Invalid address format"},400);
-      if(!addrObj.address||!addrObj.city||!addrObj.state)return c.json({error:"Street, city, and state are required"},400);
-      if(addrObj.state!==st)return c.json({error:"New address must be in the same state/region as this church"},400);
-      if(addrObj.lat==null||addrObj.lng==null){
-        const geo=await geocodeAddress(addrObj.address,addrObj.city,addrObj.state);
-        if(!geo)return c.json({error:"Could not geocode new address"},400);
-        addrObj.lat=geo.lat;addrObj.lng=geo.lng;
-      }
-      const mainChurches=reviewedChurches??await getChurches(st);
-      if(!Array.isArray(mainChurches))return c.json({error:"Church list not found"},404);
-      const source=mainChurches.find((x:any)=>x.id===churchId);
-      if(!source)return c.json({error:"Church not found"},404);
-      const cc=regionCountry(st);
-      const newId=cc==="US"
-        ?`community-${st}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`
-        :`community-${cc}-${st}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-      const existingShortIds=new Set(mainChurches.map((c:any)=>c.shortId||toShortId(c.id,c.state||st)));
-      let shortId:string;do{shortId=Math.floor(10000000+Math.random()*90000000).toString();}while(existingShortIds.has(shortId));
-      const newChurch:Record<string,unknown>={
-        id:newId,
-        shortId,
-        name:source.name,
-        address:addrObj.address,
-        city:addrObj.city,
-        state:st,
-        country:cc,
-        lat:addrObj.lat,
-        lng:addrObj.lng,
-        denomination:source.denomination||"Unknown",
-        attendance:source.attendance||50,
-        website:source.website||"",
-        serviceTimes:source.serviceTimes,
-        languages:source.languages,
-        ministries:source.ministries,
-        pastorName:source.pastorName,
-        phone:source.phone,
-        email:source.email,
-        lastVerified:Date.now(),
-        relocatedFrom:churchId,
-      };
-      const oldAddress=[source.address,source.city,source.state].filter(Boolean).join(", ");
-      source.listingStatus="pending_reverify";
-      source.relocatedTo=newId;
-      for(const f of TRANSFERRED_ON_RELOCATE){delete (source as any)[f];}
-      mainChurches.push(newChurch);
-      await setChurches(st,mainChurches);
-      await writeIdx(st,mainChurches);
-      const meta=await getMeta(false);if(meta){meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,mainChurches.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
-      await invalidateReviewStatsCache();
-      await queueChurch(newChurch);
-      const modKeyOpts={hashModKey:getModKey(c)};
-      void recordChurchAudit({church_id:churchId,church_name:source.name,church_city_state:[source.city,st].filter(Boolean).join(", "),state:st,action:"church_relocated",field:"reportRelocated",old_value:{address:oldAddress,lat:source.lat,lng:source.lng},new_value:{relocatedTo:newId,address:addrObj,lat:addrObj.lat,lng:addrObj.lng},source:"moderate_approve"},modKeyOpts);
-      void recordChurchAudit({church_id:newId,church_name:String(newChurch.name),church_city_state:[addrObj.city,st].filter(Boolean).join(", "),state:st,action:"church_added",new_value:{name:newChurch.name,city:addrObj.city,state:st,denomination:newChurch.denomination,relocatedFrom:churchId},source:"moderate_approve"},modKeyOpts);
-      ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
-      await kv.set(k,ex);
-      const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);
-      return c.json({success:true,applied:true,churchId,field,value:valueToApply,newChurchId:newId,newChurchShortId:shortId});
-    }
-    if(REMOVAL_REPORT_FIELDS.has(field)){
-      const st=regionFromChurchId(churchId);
-      if(!st||!isValidRegion(st))return c.json({error:"Invalid church ID"},400);
-      let auditChurchName:string|null=null;let auditChurchCityState:string|null=null;
-      const mainChurches=reviewedChurches??await getChurches(st);
-      if(Array.isArray(mainChurches)){
-        const ch=mainChurches.find((x:any)=>x.id===churchId);
-        if(ch){auditChurchName=ch.name||null;auditChurchCityState=[ch.city,ch.state].filter(Boolean).join(", ")||null;}
-        const filtered=mainChurches.filter((x:any)=>x.id!==churchId);
-        if(filtered.length!==mainChurches.length){
-          await setChurches(st,filtered,undefined,mainChurches);
-          await writeIdx(st,filtered);
-          const meta=await getMeta(false);if(meta){meta.stateCounts=meta.stateCounts||{};setCount(meta.stateCounts,st,filtered.length);meta.lastUpdated=new Date().toISOString();await kv.set("churches:meta",meta);invalidateMetaCache();}
-        }
-      }
-      const store=await getPending(st);
-      if(store&&Array.isArray(store.churches)&&store.churches.length){
-        const pendingCh=store.churches.find((x:any)=>x.id===churchId);
-        if(pendingCh&&!auditChurchName){auditChurchName=pendingCh.name||null;auditChurchCityState=[pendingCh.city,pendingCh.state].filter(Boolean).join(", ")||null;}
-        const before=store.churches.length;
-        store.churches=store.churches.filter((x:any)=>x.id!==churchId);
-        if(store.churches.length!==before)await setPending(st,store);
-      }
-      await invalidateReviewStatsCache();
-      if(st){void recordChurchAudit({church_id:churchId,church_name:auditChurchName,church_city_state:auditChurchCityState,state:st,action:"church_removed",field,new_value:valueToApply,source:"moderate_approve"},{hashModKey:getModKey(c)});}
-      ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
-      await kv.set(k,ex);
-      const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);
-      return c.json({success:true,applied:true,churchId,field,value:valueToApply});
-    }
-    const singleCon:Record<string,any>={};
-    singleCon[field]={approved:true,value:valueToApply,votes:0,needed:THR};
-    const applied=await applyApprovedCorrections(churchId,singleCon,{source:"moderate_approve",actorModKey:getModKey(c)},reviewedChurches??undefined);
-    if(applied.previousValues){ex.previousValues=ex.previousValues||{};for(const[f,val]of Object.entries(applied.previousValues))ex.previousValues[f]=val;}
-    ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
-    await kv.set(k,ex);
-    const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);
-    if(applied.updated&&applied.state&&applied.churches&&applied.corrections){void runDeferredIndexAndStats(applied.state,applied.churches,churchId,applied.corrections).catch(()=>{});}
-    return c.json({success:true,applied:applied.updated,churchId,field,value:valueToApply});
+    return reviewResponse(c,await approveSuggestion({churchId,field,value,reviewVersion,actor:moderatorActor(c)}));
   }catch(e){return serverError(c,e);}
 };
 app.post(`${P}/moderate/approve/suggestion`,moderateApproveSuggestionHandler);
@@ -3785,26 +3873,36 @@ app.post("/moderate/approve/suggestion",moderateApproveSuggestionHandler);
 const moderateRejectSuggestionHandler=async(c:any)=>{
   try{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
-    const{churchId,field,reviewVersion}=await c.req.json();
+    const{churchId,field,value,reviewVersion}=await c.req.json();
     if(!churchId||!field)return c.json({error:"Missing churchId or field"},400);
-    const k=`suggestions:${churchId}`;const ex=await kv.get(k);
-    if(!ex||!Array.isArray(ex.submissions))return c.json({error:"No suggestions found"},404);
-    const reviewedRegion=regionFromChurchId(churchId);
-    const reviewedChurches=reviewedRegion?await getChurches(reviewedRegion):null;
-    const reviewedChurch=Array.isArray(reviewedChurches)?reviewedChurches.find((ch:any)=>ch.id===churchId):null;
-    if(reviewVersion!==undefined&&reviewVersion!==await proposalVersion(ex,field,currentReviewValue(reviewedChurch,field,reviewedRegion)))throw new EditConflictError();
-    const heldRej=(consensus(ex.submissions,{held:"only"})[field] as any)?.value;
-    const rejectedVal=heldRej??(consensus(ex.submissions)[field] as any)?.value;
-    ex.submissions=ex.submissions.filter((s:any)=>s.field!==field);
-    await kv.set(k,ex);
-    const stRej=churchId.split("-")[0]==="community"?churchId.split("-")[1]:churchId.split("-")[0];
-    if(stRej&&isValidRegion(stRej)){void recordChurchAudit({church_id:churchId,state:stRej,action:"suggestion_rejected",field,new_value:rejectedVal,source:"moderate_reject"},{hashModKey:getModKey(c)});}
-    const modKey=getModKey(c);if(modKey)await removeFromInReviewKV(modKey,"suggestion",churchId,field);
+    const r=await rejectSuggestion({churchId,field,value:typeof value==="string"?value:undefined,reviewVersion,actor:moderatorActor(c)});
+    if(!r.ok)return c.json({error:r.error},r.status);
     return c.json({success:true,churchId,field,rejected:true});
   }catch(e){return serverError(c,e);}
 };
 app.post(`${P}/moderate/reject/suggestion`,moderateRejectSuggestionHandler);
 app.post("/moderate/reject/suggestion",moderateRejectSuggestionHandler);
+
+// Hidden listings: closed, duplicate and out-of-scope approvals keep the listing so it can be restored.
+const moderateHiddenHandler=async(c:any)=>{
+  try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    const{results}=await getD1().prepare("SELECT church_id,region,doc,reason,decision_id,hidden_at FROM hidden_churches WHERE restored_at IS NULL ORDER BY hidden_at DESC LIMIT 200").all();
+    return c.json({hidden:(results||[]).map((r:any)=>{const d=JSON.parse(r.doc);return{churchId:r.church_id,region:r.region,reason:r.reason,decisionId:r.decision_id,hiddenAt:r.hidden_at,name:d.name,city:d.city,state:d.state};})});
+  }catch(e){return serverError(c,e);}
+};
+app.get(`${P}/moderate/hidden`,moderateHiddenHandler);
+app.get("/moderate/hidden",moderateHiddenHandler);
+const moderateRestoreHandler=async(c:any)=>{
+  try{
+    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    const{churchId}=await c.req.json();
+    if(typeof churchId!=="string"||!churchId)return c.json({error:"Missing churchId"},400);
+    return reviewResponse(c,await restoreListing({churchId,actor:moderatorActor(c),source:"moderate_restore"}),{restored:true});
+  }catch(e){return serverError(c,e);}
+};
+app.post(`${P}/moderate/restore`,moderateRestoreHandler);
+app.post("/moderate/restore",moderateRestoreHandler);
 
 const moderateApproveChurchHandler=async(c:any)=>{
   try{

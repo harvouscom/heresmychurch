@@ -45,6 +45,7 @@ export async function startHarness(vars: Record<string, string> = {}): Promise<H
   for (const s of statements(readFileSync("api/migrations/0002_publication_recovery.sql", "utf8"))) await db.prepare(s).run();
   for (const s of statements(readFileSync("api/migrations/0003_edit_versions_review_index.sql", "utf8"))) await db.prepare(s).run();
   for (const s of statements(readFileSync("api/migrations/0004_legacy_suggestion_ids.sql", "utf8"))) await db.prepare(s).run();
+  for (const s of statements(readFileSync("api/migrations/0005_moderation.sql", "utf8"))) await db.prepare(s).run();
   for (const s of statements(readFileSync("api/search-migrations/0001_search.sql", "utf8"))) await searchDb.prepare(s).run();
 
   const env = { STORE_BACKEND: "d1", MAINTENANCE_READONLY: "", ...vars };
