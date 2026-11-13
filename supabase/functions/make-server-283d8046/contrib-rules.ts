@@ -8,7 +8,11 @@ export const VOTE_TTL_MS = 365 * 24 * 60 * 60 * 1000;
  *  come from Lookup: a host form can hold personal details. */
 export const LOOKUP_MODERATED_FIELDS = new Set(["email", "pastorName"]);
 
-type Vote = { field?: unknown; source?: unknown; timestamp?: unknown; needsModeration?: unknown };
+/** Fields that always wait for review, from any visitor, partner or Lookup, even when the listing
+ *  value is blank. The listing email is where church sign-in links go, so setting it is ownership. */
+export const ALWAYS_HELD_FIELDS = new Set(["email"]);
+
+type Vote ={ field?: unknown; source?: unknown; timestamp?: unknown; needsModeration?: unknown };
 
 /** Held replacement proposals and Lookup personal-detail votes never enter public consensus. */
 export function isHeldVote(s: Vote): boolean {
