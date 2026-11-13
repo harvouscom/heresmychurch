@@ -116,6 +116,34 @@ describe('church portal', () => {
     const held = (await kv.get(`suggestions:${body.church.id}`)).submissions[0];
     expect(held).toMatchObject({ field: 'email', value: 'me@example.net', needsModeration: true });
   });
+  it('shows a masked inbox hint so a church can request a link', async () => {
+    const d = await (await call('church-portal/listing/TX-123')).json() as any;
+    expect(d.church.hasEmail).toBe(true); expect(d.church.emailHint).toBe('o•••@example.org'); expect(JSON.stringify(d)).not.toContain('office@example.org');
+  });
+  it('holds visitor email fills and refuses sign-in to a visitor-set inbox', async () => {
+    const churches = await kv.get('churches:US:TX'); delete churches[0].email; await kv.set('churches:US:TX', churches);
+    const res = await call('suggestions', { churchId: 'TX-123', field: 'email', value: 'attacker@example.net' }); expect(res.status).toBe(200);
+    expect(((await res.json()) as any).needsModeration).toBe(true);
+    expect((await kv.get('churches:US:TX'))[0].email).toBeUndefined();
+    // An email that reached the listing through an unreviewed visitor edit (before this rule) can't receive links or claim.
+    const { recordChurchAudit } = await import('../../supabase/functions/make-server-283d8046/audit.ts');
+    const stored = await kv.get('churches:US:TX'); stored[0].email = 'attacker@example.net'; await kv.set('churches:US:TX', stored);
+    recordChurchAudit({ church_id: 'TX-123', state: 'TX', action: 'field_updated', field: 'email', new_value: 'attacker@example.net', source: 'suggestion' }, { hashIp: 'x' }); await h.flush();
+    const before = sent.length;
+    expect((await call('church-portal/request', { churchId: 'TX-123' })).status).toBe(409); expect(sent.length).toBe(before);
+    recordChurchAudit({ church_id: 'TX-123', state: 'TX', action: 'field_updated', field: 'email', new_value: 'office@example.org', source: 'moderate_approve' }, { hashModKey: 'm' }); await h.flush();
+    stored[0].email = 'office@example.org'; await kv.set('churches:US:TX', stored);
+    const token = await login(); expect(sent.length).toBe(before + 1);
+    expect((await call('church-portal/session', { token, action: 'claim' })).status).toBe(200);
+  });
+  it('keeps an adder-supplied email off a new listing until it is reviewed', async () => {
+    const res = await call('churches/add', { name: 'New Hope Fellowship', address: '9 Oak St', city: 'Austin', state: 'TX', lat: 30.3, lng: -97.7, email: 'me@example.net', confirmAdd: true });
+    expect(res.status).toBe(200); const body = await res.json() as any;
+    const listed = (await kv.get('churches:US:TX')).find((c: any) => c.id === body.church.id);
+    expect(listed.email).toBeUndefined();
+    const held = (await kv.get(`suggestions:${body.church.id}`)).submissions[0];
+    expect(held).toMatchObject({ field: 'email', value: 'me@example.net', needsModeration: true });
+  });
   it('expires and cleans up old grants', async () => {
     const token = await login();
     const { emailDigest } = await import('../../supabase/functions/make-server-283d8046/email-confirmation.ts');
