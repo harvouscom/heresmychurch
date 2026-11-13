@@ -22,7 +22,7 @@ import {
 
 import { INTL_REGIONS } from "./regions-intl.ts";
 import { normalizeServiceTimes, parseServiceTimesToSlots, type ServiceTimeSlot } from "./service-times.ts";
-import { LOOKUP_MODERATED_FIELDS, isHeldVote, liveVotes, normalizePhone, isBlankContributionValue } from "./contrib-rules.ts";
+import { ALWAYS_HELD_FIELDS, LOOKUP_MODERATED_FIELDS, isHeldVote, liveVotes, normalizePhone, isBlankContributionValue } from "./contrib-rules.ts";
 import {
   regionCountry,
   churchesKey,
@@ -2848,7 +2848,7 @@ async function submitSuggestionCore(opts:{churchId:string;field:string;value:unk
   if(!(await ipRateLimit("church-suggestion",churchId,20,3600000)))return{ok:false,status:429,error:"This church has received many edits. Please try again later."};
   const isSensitive=SENSITIVE_FIELDS.includes(field);
   // Replacements and disputes remain proposals; a new vote cannot overwrite the accepted vote.
-  const held=!isSensitive&&(!isBlankContributionValue(church[field])||
+  const held=!isSensitive&&(ALWAYS_HELD_FIELDS.has(field)||!isBlankContributionValue(church[field])||
     ex.submissions.some((s:any)=>s.field===field&&s.value!==storeValue)||
     LOOKUP_MODERATED_FIELDS.has(field)&&auditSource.startsWith("lookup:"));
   const previous=ex.submissions.find((s:any)=>s.ip===actorKey&&s.field===field&&
@@ -3221,9 +3221,11 @@ async function addChurchCore(b:AddChurchInput,actor:{actorKey:string;auditSource
   const mainDup=Array.isArray(mainChurches)&&(mainChurches as any[]).find((ch:any)=>(ch.name||"").trim().toLowerCase()===name.trim().toLowerCase()&&Math.abs((ch.lat||0)-pLat)<0.001&&Math.abs((ch.lng||0)-pLng)<0.001);
   if(mainDup){return{kind:"mainDup",existingChurch:{id:mainDup.id,shortId:mainDup.shortId,name:mainDup.name,city:mainDup.city,state:mainDup.state||st}};}
   const normalizedSvc=normalizeServiceTimes(serviceTimes as any)||undefined;
-  const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),postcode:postcode||undefined,state:st,country:cc,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:normalizedSvc,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:normalizePhone(phone||"",cc)||undefined,email:(email||"").trim()||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
+  const nc={id,shortId,name:name.trim(),address:(addr||"").trim(),city:(ci||"").trim(),postcode:postcode||undefined,state:st,country:cc,lat:pLat,lng:pLng,denomination:(rawDenom||"Unknown"),attendance:att,website:(website||"").trim(),serviceTimes:normalizedSvc,languages:Array.isArray(languages)&&languages.length?languages:undefined,ministries:Array.isArray(ministries)&&ministries.length?ministries:undefined,pastorName:(pastorName||"").trim()||undefined,phone:normalizePhone(phone||"",cc)||undefined,submittedByIp:ip,submittedAt:Date.now(),approved:true,verifications:[{ip,timestamp:Date.now()}]};
   store.churches.push(nc);await setPending(st,store);
-  const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,postcode:nc.postcode,state:st,country:cc,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,email:nc.email,lastVerified:Date.now()};
+  const churchForMain={id,shortId,name:nc.name,address:nc.address,city:nc.city,postcode:nc.postcode,state:st,country:cc,lat:pLat,lng:pLng,denomination:nc.denomination,attendance:att,website:nc.website,serviceTimes:nc.serviceTimes,languages:nc.languages,ministries:nc.ministries,pastorName:nc.pastorName,phone:nc.phone,lastVerified:Date.now()};
+  // The listing email receives church sign-in links, so an adder-supplied address waits for review.
+  if(email)await kv.set(`suggestions:${id}`,{churchId:id,submissions:[{ip,field:"email",value:email.trim(),timestamp:Date.now(),source:actor.auditSource,needsModeration:true}]});
   if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await setChurches(st,mainChurches);await writeIdx(st,mainChurches);await invalidateReviewStatsCache();await queueChurch(churchForMain);void recordChurchAudit({church_id:id,church_name:nc.name,church_city_state:[nc.city,st].filter(Boolean).join(", "),state:st,action:"church_added",new_value:{name:nc.name,city:nc.city,state:st,denomination:nc.denomination},source:actor.auditSource},{hashIp:ip});}
   return{kind:"added",church:nc,mainChurch:churchForMain};
 }

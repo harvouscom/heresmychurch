@@ -4,6 +4,7 @@ import * as kv from './kv.ts';
 import { getChurches, regionFromChurchId, isValidRegion } from './church-keys.ts';
 import { env } from './runtime.ts';
 import { emailDigest, sendChurchPortalEmail, churchPortalEmailEnabled } from './email-confirmation.ts';
+import { queryAuditByChurch } from './audit.ts';
 
 const DAY = 86400000;
 const clean = (v: unknown) => typeof v === 'string' && v.trim().length > 0 && !/^(unknown|other|tbd|n\/?a|pending|see website|to be determined)$/i.test(v.trim());
@@ -23,11 +24,34 @@ export function duplicateCandidates(rows: any[]) {
   }
   return [...groups.values()].filter(g => g.length > 1).map(g => g.map(c => c.id));
 }
+/** Shows enough of the listed inbox for a church to recognize it, without publishing the full address. */
+export function maskEmail(email: string) {
+  const [user, domain] = email.split('@');
+  return user && domain ? `${user[0]}•••@${domain}` : '';
+}
+// Sources where anyone could set the listing email without review (before email edits were always held).
+const UNREVIEWED_EMAIL_SOURCES = new Set(['suggestion', 'partner_suggestion', 'community_add', 'church_portal']);
+const unreviewed = (source: unknown) => typeof source === 'string' && (UNREVIEWED_EMAIL_SOURCES.has(source) || source.startsWith('lookup:'));
+/** False when the current listing email was set by an unreviewed visitor, partner or Lookup edit, or came
+ *  with an unreviewed community add. Such an inbox must not receive sign-in links or claim the listing. */
+export async function listedEmailTrusted(ch: any): Promise<boolean> {
+  const rows = await queryAuditByChurch(ch.id, 200);
+  const emailRow = rows.find(r => r.action === 'field_updated' && r.field === 'email');
+  if (emailRow) return !unreviewed(emailRow.source);
+  if (String(ch.id).startsWith('community-')) {
+    const added = rows.find(r => r.action === 'church_added');
+    return !!added && !unreviewed(added.source);
+  }
+  return true;
+}
 async function find(id: string) {
   const region = regionFromChurchId(id);
   const rows = region ? await getChurches(region) : [];
   return Array.isArray(rows) ? rows.find((c: any) => c.id === id) : null;
 }
+const listedEmail = (ch: any) => String(ch.email || '').trim().toLowerCase();
+const validEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const listedInbox = (ch: any) => { const email = listedEmail(ch); return validEmail(email) ? { hasEmail: true, emailHint: maskEmail(email) } : { hasEmail: false }; };
 const publicChurch = (ch: any) => ({ id: ch.id, name: ch.name, city: ch.city, state: ch.state, country: ch.country || 'US', denomination: ch.denomination, lat: ch.lat, lng: ch.lng, shortId: ch.shortId, serviceTimes: ch.serviceTimes || '', phone: ch.phone || '', email: ch.email || '', website: ch.website || '' });
 export function registerChurchPortalRoutes(app: Hono, p: string, deps: { pending(entry: any, church: any): number; rateLimit(c: any): Promise<boolean>; submit(id: string, field: string, value: string, actor: string): Promise<any> }) {
   app.use(`${p}/church-portal/*`, async (c, next) => { c.header('Cache-Control', 'no-store'); c.header('Referrer-Policy', 'no-referrer'); await next(); });
@@ -39,7 +63,7 @@ export function registerChurchPortalRoutes(app: Hono, p: string, deps: { pending
   });
   app.get(`${p}/church-portal/listing/:id`, async c => {
     const ch = await find(c.req.param('id')); if (!ch) return c.json({ error: 'Listing not found.' }, 404);
-    return c.json({ church: { id: ch.id, name: ch.name, country: ch.country || 'US', state: ch.state, city: ch.city, shortId: ch.shortId, denomination: ch.denomination, serviceTimes: ch.serviceTimes, website: ch.website, lat: ch.lat, lng: ch.lng } });
+    return c.json({ church: { id: ch.id, name: ch.name, country: ch.country || 'US', state: ch.state, city: ch.city, shortId: ch.shortId, denomination: ch.denomination, serviceTimes: ch.serviceTimes, website: ch.website, lat: ch.lat, lng: ch.lng, ...listedInbox(ch) } });
   });
   app.post(`${p}/church-portal/request`, async c => {
     if (!churchPortalEmailEnabled()) return c.json({ error: 'Church sign-in is not available yet. Please use Suggest an edit on the map.' }, 503);
@@ -47,9 +71,10 @@ export function registerChurchPortalRoutes(app: Hono, p: string, deps: { pending
     const body = await c.req.json().catch(() => null);
     if (typeof body?.churchId !== 'string' || body.churchId.length > 160) return c.json({ error: 'Choose a church listing.' }, 400);
     const ch = await find(body.churchId); if (!ch) return c.json({ error: 'Listing not found.' }, 404);
-    const email = String(ch.email || '').trim().toLowerCase();
+    const email = listedEmail(ch);
     // Never send an ownership link to a visitor-provided email address.
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (validEmail(email) && !(await listedEmailTrusted(ch))) return c.json({ error: 'This listing’s contact email hasn’t been reviewed yet, so we can’t send a sign-in link to it. Please try again after review, or suggest a contact correction from the map.' }, 409);
+    if (validEmail(email)) {
       const cooldown = `church-login-cooldown:${ch.id}`;
       if (Date.now() - Number(await kv.get(cooldown) || 0) >= 15 * 60000) {
         const token = crypto.randomUUID() + crypto.randomUUID(); const hash = await emailDigest(token);
@@ -76,6 +101,7 @@ export function registerChurchPortalRoutes(app: Hono, p: string, deps: { pending
     }
     if (body.action === 'logout') { await kv.del(key); return c.json({ message: 'Signed out. This link can no longer be used.' }); }
     if (body.action === 'claim') {
+      if (!(await listedEmailTrusted(ch))) return c.json({ error: 'This listing’s contact email is waiting for review, so it can’t be claimed yet.' }, 409);
       await kv.set(`church-claim:${ch.id}`, { emailHash: login.emailHash, at: Date.now() });
       return c.json({ message: 'Listing claimed through the church’s listed inbox.' });
     }
