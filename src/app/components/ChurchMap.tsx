@@ -17,7 +17,11 @@ import type { SummaryStats } from "./SummaryPanel";
 import { FilterPanel } from "./FilterPanel";
 import { MapLegend } from "./MapLegend";
 import { MapControls } from "./MapControls";
-import { MapLibreCanvas, type MapLibreHandle } from "./MapLibreCanvas";
+import { MapLibreCanvas, type MapLibreHandle, type MapPress } from "./MapLibreCanvas";
+import { AddHerePopover, PlacementBanner, type PressAddress } from "./AddFromMap";
+import { reverseGeocode } from "./api";
+import type { TypedChurchFields } from "./AddChurchForm";
+import { findLikelyDuplicates } from "../../../shared/church-match";
 import {
   fetchRegions,
   loadChurches,
@@ -894,6 +898,92 @@ export function ChurchMap({
   const [addFormPrefill, setAddFormPrefill] = useState<{ name: string; city: string } | null>(null);
   // Values typed into the add form before choosing an existing church; they prefill its correction form.
   const [editPrefill, setEditPrefill] = useState<{ churchId: string; fields: Partial<Record<string, string>> } | null>(null);
+
+  // ── Add a church from the map: placement mode, the dropped pin, and the form opened at it ──
+  const [placementMode, setPlacementMode] = useState(false);
+  const [mapPress, setMapPress] = useState<MapPress | null>(null);
+  const [pressAddress, setPressAddress] = useState<PressAddress>(null);
+  const [addDraft, setAddDraft] = useState<TypedChurchFields | null>(null);
+  const [addAtPin, setAddAtPin] = useState<{ region: string; lat: number; lng: number; address: string; city: string; name: string } | null>(null);
+  const regionNameFor = useCallback((abbrev: string) =>
+    (isIntl ? intlRegions.find((r) => r.abbrev === abbrev)?.name : d.states.find((s) => s.abbrev === abbrev)?.name) ?? null,
+  [isIntl, intlRegions, d.states]);
+  const regionChurchesFor = useCallback((abbrev: string): Church[] =>
+    isIntl ? (abbrev === routeStateAbbrev ? intlChurches : []) : (abbrev === d.focusedState ? d.churches : []),
+  [isIntl, routeStateAbbrev, intlChurches, d.focusedState, d.churches]);
+  const cancelAddFromMap = useCallback(() => { setPlacementMode(false); setMapPress(null); setPressAddress(null); }, []);
+  const handleEmptyMapPress = useCallback((press: MapPress) => {
+    if (!press.region || !regionNameFor(press.region)) return;
+    setPlacementMode(false);
+    setMapPress(press);
+  }, [regionNameFor]);
+  const handlePinMove = useCallback((press: MapPress) => {
+    setMapPress((prev) => prev ? { ...press, region: press.region ?? prev.region, nearbyPlaces: prev.nearbyPlaces } : prev);
+  }, []);
+  const startPickOnMap = useCallback((typed: TypedChurchFields | null, region: string | null) => {
+    setAddDraft(typed);
+    d.setShowAddChurchFromSummary(false);
+    d.setAddChurchForState(null);
+    setAddAtPin(null);
+    setAddFormPrefill(null);
+    // From the national view, open the state first so there is something to click on.
+    if (region && !isIntl && d.focusedState !== region) navigateToState(region);
+    setPlacementMode(true);
+  }, [d, isIntl, navigateToState]);
+  useEffect(() => {
+    if (!mapPress) return;
+    const controller = new AbortController();
+    setPressAddress("loading");
+    const t = setTimeout(() => {
+      reverseGeocode(mapPress.lat, mapPress.lng, controller.signal)
+        .then((r) => { if (!controller.signal.aborted) setPressAddress(r); })
+        .catch(() => { if (!controller.signal.aborted) setPressAddress(null); });
+    }, 300);
+    return () => { clearTimeout(t); controller.abort(); };
+  }, [mapPress?.lat, mapPress?.lng]);
+  useEffect(() => {
+    if (!placementMode && !mapPress) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") cancelAddFromMap(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [placementMode, mapPress, cancelAddFromMap]);
+  const nearbyAtPress = useMemo(() => {
+    if (!mapPress?.region) return [];
+    return findLikelyDuplicates({ lat: mapPress.lat, lng: mapPress.lng }, regionChurchesFor(mapPress.region), { sameSpotM: 150, limit: 3 })
+      .map((m) => ({ ...m.church, distanceM: m.distanceM }));
+  }, [mapPress?.lat, mapPress?.lng, mapPress?.region, regionChurchesFor]);
+  const addFromMapOverlay = (
+    <>
+      {placementMode && <PlacementBanner onCancel={cancelAddFromMap} />}
+      {mapPress && mapPress.region && (
+        <AddHerePopover
+          press={mapPress}
+          address={pressAddress}
+          regionName={regionNameFor(mapPress.region) ?? mapPress.region}
+          nearbyChurches={nearbyAtPress}
+          onCancel={cancelAddFromMap}
+          onOpenChurch={(church) => {
+            const st = mapPress.region!;
+            cancelAddFromMap();
+            if (!isIntl) d.setSelectedChurch(church);
+            navigateToChurchWithContext(st, getChurchUrlSegment(church, st, countryCode));
+          }}
+          onAdd={(placeName) => {
+            const addr = pressAddress && pressAddress !== "loading" ? pressAddress : null;
+            setAddAtPin({
+              region: mapPress.region!,
+              lat: mapPress.lat,
+              lng: mapPress.lng,
+              address: addr?.address || addDraft?.street || "",
+              city: addr?.city || addDraft?.cityName || "",
+              name: placeName || addDraft?.name || "",
+            });
+            setMapPress(null);
+          }}
+        />
+      )}
+    </>
+  );
   useEffect(() => {
     if (!addChurchPrefill || !routeStateAbbrev) return;
     const ready = isIntl
@@ -947,6 +1037,13 @@ export function ChurchMap({
       <MapArea
         d={d}
         onAddChurchPrefill={(name) => setAddFormPrefill(name ? { name, city: "" } : null)}
+        addFromMap={{
+          placementMode,
+          placementPin: mapPress ? { lng: mapPress.lng, lat: mapPress.lat } : null,
+          onEmptyMapPress: handleEmptyMapPress,
+          onPlacementPinMove: handlePinMove,
+          overlay: addFromMapOverlay,
+        }}
         selectedChurch={selectedChurch}
         onChurchDotClick={handleChurchDotClick}
         onViewChurch={onViewChurch}
@@ -1095,6 +1192,7 @@ export function ChurchMap({
           }
           initialName={addFormPrefill?.name}
           initialCity={addFormPrefill?.city}
+          onPickOnMap={(typed) => startPickOnMap(typed, (isIntl ? routeStateAbbrev : d.focusedState) ?? null)}
           onClose={() => { d.setShowAddChurchFromSummary(false); d.setAddChurchForState(null); setAddFormPrefill(null); }}
           churches={isIntl ? intlChurches : d.churches}
           onSelectChurch={(church, typed) => {
@@ -1121,6 +1219,7 @@ export function ChurchMap({
           stateAbbrev={d.addChurchForState}
           stateName={d.states.find((s) => s.abbrev === d.addChurchForState)?.name ?? d.addChurchForState}
           initialName={addFormPrefill?.name}
+          onPickOnMap={(typed) => startPickOnMap(typed, d.addChurchForState)}
           onClose={() => { d.setShowAddChurchFromSummary(false); d.setAddChurchForState(null); setAddFormPrefill(null); }}
           churches={[]}
           onSelectChurch={(church, typed) => {
@@ -1136,6 +1235,35 @@ export function ChurchMap({
           onChurchAdded={(state, shortId) => {
             d.setAddChurchForState(null);
             navigateToChurchWithContext(state, shortId);
+          }}
+        />
+      )}
+
+      {addAtPin && (
+        <AddChurchForm
+          key={`add-church-pin-${addAtPin.lat}-${addAtPin.lng}`}
+          stateAbbrev={addAtPin.region}
+          stateName={regionNameFor(addAtPin.region) ?? addAtPin.region}
+          initialName={addAtPin.name}
+          initialLocation={{ lat: addAtPin.lat, lng: addAtPin.lng, address: addAtPin.address, city: addAtPin.city }}
+          initialFields={addDraft}
+          churches={regionChurchesFor(addAtPin.region)}
+          onPickOnMap={(typed) => startPickOnMap(typed, addAtPin.region)}
+          onClose={() => { setAddAtPin(null); setAddDraft(null); }}
+          onSelectChurch={(church, typed) => {
+            const st = addAtPin.region;
+            setAddAtPin(null);
+            setAddDraft(null);
+            setEditPrefill(typed ? { churchId: church.id, fields: typed } : null);
+            if (!isIntl) d.setSelectedChurch(church);
+            navigateToChurchWithContext(st, getChurchUrlSegment(church, st, countryCode));
+            setTimeout(() => localDispatch({ type: "SET", key: "forceEditForm", value: true }), 50);
+          }}
+          onChurchAdded={(state, shortId) => {
+            setAddAtPin(null);
+            setAddDraft(null);
+            if (isIntl) navigateToChurchWithContext(state, shortId);
+            else d.refetchCurrentStateChurches().then(() => navigateToChurchWithContext(state, shortId));
           }}
         />
       )}
@@ -1389,7 +1517,16 @@ function MapArea({
   churchTooltipCountyName,
   onPreloadChurch,
   onAddChurchPrefill,
+  addFromMap,
 }: {
+  /** "Add a church here": placement mode, the pin and its popover. */
+  addFromMap: {
+    placementMode: boolean;
+    placementPin: { lng: number; lat: number } | null;
+    onEmptyMapPress: (press: MapPress) => void;
+    onPlacementPinMove: (press: MapPress) => void;
+    overlay: ReactNode;
+  };
   /** Remembers a name typed into search, for the add form it opens. */
   onAddChurchPrefill: (name: string | null) => void;
   d: ReturnType<typeof useChurchMapData>;
@@ -1900,7 +2037,12 @@ function MapArea({
           } else if (routeStateAbbrev || d.focusedState) navigateToCountry(countryCode);
           else navigateToWorld();
         }}
+        onEmptyMapPress={addFromMap.onEmptyMapPress}
+        placementMode={addFromMap.placementMode}
+        placementPin={addFromMap.placementPin}
+        onPlacementPinMove={addFromMap.onPlacementPinMove}
       />
+      {addFromMap.overlay}
 
       {/* Tooltips */}
       {!d.focusedState && !routeStateAbbrev && !(d.previewChurch ?? d.hoveredChurch) && (d.hoveredState || (d.previewStatePinned && d.previewState)) && (() => {

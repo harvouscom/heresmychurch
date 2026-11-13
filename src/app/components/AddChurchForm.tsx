@@ -97,6 +97,7 @@ export function findSimilarChurches(
 
 /** Values typed into the add form, in the shape the correction form expects. */
 export type TypedChurchFields = Partial<Record<string, string>>;
+const listFrom = (v?: string) => new Set((v || "").split(",").map((x) => x.trim()).filter(Boolean));
 
 interface AddChurchFormProps {
   stateAbbrev: string;
@@ -110,6 +111,10 @@ interface AddChurchFormProps {
   /** Prefill from a deep link (/add?name=&city=). */
   initialName?: string;
   initialCity?: string;
+  /** A spot picked on the map. Its coordinates place the church; address and city are prefilled. */
+  initialLocation?: { lat: number; lng: number; address?: string; city?: string } | null;
+  /** Details typed before "Pick on map", restored when the form reopens at the pin. */
+  initialFields?: TypedChurchFields | null;
   /** Shows "Pick on map": closes the form to drop a pin, carrying what was typed. */
   onPickOnMap?: (typed: TypedChurchFields) => void;
 }
@@ -123,6 +128,8 @@ export function AddChurchForm({
   onChurchAdded,
   initialName = "",
   initialCity = "",
+  initialLocation = null,
+  initialFields = null,
   onPickOnMap,
 }: AddChurchFormProps) {
   const fieldId = useId();
@@ -132,26 +139,27 @@ export function AddChurchForm({
   useEffect(() => {
     if (error) errorRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [error]);
-  const [showExtended, setShowExtended] = useState(false);
+  const [showExtended, setShowExtended] = useState(() => !!initialFields && Object.entries(initialFields).some(([k, v]) => k !== "name" && k !== "address" && !!v));
   const [similarMatches, setSimilarMatches] = useState<SimilarChurch[]>([]);
   const [showSimilarWarning, setShowSimilarWarning] = useState(false);
   const [geocodedCoords, setGeocodedCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   // Core form fields (lat/lng come from geocoding the address)
   const [name, setName] = useState(initialName);
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState(initialCity);
-  const [denomination, setDenomination] = useState("");
-  const [attendance, setAttendance] = useState("");
-  const [website, setWebsite] = useState("");
+  const [address, setAddress] = useState(initialLocation?.address ?? "");
+  const [city, setCity] = useState(initialLocation?.city || initialCity);
+  const pinned = initialLocation ? { lat: initialLocation.lat, lng: initialLocation.lng } : null;
+  const [denomination, setDenomination] = useState(initialFields?.denomination ?? "");
+  const [attendance, setAttendance] = useState(initialFields?.attendance ?? "");
+  const [website, setWebsite] = useState(initialFields?.website ?? "");
 
   // Extended form fields
-  const [serviceTimes, setServiceTimes] = useState("");
-  const [selectedLanguages, setSelectedLanguages] = useState<Set<string>>(new Set());
-  const [selectedMinistries, setSelectedMinistries] = useState<Set<string>>(new Set());
-  const [pastorName, setPastorName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
+  const [serviceTimes, setServiceTimes] = useState(initialFields?.serviceTimes ?? "");
+  const [selectedLanguages, setSelectedLanguages] = useState<Set<string>>(() => listFrom(initialFields?.languages));
+  const [selectedMinistries, setSelectedMinistries] = useState<Set<string>>(() => listFrom(initialFields?.ministries));
+  const [pastorName, setPastorName] = useState(initialFields?.pastorName ?? "");
+  const [phone, setPhone] = useState(initialFields?.phone ?? "");
+  const [email, setEmail] = useState(initialFields?.email ?? "");
 
   const submitToApi = async (parsedLat: number, parsedLng: number, confirmAdd = false) => {
     setSubmitting(true);
@@ -250,7 +258,7 @@ export function AddChurchForm({
       setError("Church name is required");
       return;
     }
-    if (!address.trim() || !city.trim()) {
+    if (!pinned && (!address.trim() || !city.trim())) {
       setError("Street address and city are required so we can place the church on the map.");
       return;
     }
@@ -260,7 +268,8 @@ export function AddChurchForm({
     let parsedLat: number;
     let parsedLng: number;
     try {
-      const coords = await geocodeAddress(address.trim(), city.trim(), stateAbbrev);
+      // A pin dropped on the map is where the church is; the address is only a label then.
+      const coords = pinned ?? await geocodeAddress(address.trim(), city.trim(), stateAbbrev);
       if (!coords) {
         setSubmitting(false);
         setError("We couldn't find that address. Please check the street address and city, and try again.");
@@ -557,10 +566,10 @@ export function AddChurchForm({
                   {onPickOnMap && (
                     <button
                       type="button"
-                      onClick={() => onPickOnMap({ ...typedFields(), name: name.trim() })}
+                      onClick={() => onPickOnMap({ ...typedFields(), name: name.trim(), street: address.trim(), cityName: city.trim() })}
                       className="inline-flex items-center gap-1.5 rounded-full border border-purple-400/30 px-2.5 py-1 text-caption font-medium text-purple-200 hover:bg-purple-500/15 transition-colors"
                     >
-                      <MapPin size={12} /> Pick on map
+                      <MapPin size={12} /> {pinned ? "Move pin" : "Pick on map"}
                     </button>
                   )}
                 </div>
@@ -588,9 +597,15 @@ export function AddChurchForm({
                     />
                   </div>
                 </div>
-                <p className="text-caption text-white/50">
-                  We place the church on the map from its address{onPickOnMap ? ", or you can drop a pin" : ""}.
-                </p>
+                {pinned ? (
+                  <p className="inline-flex items-center gap-1.5 rounded-full bg-purple-500/15 px-2.5 py-1 text-caption text-purple-100">
+                    <MapPin size={11} /> Pinned on the map. The pin sets the location; the address is shown to visitors.
+                  </p>
+                ) : (
+                  <p className="text-caption text-white/50">
+                    We place the church on the map from its address{onPickOnMap ? ", or you can drop a pin" : ""}.
+                  </p>
+                )}
               </section>
 
               {/* 3. Optional details */}
@@ -699,7 +714,7 @@ export function AddChurchForm({
               <div className="space-y-2.5">
                 <button
                   onClick={handleSubmit}
-                  disabled={submitting || !name.trim() || !address.trim() || !city.trim()}
+                  disabled={submitting || !name.trim() || (!pinned && (!address.trim() || !city.trim()))}
                   className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-30 flex items-center justify-center gap-2"
                   style={{ background: "linear-gradient(135deg, #6B21A8 0%, #A855F7 100%)" }}
                 >

@@ -365,3 +365,27 @@ describe("legacy pending proposals",()=>{
   expect(queue.pendingSuggestions.some((s:any)=>s.churchId===id&&s.field==="website")).toBe(true);
  });
 });
+
+describe("reverse geocoding a map point", () => {
+  afterAll(() => { vi.unstubAllGlobals(); });
+  it("returns the address, caches it, and validates input", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", async (url: string | URL | Request) => {
+      if (!String(url).includes("nominatim.openstreetmap.org/reverse")) throw new Error(`unexpected fetch ${String(url)}`);
+      calls++;
+      return new Response(JSON.stringify({ address: { house_number: "203", road: "East 10th Street", city: "Austin", postcode: "78701", "ISO3166-2-lvl4": "US-TX", country_code: "us" } }));
+    });
+    await kv.del("geocode-reverse:last");
+    expect((await call("/geocode/reverse?lat=abc&lng=1")).status).toBe(400);
+    const res = await call("/geocode/reverse?lat=30.27152&lng=-97.74023");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ address: "203 East 10th Street", city: "Austin", postcode: "78701", state: "TX", country: "US" });
+    // Same spot (rounded to 4 decimals) comes from the cache, even within the 1-second throttle.
+    expect((await call("/geocode/reverse?lat=30.27148&lng=-97.74021")).status).toBe(200);
+    expect(calls).toBe(1);
+    // A different spot within the same second waits for Nominatim's rate limit.
+    const busy = await call("/geocode/reverse?lat=30.3&lng=-97.7");
+    expect(busy.status).toBe(503);
+    expect(busy.headers.get("Retry-After")).toBe("1");
+  });
+});

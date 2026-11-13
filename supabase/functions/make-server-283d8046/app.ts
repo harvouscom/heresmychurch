@@ -2538,6 +2538,36 @@ async function geocodeAddress(street:string,city:string,stateAbbrev:string):Prom
   }catch{return null;}
 }
 
+const REVERSE_GEOCODE_TTL_MS=30*24*60*60*1000;
+type ReverseGeocode={address:string;city:string;postcode:string;state:string;country:string};
+/** Address for a point (Nominatim /reverse), cached by coordinates rounded to ~11 m. Nominatim allows
+ *  one request a second, so callers share a global throttle; a busy second returns null (try again). */
+async function reverseGeocode(lat:number,lng:number):Promise<ReverseGeocode|null|"busy">{
+  const key=`geocode-reverse:${lat.toFixed(4)},${lng.toFixed(4)}`;
+  const cached=await kv.get(key);
+  if(cached&&Date.now()-(cached.at||0)<REVERSE_GEOCODE_TTL_MS)return cached.value??null;
+  const last=Number(await kv.get("geocode-reverse:last")||0);
+  if(Date.now()-last<1000)return "busy";
+  await kv.set("geocode-reverse:last",Date.now());
+  try{
+    const url=`https://nominatim.openstreetmap.org/reverse?${new URLSearchParams({lat:String(lat),lon:String(lng),format:"jsonv2",addressdetails:"1",zoom:"18"})}`;
+    const res=await fetch(url,{headers:{"User-Agent":"HereIsMyChurch/1.0 (church map app)"}});
+    if(!res.ok)return null;
+    const d=await res.json() as any;
+    const a=d?.address||{};
+    const street=[a.house_number,a.road||a.pedestrian||a.footway].filter(Boolean).join(" ");
+    const value:ReverseGeocode|null=d&&!d.error?{
+      address:street,
+      city:a.city||a.town||a.village||a.hamlet||a.suburb||a.county||"",
+      postcode:a.postcode||"",
+      state:String(a["ISO3166-2-lvl4"]||"").split("-")[1]||"",
+      country:String(a.country_code||"").toUpperCase(),
+    }:null;
+    await kv.set(key,{at:Date.now(),value});
+    return value;
+  }catch{return null;}
+}
+
 const SIMILAR_MAX=5;
 /** Near-duplicate candidates for add-church, using the same matcher as the add form (shared/church-match.ts). */
 function findSimilarChurchesServer(name:string,lat:number,lng:number,city:string,state:string,churches:any[],address=""):any[]{
@@ -3203,6 +3233,19 @@ async function addChurchCore(b:AddChurchInput,actor:{actorKey:string;auditSource
   if(Array.isArray(mainChurches)){mainChurches.push(churchForMain);await setChurches(st,mainChurches);await writeIdx(st,mainChurches);await invalidateReviewStatsCache();await queueChurch(churchForMain);void recordChurchAudit({church_id:id,church_name:nc.name,church_city_state:[nc.city,st].filter(Boolean).join(", "),state:st,action:"church_added",new_value:{name:nc.name,city:nc.city,state:st,denomination:nc.denomination},source:actor.auditSource},{hashIp:ip});}
   return{kind:"added",church:nc,mainChurch:churchForMain};
 }
+
+/** Address for a point picked on the map ("add a church here"). */
+app.get(`${P}/geocode/reverse`,async(c)=>{
+  const lat=Number(c.req.query("lat")),lng=Number(c.req.query("lng"));
+  if(!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180)return c.json({error:"Valid lat and lng required"},400);
+  try{
+    if(!(await ipRateLimit("reverse-geocode",cip(c),30,3600000)))return c.json({error:"Too many lookups. Please try again later."},429);
+    const r=await reverseGeocode(lat,lng);
+    if(r==="busy"){c.header("Retry-After","1");return c.json({error:"busy"},503);}
+    if(!r)return c.json({error:"No address found here"},404);
+    return c.json(r);
+  }catch{return c.json({error:"Address lookup is unavailable right now."},503);}
+});
 
 app.post(`${P}/churches/add`,async(c)=>{
   try{
