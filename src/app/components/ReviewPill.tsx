@@ -1,4 +1,5 @@
 import { CheckCheck, ChevronDown, Check, X, MapPin, Globe, ChevronRight, Pencil, ListEnd } from "lucide-react";
+import { AutomationPanel } from "./AutomationPanel";
 import { ReviewEvidenceCheck } from "./ReviewEvidenceCheck";
 import { ThreeDotLoader } from "./ThreeDotLoader";
 import { AnimatePresence, motion } from "motion/react";
@@ -64,7 +65,7 @@ export function ReviewPill({
 }) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"needing" | "inReview">("needing");
+  const [activeTab, setActiveTab] = useState<"needing" | "inReview" | "automation">("needing");
   const [editing, setEditing] = useState<{ churchId: string; field: string; value: string } | null>(null);
   const [optimisticRemoved, setOptimisticRemoved] = useState<Set<string>>(new Set());
 
@@ -194,6 +195,17 @@ export function ReviewPill({
                 >
                   In review ({inReviewCount})
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("automation")}
+                  className={`flex-1 py-2 px-3 rounded-full text-caption font-medium transition-colors ${
+                    activeTab === "automation"
+                      ? "bg-purple-500/30 text-white"
+                      : "text-white/60 hover:text-white/80 hover:bg-white/5"
+                  }`}
+                >
+                  Automatic
+                </button>
               </div>
 
             <div className="px-5 py-4 space-y-4">
@@ -201,6 +213,7 @@ export function ReviewPill({
                 <p className="text-red-400 text-caption">{error}</p>
               )}
 
+              {activeTab === "automation" && <AutomationPanel moderatorKey={moderatorKey} />}
               {activeTab === "needing" && needingCount === 0 && (
                 <p className="text-white/50 text-sm text-center py-4">No items needing review</p>
               )}
@@ -274,6 +287,12 @@ export function ReviewPill({
                             {s.currentValue && (
                               <p className="text-white/60 text-sm">
                                 Current: <span className="text-white/60">{s.currentValue}</span>
+                              </p>
+                            )}
+                            {s.engine && s.engine.outcome !== "wait" && (
+                              <p className="text-caption text-purple-200/80">
+                                Engine{s.engine.mode === "shadow" ? " (shadow)" : ""}: {s.engine.outcome === "escalate" ? "needs a person" : s.engine.outcome}
+                                {s.engine.reasons[0] ? ` — ${s.engine.reasons[0].detail}` : ""}
                               </p>
                             )}
                             <ReviewEvidenceCheck key={`${s.churchId}:${s.field}:${s.proposedValue}`} moderatorKey={moderatorKey} churchId={s.churchId} field={s.field} proposedValue={s.proposedValue} />
@@ -544,6 +563,12 @@ export function ReviewPill({
                             {s.currentValue && (
                               <p className="text-white/60 text-sm">
                                 Current: <span className="text-white/60">{s.currentValue}</span>
+                              </p>
+                            )}
+                            {s.engine && s.engine.outcome !== "wait" && (
+                              <p className="text-caption text-purple-200/80">
+                                Engine{s.engine.mode === "shadow" ? " (shadow)" : ""}: {s.engine.outcome === "escalate" ? "needs a person" : s.engine.outcome}
+                                {s.engine.reasons[0] ? ` — ${s.engine.reasons[0].detail}` : ""}
                               </p>
                             )}
                             <ReviewEvidenceCheck key={`${s.churchId}:${s.field}:${s.proposedValue}`} moderatorKey={moderatorKey} churchId={s.churchId} field={s.field} proposedValue={s.proposedValue} />

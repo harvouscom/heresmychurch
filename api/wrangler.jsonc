@@ -27,6 +27,9 @@
     "STORE_BACKEND": "d1",
     // Any non-empty value pauses writes while reads keep working.
     "AI_REVIEW_ENABLED": "1",
+    // Automated moderation starts in shadow mode: decisions are recorded, people still decide.
+    // Reviewers switch fields to enforce at /moderate/config; "off" stops it entirely.
+    "AUTO_MODERATION": "shadow",
     "MAINTENANCE_READONLY": ""
   },
   "ai": { "binding": "AI" },
