@@ -1277,6 +1277,8 @@ export interface PendingSuggestionItem {
   churchState?: string;
   churchShortId?: string;
   /** True when this suggestion was already applied; currentValue is the stored value before that apply */
+  /** The automated engine's latest decision on this item (shadow or enforce). */
+  engine?: { id: number; outcome: string; mode: string; reasons: { signal: string; detail: string }[]; applied: boolean; at: number; undone: boolean } | null;
   alreadyApplied?: boolean;
   relocatedTo?: string;
   listingStatus?: string;
@@ -1615,3 +1617,19 @@ export async function fetchReviewEvidence(moderatorKey: string, churchId: string
   if (!res.ok) throw new Error(body.error || "Evidence could not be checked.");
   return body.evidence;
 }
+
+// ── Automated moderation (reviewers only) ──
+export type ModerationConfig = { mode: "off" | "shadow" | "enforce"; enforceFields: string[]; reason?: string; updatedAt?: number };
+export type ModerationDecision = { id: number; church_id: string; field: string; proposed_value: string | null; previous_value: string | null; outcome: string; mode: string; reasons: { signal: string; detail: string }[]; applied: number; undone_by: number | null; created_at: number };
+async function modJson(path: string, moderatorKey: string, body?: unknown) {
+  const res = await fetchWithTimeout(modUrl(path, moderatorKey), body === undefined
+    ? { headers: moderatorKey === REVIEWER_SESSION ? {} : { ...headers, "x-moderator-key": moderatorKey }, timeoutMs: 20000 }
+    : { method: "POST", headers: moderatorKey === REVIEWER_SESSION ? { "Content-Type": "application/json" } : { ...headers, "x-moderator-key": moderatorKey }, body: JSON.stringify(body), timeoutMs: 20000 });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+export const fetchModerationConfig = (k: string): Promise<{ config: ModerationConfig; fields: string[]; agreement: Record<string, { agree: number; disagree: number }> }> => modJson("/moderate/config", k);
+export const saveModerationConfig = (k: string, config: Partial<ModerationConfig>) => modJson("/moderate/config", k, config);
+export const fetchModerationDecisions = (k: string): Promise<{ decisions: ModerationDecision[] }> => modJson("/moderate/decisions", k, undefined);
+export const undoModerationDecision = (k: string, id: number) => modJson(`/moderate/decisions/${id}/undo`, k, {});

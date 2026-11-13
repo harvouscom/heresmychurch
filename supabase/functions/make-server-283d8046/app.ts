@@ -6,6 +6,8 @@ import { cors } from "npm:hono/cors";
 import * as kv from "./kv.ts";
 import { recordChurchAudit, queryAuditRecent, queryAuditByState, queryAuditByChurch, queryAuditChangesSince, type AuditActorOpts } from "./audit.ts";
 import { getD1 } from "./bindings.ts";
+import { registerModeration, enqueueModeration, runModerationItem, recordPersonDecision, getModerationConfig, setModerationConfig, undoDecision, latestDecisions, recentDecisions, shadowAgreement, ALL_FIELDS as MODERATION_FIELDS } from "./moderation/runner.ts";
+import { spamReason } from "./moderation/policy.ts";
 import { claimState, decorateClaims, ownerActorKey, ownerReviewMs, queueOwnerDigest, transferClaim, writeClaim } from "./church-ownership.ts";
 import { verifyAccessJwt, sameSecret, type Reviewer } from "./reviewer-auth.ts";
 import { POP } from "./state-populations.ts";
@@ -2894,6 +2896,7 @@ async function submitSuggestionCore(opts:{churchId:string;field:string;value:unk
   if(ownerFirst){submission.reviewBy="church";submission.ownerDeadline=now+ownerReviewMs();}
   if(previous)Object.assign(previous,submission);else ex.submissions.push(submission);
   await kv.set(k,ex);const con=consensus(ex.submissions);
+  if(isSensitive||held)await queueForModeration(churchId,field);
   if(isSensitive||held){
     const shown=held?consensus(ex.submissions,{held:"only"}):con;
     if(ownerFirst)await queueOwnerDigest(churchId);
@@ -2914,6 +2917,8 @@ async function submitSuggestionCore(opts:{churchId:string;field:string;value:unk
     return{ok:true,field,consensus:shown[field],allFields:publicCon,applied:false,needsModeration:true};
   }
   if(applied.updated&&applied.state&&applied.churches&&applied.corrections){void runDeferredIndexAndStats(applied.state,applied.churches,churchId,applied.corrections).catch(()=>{});}
+  // A first value went live; the engine still checks it for spam afterwards.
+  if(applied.updated&&field!=="attendance")await queueForModeration(churchId,field,true);
   // Attendance is averaged across votes, so it never equals one submission.
   return{ok:true,field,consensus:con[field],allFields:con,applied:applied.updated&&(field==="attendance"||con[field]?.value===storeValue)};
 }
@@ -3002,8 +3007,8 @@ registerChurchPortalRoutes(app, P, {
   rateLimit: c => ipRateLimit("church-portal", cip(c), 30, 3600000),
   applyOwner: (churchId, fields, emailHash) => applyOwnerEdits(churchId, fields, emailHash),
   pendingForOwner: (ch) => pendingForOwner(ch),
-  accept: (churchId, field, value, reviewVersion, emailHash) => approveSuggestion({ churchId, field, value, reviewVersion, actor: { type: "church", id: ownerActorKey(emailHash) }, source: "church_owner" }),
-  decline: (churchId, field, value, reviewVersion, emailHash) => rejectSuggestion({ churchId, field, value, reviewVersion, actor: { type: "church", id: ownerActorKey(emailHash) }, source: "church_owner" }),
+  accept: async (churchId, field, value, reviewVersion, emailHash) => { const r = await approveSuggestion({ churchId, field, value, reviewVersion, actor: { type: "church", id: ownerActorKey(emailHash) }, source: "church_owner" }); if (r.ok && usesD1()) await recordPersonDecision(churchId, field, "church_accept", value, ownerActorKey(emailHash)); return r; },
+  decline: async (churchId, field, value, reviewVersion, emailHash) => { const r = await rejectSuggestion({ churchId, field, value, reviewVersion, actor: { type: "church", id: ownerActorKey(emailHash) }, source: "church_owner" }); if (r.ok && usesD1()) await recordPersonDecision(churchId, field, "church_decline", value, ownerActorKey(emailHash)); return r; },
   setOwnerEmail: (churchId, email, emailHash) => setOwnerEmail(churchId, email, emailHash),
 });
 
@@ -3278,6 +3283,8 @@ async function addChurchCore(b:AddChurchInput,actor:{actorKey:string;auditSource
   const languages=cleanStringList(b.languages),ministries=cleanStringList(b.ministries);
   if(!name||typeof name!=="string"||name.trim().length<2)return err("Name required");
   if(name.trim().length>120)return err("Name is too long (max 120 characters)");
+  const nameSpam=spamReason("name",name)||spamReason("pastorName",pastorName);
+  if(nameSpam)return err(`This listing can't be added: ${nameSpam}`);
   const st=String(state||"").toUpperCase().trim();
   if(!isValidRegion(st)||!gS(st))return err("Invalid region");
   const cc=regionCountry(st);
@@ -3676,7 +3683,17 @@ const moderatePendingHandler=async(c:any)=>{
     const myHash=modKey?modKeyHash(modKey):"";
     const inReviewSuggestions=globalSugs.map((s:any)=>({churchId:s.churchId,field:s.field,byMe:s.modKeyHash===myHash}));
     const inReviewChurches=globalChs.map((c:any)=>({churchId:c.churchId,byMe:c.modKeyHash===myHash}));
-    return c.json({pendingSuggestions,pendingChurches,pendingReverifyChurches,inReviewSuggestions,inReviewChurches});
+    // The engine's latest decision is shown next to each item; in enforce mode, items it is still working on stay out of the queue.
+    let queueSuggestions=pendingSuggestions;
+    if(usesD1()&&pendingSuggestions.length){
+      const config=await getModerationConfig();
+      const ids=pendingSuggestions.map((s:any)=>`${s.churchId}|${s.field}`);
+      const decisions=await latestDecisions(ids);
+      const stages=new Map<string,string>();
+      for(let i=0;i<ids.length;i+=50){const chunk=ids.slice(i,i+50);const{results}=await getD1().prepare(`SELECT id,stage FROM moderation_items WHERE id IN (${chunk.map((_,j)=>`?${j+1}`).join(",")})`).bind(...chunk).all();for(const r of (results||[]) as any[])stages.set(r.id,r.stage);}
+      queueSuggestions=pendingSuggestions.map((s:any)=>({...s,engine:decisions.get(`${s.churchId}|${s.field}`)??null})).filter((s:any)=>!(config.mode==="enforce"&&config.enforceFields.includes(s.field)&&["engine","wait","posthoc"].includes(stages.get(`${s.churchId}|${s.field}`)||"")));
+    }
+    return c.json({pendingSuggestions:queueSuggestions,pendingChurches,pendingReverifyChurches,inReviewSuggestions,inReviewChurches});
   }catch(e){return serverError(c,e);}
 };
 // Index-only maintenance avoids rebuilding every public file merely to seed moderation metadata.
@@ -3965,7 +3982,9 @@ const moderateApproveSuggestionHandler=async(c:any)=>{
     if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
     const{churchId,field,value,reviewVersion}=await c.req.json();
     if(!churchId||!field)return c.json({error:"Missing churchId or field"},400);
-    return reviewResponse(c,await approveSuggestion({churchId,field,value,reviewVersion,actor:moderatorActor(c)}));
+    const r=await approveSuggestion({churchId,field,value,reviewVersion,actor:moderatorActor(c)});
+    if(r.ok&&usesD1())await recordPersonDecision(churchId,field,"human_approve",r.value,getModKey(c).startsWith("reviewer:")?getModKey(c):"moderator-key");
+    return reviewResponse(c,r);
   }catch(e){return serverError(c,e);}
 };
 app.post(`${P}/moderate/approve/suggestion`,moderateApproveSuggestionHandler);
@@ -3978,6 +3997,7 @@ const moderateRejectSuggestionHandler=async(c:any)=>{
     if(!churchId||!field)return c.json({error:"Missing churchId or field"},400);
     const r=await rejectSuggestion({churchId,field,value:typeof value==="string"?value:undefined,reviewVersion,actor:moderatorActor(c)});
     if(!r.ok)return c.json({error:r.error},r.status);
+    if(usesD1())await recordPersonDecision(churchId,field,"human_reject",r.value,getModKey(c).startsWith("reviewer:")?getModKey(c):"moderator-key");
     return c.json({success:true,churchId,field,rejected:true});
   }catch(e){return serverError(c,e);}
 };
@@ -4048,6 +4068,45 @@ const moderateRejectChurchHandler=async(c:any)=>{
   }catch(e){return serverError(c,e);}
 };
 app.post(`${P}/moderate/reject/church`,moderateRejectChurchHandler);
+
+// ── Automated moderation ──
+/** Queues a proposal for the engine and, on the Worker, starts on it right after the response. */
+async function queueForModeration(churchId:string,field:string,posthoc=false){
+  if(!usesD1()||env("AUTO_MODERATION")==="off")return;
+  try{await enqueueModeration(churchId,field,{posthoc});waitUntil(runModerationItem(`${churchId}|${field}`).then(()=>{}).catch(e=>console.error("moderation run failed",e instanceof Error?e.message:"unknown")));}
+  catch(e){console.error("moderation enqueue failed",e instanceof Error?e.message:"unknown");}
+}
+registerModeration({
+  findChurch:async(id)=>{const st=regionFromChurchId(id);if(!st||!isValidRegion(st))return null;const rows=await getChurches(st);if(!Array.isArray(rows))return null;const church=rows.find((c:any)=>c.id===id);return church?{church,rows,st}:null;},
+  approve:(o)=>approveSuggestion(o),
+  reject:(o)=>rejectSuggestion(o),
+  restore:(churchId,actor)=>restoreListing({churchId,actor,source:"auto_moderation_undo"}),
+  setField:async(churchId,field,value,actor)=>{const applied=await applyApprovedCorrections(churchId,{[field]:{approved:true,value,votes:0,needed:THR}},{source:"auto_moderation",actor});if(applied.updated&&applied.state&&applied.churches&&applied.corrections)void runDeferredIndexAndStats(applied.state,applied.churches,churchId,applied.corrections).catch(()=>{});return applied.updated;},
+  isSensitive:(f)=>SENSITIVE_FIELDS.includes(f),
+  normalizePhone:(v,st)=>normalizePhone(v,regionCountry(st)),
+  parseAddress:(v,st)=>parseAddressValue(v,st),
+  geocode:(a)=>a?geocodeAddress(a.address,a.city,a.state):Promise.resolve(null),
+  inferDenomination:(name)=>matchD(name),
+  inHumanReview:async(churchId,field)=>{const g=await kv.get(IN_REVIEW_GLOBAL_KEY);return Array.isArray(g?.suggestions)&&g.suggestions.some((s:any)=>s.churchId===churchId&&s.field===field);},
+});
+const moderationRoute=(path:string,method:"get"|"post",handler:(c:any)=>Promise<Response>)=>{
+  const wrapped=async(c:any)=>{try{if(!checkModKey(c))return c.json({error:"Unauthorized"},401);if(!usesD1())return c.json({error:"Moderation needs D1."},503);return await handler(c);}catch(e){return serverError(c,e);}};
+  app[method](`${P}${path}`,wrapped);app[method](path,wrapped);
+};
+moderationRoute("/moderate/decisions","get",async c=>{const limit=Number(c.req.query("limit"))||100;return c.json({decisions:await recentDecisions(limit,c.req.query("stage")||undefined)});});
+moderationRoute("/moderate/decisions/:id/undo","post",async c=>{const r=await undoDecision(Number(c.req.param("id")),getModKey(c).startsWith("reviewer:")?getModKey(c):"moderator-key");return r.ok?c.json({success:true}):c.json({error:r.error},r.status);});
+moderationRoute("/moderate/config","get",async c=>c.json({config:await getModerationConfig(),fields:MODERATION_FIELDS,agreement:await shadowAgreement()}));
+moderationRoute("/moderate/config","post",async c=>{const b=await c.req.json().catch(()=>({}));return c.json({config:await setModerationConfig({mode:b.mode,enforceFields:b.enforceFields,reason:typeof b.reason==="string"?b.reason.slice(0,200):undefined})});});
+// Queues every proposal already waiting, so the engine evaluates the existing backlog.
+moderationRoute("/moderate/engine/backfill","post",async c=>{
+  let n=0;
+  for(const entry of await kv.getByPrefix("suggestions:")){
+    if(!entry?.churchId||!Array.isArray(entry.submissions))continue;
+    const fields=new Set<string>(entry.submissions.filter((s:any)=>s.needsModeration===true||SENSITIVE_FIELDS.includes(s.field)).map((s:any)=>s.field));
+    for(const f of fields){await enqueueModeration(entry.churchId,f);n++;}
+  }
+  return c.json({queued:n});
+});
 
 // Re-geocode churches that had address corrections applied via the suggestions system.
 // Scans all suggestion KV entries for those with previousValues.address (meaning an address
