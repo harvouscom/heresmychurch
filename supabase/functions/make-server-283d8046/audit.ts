@@ -29,7 +29,7 @@ export type AuditEntry = {
   old_value?: unknown;
   new_value?: unknown;
   source: string;
-  actor_type?: "ip" | "moderator" | "system";
+  actor_type?: "ip" | "moderator" | "system" | "church";
   actor_id?: string | null;
 };
 
@@ -39,11 +39,14 @@ function hashForAudit(s: string): string {
   return Math.abs(h).toString(36);
 }
 
+/** hashIp / hashModKey keep their old meaning; actor records a system or church decision. */
+export type AuditActorOpts = { hashIp?: string; hashModKey?: string; actor?: { type: "moderator" | "system" | "church"; id: string } };
+
 /** Insert an audit row. Registered with waitUntil so fire-and-forget callers
  *  (`void recordChurchAudit(...)`) aren't cut off after the response on Workers. */
 export function recordChurchAudit(
   entry: AuditEntry,
-  opts?: { hashIp?: string; hashModKey?: string }
+  opts?: AuditActorOpts
 ): Promise<void> {
   const p = recordChurchAuditNow(entry, opts);
   waitUntil(p);
@@ -52,7 +55,7 @@ export function recordChurchAudit(
 
 async function recordChurchAuditNow(
   entry: AuditEntry,
-  opts?: { hashIp?: string; hashModKey?: string }
+  opts?: AuditActorOpts
 ): Promise<void> {
   try {
     // A row written after the final copy of a cutover would be lost.
@@ -68,6 +71,11 @@ async function recordChurchAuditNow(
     } else if (opts?.hashModKey) {
       actor_type = "moderator";
       actor_id = hashForAudit(opts.hashModKey);
+    }
+    else if (opts?.actor) {
+      actor_type = opts.actor.type;
+      // System decisions keep a readable id (decision:123); church and moderator identities are hashed.
+      actor_id = opts.actor.type === "system" ? opts.actor.id.slice(0, 64) : hashForAudit(opts.actor.id);
     }
     const row = {
       church_id: entry.church_id ?? null,
