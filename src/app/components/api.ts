@@ -767,6 +767,9 @@ export interface SimilarChurchMatch {
   denomination?: string;
   lat?: number;
   lng?: number;
+  /** Why it looks like the same church, e.g. "Same name", "120 m away". */
+  reasons?: string[];
+  distanceM?: number;
 }
 
 export interface AddChurchResponse {

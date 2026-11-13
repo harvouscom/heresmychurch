@@ -25,6 +25,7 @@ import {
 
 import { INTL_REGIONS } from "./regions-intl.ts";
 import { normalizeServiceTimes, parseServiceTimesToSlots, type ServiceTimeSlot } from "./service-times.ts";
+import { findLikelyDuplicates } from "../../../shared/church-match.ts";
 import { ALWAYS_HELD_FIELDS, LOOKUP_MODERATED_FIELDS, isHeldVote, liveVotes, normalizePhone, isBlankContributionValue } from "./contrib-rules.ts";
 import {
   regionCountry,
@@ -2572,42 +2573,13 @@ async function geocodeAddress(street:string,city:string,stateAbbrev:string):Prom
 }
 
 const SIMILAR_MAX=5;
-const SIMILAR_MAX_KM=1.6;
-function haversineKm(lat1:number,lng1:number,lat2:number,lng2:number):number{
-  const R=6371;
-  const dLat=((lat2-lat1)*Math.PI)/180,dLng=((lng2-lng1)*Math.PI)/180;
-  const a=Math.sin(dLat/2)**2+Math.cos((lat1*Math.PI)/180)*Math.cos((lat2*Math.PI)/180)*Math.sin(dLng/2)**2;
-  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-}
-function nameSimilarityAdd(inputName:string,churchName:string):number{
-  const input=inputName.trim().toLowerCase(),church=(churchName||"").trim().toLowerCase();
-  if(!input)return 0;
-  if(church.includes(input))return 1;
-  const toks=input.replace(/[^a-z0-9\s]/g," ").split(/\s+/).filter(Boolean);
-  const set=new Set(church.replace(/[^a-z0-9\s]/g," ").split(/\s+/).filter(Boolean));
-  if(!toks.length)return 0;
-  return toks.filter(t=>set.has(t)).length/toks.length;
-}
-/** Near-duplicate candidates for add-church (mirrors AddChurchForm.findSimilarChurches). */
-function findSimilarChurchesServer(name:string,lat:number,lng:number,city:string,state:string,churches:any[]):any[]{
-  const nameNorm=name.trim().toLowerCase();
-  if(!nameNorm||!Array.isArray(churches)||!churches.length)return [];
-  const cityNorm=city.trim().toLowerCase();
+/** Near-duplicate candidates for add-church, using the same matcher as the add form (shared/church-match.ts). */
+function findSimilarChurchesServer(name:string,lat:number,lng:number,city:string,state:string,churches:any[],address=""):any[]{
+  if(!name.trim()||!Array.isArray(churches)||!churches.length)return [];
   const st=state.toUpperCase();
-  return churches
-    .filter((c:any)=>(c.state||"").toUpperCase()===st)
-    .map((church:any)=>{
-      const nScore=nameSimilarityAdd(name,church.name||"");
-      const distKm=church.lat!=null&&church.lng!=null?haversineKm(lat,lng,church.lat,church.lng):Infinity;
-      const near=distKm<=SIMILAR_MAX_KM;
-      const cityMatch=!!cityNorm&&!!church.city&&String(church.city).trim().toLowerCase()===cityNorm;
-      const relevance=nScore*(1+(cityMatch?0.3:0)+(near?0.3:0));
-      return{church,nScore,near,cityMatch,relevance};
-    })
-    .filter(({nScore,near,cityMatch})=>nScore>=0.4&&(near||cityMatch))
-    .sort((a,b)=>b.relevance-a.relevance)
-    .slice(0,SIMILAR_MAX)
-    .map(({church})=>church);
+  const pool=churches.filter((c:any)=>(c.state||"").toUpperCase()===st);
+  return findLikelyDuplicates({name,lat,lng,city,address},pool,{limit:SIMILAR_MAX})
+    .map(m=>({...m.church,matchReasons:m.reasons,...(m.distanceM!=null?{distanceM:m.distanceM}:{})}));
 }
 /** A supplied region code, if it's a real region in the same country as the church's; otherwise the church's own. */
 function resolveRegionCode(code:unknown,churchRegion:string):string{
@@ -3288,7 +3260,7 @@ async function addChurchCore(b:AddChurchInput,actor:{actorKey:string;auditSource
   if(rawDenom&&isBlockedDenomination(rawDenom))return err("Denomination not supported");
   const mainChurches=(await getChurches(st))||[];
   if(!confirmAdd){
-    const similar=findSimilarChurchesServer(name.trim(),pLat,pLng,String(ci||""),st,Array.isArray(mainChurches)?mainChurches:[]);
+    const similar=findSimilarChurchesServer(name.trim(),pLat,pLng,String(ci||""),st,Array.isArray(mainChurches)?mainChurches:[],addr);
     if(similar.length){
       return{kind:"similar",similar:similar.map((ch:any)=>({
         id:ch.id,
@@ -3301,6 +3273,8 @@ async function addChurchCore(b:AddChurchInput,actor:{actorKey:string;auditSource
         denomination:ch.denomination||"",
         lat:ch.lat,
         lng:ch.lng,
+        ...(ch.matchReasons?{reasons:ch.matchReasons}:{}),
+        ...(ch.distanceM!=null?{distanceM:ch.distanceM}:{}),
       }))};
     }
   }

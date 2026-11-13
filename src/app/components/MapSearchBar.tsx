@@ -33,9 +33,9 @@ interface MapSearchBarProps {
   onPreloadChurch?: (church: Church) => void;
   collapsed?: boolean;
   onExpand?: () => void;
-  onAddChurch?: () => void;
+  onAddChurch?: (typedName?: string) => void;
   /** When in national view with state filter, open Add Church for this state. */
-  onAddChurchForState?: (stateAbbrev: string) => void;
+  onAddChurchForState?: (stateAbbrev: string, typedName?: string) => void;
   detectedState?: string | null;
   zoom?: number;
   center?: [number, number];
@@ -578,9 +578,10 @@ export function MapSearchBar({
                   {onAddChurch && localResultsRaw.length === 0 && (
                     <button
                       onClick={() => {
+                        const typed = query.trim();
                         setQuery("");
                         setIsFocused(false);
-                        onAddChurch();
+                        onAddChurch(typed);
                       }}
                       className="mt-2.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-purple-500/20 text-purple-300 text-xs font-medium hover:bg-purple-500/30 transition-colors"
                     >
@@ -636,9 +637,10 @@ export function MapSearchBar({
                     <button
                       type="button"
                       onClick={() => {
+                        const typed = query.trim();
                         setQuery("");
                         setIsFocused(false);
-                        onAddChurch();
+                        onAddChurch(typed);
                       }}
                       className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-xs text-purple-300 hover:bg-white/5 border-t border-white/5 transition-colors"
                     >
@@ -699,10 +701,11 @@ export function MapSearchBar({
                   {hasPopulated && (onAddChurch || (stateFilter && onAddChurchForState)) && (
                     <button
                       onClick={() => {
+                        const typed = query.trim();
                         setQuery("");
                         setIsFocused(false);
-                        if (stateFilter && onAddChurchForState) onAddChurchForState(stateFilter);
-                        else onAddChurch?.();
+                        if (stateFilter && onAddChurchForState) onAddChurchForState(stateFilter, typed);
+                        else onAddChurch?.(typed);
                       }}
                       className="mt-2.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-purple-500/20 text-purple-300 text-xs font-medium hover:bg-purple-500/30 transition-colors"
                     >
@@ -765,10 +768,11 @@ export function MapSearchBar({
                     <button
                       type="button"
                       onClick={() => {
+                        const typed = query.trim();
                         setQuery("");
                         setIsFocused(false);
-                        if (stateFilter && onAddChurchForState) onAddChurchForState(stateFilter);
-                        else onAddChurch?.();
+                        if (stateFilter && onAddChurchForState) onAddChurchForState(stateFilter, typed);
+                        else onAddChurch?.(typed);
                       }}
                       className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-xs text-purple-300 hover:bg-white/5 border-t border-white/5 transition-colors"
                     >

@@ -892,6 +892,8 @@ export function ChurchMap({
 
   // Lookup deep links. Wait for the region's churches so the add form's duplicate check has them.
   const [addFormPrefill, setAddFormPrefill] = useState<{ name: string; city: string } | null>(null);
+  // Values typed into the add form before choosing an existing church; they prefill its correction form.
+  const [editPrefill, setEditPrefill] = useState<{ churchId: string; fields: Partial<Record<string, string>> } | null>(null);
   useEffect(() => {
     if (!addChurchPrefill || !routeStateAbbrev) return;
     const ready = isIntl
@@ -944,6 +946,7 @@ export function ChurchMap({
       {/* Map area — pure render, no hooks */}
       <MapArea
         d={d}
+        onAddChurchPrefill={(name) => setAddFormPrefill(name ? { name, city: "" } : null)}
         selectedChurch={selectedChurch}
         onChurchDotClick={handleChurchDotClick}
         onViewChurch={onViewChurch}
@@ -1094,9 +1097,10 @@ export function ChurchMap({
           initialCity={addFormPrefill?.city}
           onClose={() => { d.setShowAddChurchFromSummary(false); d.setAddChurchForState(null); setAddFormPrefill(null); }}
           churches={isIntl ? intlChurches : d.churches}
-          onSelectChurch={(church) => {
+          onSelectChurch={(church, typed) => {
             d.setShowAddChurchFromSummary(false);
             d.setAddChurchForState(null);
+            setEditPrefill(typed ? { churchId: church.id, fields: typed } : null);
             const st = isIntl ? routeStateAbbrev : d.focusedState;
             if (!isIntl) d.setSelectedChurch(church);
             if (st) navigateToChurchWithContext(st, getChurchUrlSegment(church, st, countryCode));
@@ -1116,10 +1120,12 @@ export function ChurchMap({
           key="add-church-state"
           stateAbbrev={d.addChurchForState}
           stateName={d.states.find((s) => s.abbrev === d.addChurchForState)?.name ?? d.addChurchForState}
-          onClose={() => { d.setShowAddChurchFromSummary(false); d.setAddChurchForState(null); }}
+          initialName={addFormPrefill?.name}
+          onClose={() => { d.setShowAddChurchFromSummary(false); d.setAddChurchForState(null); setAddFormPrefill(null); }}
           churches={[]}
-          onSelectChurch={(church) => {
+          onSelectChurch={(church, typed) => {
             const stateAbbrev = d.addChurchForState;
+            setEditPrefill(typed ? { churchId: church.id, fields: typed } : null);
             d.setAddChurchForState(null);
             if (stateAbbrev) {
               d.setSelectedChurch(church);
@@ -1251,6 +1257,7 @@ export function ChurchMap({
                   if (state) navigateToChurchWithContext(state, shortId);
                 }}
                 externalShowEditForm={local.forceEditForm}
+                editPrefill={editPrefill && selectedChurch && editPrefill.churchId === selectedChurch.id ? editPrefill.fields : undefined}
                 onEditFormOpenChange={setDetailEditOpen}
                 onEditFormClosed={() => localDispatch({ type: "SET", key: "forceEditForm", value: false })}
                 onChurchUpdated={isIntl ? undefined : d.refetchCurrentStateChurches}
@@ -1381,7 +1388,10 @@ function MapArea({
   onToggleVerified,
   churchTooltipCountyName,
   onPreloadChurch,
+  onAddChurchPrefill,
 }: {
+  /** Remembers a name typed into search, for the add form it opens. */
+  onAddChurchPrefill: (name: string | null) => void;
   d: ReturnType<typeof useChurchMapData>;
   selectedChurch: Church | null;
   onChurchDotClick: (church: Church, e?: { clientX: number; clientY: number }) => void;
@@ -2137,10 +2147,10 @@ function MapArea({
               onPreloadChurch={onPreloadChurch}
               collapsed={searchCollapsed}
               onExpand={() => { d.setSearchCollapsed(false); d.setShowFilterPanel(false); d.setShowLegend(false); }}
-              onAddChurch={(d.focusedState || routeStateAbbrev) ? () => { d.setShowAddChurchFromSummary(true); } : undefined}
+              onAddChurch={(d.focusedState || routeStateAbbrev) ? (typedName?: string) => { onAddChurchPrefill(typedName || null); d.setShowAddChurchFromSummary(true); } : undefined}
               onAddChurchForState={
                 !isWorld && !(d.focusedState || routeStateAbbrev)
-                  ? (stateAbbrev) => d.setAddChurchForState(stateAbbrev)
+                  ? (stateAbbrev, typedName) => { onAddChurchPrefill(typedName || null); d.setAddChurchForState(stateAbbrev); }
                   : undefined
               }
               detectedState={isWorld ? null : d.detectedState}
