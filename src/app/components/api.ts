@@ -217,6 +217,8 @@ export interface SubmitSuggestionResponse {
   error?: string;
   applied?: boolean;
   needsModeration?: boolean;
+  /** "church" when the church has claimed this listing and reviews suggestions first. */
+  reviewBy?: "church";
 }
 
 // Last-known-good copies of rarely-changing read endpoints. When the backend is
@@ -724,6 +726,7 @@ export async function submitSuggestion(
     error: data.error,
     applied: data.applied,
     needsModeration: data.needsModeration,
+    reviewBy: data.reviewBy === "church" ? "church" : undefined,
   };
 }
 

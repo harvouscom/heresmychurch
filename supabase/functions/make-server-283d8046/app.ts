@@ -6,6 +6,7 @@ import { cors } from "npm:hono/cors";
 import * as kv from "./kv.ts";
 import { recordChurchAudit, queryAuditRecent, queryAuditByState, queryAuditByChurch, queryAuditChangesSince, type AuditActorOpts } from "./audit.ts";
 import { getD1 } from "./bindings.ts";
+import { claimState, decorateClaims, ownerActorKey, ownerReviewMs, queueOwnerDigest, transferClaim, writeClaim } from "./church-ownership.ts";
 import { verifyAccessJwt, sameSecret, type Reviewer } from "./reviewer-auth.ts";
 import { POP } from "./state-populations.ts";
 import {
@@ -1338,13 +1339,14 @@ app.post(`${P}/v1/churches/:id/suggestions`,async(c)=>{
       auditSource:"partner_suggestion",
     });
     if(!result.ok)return c.json({error:result.error},result.status);
-    const payload:{success:true;field:string;applied:boolean;needsModeration?:boolean;consensus?:ReturnType<typeof leanConsensusField>}={
+    const payload:{success:true;field:string;applied:boolean;needsModeration?:boolean;reviewBy?:"church";consensus?:ReturnType<typeof leanConsensusField>}={
       success:true,
       field:result.field,
       applied:result.applied,
       consensus:leanConsensusField(result.consensus),
     };
     if(result.needsModeration)payload.needsModeration=true;
+    if(result.reviewBy)payload.reviewBy=result.reviewBy;
     return c.json(payload);
   }catch(e){return serverError(c,e);}
 });
@@ -1551,6 +1553,8 @@ type PartnerChurchProfile=LeanChurchRef&{
   homeCampus:{id:string;name:string;state:string;shortId:string}|null;
   campuses:{id:string;name:string;shortId:string}[];
   listingStatus:string|null;
+  /** True when the church verified its listed inbox; its edits go live and others' wait for it. */
+  claimed:boolean;
 };
 
 const strOrNull=(v:unknown):string|null=>typeof v==="string"&&v.trim()?v.trim():null;
@@ -1590,6 +1594,7 @@ async function buildPartnerChurchProfile(found:{church:any;st:string;list:any[]}
     homeCampus,
     campuses,
     listingStatus:strOrNull(church.listingStatus),
+    claimed:(await claimState(church)).claimed,
   };
 }
 
@@ -1960,7 +1965,8 @@ async function buildRegionPayload(st:string):Promise<any|null>{
   if(!cal||!cal.medians){cal=await computeCalibrationForState(st,ch);try{await kv.set(`calibration:${st}`,cal);}catch(_){}}
   if(Object.keys(cal.medians||{}).length)applyCalibrationToChurches(withShort,cal);
   await resolveHomeCampus(withShort,st);
-  return{churches:withShort,state,count:withShort.length,fromCache:true};
+  const decorated=await decorateClaims(withShort);
+  return{churches:decorated,state,count:decorated.length,fromCache:true};
 }
 
 app.get(`${P}/churches/:state`,async(c)=>{
@@ -2785,7 +2791,7 @@ async function runDeferredIndexAndStatsNow(st:string,churches:any[],churchId:str
   await kv.set(statsKey,stats);
 }
 
-type SuggestionSubmitOk={ok:true;field:string;applied:boolean;needsModeration?:boolean;consensus:any;allFields:Record<string,any>};
+type SuggestionSubmitOk={ok:true;field:string;applied:boolean;needsModeration?:boolean;reviewBy?:"church";consensus:any;allFields:Record<string,any>};
 type SuggestionSubmitErr={ok:false;status:number;error:string};
 type SuggestionSubmitResult=SuggestionSubmitOk|SuggestionSubmitErr;
 
@@ -2875,18 +2881,23 @@ async function submitSuggestionCore(opts:{churchId:string;field:string;value:unk
   const now=Date.now();
   if(!(await ipRateLimit("church-suggestion",churchId,20,3600000)))return{ok:false,status:429,error:"This church has received many edits. Please try again later."};
   const isSensitive=SENSITIVE_FIELDS.includes(field);
+  // On a claimed church, everyone but the verified inbox suggests; the church decides first.
+  // Private attendance stays with the existing estimate rules.
+  const ownerFirst=field!=="attendance"&&(await claimState(church)).claimed;
   // Replacements and disputes remain proposals; a new vote cannot overwrite the accepted vote.
-  const held=!isSensitive&&(ALWAYS_HELD_FIELDS.has(field)||!isBlankContributionValue(church[field])||
+  const held=ownerFirst||!isSensitive&&(ALWAYS_HELD_FIELDS.has(field)||!isBlankContributionValue(church[field])||
     ex.submissions.some((s:any)=>s.field===field&&s.value!==storeValue)||
     LOOKUP_MODERATED_FIELDS.has(field)&&auditSource.startsWith("lookup:"));
   const previous=ex.submissions.find((s:any)=>s.ip===actorKey&&s.field===field&&
     s.timestamp>now-86400000&&isHeldVote(s)===held);
-  const submission={ip:actorKey,field,value:storeValue,timestamp:now,source:auditSource,needsModeration:held};
+  const submission:any={ip:actorKey,field,value:storeValue,timestamp:now,source:auditSource,needsModeration:held};
+  if(ownerFirst){submission.reviewBy="church";submission.ownerDeadline=now+ownerReviewMs();}
   if(previous)Object.assign(previous,submission);else ex.submissions.push(submission);
   await kv.set(k,ex);const con=consensus(ex.submissions);
   if(isSensitive||held){
     const shown=held?consensus(ex.submissions,{held:"only"}):con;
-    return{ok:true,field,consensus:shown[field],allFields:con,applied:false,needsModeration:true};
+    if(ownerFirst)await queueOwnerDigest(churchId);
+    return{ok:true,field,consensus:shown[field],allFields:con,applied:false,needsModeration:true,...(ownerFirst?{reviewBy:"church" as const}:{})};
   }
   // Apply only this field, using the listing snapshot from before the vote was stored.
   // An unrelated submission must never sweep another field's old votes onto a newer listing.
@@ -2913,11 +2924,11 @@ function leanConsensusField(d:any):{votes:number;needed:number;approved:boolean;
 }
 
 function getSuggestionsStatusForChurch(subs:any[]):{
-  fields:Record<string,{votes:number;needed:number;approved:boolean;value:string|null;needsModeration:boolean}>;
+  fields:Record<string,{votes:number;needed:number;approved:boolean;value:string|null;needsModeration:boolean;reviewBy?:"church"}>;
 }{
   const con=consensus(subs);
   const held=consensus(subs,{held:"only"});
-  const fields:Record<string,{votes:number;needed:number;approved:boolean;value:string|null;needsModeration:boolean}>={};
+  const fields:Record<string,{votes:number;needed:number;approved:boolean;value:string|null;needsModeration:boolean;reviewBy?:"church"}>={};
   for(const f of VF){
     const d=(held[f]?.votes>0?held[f]:con[f]) as any;
     if(!d||!(d.votes>0))continue;
@@ -2929,6 +2940,7 @@ function getSuggestionsStatusForChurch(subs:any[]):{
       approved:!!d.approved,
       value:d.value??null,
       needsModeration:sensitive,
+      ...(subs.some((s:any)=>s.field===f&&awaitingChurch(s))?{reviewBy:"church" as const}:{}),
     };
   }
   return{fields};
@@ -2988,8 +3000,66 @@ registerChurchPortalRoutes(app, P, {
     }).length;
   },
   rateLimit: c => ipRateLimit("church-portal", cip(c), 30, 3600000),
-  submit: (churchId, field, value, actorKey) => submitSuggestionCore({ churchId, field, value, actorKey, auditSource: "church_portal" }),
+  applyOwner: (churchId, fields, emailHash) => applyOwnerEdits(churchId, fields, emailHash),
+  pendingForOwner: (ch) => pendingForOwner(ch),
+  accept: (churchId, field, value, reviewVersion, emailHash) => approveSuggestion({ churchId, field, value, reviewVersion, actor: { type: "church", id: ownerActorKey(emailHash) }, source: "church_owner" }),
+  decline: (churchId, field, value, reviewVersion, emailHash) => rejectSuggestion({ churchId, field, value, reviewVersion, actor: { type: "church", id: ownerActorKey(emailHash) }, source: "church_owner" }),
+  setOwnerEmail: (churchId, email, emailHash) => setOwnerEmail(churchId, email, emailHash),
 });
+
+// Fields the verified church inbox can change directly from the portal. Email goes through
+// a confirmation sent to the new address (church-portal.ts); attendance is reported privately.
+const OWNER_FIELDS=["name","address","denomination","serviceTimes","phone","website","pastorName","languages","ministries"];
+/** Applies a claimed church's own edits in one write, then clears visitor proposals on those fields. */
+async function applyOwnerEdits(churchId:string,fields:Record<string,string>,emailHash:string):Promise<{applied:string[];errors:{field:string;error:string}[]}>{
+  const errors:{field:string;error:string}[]=[];const con:Record<string,any>={};
+  for(const[field,raw]of Object.entries(fields)){
+    if(!OWNER_FIELDS.includes(field)){errors.push({field,error:"This field can't be changed here."});continue;}
+    const prepared=prepareSuggestion(churchId,field,raw);
+    if(!prepared.ok){errors.push({field,error:prepared.error});continue;}
+    let value=prepared.storeValue;
+    if(field==="address"){
+      const st=regionFromChurchId(churchId)||"";
+      const parsed=parseAddressValue(value,st);
+      const geo=parsed?await geocodeAddress(parsed.address,parsed.city,parsed.state):null;
+      if(!parsed||!geo||!coordsInRegion(geo.lat,geo.lng,st)){errors.push({field,error:"We couldn't find that address. Check the street and city."});continue;}
+      parsed.lat=geo.lat;parsed.lng=geo.lng;value=JSON.stringify(parsed);
+    }
+    con[field]={approved:true,value,votes:0,needed:THR};
+  }
+  const names=Object.keys(con);
+  if(!names.length)return{applied:[],errors};
+  const applied=await applyApprovedCorrections(churchId,con,{source:"church_owner",actor:{type:"church",id:ownerActorKey(emailHash)}});
+  if(!applied.updated)return{applied:[],errors:[...errors,{field:"listing",error:"This listing is no longer available."}]};
+  await clearFieldProposals(churchId,names);
+  if(applied.state&&applied.churches&&applied.corrections)await runDeferredIndexAndStats(applied.state,applied.churches,churchId,applied.corrections);
+  return{applied:names,errors};
+}
+/** Applies a confirmed new contact email from the church itself and moves the claim to it. */
+async function setOwnerEmail(churchId:string,email:string,fromHash:string):Promise<boolean>{
+  const prepared=prepareSuggestion(churchId,"email",email);
+  if(!prepared.ok)return false;
+  const applied=await applyApprovedCorrections(churchId,{email:{approved:true,value:prepared.storeValue,votes:0,needed:THR}},{source:"church_owner",actor:{type:"church",id:ownerActorKey(fromHash)}});
+  if(!applied.updated)return false;
+  await writeClaim(churchId,await emailDigestOf(prepared.storeValue));
+  await clearFieldProposals(churchId,["email"]);
+  return true;
+}
+const emailDigestOf=async(email:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(email.trim().toLowerCase())))).map(b=>b.toString(16).padStart(2,"0")).join("");
+/** Proposals from others that are waiting for this claimed church, one row per field and value. */
+async function pendingForOwner(ch:any):Promise<{field:string;value:string;votes:number;submittedAt:number;deadline:number;current:unknown;reviewVersion:string}[]>{
+  const ex=await kv.get(`suggestions:${ch.id}`);
+  if(!ex||!Array.isArray(ex.submissions))return[];
+  const st=regionFromChurchId(ch.id);
+  const groups=new Map<string,any[]>();
+  for(const s of ex.submissions){if(!awaitingChurch(s))continue;const k=`${s.field}\u0000${s.value}`;groups.set(k,[...(groups.get(k)||[]),s]);}
+  const out=[];
+  for(const subs of groups.values()){
+    const{field,value}=subs[0];
+    out.push({field,value,votes:subs.length,submittedAt:Math.min(...subs.map((s:any)=>s.timestamp)),deadline:Math.max(...subs.map((s:any)=>s.ownerDeadline)),current:currentReviewValue(ch,field,st),reviewVersion:await proposalVersion(ex,field,currentReviewValue(ch,field,st))});
+  }
+  return out.sort((a,b)=>a.submittedAt-b.submittedAt);
+}
 
 registerEmailConfirmationRoutes(app, P, {
   rateLimit: c => ipRateLimit("email-confirmation", cip(c), 10, 3600000),
@@ -3017,7 +3087,7 @@ app.post(`${P}/suggestions`,async(c)=>{
     const result=await submitSuggestionCore({churchId,field,value,actorKey:ip,auditSource:"suggestion"});
     if(!result.ok)return c.json({error:result.error},result.status);
     if(result.needsModeration){
-      return c.json({success:true,field:result.field,consensus:result.consensus,allFields:result.allFields,applied:false,needsModeration:true});
+      return c.json({success:true,field:result.field,consensus:result.consensus,allFields:result.allFields,applied:false,needsModeration:true,...(result.reviewBy?{reviewBy:result.reviewBy}:{})});
     }
     return c.json({success:true,field:result.field,consensus:result.consensus,allFields:result.allFields,applied:result.applied});
   }catch(e){return serverError(c,e);}
@@ -3482,7 +3552,10 @@ function lookupClients(subs:any[],field:string):string[]{
 }
 
 /** Sensitive fields plus held replacements from every contribution source. */
-function reviewConsensus(subs:any[]):Array<[string,any]>{
+/** True while a proposal on a claimed church is still waiting for the church to answer. */
+const awaitingChurch=(s:any,now=Date.now())=>s?.reviewBy==="church"&&typeof s.ownerDeadline==="number"&&s.ownerDeadline>now;
+function reviewConsensus(allSubs:any[],now=Date.now()):Array<[string,any]>{
+  const subs=allSubs.filter((s:any)=>!awaitingChurch(s,now));
   const con=consensus(subs);
   const heldCon=consensus(subs,{held:"only"});
   return[
@@ -3729,6 +3802,7 @@ async function relocateListing(o:{churchId:string;st:string;addr:any;rows:any[];
   rows.push(newChurch);
   await setChurches(st,rows);
   await writeIdx(st,rows);
+  await transferClaim(churchId,newId);
   await updateRegionCount(st,rows.length);
   await invalidateReviewStatsCache();
   await queueChurch(newChurch);
@@ -6286,6 +6360,7 @@ function publishTargetsForKey(key:string,kind:"set"|"del"):string[]{
   if(m)return region(m[1]);
   if(key.startsWith("suggestions:"))return region(regionFromChurchId(key.slice("suggestions:".length)));
   if(key.startsWith("enrichment:google:"))return region(regionFromChurchId(key.slice("enrichment:google:".length)));
+  if(key.startsWith("church-claim:"))return region(regionFromChurchId(key.slice("church-claim:".length)));
   // Calibration is written by the region build itself on a cache miss; only a delete means it changed.
   if(kind==="del"&&key.startsWith("calibration:"))return region(key.slice("calibration:".length));
   return[];
@@ -6296,6 +6371,9 @@ kv.onKvWrite((keys,kind)=>{
   for(const k of keys){
     const m=k.match(/^churches:(?:([A-Z]{2}):)?([A-Z][A-Z0-9]+)$/);
     if(m)waitUntil(kv.set(`${LOOKUP_DIRTY_PREFIX}${m[2]}`,{cc:m[1]??regionCountry(m[2]),abbrev:m[2],at:Date.now()}).catch((e:unknown)=>console.error(`lookup dirty stamp ${m[2]} failed:`,e)));
+    // A claim changes the exported claimed flag, so Lookup re-syncs that region too.
+    const claimRegion=k.startsWith("church-claim:")?regionFromChurchId(k.slice("church-claim:".length)):null;
+    if(claimRegion)waitUntil(kv.set(`${LOOKUP_DIRTY_PREFIX}${claimRegion}`,{cc:regionCountry(claimRegion),abbrev:claimRegion,at:Date.now()}).catch(()=>{}));
   }
   if(!r2Enabled())return;
   for(const k of keys)for(const t of publishTargetsForKey(k,kind))schedulePublish(t);
@@ -6388,7 +6466,7 @@ app.post(`${P}/admin/publish-static`,async(c)=>{
 // ── Lookup (lookup.heresmychurch.com): moderated export, and writes under the site's review rules ──
 const LOOKUP_DIRTY_PREFIX="lookup:dirty:";
 /** What Lookup may read. An allowlist, so private fields added to church rows later can't leak. */
-const LOOKUP_EXPORT_FIELDS=["id","shortId","name","address","city","state","postcode","lat","lng","denomination","website","serviceTimes","languages","ministries","pastorName","phone","email","lastVerified","listingStatus","relocatedFrom","relocatedTo","homeCampusId"] as const;
+const LOOKUP_EXPORT_FIELDS=["id","shortId","name","address","city","state","postcode","lat","lng","denomination","website","serviceTimes","languages","ministries","pastorName","phone","email","lastVerified","listingStatus","relocatedFrom","relocatedTo","homeCampusId","claimed"] as const;
 /** Name, website, address and the reports wait for a moderator (SENSITIVE_FIELDS). Email and pastorName
  *  also wait when they come from Lookup (LOOKUP_MODERATED_FIELDS), since a host form can hold personal details. */
 const LOOKUP_CONTRIBUTABLE_FIELDS=new Set(["name","serviceTimes","denomination","languages","ministries","website","address","phone","email","pastorName","reportClosed","reportDuplicate","reportRelocated"]);
@@ -6450,7 +6528,7 @@ app.get(`${P}/internal/lookup/region/:cc/:abbrev`,async(c)=>{
     const cc=c.req.param("cc").toUpperCase(),abbrev=c.req.param("abbrev").toUpperCase();
     if(!isValidRegion(abbrev)||regionCountry(abbrev)!==cc)return c.json({error:"Unknown region"},404);
     const stored=await getChurches(abbrev,cc);
-    const rows=Array.isArray(stored)?addShortIdsUnique(stored,abbrev):[];
+    const rows=Array.isArray(stored)?await decorateClaims(addShortIdsUnique(stored,abbrev)):[];
     const churches=rows.map((ch:any)=>lookupExportChurch(ch,cc));
     return c.json({cc,abbrev,count:churches.length,churches});
   }catch(e){return serverError(c,e);}
@@ -6465,7 +6543,8 @@ app.get(`${P}/internal/lookup/church/:id`,async(c)=>{
     if(!st||!isValidRegion(st))return c.json({error:"Invalid church ID"},400);
     const found=await lookupStoredChurch(id);
     if(!found)return c.json({error:"Church not found"},404);
-    return c.json({church:lookupExportChurch(found.church,found.cc)});
+    const claim=await claimState(found.church);
+    return c.json({church:lookupExportChurch(claim.claimed?{...found.church,claimed:true}:found.church,found.cc)});
   }catch(e){return serverError(c,e);}
 });
 
@@ -6496,6 +6575,7 @@ app.post(`${P}/internal/lookup/suggestions`,async(c)=>{
     const result=await submitSuggestionCore({churchId:actor.churchId,field,value,actorKey:lookupVoterKey(actor.ipHash),auditSource:`lookup:${actor.client}`});
     if(!result.ok)return c.json({error:result.error},result.status as any);
     const out:Record<string,unknown>={success:true,field:result.field,applied:!!result.applied,needsModeration:!!result.needsModeration};
+    if(result.reviewBy)out.reviewBy=result.reviewBy;
     if(result.applied){const fresh=await lookupStoredChurch(actor.churchId);if(fresh)out.church=lookupExportChurch(fresh.church,fresh.cc);}
     return c.json(out);
   }catch(e){return serverError(c,e);}

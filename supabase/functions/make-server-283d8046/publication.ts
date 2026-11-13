@@ -13,6 +13,7 @@ export function targetsForWrite(key: string, kind: "set" | "del"): string[] {
   if(m)return region(m[1]);
   if(key.startsWith("suggestions:"))return region(regionFromChurchId(key.slice(12)));
   if(key.startsWith("enrichment:google:"))return region(regionFromChurchId(key.slice(18)));
+  if(key.startsWith("church-claim:"))return region(regionFromChurchId(key.slice(13)));
   if(kind==="del"&&key.startsWith("calibration:"))return region(key.slice(12));
   return[];
 }

@@ -162,3 +162,12 @@ export const churchPortalEmailEnabled = () => env("CHURCH_PORTAL_ENABLED") === "
 export async function sendChurchPortalEmail(to: string, name: string, token: string) {
   await send(to, `Manage ${name} on Here’s My Church`, `Claim and update your church listing through this private link:\n${site()}/for-churches#${new URLSearchParams({ token })}\n\nThis link expires in 24 hours. Anyone with it can submit updates to this listing. If you did not request it, you can ignore this email.`, "church-portal");
 }
+
+export async function sendChurchDigestEmail(to: string, name: string, token: string, count: number, days: number) {
+  const what = count === 1 ? "1 suggested update" : `${count} suggested updates`;
+  await send(to, `${what} for ${name} on Here’s My Church`, `Visitors suggested changes to ${name}'s listing. Because your church has claimed it, they wait for you first.\n\nReview and accept or decline them here:\n${site()}/for-churches#${new URLSearchParams({ token })}\n\nThis private link expires in 3 days. If you don't respond within ${days} days, our automated review decides instead. You can always change your listing from the same page.`, "church-digest");
+}
+
+export async function sendChurchEmailChangeEmail(to: string, name: string, token: string) {
+  await send(to, `Confirm the new contact email for ${name}`, `Someone signed in to ${name}'s listing on Here’s My Church asked to make this address its contact email. Sign-in links for the listing will come here after you confirm:\n${site()}/for-churches#${new URLSearchParams({ verify: token })}\n\nThis link expires in 3 days. If you weren't expecting it, ignore this email and nothing changes.`, "church-email-change");
+}

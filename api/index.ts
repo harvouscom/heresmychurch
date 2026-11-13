@@ -1,5 +1,5 @@
 import { cleanupPrivateAttendance } from "../supabase/functions/make-server-283d8046/attendance-calibration.ts";
-import { cleanupChurchPortalSessions } from "../supabase/functions/make-server-283d8046/church-portal.ts";
+import { cleanupChurchPortalSessions, runOwnerDigests } from "../supabase/functions/make-server-283d8046/church-portal.ts";
 import { dispatchConfirmationEmails, setConfirmationEmailBinding, type ConfirmationEmailBinding } from "../supabase/functions/make-server-283d8046/email-confirmation.ts";
 /**
  * Cloudflare Worker entry for the HMC API (api.heresmychurch.com).
@@ -92,6 +92,7 @@ export default {
     await dispatchPublications();
     await dispatchConfirmationEmails();
     await cleanupChurchPortalSessions();
+    await runOwnerDigests().catch((e)=>console.error("owner digests failed",e instanceof Error?e.message:"unknown"));
     await cleanupPrivateAttendance();
     if(new Date(controller.scheduledTime).getUTCMinutes()===0)await collectRetiredObjects();
     const health=await publicationHealth() as any;
