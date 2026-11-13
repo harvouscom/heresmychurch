@@ -14,5 +14,6 @@ jobs:
           node-version: 20
       - name: Republish states.json and churches/{REGION}.json to R2
         env:
+          ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
           MODERATOR_KEY: ${{ secrets.MODERATOR_KEY }}
         run: node scripts/publish-static.mjs

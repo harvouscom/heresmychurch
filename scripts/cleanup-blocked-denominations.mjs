@@ -16,7 +16,7 @@ const ANON_KEY =
   process.env.SUPABASE_ANON_KEY ??
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwdWZjaHd4b2ZzeXVpY3RmdWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5NzcxMTUsImV4cCI6MjA4ODU1MzExNX0.v11kHHpM1IsK6q81909CYkWgX5TdV8kJhCkNqSEs5QM";
 
-const MODERATOR_KEY = process.env.MODERATOR_KEY;
+const MODERATOR_KEY = (process.env.ADMIN_KEY || process.env.MODERATOR_KEY);
 
 const BASE_URL = (process.env.HMC_FUNCTIONS_BASE_URL || "https://api.heresmychurch.com").replace(/\/$/, "");
 const CLEANUP_PATH = "/admin/cleanup-blocked-denominations";
@@ -34,7 +34,7 @@ async function main() {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${ANON_KEY}`,
-      "x-moderator-key": MODERATOR_KEY,
+      "x-moderator-key": MODERATOR_KEY, "x-admin-key": MODERATOR_KEY,
     },
   });
 

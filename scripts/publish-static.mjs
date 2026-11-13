@@ -19,7 +19,7 @@ const DEFAULT_ANON_KEY =
 
 const apiBase = (process.env.HMC_FUNCTIONS_BASE_URL || DEFAULT_API_BASE).replace(/\/$/, "");
 const anonKey = process.env.HMC_SUPABASE_ANON_KEY || DEFAULT_ANON_KEY;
-const modKey = process.env.MODERATOR_KEY || "";
+const modKey = (process.env.ADMIN_KEY || process.env.MODERATOR_KEY) || "";
 const batch = process.env.HMC_PUBLISH_BATCH || "3";
 
 if (!modKey) {
@@ -35,7 +35,7 @@ for (;;) {
     headers: {
       Authorization: `Bearer ${anonKey}`,
       apikey: anonKey,
-      "x-moderator-key": modKey,
+      "x-moderator-key": modKey, "x-admin-key": modKey,
     },
     signal: AbortSignal.timeout(140_000),
   });

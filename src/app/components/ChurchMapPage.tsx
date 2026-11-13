@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from "react-router";
 import { useMemo, useCallback, useEffect } from "react";
 import { ChurchMap } from "./ChurchMap";
+import { REVIEWER_SESSION, reviewerSessionActive } from "./api";
 import { DEFAULT_COUNTRY_CODE, getRegion, isSupportedCountry, resolveRegionByAbbrev } from "../config/countries";
 import {
   churchMapPath,
@@ -174,7 +175,7 @@ export function ChurchMapPage() {
     const openReviewModalFromQuery = searchParams.get("review") === "true";
     const showVerifiedDots =
       searchParams.get("verified") === "true" || searchParams.get("verified") === "1";
-    const moderatorKey = searchParams.get("key") || null;
+    const moderatorKey = searchParams.get("key") || (reviewerSessionActive() ? REVIEWER_SESSION : null);
     // Deep links from Lookup: ?add=1&name=&city= on a region, ?suggest=1 on a church.
     const addChurchPrefill = viewLevel === "region" && !churchShortId && searchParams.get("add") === "1"
       ? { name: searchParams.get("name") || "", city: searchParams.get("city") || "" }

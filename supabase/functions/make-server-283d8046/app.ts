@@ -6,6 +6,7 @@ import { cors } from "npm:hono/cors";
 import * as kv from "./kv.ts";
 import { recordChurchAudit, queryAuditRecent, queryAuditByState, queryAuditByChurch, queryAuditChangesSince, type AuditActorOpts } from "./audit.ts";
 import { getD1 } from "./bindings.ts";
+import { verifyAccessJwt, sameSecret, type Reviewer } from "./reviewer-auth.ts";
 import { POP } from "./state-populations.ts";
 import {
   countyPopulation,
@@ -879,6 +880,12 @@ const P="/make-server-283d8046";
 
 // Maintenance freeze (MAINTENANCE_READONLY): reads keep working, and anything that changes data
 // gets a clean 503. The exempt routes are what a cutover itself needs, and check the moderator key.
+// Resolve a Cloudflare Access reviewer once per request, so key checks below stay synchronous.
+app.use("*",async(c,next)=>{
+  const token=c.req.header("cf-access-jwt-assertion");
+  if(token){const r=await verifyAccessJwt(token);if(r)(c as any).set("reviewer",r);}
+  return next();
+});
 const FREEZE_EXEMPT=new Set([`${P}/churches/search/backfill`,`${P}/admin/publish-static`,`${P}/moderate/review-index/backfill`]);
 app.use("*",async(c,next)=>{
   const m=c.req.method;
@@ -2038,7 +2045,7 @@ function parseBbox(s:string|undefined):[number,number,number,number]|null{
 
 app.post(`${P}/churches/populate-cell/:state`,async(c)=>{
   try{
-    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
     const st=c.req.param("state").toUpperCase(),info=gS(st);
     if(!info)return c.json({error:`Unknown state: ${st}`},400);
     const bbox=parseBbox(c.req.query("bbox"));
@@ -2063,7 +2070,7 @@ app.post(`${P}/churches/populate-cell/:state`,async(c)=>{
 
 app.post(`${P}/churches/populate-finalize/:state`,async(c)=>{
   try{
-    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
     const st=c.req.param("state").toUpperCase(),info=gS(st);
     if(!info)return c.json({error:`Unknown state: ${st}`},400);
     const staged=await kv.get(STAGE(st));
@@ -2086,7 +2093,7 @@ app.post(`${P}/churches/populate/:state`,async(c)=>{
     // or a force refresh of one stuck at the old 2000-result truncation. Each
     // region is then locked so a loop can't re-run Overpass and rewrite the
     // blob — a region costs at most one fetch per cooldown.
-    const isMod=checkModKey(c);
+    const isMod=checkAdmin(c);
     if(!isMod){
       if(force&&!(Array.isArray(ex)&&ex.length===POPULATE_TRUNCATED_COUNT))return c.json({error:"Force refresh requires the moderator key"},403);
       const lock=await kv.get(POPULATE_LOCK(st));
@@ -2122,7 +2129,7 @@ app.get(`${P}/churches/denominations/all`,async(c)=>{
 
 app.post(`${P}/churches/search/rebuild-index`,async(c)=>{
   try{
-    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
     const meta=await getMeta();const ps=listPopulated(meta?.stateCounts||{});
     if(!ps.length)return c.json({message:"No states populated.",rebuilt:0});
     let n=0;for(const{cc,abbrev:s}of ps){const ch=await getChurches(s,cc);if(Array.isArray(ch)&&ch.length){await writeIdx(s,ch);n++;}}
@@ -2137,7 +2144,7 @@ app.post(`${P}/churches/search/rebuild-index`,async(c)=>{
 // backfill isn't masked by marking the table ready. See scripts/backfill-church-search.mjs.
 app.post(`${P}/churches/search/backfill`,async(c)=>{
   try{
-    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
     const offset=Math.max(0,parseInt(c.req.query("offset")||"0")||0);
     const count=Math.min(Math.max(1,parseInt(c.req.query("count")||"8")||8),25);
     const startedAt=c.req.query("startedAt")||new Date().toISOString();
@@ -2168,7 +2175,7 @@ app.post(`${P}/churches/search/backfill`,async(c)=>{
 
 app.post(`${P}/admin/refresh-attendance`,async(c)=>{
   try{
-    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
     const stateParam=(c.req.query("state")||"").toUpperCase().trim();
     const meta=await getMeta(false);const populated=listPopulated(meta?.stateCounts||{});
     if(!populated.length)return c.json({message:"No states populated. Use POST /churches/populate/:state first.",refreshed:0});
@@ -2206,7 +2213,7 @@ app.post(`${P}/admin/refresh-attendance`,async(c)=>{
  */
 app.post(`${P}/admin/enrich-google/:state`,async(c)=>{
   try{
-    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
     const st=c.req.param("state").toUpperCase(),info=gS(st);
     if(!info)return c.json({error:`Unknown state: ${st}`},400);
     const apiKey=(env("GOOGLE_MAPS_API_KEY")||"").trim();
@@ -2367,7 +2374,7 @@ app.get(`${P}/population`,async(c)=>{
 
 app.post(`${P}/admin/cleanup-dc`,async(c)=>{
   try{
-    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
     let d=0;for(const k of["churches:DC","churches:sidx:DC","churches:US:DC","churches:sidx:US:DC"]){if(await kv.get(k)){await kv.del(k);d++;}}
     const meta=await getMeta(false);if(meta?.stateCounts){const before=Object.keys(meta.stateCounts).length;deleteCount(meta.stateCounts,"DC","US");if(Object.keys(meta.stateCounts).length!==before){await kv.set("churches:meta",meta);invalidateMetaCache();d++;}}
     if(d>0){void recordChurchAudit({state:"DC",action:"dc_removed",new_value:{deleted:d},source:"admin_dc_remove",actor_type:"system"});}
@@ -2378,7 +2385,7 @@ app.post(`${P}/admin/cleanup-dc`,async(c)=>{
 
 app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
   try{
-    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
     const meta=await getMeta(false);const sc:Record<string,number>={...(meta?.stateCounts||{})};
     const populated=listPopulated(sc);
     if(!populated.length)return c.json({message:"No states populated.",cleaned:0});
@@ -2405,7 +2412,7 @@ app.post(`${P}/admin/cleanup-blocked-denominations`,async(c)=>{
 
 app.post(`${P}/admin/migrate-denominations`,async(c)=>{
   try{
-    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
     const meta=await getMeta(false);
     const allPop=listPopulated(meta?.stateCounts||{});
     if(!allPop.length)return c.json({message:"No states populated.",updatedStates:0,updatedChurches:0});
@@ -2447,7 +2454,7 @@ app.post(`${P}/admin/migrate-denominations`,async(c)=>{
 
 app.post(`${P}/admin/remove-churches-by-name`,async(c)=>{
   try{
-    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
     const b=await c.req.json().catch(()=>({}));
     const name=typeof b?.name==="string"?b.name.trim():"";
     if(!name)return c.json({error:"Body must include { name: \"Church Name\" }"},400);
@@ -2504,8 +2511,28 @@ function cip(c:any):string{
   const cfIp=env("HMC_RUNTIME")==="worker"?c.req.header("cf-connecting-ip"):undefined;
   return cfIp||c.req.header("x-forwarded-for")?.split(",")[0]?.trim()||c.req.header("x-real-ip")||"unknown";
 }
-function checkModKey(c:any):boolean{const k=new URL(c.req.url).searchParams.get("key")||c.req.header("x-moderator-key")||"";const mk=moderatorKey();return!!mk&&k===mk;}
-function getModKey(c:any):string{return new URL(c.req.url).searchParams.get("key")||c.req.header("x-moderator-key")||"";}
+// Reviewers sign in through Cloudflare Access (reviewer-auth.ts). The shared moderator key still works
+// while LEGACY_MODERATOR_KEY is not "off", in the x-moderator-key header (or ?key= until the switch).
+// Maintenance routes take ADMIN_KEY in x-admin-key, so scripts never need a reviewer identity.
+const reviewerOfRequest=(c:any):Reviewer|null=>c.get?.("reviewer")??null;
+function legacyModKey(c:any):string{
+  if(env("LEGACY_MODERATOR_KEY")==="off")return"";
+  return c.req.header("x-moderator-key")||new URL(c.req.url).searchParams.get("key")||"";
+}
+function checkModKey(c:any):boolean{
+  if(reviewerOfRequest(c))return true;
+  const k=legacyModKey(c);const mk=moderatorKey();return!!mk&&sameSecret(k,mk);
+}
+function checkAdmin(c:any):boolean{
+  if(checkModKey(c))return true;
+  const ak=env("ADMIN_KEY")||"";return!!ak&&sameSecret(c.req.header("x-admin-key")||"",ak);
+}
+/** The reviewer's identity for audit rows and "in review" claims. */
+function getModKey(c:any):string{
+  const r=reviewerOfRequest(c);
+  if(r)return`reviewer:${r.id}`;
+  return legacyModKey(c);
+}
 function inReviewKVKey(modKey:string):string{let h=0;for(let i=0;i<modKey.length;i++)h=((h<<5)-h+modKey.charCodeAt(i))|0;return`moderate:in-review:${Math.abs(h).toString(36)}`;}
 function modKeyHash(modKey:string):string{let h=0;for(let i=0;i<modKey.length;i++)h=((h<<5)-h+modKey.charCodeAt(i))|0;return Math.abs(h).toString(36);}
 const IN_REVIEW_GLOBAL_KEY="moderate:in-review:global";
@@ -3582,7 +3609,7 @@ const moderatePendingHandler=async(c:any)=>{
 // Index-only maintenance avoids rebuilding every public file merely to seed moderation metadata.
 app.post(`${P}/moderate/review-index/backfill`,async(c)=>{
  try{
-  if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+  if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
   if(!usesD1())return c.json({error:"Review indexing requires D1"},503);
   const offsetRaw=c.req.query("offset")??"0";
   if(!/^\d+$/.test(offsetRaw))return c.json({error:"Invalid offset"},400);
@@ -3954,7 +3981,7 @@ app.post(`${P}/moderate/reject/church`,moderateRejectChurchHandler);
 // Moderator-only. Rate-limited to 1 Nominatim request/sec.
 const moderateRegeocode=async(c:any)=>{
   try{
-    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
     // Find all suggestion entries with applied address corrections
     const allSuggestions=await kv.getByPrefix("suggestions:");
     if(!Array.isArray(allSuggestions)||!allSuggestions.length)return c.json({success:true,message:"No suggestions found",updated:0});
@@ -4852,7 +4879,7 @@ app.post(`${P}/twitter/admin/reset`,async(c)=>{
 // ── One-time migration: apply all pending corrections & merge pending churches ──
 app.post(`${P}/migrate/apply-pending`,async(c)=>{
   try{
-    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
     let correctionsApplied=0,churchesMerged=0;
     // 1. Apply all pending corrections (skip sensitive fields — those need moderator approval)
     const allSuggestions=await kv.getByPrefix("suggestions:");
@@ -6322,11 +6349,11 @@ export async function enqueueFullPublication():Promise<number>{
   return targets.length;
 }
 app.get(`${P}/moderate/operations`,async(c)=>{
-  if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+  if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
   return c.json({publication:await publicationHealth(),queueConfigured:hasPublicationQueue()});
 });
 app.post(`${P}/moderate/operations/retry`,async(c)=>{
-  if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+  if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
   const{target}=await c.req.json();
   if(!validPublicationTarget(target))return c.json({error:"Invalid target"},400);
   await requestPublications([target]);await releasePublication(target);
@@ -6337,7 +6364,7 @@ app.post(`${P}/moderate/operations/retry`,async(c)=>{
 // Loop with ?offset=<next> until next is null. See scripts/publish-static.mjs.
 app.post(`${P}/admin/publish-static`,async(c)=>{
   try{
-    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
     if(!r2Enabled())return c.json({error:"R2 is not configured (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET)"},400);
     const offset=Math.max(0,parseInt(c.req.query("offset")||"0",10)||0);
     const limit=Math.min(10,Math.max(1,parseInt(c.req.query("limit")||"3",10)||3));
@@ -6539,7 +6566,7 @@ app.post(`${P}/internal/lookup/churches`,async(c)=>{
 const POPULATE_FILL_FIELDS=["phone","postcode","website","address","city"] as const;
 app.post(`${P}/churches/populate-fill/:state`,async(c)=>{
   try{
-    if(!checkModKey(c))return c.json({error:"Unauthorized"},401);
+    if(!checkAdmin(c))return c.json({error:"Unauthorized"},401);
     const st=c.req.param("state").toUpperCase();
     if(!gS(st))return c.json({error:`Unknown state: ${st}`},400);
     const staged=await kv.get(STAGE(st));
@@ -6570,6 +6597,6 @@ app.post(`${P}/churches/populate-fill/:state`,async(c)=>{
   }catch(e){console.log(`populate-fill error:${e}`);return serverError(c,e);}
 });
 
-registerMigrateRoutes(app,P,checkModKey);
+registerMigrateRoutes(app,P,checkAdmin);
 
 export default app;
