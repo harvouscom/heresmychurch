@@ -19,7 +19,9 @@ import {
 import { ThreeDotLoader } from "./ThreeDotLoader";
 import type { Church } from "./church-data";
 import { DENOMINATION_GROUPS, COMMON_LANGUAGES, COMMON_MINISTRIES } from "./church-data";
-import { addChurch } from "./api";
+import { addChurch, searchChurches } from "./api";
+import { serializeAddress } from "./AddressInput";
+import { findLikelyDuplicates } from "../../../shared/church-match";
 import { ServiceTimesInput, normalizeServiceTimes } from "./ServiceTimesInput";
 import { normalizePhone } from "../lib/phone";
 import { CloseButton } from "./ui/close-button";
@@ -73,87 +75,36 @@ export async function geocodeAddress(
 }
 
 const MAX_SIMILAR_MATCHES = 5;
-const MAX_DISTANCE_KM = 1.6; // ~1 mile
 
-function haversineKm(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number
-): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
+/** A possible existing listing, with why it matched ("Same name", "120 m away"). */
+export type SimilarChurch = Church & { matchReasons?: string[]; distanceM?: number };
 
-function tokenize(s: string): string[] {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
-}
-
-/** Name similarity: fraction of input tokens that appear in the church name (or full string contained). */
-function nameSimilarity(inputName: string, churchName: string): number {
-  const input = inputName.trim().toLowerCase();
-  const church = (churchName || "").trim().toLowerCase();
-  if (!input) return 0;
-  if (church.includes(input)) return 1;
-  const inputTokens = tokenize(inputName);
-  const churchTokens = new Set(tokenize(churchName));
-  if (inputTokens.length === 0) return 0;
-  const matchCount = inputTokens.filter((t) => churchTokens.has(t)).length;
-  return matchCount / inputTokens.length;
-}
-
+/** Existing churches in this region that look like the one being added (shared/church-match.ts). */
 export function findSimilarChurches(
   name: string,
   lat: number,
   lng: number,
   city: string,
   state: string,
-  churches: Church[]
-): Church[] {
-  const nameNorm = name.trim().toLowerCase();
-  if (!nameNorm || churches.length === 0) return [];
-  const cityNorm = city.trim().toLowerCase();
-  const scored = churches
-    .filter((c) => (c.state || "").toUpperCase() === state.toUpperCase())
-    .map((church) => {
-      const nScore = nameSimilarity(name, church.name);
-      const distKm =
-        church.lat != null && church.lng != null
-          ? haversineKm(lat, lng, church.lat, church.lng)
-          : Infinity;
-      const near = distKm <= MAX_DISTANCE_KM;
-      const cityMatch =
-        !!cityNorm &&
-        !!church.city &&
-        church.city.trim().toLowerCase() === cityNorm;
-      const relevance = nScore * (1 + (cityMatch ? 0.3 : 0) + (near ? 0.3 : 0));
-      return { church, nScore, near, cityMatch, relevance };
-    })
-    .filter(({ nScore, near, cityMatch }) => nScore >= 0.4 && (near || cityMatch))
-    .sort((a, b) => b.relevance - a.relevance)
-    .slice(0, MAX_SIMILAR_MATCHES)
-    .map(({ church }) => church);
-  return scored;
+  churches: Church[],
+  address = ""
+): SimilarChurch[] {
+  if (!name.trim() || churches.length === 0) return [];
+  const pool = churches.filter((c) => (c.state || "").toUpperCase() === state.toUpperCase());
+  return findLikelyDuplicates({ name, lat, lng, city, address }, pool, { limit: MAX_SIMILAR_MATCHES })
+    .map((m) => ({ ...m.church, matchReasons: m.reasons, distanceM: m.distanceM }));
 }
+
+/** Values typed into the add form, in the shape the correction form expects. */
+export type TypedChurchFields = Partial<Record<string, string>>;
 
 interface AddChurchFormProps {
   stateAbbrev: string;
   stateName: string;
   onClose: () => void;
   churches?: Church[];
-  onSelectChurch?: (church: Church) => void;
+  /** Chose an existing listing instead; `typed` carries what was entered so it isn't lost. */
+  onSelectChurch?: (church: Church, typed?: TypedChurchFields) => void;
   /** After successfully adding (or duplicate), navigate to that church's page. */
   onChurchAdded?: (state: string, shortId: string) => void;
   /** Prefill from a deep link (/add?name=&city=). */
@@ -179,7 +130,7 @@ export function AddChurchForm({
     if (error) errorRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [error]);
   const [showExtended, setShowExtended] = useState(false);
-  const [similarMatches, setSimilarMatches] = useState<Church[]>([]);
+  const [similarMatches, setSimilarMatches] = useState<SimilarChurch[]>([]);
   const [showSimilarWarning, setShowSimilarWarning] = useState(false);
   const [geocodedCoords, setGeocodedCoords] = useState<{ lat: number; lng: number } | null>(null);
 
@@ -239,6 +190,8 @@ export function AddChurchForm({
             lat: ch.lat ?? parsedLat,
             lng: ch.lng ?? parsedLng,
             attendance: 0,
+            matchReasons: ch.reasons,
+            distanceM: ch.distanceM,
           }))
         );
         setShowSimilarWarning(true);
@@ -327,7 +280,8 @@ export function AddChurchForm({
         parsedLng,
         city.trim(),
         stateAbbrev,
-        churches
+        churches,
+        address.trim()
       );
       if (similar.length > 0) {
         setSimilarMatches(similar);
@@ -338,6 +292,47 @@ export function AddChurchForm({
 
     await submitToApi(parsedLat, parsedLng);
   };
+
+  const typedFields = (): TypedChurchFields => ({
+    name: name.trim(),
+    ...(address.trim() || city.trim() ? { address: serializeAddress({ address: address.trim(), city: city.trim(), state: stateAbbrev }) } : {}),
+    denomination,
+    attendance,
+    website: website.trim(),
+    serviceTimes: serviceTimes.trim() ? normalizeServiceTimes(serviceTimes) || serviceTimes.trim() : "",
+    languages: Array.from(selectedLanguages).join(", "),
+    ministries: Array.from(selectedMinistries).join(", "),
+    pastorName: pastorName.trim(),
+    phone: phone.trim(),
+    email: email.trim(),
+  });
+  const chooseExisting = (church: Church) => {
+    setShowSimilarWarning(false);
+    setSimilarMatches([]);
+    const { name: _typedName, ...rest } = typedFields();
+    onSelectChurch?.(church, rest);
+  };
+
+  // "Already on the map?" while typing: the loaded region first, the search API when none is loaded.
+  const [typeahead, setTypeahead] = useState<SimilarChurch[]>([]);
+  const [dismissedTypeahead, setDismissedTypeahead] = useState(false);
+  useEffect(() => {
+    const q = name.trim();
+    if (q.length < 3 || dismissedTypeahead) { setTypeahead([]); return; }
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      const input = { name: q, city: city.trim(), address: address.trim() };
+      const rank = (pool: Church[]) => findLikelyDuplicates(input, pool, { minName: 0.6, limit: 3 })
+        .map((m) => ({ ...m.church, matchReasons: m.reasons, distanceM: m.distanceM }));
+      if (churches.length) { setTypeahead(rank(churches.filter((c) => (c.state || "").toUpperCase() === stateAbbrev.toUpperCase()))); return; }
+      try {
+        const res = await searchChurches(q, 8, stateAbbrev, undefined, resolveRegionByAbbrev(stateAbbrev)?.country.code, controller.signal);
+        const pool = res.results.map((r) => ({ ...r, state: r.state || stateAbbrev } as unknown as Church));
+        if (!controller.signal.aborted) setTypeahead(rank(pool));
+      } catch { /* search is a convenience; the submit-time check still runs */ }
+    }, 250);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [name, city, address, churches, stateAbbrev, dismissedTypeahead]);
 
   const toggleLanguage = (lang: string) => {
     setSelectedLanguages(prev => {
@@ -466,14 +461,11 @@ export function AddChurchForm({
                       {ch.denomination && (
                         <p className="text-white/60 text-xs">{ch.denomination}</p>
                       )}
+                      <MatchReasons reasons={ch.matchReasons} />
                     </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        setShowSimilarWarning(false);
-                        setSimilarMatches([]);
-                        onSelectChurch?.(ch);
-                      }}
+                      onClick={() => chooseExisting(ch)}
                       className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-purple-500/20 text-purple-200 text-xs font-medium hover:bg-purple-500/30 transition-colors"
                     >
                       <ChurchIcon size={12} />
@@ -527,6 +519,30 @@ export function AddChurchForm({
                   placeholder="e.g., Grace Community Church"
                   className={inputClass}
                 />
+                {typeahead.length > 0 && (
+                  <div className="mt-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2.5" aria-live="polite">
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <p className="text-amber-200/90 text-caption font-semibold uppercase tracking-wider">Already on the map?</p>
+                      <button type="button" onClick={() => setDismissedTypeahead(true)} className="text-white/45 text-caption hover:text-white/70">Not these</button>
+                    </div>
+                    <ul className="space-y-1.5">
+                      {typeahead.map((ch) => (
+                        <li key={ch.id}>
+                          <button
+                            type="button"
+                            onClick={() => chooseExisting(ch)}
+                            className="w-full text-left rounded-md px-2 py-1.5 hover:bg-white/5 transition-colors"
+                          >
+                            <span className="block text-white text-xs font-medium">{ch.name}</span>
+                            <span className="block text-white/50 text-caption">{[ch.address, ch.city].filter(Boolean).join(", ") || ch.denomination}</span>
+                            <MatchReasons reasons={ch.matchReasons} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-white/45 text-caption mt-1.5">Choose one to update it instead. What you&apos;ve typed comes with you.</p>
+                  </div>
+                )}
               </div>
 
               {/* Address + City (required — we use these to place the church on the map) */}
@@ -785,5 +801,15 @@ export function AddChurchForm({
           )}
         </HmcDialogBody>
     </HmcDialog>
+  );
+}
+function MatchReasons({ reasons }: { reasons?: string[] }) {
+  if (!reasons?.length) return null;
+  return (
+    <span className="mt-1 flex flex-wrap gap-1">
+      {reasons.map((r) => (
+        <span key={r} className="rounded-full bg-white/8 px-2 py-0.5 text-[10px] text-white/70">{r}</span>
+      ))}
+    </span>
   );
 }

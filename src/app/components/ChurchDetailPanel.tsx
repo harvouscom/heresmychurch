@@ -83,6 +83,8 @@ interface ChurchDetailPanelProps {
   onClose: () => void;
   onChurchClick: (target: ChurchClickTarget) => void;
   externalShowEditForm?: boolean;
+  /** Prefill for the correction form (values typed into the add form before picking this church). */
+  editPrefill?: Partial<Record<string, string>>;
   onEditFormClosed?: () => void;
   /** Fires when the correction form opens/closes (the phone sheet grows to fit it). */
   onEditFormOpenChange?: (open: boolean) => void;
@@ -279,6 +281,7 @@ export function ChurchDetailPanel({
   onClose,
   onChurchClick,
   externalShowEditForm,
+  editPrefill,
   onEditFormClosed,
   onEditFormOpenChange,
   onChurchUpdated,
@@ -493,6 +496,7 @@ export function ChurchDetailPanel({
         onChurchUpdated={onChurchUpdated}
         onPendingSubmitted={onPendingSubmitted}
         pendingFieldsForChurch={pendingFieldsForChurch}
+        prefill={editPrefill}
       />
     );
   }

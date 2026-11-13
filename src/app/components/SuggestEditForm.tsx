@@ -60,6 +60,9 @@ interface SuggestEditFormProps {
   onPendingSubmitted?: () => void;
   /** Field names with pending suggestions from server (persists across close/reopen, prevents duplicate submit) */
   pendingFieldsForChurch?: string[];
+  /** Values someone typed into the add form before choosing this existing church. Fields that differ
+   *  from the listing open ready to submit, so nothing they typed is lost. */
+  prefill?: Partial<Record<string, string>>;
 }
 
 type EditableField = "name" | "website" | "address" | "attendance" | "denomination" | "serviceTimes" | "languages" | "ministries" | "pastorName" | "phone" | "email" | "homeCampusId" | "reportClosed" | "reportDuplicate" | "reportOutOfScope" | "reportRelocated";
@@ -146,7 +149,7 @@ function getCurrentValue(church: Church, field: EditableField): string {
   }
 }
 
-export function SuggestEditForm({ church, allChurches, onClose, focusField, onChurchUpdated, onPendingSubmitted, pendingFieldsForChurch = [] }: SuggestEditFormProps) {
+export function SuggestEditForm({ church, allChurches, onClose, focusField, onChurchUpdated, onPendingSubmitted, pendingFieldsForChurch = [], prefill }: SuggestEditFormProps) {
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<Set<string>>(new Set());
   const [pendingModeration, setPendingModeration] = useState<Set<string>>(new Set());
@@ -181,6 +184,28 @@ export function SuggestEditForm({ church, allChurches, onClose, focusField, onCh
   useEffect(() => {
     setValues(v => ({ ...v, ministries: Array.from(chipMinistries).join(", ") }));
   }, [chipMinistries]);
+
+  // Carry over what was typed in the add form: open each differing field with that value.
+  useEffect(() => {
+    if (!prefill) return;
+    const next: Record<string, string> = {};
+    for (const [field, raw] of Object.entries(prefill)) {
+      const value = (raw ?? "").trim();
+      if (!value || !FIELD_CONFIG.some((f) => f.key === field)) continue;
+      if (field === "languages" || field === "ministries") {
+        const add = value.split(",").map((v) => v.trim()).filter(Boolean);
+        const setChips = field === "languages" ? setChipLanguages : setChipMinistries;
+        const current = new Set(field === "languages" ? church.languages || [] : church.ministries || []);
+        if (add.some((v) => !current.has(v))) { setChips(new Set([...current, ...add])); next[field] = ""; }
+        continue;
+      }
+      if (value !== getCurrentValue(church, field as EditableField).trim()) next[field] = value;
+    }
+    const fields = Object.keys(next);
+    if (!fields.length) return;
+    setEditingFields((prev) => new Set([...prev, ...fields]));
+    setValues((v) => ({ ...v, ...Object.fromEntries(Object.entries(next).filter(([, val]) => val)) }));
+  }, [church.id, prefill]);
 
   // Auto-focus on a specific field when focusField prop is set
   useEffect(() => {
