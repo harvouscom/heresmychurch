@@ -914,6 +914,18 @@ export interface SearchResponse {
   message?: string;
 }
 
+export interface ReverseGeocodeResult { address: string; city: string; postcode: string; state: string; country: string }
+/** Street address for a point picked on the map. Null when nothing is found; retries once if busy. */
+export async function reverseGeocode(lat: number, lng: number, signal?: AbortSignal): Promise<ReverseGeocodeResult | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(`${BASE_URL}/geocode/reverse?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}`, { signal });
+    if (res.ok) return res.json();
+    if (res.status !== 503 || signal?.aborted) return null;
+    await new Promise((r) => setTimeout(r, 1100));
+  }
+  return null;
+}
+
 export async function searchChurches(
   query: string,
   limit: number = 10,
