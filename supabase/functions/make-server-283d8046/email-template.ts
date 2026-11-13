@@ -57,7 +57,6 @@ export function emailHtml(m: EmailMessage, site = "https://heresmychurch.com"): 
         </td></tr>
         <tr><td style="background:#ffffff;border-radius:18px;border:1px solid #e8def4;box-shadow:0 1px 2px rgba(42,24,64,.04)">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-            <tr><td style="height:6px;background:linear-gradient(90deg,#6b3fc0,#c9a0dc);border-radius:18px 18px 0 0;font-size:0;line-height:0">&nbsp;</td></tr>
             <tr><td style="padding:30px 32px 6px;font:600 22px/1.3 ${font};color:#1f1330;letter-spacing:-.015em">${esc(m.heading)}</td></tr>
             ${m.paragraphs.map(p => `<tr><td style="padding:8px 32px;font:15px/1.65 ${font};color:#4a3b5e">${esc(p)}</td></tr>`).join("")}
             ${details}

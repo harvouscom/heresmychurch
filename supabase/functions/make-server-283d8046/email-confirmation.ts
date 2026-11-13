@@ -173,12 +173,21 @@ export async function sendChurchEmailChangeEmail(to: string, name: string, token
   await send(to, messages.emailChange(name, `${site()}/for-churches#${new URLSearchParams({ verify: token })}`), "church-email-change");
 }
 
+/** (512) 555-0199 for US and Canadian numbers; international numbers are shown as stored. */
+export function formatPhone(raw: string): string {
+  const d = raw.replace(/\D/g, "");
+  if (!raw.trim().startsWith("+") && d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+  if (!raw.trim().startsWith("+") && d.length === 11 && d[0] === "1") return `(${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
+  // International numbers are stored with their + and country code; shown as stored.
+  return raw;
+}
+
 // ── Message content, shared by the sender and the preview script ──
 const FIELD_NAMES: Record<string, string> = { name: "Name", address: "Address", denomination: "Denomination", serviceTimes: "Service times", phone: "Phone", email: "Contact email", website: "Website", pastorName: "Lead pastor", languages: "Languages", ministries: "Ministries", reportClosed: "Reported closed", reportDuplicate: "Reported as a duplicate", reportOutOfScope: "Reported as not a church", reportRelocated: "Reported as moved", homeCampusId: "Main campus" };
 function shown(field: string, value: unknown): string {
   if (field === "address" && typeof value === "string" && value.trim().startsWith("{")) { try { const a = JSON.parse(value); return [a.address, a.city, a.postcode].filter(Boolean).join(", "); } catch { /* fall through */ } }
   if (field.startsWith("report")) return "";
-  if (field === "phone" && /^\d{10}$/.test(String(value ?? ""))) { const d = String(value); return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`; }
+  if (field === "phone") return formatPhone(String(value ?? ""));
   return Array.isArray(value) ? value.join(", ") : String(value ?? "");
 }
 export const messages = {
