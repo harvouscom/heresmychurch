@@ -2885,9 +2885,11 @@ async function submitSuggestionCore(opts:{churchId:string;field:string;value:unk
   const isSensitive=SENSITIVE_FIELDS.includes(field);
   // On a claimed church, everyone but the verified inbox suggests; the church decides first.
   // Private attendance stays with the existing estimate rules.
-  const ownerFirst=field!=="attendance"&&(await claimState(church)).claimed;
+  // Spam never reaches the church's inbox; the engine rejects it instead.
+  const claimedListing=field!=="attendance"&&(await claimState(church)).claimed;
+  const ownerFirst=claimedListing&&!spamReason(field,String(prepared.storeValue));
   // Replacements and disputes remain proposals; a new vote cannot overwrite the accepted vote.
-  const held=ownerFirst||!isSensitive&&(ALWAYS_HELD_FIELDS.has(field)||!isBlankContributionValue(church[field])||
+  const held=claimedListing||!isSensitive&&(ALWAYS_HELD_FIELDS.has(field)||!isBlankContributionValue(church[field])||
     ex.submissions.some((s:any)=>s.field===field&&s.value!==storeValue)||
     LOOKUP_MODERATED_FIELDS.has(field)&&auditSource.startsWith("lookup:"));
   const previous=ex.submissions.find((s:any)=>s.ip===actorKey&&s.field===field&&

@@ -76,7 +76,7 @@ let registeredDeps: PortalDeps | null = null;
 export async function runOwnerDigests() {
   if (!registeredDeps || !churchPortalEmailEnabled()) return 0;
   const deps = registeredDeps;
-  return dispatchOwnerDigests({ find, pendingFor: async ch => (await deps.pendingForOwner(ch)).length, createLogin: createChurchLogin });
+  return dispatchOwnerDigests({ find, pendingFor: ch => deps.pendingForOwner(ch), createLogin: createChurchLogin });
 }
 export function registerChurchPortalRoutes(app: Hono, p: string, deps: PortalDeps) {
   registeredDeps = deps;

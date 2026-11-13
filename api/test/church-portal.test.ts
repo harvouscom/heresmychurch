@@ -50,11 +50,18 @@ describe('church portal', () => {
     expect((await call('church-portal/session', { token, action: 'accept', field: 'phone', value: '5125559999', reviewVersion: 'stale' })).status).toBe(409);
     expect((await call('church-portal/session', { token, action: 'accept', field: 'phone', value: '5125559999', reviewVersion: pending[0].reviewVersion })).status).toBe(200);
     expect((await kv.get('churches:US:TX'))[0].phone).toBe('5125559999');
-    await call('suggestions', { churchId: 'TX-123', field: 'website', value: 'https://spam.example' });
+    await call('suggestions', { churchId: 'TX-123', field: 'website', value: 'https://graceaustin.org' });
     const again = (await (await call('church-portal/session', { token, action: 'pending' })).json() as any).pending;
     const declined = await call('church-portal/session', { token, action: 'decline', field: 'website', value: again[0].value, reviewVersion: again[0].reviewVersion }); expect(declined.status, JSON.stringify(await declined.clone().json())).toBe(200);
     expect((await kv.get('churches:US:TX'))[0].website).toBe('https://example.org');
     expect((await kv.get('suggestions:TX-123')).submissions.filter((s: any) => s.field === 'website')).toEqual([]);
+  });
+  it('never sends spam to the church; it stays with automated review', async () => {
+    const token = await login(); await call('church-portal/session', { token, action: 'claim' });
+    const r = await (await call('suggestions', { churchId: 'TX-123', field: 'pastorName', value: 'Visit casino now' })).json() as any;
+    expect(r.needsModeration).toBe(true); expect(r.reviewBy).toBeUndefined();
+    expect(await kv.get('owner-digest:TX-123')).toBeUndefined();
+    expect((await (await call('church-portal/session', { token, action: 'pending' })).json() as any).pending).toEqual([]);
   });
   it('hands waiting suggestions to review after the church deadline, and emails a digest', async () => {
     h.vars.OWNER_REVIEW_DAYS = '0.000001';

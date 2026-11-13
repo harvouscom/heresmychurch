@@ -73,7 +73,7 @@ export async function queueOwnerDigest(churchId: string) {
 
 export async function dispatchOwnerDigests(deps: {
   find(id: string): Promise<any>;
-  pendingFor(ch: any): Promise<number>;
+  pendingFor(ch: any): Promise<{ field: string; value: string; current?: unknown; votes?: number }[]>;
   createLogin(ch: any, emailHash: string, ttlMs: number): Promise<string>;
 }, now = Date.now()) {
   if (env("MAINTENANCE_READONLY")) return 0;
@@ -82,11 +82,11 @@ export async function dispatchOwnerDigests(deps: {
   for (const row of rows.slice(0, 25)) {
     const ch = await deps.find(row.churchId);
     const state = ch ? await claimState(ch) : { claimed: false };
-    const count = ch && state.claimed ? await deps.pendingFor(ch) : 0;
-    if (!ch || !state.claimed || !count) { await kv.set(row.key, { ...row, pending: false }); continue; }
+    const items = ch && state.claimed ? await deps.pendingFor(ch) : [];
+    if (!ch || !state.claimed || !items.length) { await kv.set(row.key, { ...row, pending: false }); continue; }
     try {
       const token = await deps.createLogin(ch, state.emailHash!, 3 * DAY);
-      await sendChurchDigestEmail(listedEmail(ch), ch.name, token, count, Math.round(ownerReviewMs() / DAY));
+      await sendChurchDigestEmail(listedEmail(ch), ch.name, token, items, Math.round(ownerReviewMs() / DAY));
       await kv.set(row.key, { ...row, pending: false, lastSent: now });
       sent++;
     } catch (e) {

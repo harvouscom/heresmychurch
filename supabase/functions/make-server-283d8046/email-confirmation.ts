@@ -1,4 +1,5 @@
 import type { Hono } from "npm:hono";
+import { emailHtml, emailText, type EmailMessage } from "./email-template.ts";
 import * as kv from "./kv.ts";
 import { env } from "./runtime.ts";
 import { getD1 } from "./bindings.ts";
@@ -13,7 +14,7 @@ function expiresAt(row: any): number {
 }
 const site = () => (env("EMAIL_SITE_URL") || "https://heresmychurch.com").replace(/\/$/, "");
 export type ConfirmationEmailBinding = {
-  send(message: { from: string; to: string; subject: string; text: string }): Promise<{ messageId: string }>;
+  send(message: { from: string; to: string; subject: string; text: string; html?: string }): Promise<{ messageId: string }>;
 };
 let emailBinding: ConfirmationEmailBinding | null = null;
 export function setConfirmationEmailBinding(binding: ConfirmationEmailBinding | null) { emailBinding = binding; }
@@ -28,12 +29,12 @@ async function signature(key: string) {
 async function link(key: string, mode: string) {
   return `${site()}/email-confirmation#${new URLSearchParams({ key, token: await signature(key), mode })}`;
 }
-async function send(to: string, subject: string, text: string, _id: string) {
+async function send(to: string, message: EmailMessage, _id: string) {
   if (!emailBinding) throw new Error("Cloudflare email binding is not configured");
   // Test mode is enforced server-side and never redirects real visitors' mail.
   const testRecipient = env("EMAIL_TEST_RECIPIENT");
   if (testRecipient && to.toLowerCase() !== testRecipient.toLowerCase()) throw new Error("Recipient is outside email test mode");
-  await emailBinding.send({ from: env("EMAIL_FROM")!, to, subject, text });
+  await emailBinding.send({ from: env("EMAIL_FROM")!, to, subject: message.subject, text: emailText(message), html: emailHtml(message, site()) });
 }
 async function churchById(id: string) {
   const region = regionFromChurchId(id);
@@ -69,18 +70,18 @@ async function dispatchPendingConfirmationEmails(started: number) {
       const church = await churchById(row.churchId);
       if (!church) { await kv.del(row.key); continue; }
       if (row.kind === "visitor" && !row.confirmed && !row.sent) {
-        await send(row.email, `Confirm your update request for ${church.name}`, `You requested an email when this church's service times are confirmed. Confirm your request here:\n${await link(row.key, "subscribe")}\n\nThis request expires in 48 hours. If you didn't request this, ignore this email. No marketing subscription is created.`, row.key);
+        await send(row.email, messages.visitorConfirm(church, await link(row.key, "subscribe")), row.key);
         row.sent = true; sends++;
       } else if (row.kind === "staff" && !row.sent && !row.completed) {
         // Recheck the contact against the listing; never use a visitor-supplied recipient.
         if (await kv.get(`email-stop:${church.id}`)) continue;
         if (church.email?.trim().toLowerCase() !== row.email) { await kv.del(row.key); continue; }
-        await send(row.email, `Help visitors plan a visit to ${church.name}`, `Someone is looking for confirmed service times on Here's My Church. Please review your church's service times and location:\n${await link(row.key, "staff")}\n\nThis private link expires in 30 days. Visitor email addresses are never shared.\nStop these requests: ${await link(row.key, "stop")}`, row.key);
+        await send(row.email, messages.staffRequest(church, await link(row.key, "staff"), await link(row.key, "stop")), row.key);
         row.sent = true; sends++;
       } else if (row.kind === "visitor" && row.confirmed && !row.notified) {
         const proof = await kv.get(`email-proof:${row.churchId}`);
         if (proof && proof.at >= row.confirmed && proof.serviceTimes === church.serviceTimes) {
-          await send(row.email, `Service times confirmed for ${church.name}`, `${church.name}\nService times: ${church.serviceTimes}\nListed address: ${church.address || "Not listed"}, ${church.city || ""}\nService times confirmed through the church's listed email contact on ${new Date(proof.at).toISOString().slice(0, 10)}. Check the map for location confirmation and any changes before visiting.\n${churchMapLink(church)}`, `${row.key}:result`);
+          await send(row.email, messages.visitorResult(church, proof.at, churchMapLink(church)), `${row.key}:result`);
           // Delete personal data after the requested notification succeeds.
           await kv.del(row.key); sends++; continue;
         }
@@ -160,14 +161,83 @@ export function registerEmailConfirmationRoutes(app: Hono, prefix: string, deps:
 
 export const churchPortalEmailEnabled = () => env("CHURCH_PORTAL_ENABLED") === "1" && !!emailBinding && !!env("EMAIL_FROM");
 export async function sendChurchPortalEmail(to: string, name: string, token: string) {
-  await send(to, `Manage ${name} on Here’s My Church`, `Claim and update your church listing through this private link:\n${site()}/for-churches#${new URLSearchParams({ token })}\n\nThis link expires in 24 hours. Anyone with it can submit updates to this listing. If you did not request it, you can ignore this email.`, "church-portal");
+  await send(to, messages.portalLink(name, `${site()}/for-churches#${new URLSearchParams({ token })}`), "church-portal");
 }
 
-export async function sendChurchDigestEmail(to: string, name: string, token: string, count: number, days: number) {
-  const what = count === 1 ? "1 suggested update" : `${count} suggested updates`;
-  await send(to, `${what} for ${name} on Here’s My Church`, `Visitors suggested changes to ${name}'s listing. Because your church has claimed it, they wait for you first.\n\nReview and accept or decline them here:\n${site()}/for-churches#${new URLSearchParams({ token })}\n\nThis private link expires in 3 days. If you don't respond within ${days} days, our automated review decides instead. You can always change your listing from the same page.`, "church-digest");
+export type DigestItem = { field: string; value: string; current?: unknown; votes?: number };
+export async function sendChurchDigestEmail(to: string, name: string, token: string, items: DigestItem[], days: number) {
+  await send(to, messages.ownerDigest(name, `${site()}/for-churches#${new URLSearchParams({ token })}`, items, days), "church-digest");
 }
 
 export async function sendChurchEmailChangeEmail(to: string, name: string, token: string) {
-  await send(to, `Confirm the new contact email for ${name}`, `Someone signed in to ${name}'s listing on Here’s My Church asked to make this address its contact email. Sign-in links for the listing will come here after you confirm:\n${site()}/for-churches#${new URLSearchParams({ verify: token })}\n\nThis link expires in 3 days. If you weren't expecting it, ignore this email and nothing changes.`, "church-email-change");
+  await send(to, messages.emailChange(name, `${site()}/for-churches#${new URLSearchParams({ verify: token })}`), "church-email-change");
 }
+
+// ── Message content, shared by the sender and the preview script ──
+const FIELD_NAMES: Record<string, string> = { name: "Name", address: "Address", denomination: "Denomination", serviceTimes: "Service times", phone: "Phone", email: "Contact email", website: "Website", pastorName: "Lead pastor", languages: "Languages", ministries: "Ministries", reportClosed: "Reported closed", reportDuplicate: "Reported as a duplicate", reportOutOfScope: "Reported as not a church", reportRelocated: "Reported as moved", homeCampusId: "Main campus" };
+function shown(field: string, value: unknown): string {
+  if (field === "address" && typeof value === "string" && value.trim().startsWith("{")) { try { const a = JSON.parse(value); return [a.address, a.city, a.postcode].filter(Boolean).join(", "); } catch { /* fall through */ } }
+  if (field.startsWith("report")) return "";
+  if (field === "phone" && /^\d{10}$/.test(String(value ?? ""))) { const d = String(value); return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`; }
+  return Array.isArray(value) ? value.join(", ") : String(value ?? "");
+}
+export const messages = {
+  portalLink: (name: string, url: string): EmailMessage => ({
+    subject: `Manage ${name} on Here’s My Church`,
+    preheader: "Your private link to claim and update your church listing.",
+    heading: `Manage ${name}`,
+    paragraphs: ["Here’s your private link to claim your church’s listing and keep its details up to date. Changes you make go live on the map right away, and suggestions from visitors come to you first."],
+    button: { label: "Open your listing", url },
+    note: "This link works for 24 hours. Anyone who has it can update the listing, so please don’t forward it. If you didn’t ask for it, you can ignore this email.",
+  }),
+  ownerDigest: (name: string, url: string, items: DigestItem[], days: number): EmailMessage => {
+    const what = items.length === 1 ? "1 suggested update" : `${items.length} suggested updates`;
+    return {
+      subject: `${what} for ${name}`,
+      preheader: `Visitors suggested changes to ${name}. They wait for you first.`,
+      heading: `${what} waiting for you`,
+      paragraphs: [`Visitors suggested changes to ${name}’s listing on Here’s My Church. Because your church manages its listing, nothing changes until you decide.`],
+      details: items.slice(0, 6).map(i => {
+        const next = shown(i.field, i.value), before = shown(i.field, i.current);
+        return { label: FIELD_NAMES[i.field] || i.field, value: i.field.startsWith("report") ? FIELD_NAMES[i.field] || "Report" : next || "(empty)", note: before && !i.field.startsWith("report") ? `Currently: ${before}` : undefined };
+      }).concat(items.length > 6 ? [{ label: "And more", value: `${items.length - 6} other suggestion${items.length - 6 === 1 ? "" : "s"}`, note: undefined }] : []),
+      button: { label: "Review suggestions", url },
+      note: `This private link works for 3 days. If you don’t respond within ${days} days, our automated review decides instead, and you can always change your listing later.`,
+    };
+  },
+  emailChange: (name: string, url: string): EmailMessage => ({
+    subject: `Confirm the new contact email for ${name}`,
+    preheader: `Make this address the contact for ${name} on Here’s My Church.`,
+    heading: "Confirm your church’s new contact email",
+    paragraphs: [`Someone signed in to ${name}’s listing asked to make this address its contact email. Once you confirm, sign-in links for the listing will come here.`],
+    button: { label: "Confirm this address", url },
+    note: "This link works for 3 days. If you weren’t expecting it, ignore this email and nothing changes.",
+  }),
+  staffRequest: (church: any, url: string, stopUrl: string): EmailMessage => ({
+    subject: `Help visitors plan a visit to ${church.name}`,
+    preheader: "Someone is looking for confirmed service times.",
+    heading: `Are ${church.name}’s service times right?`,
+    paragraphs: ["Someone on Here’s My Church is looking for confirmed service times for your church. It takes less than a minute to check them and your location."],
+    details: [{ label: "Service times", value: church.serviceTimes || "Not listed yet" }, { label: "Address", value: [church.address, church.city].filter(Boolean).join(", ") || "Not listed" }],
+    button: { label: "Review service times", url },
+    note: "This private link works for 30 days. Visitor email addresses are never shared with churches.",
+    stop: { label: "Stop these requests", url: stopUrl },
+  }),
+  visitorConfirm: (church: any, url: string): EmailMessage => ({
+    subject: `Confirm your update request for ${church.name}`,
+    preheader: "One click and we’ll email you when the church confirms its times.",
+    heading: "Confirm your request",
+    paragraphs: [`You asked to hear when ${church.name} confirms its service times. Confirm below and we’ll email you once, when it does.`],
+    button: { label: "Confirm request", url },
+    note: "This request expires in 48 hours. If you didn’t ask for it, ignore this email. You won’t be added to any mailing list.",
+  }),
+  visitorResult: (church: any, at: number, mapUrl: string): EmailMessage => ({
+    subject: `Service times confirmed for ${church.name}`,
+    preheader: `${church.name} confirmed its service times.`,
+    heading: `${church.name} confirmed its service times`,
+    paragraphs: [`The church confirmed these through its listed email on ${new Date(at).toISOString().slice(0, 10)}.`],
+    details: [{ label: "Service times", value: church.serviceTimes || "" }, { label: "Address", value: [church.address || "Not listed", church.city].filter(Boolean).join(", ") }],
+    button: { label: "See it on the map", url: mapUrl },
+    note: "Check the map for any changes before you visit.",
+  }),
+};
