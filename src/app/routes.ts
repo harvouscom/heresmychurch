@@ -19,7 +19,7 @@ import { RootLayout } from "./RootLayout";
 // /report/:slug…               → US national seasonal report
 // /report/:countryCode/:slug…  → Country / WORLD seasonal report (ISO CC or WORLD)
 // /report/state/:stateAbbrev/:slug… → US state report (unchanged)
-// Review mode: add ?key=SECRET to any route
+// Review mode: sign in at /review (Cloudflare Access); ?key=SECRET still works until the key is retired
 //
 // The map is the app; the report pages are a side trip. They pull in Recharts,
 // d3 and react-simple-maps (report/charts.tsx), so they are loaded lazily —
@@ -36,6 +36,8 @@ export const router = createBrowserRouter([
     children: [
       { path: "/for-churches", lazy: async () => ({ Component: (await import("./components/ChurchPortal")).ChurchPortalPage }) },
       { path: "/church-portal", lazy: async () => ({ Component: (await import("./components/ChurchPortal")).LegacyChurchPortalRedirect }) },
+      { path: "/review", lazy: async () => ({ Component: (await import("./components/ReviewEntry")).ReviewEntryPage }) },
+      { path: "/review/signout", lazy: async () => ({ Component: (await import("./components/ReviewEntry")).ReviewEntryPage }) },
       { path: "/data-health/attendance-review", lazy: async () => ({ Component: (await import("./components/PrivateAttendance")).AttendanceReviewPage }) },
       { path: "/improve-the-map", lazy: async () => ({ Component: (await import("./components/DataHealth")).DataHealthPage }) },
       { path: "/data-health", lazy: async () => ({ Component: (await import("./components/ChurchPortal")).LegacyDataHealthRedirect }) },

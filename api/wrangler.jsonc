@@ -52,6 +52,8 @@
   //   SUPABASE_SERVICE_ROLE_KEY, MODERATOR_KEY, PARTNER_API_KEY, LOOKUP_INTERNAL_KEY, GOOGLE_MAPS_API_KEY,
   //   TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET,
   //   TWITTER_WEBHOOK_SECRET  (R2 uses the HMC_DATA binding instead of S3 keys)
+  // Reviewer sign-in (docs/REVIEWER-ACCESS.md): ACCESS_TEAM_DOMAIN, ACCESS_AUD, REVIEWER_EMAILS,
+  //   REVIEWER_SERVICE_TOKENS, ADMIN_KEY. Set LEGACY_MODERATOR_KEY=off to retire MODERATOR_KEY.
   "durable_objects": { "bindings": [{ "name": "PRESENCE", "class_name": "PresenceRoom" }] },
   "migrations": [{ "tag": "v1-presence", "new_sqlite_classes": ["PresenceRoom"] }],
   "observability": { "enabled": true },

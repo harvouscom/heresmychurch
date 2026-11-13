@@ -12,7 +12,7 @@
  * There's no default base URL, so production can't be hit by accident.
  */
 const [base, command] = process.argv.slice(2);
-const key = process.env.MODERATOR_KEY || "";
+const key = (process.env.ADMIN_KEY || process.env.MODERATOR_KEY) || "";
 if (!base || !["copy", "verify", "mark", "replay"].includes(command) || !key) {
   console.error("Usage: MODERATOR_KEY=... node scripts/migrate-to-d1.mjs <base-url> copy|verify|mark|replay");
   process.exit(2);
@@ -23,7 +23,7 @@ async function post(step, params = {}) {
   for (let attempt = 1; ; attempt++) {
     let res, body;
     try {
-      res = await fetch(url, { method: "POST", headers: { "x-moderator-key": key }, signal: AbortSignal.timeout(120_000) });
+      res = await fetch(url, { method: "POST", headers: { "x-moderator-key": key, "x-admin-key": key }, signal: AbortSignal.timeout(120_000) });
       body = await res.json().catch(() => ({}));
       if (res.ok) return body;
       // A 4xx is a decision, not a blip, so stop rather than retry.

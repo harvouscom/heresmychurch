@@ -2,6 +2,16 @@ import { useState } from 'react';
 import { LockKeyhole, Check } from 'lucide-react';
 import { Link } from 'react-router';
 import { portalRequest } from './portal-api';
+import { reviewerSessionActive } from './api';
+
+// Signed-in reviewers (Cloudflare Access) go through the same-origin proxy; the key field is a fallback.
+async function reviewerRequest(path: string, key: string, body?: unknown) {
+  if (!key && reviewerSessionActive()) {
+    const res = await fetch(`/review/api/${path}`, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({})); if (!res.ok) throw new Error(data.error || 'Sign in again at /review.'); return data;
+  }
+  return portalRequest(path, body, undefined, { 'x-moderator-key': key });
+}
 
 export function PrivateAttendanceForm({ token }: { token: string }) {
   const [lower, setLower] = useState(''), [upper, setUpper] = useState(''), [weeks, setWeeks] = useState('8'), [basis, setBasis] = useState('approximate'), [notes, setNotes] = useState('');
@@ -19,13 +29,13 @@ export function AttendanceReviewPage() {
   const [estimates, setEstimates] = useState<Record<string, string>>({}), [reasons, setReasons] = useState<Record<string, string>>({});
   async function load(e?: React.FormEvent) {
     e?.preventDefault(); setBusy(true); setError('');
-    try { const data = await portalRequest('moderate/attendance-reports', undefined, undefined, { 'x-moderator-key': key }); setReports(data.reports); }
+    try { const data = await reviewerRequest('moderate/attendance-reports', key); setReports(data.reports); }
     catch (e) { setError(e instanceof Error ? e.message : 'Unable to load reports.'); } finally { setBusy(false); }
   }
   async function review(id: string, action: string) {
     setBusy(true); setError(''); setMessage('');
     try {
-      const data = await portalRequest('moderate/attendance-reports/review', { id, action, estimate: Number(estimates[id]), reason: reasons[id] || '' }, undefined, { 'x-moderator-key': key });
+      const data = await reviewerRequest('moderate/attendance-reports/review', key, { id, action, estimate: Number(estimates[id]), reason: reasons[id] || '' });
       setMessage(data.message); setReports(rows => rows!.filter(r => r.id !== id));
     } catch (e) { setError(e instanceof Error ? e.message : 'Unable to review.'); } finally { setBusy(false); }
   }

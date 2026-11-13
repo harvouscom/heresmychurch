@@ -97,6 +97,22 @@ async function fetchWithRetry(
   throw lastError;
 }
 
+
+/** Moderator mode via Cloudflare Access: calls go to the same-origin /review/api proxy, with no key in the URL. */
+export const REVIEWER_SESSION = "access";
+const REVIEWER_FLAG = "hmc-reviewer";
+export function reviewerSessionActive(): boolean {
+  try { return sessionStorage.getItem(REVIEWER_FLAG) === "1"; } catch { return false; }
+}
+export function setReviewerSession(on: boolean): void {
+  try { if (on) sessionStorage.setItem(REVIEWER_FLAG, "1"); else sessionStorage.removeItem(REVIEWER_FLAG); } catch { /* storage unavailable */ }
+}
+/** extra is the rest of the query string, starting with "&". */
+export function modUrl(path: string, moderatorKey: string, extra = ""): string {
+  if (moderatorKey === REVIEWER_SESSION) return `/review/api${path}${extra ? `?${extra.slice(1)}` : ""}`;
+  return `${BASE_URL}${path}?key=${encodeURIComponent(moderatorKey)}${extra}`;
+}
+
 export interface StatesResponse {
   states: StateInfo[];
   totalChurches: number;
@@ -1316,7 +1332,7 @@ export async function fetchModeratorPending(
   moderatorKey: string
 ): Promise<ModeratorPendingResponse> {
   const res = await fetchWithRetry(
-    `${BASE_URL}/moderate/pending?key=${encodeURIComponent(moderatorKey)}`,
+    modUrl(`/moderate/pending`, moderatorKey),
     { headers, timeoutMs: 60000 },
     2
   );
@@ -1334,7 +1350,7 @@ export async function moderateApproveSuggestion(
   reviewVersion?: string
 ): Promise<{ success: boolean }> {
   const res = await fetchWithTimeout(
-    `${BASE_URL}/moderate/approve/suggestion?key=${encodeURIComponent(moderatorKey)}`,
+    modUrl(`/moderate/approve/suggestion`, moderatorKey),
     { method: "POST", headers, body: JSON.stringify({ churchId, field, reviewVersion }), timeoutMs: MODERATE_ACTION_TIMEOUT_MS }
   );
   if (res.status === 409) throw reviewChangedError();
@@ -1354,7 +1370,7 @@ export async function moderateApproveSuggestionWithValue(
   reviewVersion?: string
 ): Promise<{ success: boolean }> {
   const res = await fetchWithTimeout(
-    `${BASE_URL}/moderate/approve/suggestion?key=${encodeURIComponent(moderatorKey)}`,
+    modUrl(`/moderate/approve/suggestion`, moderatorKey),
     { method: "POST", headers, body: JSON.stringify({ churchId, field, value, reviewVersion }), timeoutMs: MODERATE_ACTION_TIMEOUT_MS }
   );
   if (res.status === 409) throw reviewChangedError();
@@ -1373,7 +1389,7 @@ export async function moderateRejectSuggestion(
   reviewVersion?: string
 ): Promise<{ success: boolean }> {
   const res = await fetchWithTimeout(
-    `${BASE_URL}/moderate/reject/suggestion?key=${encodeURIComponent(moderatorKey)}`,
+    modUrl(`/moderate/reject/suggestion`, moderatorKey),
     { method: "POST", headers, body: JSON.stringify({ churchId, field, reviewVersion }), timeoutMs: MODERATE_ACTION_TIMEOUT_MS }
   );
   if (res.status === 409) throw reviewChangedError();
@@ -1387,7 +1403,7 @@ export async function moderateApproveChurch(
   churchId: string
 ): Promise<{ success: boolean }> {
   const res = await fetchWithTimeout(
-    `${BASE_URL}/moderate/approve/church?key=${encodeURIComponent(moderatorKey)}`,
+    modUrl(`/moderate/approve/church`, moderatorKey),
     { method: "POST", headers, body: JSON.stringify({ churchId }), timeoutMs: MODERATE_ACTION_TIMEOUT_MS }
   );
   if (res.status === 401) throw new Error("Invalid review key");
@@ -1403,7 +1419,7 @@ export async function moderateRejectChurch(
   churchId: string
 ): Promise<{ success: boolean }> {
   const res = await fetchWithTimeout(
-    `${BASE_URL}/moderate/reject/church?key=${encodeURIComponent(moderatorKey)}`,
+    modUrl(`/moderate/reject/church`, moderatorKey),
     { method: "POST", headers, body: JSON.stringify({ churchId }), timeoutMs: MODERATE_ACTION_TIMEOUT_MS }
   );
   if (res.status === 401) throw new Error("Invalid review key");
@@ -1421,7 +1437,7 @@ export async function addToInReview(
   field?: string
 ): Promise<{ success: boolean }> {
   const res = await fetchWithTimeout(
-    `${BASE_URL}/moderate/in-review/add?key=${encodeURIComponent(moderatorKey)}`,
+    modUrl(`/moderate/in-review/add`, moderatorKey),
     { method: "POST", headers, body: JSON.stringify({ type, churchId, ...(type === "suggestion" && field != null ? { field } : {}) }), timeoutMs: MODERATE_ACTION_TIMEOUT_MS }
   );
   if (res.status === 401) throw new Error("Invalid review key");
@@ -1436,7 +1452,7 @@ export async function removeFromInReview(
   field?: string
 ): Promise<{ success: boolean }> {
   const res = await fetchWithTimeout(
-    `${BASE_URL}/moderate/in-review/remove?key=${encodeURIComponent(moderatorKey)}`,
+    modUrl(`/moderate/in-review/remove`, moderatorKey),
     { method: "POST", headers, body: JSON.stringify({ type, churchId, ...(type === "suggestion" && field != null ? { field } : {}) }), timeoutMs: MODERATE_ACTION_TIMEOUT_MS }
   );
   if (res.status === 401) throw new Error("Invalid review key");
@@ -1465,7 +1481,7 @@ export async function fetchAuditRecent(
   moderatorKey: string,
   limit = 200
 ): Promise<{ entries: AuditLogEntry[] }> {
-  const url = `${BASE_URL}/audit/recent?key=${encodeURIComponent(moderatorKey)}&limit=${Math.min(500, Math.max(1, limit))}`;
+  const url = modUrl(`/audit/recent`, moderatorKey, `&limit=${Math.min(500, Math.max(1, limit))}`);
   const res = await fetchWithRetry(url, { headers, cache: "no-store" });
   if (res.status === 401) throw new Error("Invalid review key");
   if (!res.ok) throw new Error(`Failed to fetch audit: ${res.status}`);
@@ -1477,7 +1493,7 @@ export async function fetchAuditByState(
   moderatorKey: string,
   limit = 200
 ): Promise<{ state: string; entries: AuditLogEntry[] }> {
-  const url = `${BASE_URL}/audit/state/${encodeURIComponent(stateAbbrev)}?key=${encodeURIComponent(moderatorKey)}&limit=${Math.min(500, Math.max(1, limit))}`;
+  const url = modUrl(`/audit/state/${encodeURIComponent(stateAbbrev)}`, moderatorKey, `&limit=${Math.min(500, Math.max(1, limit))}`);
   const res = await fetchWithRetry(url, { headers, cache: "no-store" });
   if (res.status === 401) throw new Error("Invalid review key");
   if (!res.ok) throw new Error(`Failed to fetch audit: ${res.status}`);
@@ -1489,7 +1505,7 @@ export async function fetchAuditByChurch(
   moderatorKey: string,
   limit = 100
 ): Promise<{ churchId: string; entries: AuditLogEntry[] }> {
-  const url = `${BASE_URL}/audit/church/${encodeURIComponent(churchId)}?key=${encodeURIComponent(moderatorKey)}&limit=${Math.min(500, Math.max(1, limit))}`;
+  const url = modUrl(`/audit/church/${encodeURIComponent(churchId)}`, moderatorKey, `&limit=${Math.min(500, Math.max(1, limit))}`);
   const res = await fetchWithRetry(url, { headers, cache: "no-store" });
   if (res.status === 401) throw new Error("Invalid review key");
   if (!res.ok) throw new Error(`Failed to fetch audit: ${res.status}`);
@@ -1588,8 +1604,8 @@ export type ReviewEvidence = {
   reason: string; quote: string | null; sourceUrl: string | null; checkedAt: string;
 };
 export async function fetchReviewEvidence(moderatorKey: string, churchId: string, field: string, proposedValue: string): Promise<ReviewEvidence> {
-  const res = await fetchWithTimeout(`${BASE_URL}/moderate/evidence`, {
-    method: "POST", headers: { ...headers, "x-moderator-key": moderatorKey },
+  const res = await fetchWithTimeout(modUrl("/moderate/evidence", moderatorKey), {
+    method: "POST", headers: moderatorKey === REVIEWER_SESSION ? { "Content-Type": "application/json" } : { ...headers, "x-moderator-key": moderatorKey },
     body: JSON.stringify({ churchId, field, proposedValue }), timeoutMs: 60000,
   });
   const body = await res.json();

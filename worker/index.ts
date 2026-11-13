@@ -9,6 +9,7 @@
  */
 import { injectGeo, SUPPORTED_COUNTRIES } from "./geo-inject.ts";
 import { rewriteForBots, type OgRewriteEnv } from "./og-rewrite.ts";
+import { isReviewApi, proxyReviewApi } from "./review-proxy.ts";
 
 interface Env extends OgRewriteEnv {
   ASSETS: { fetch(request: Request): Promise<Response> };
@@ -43,6 +44,10 @@ export default {
     if (url.hostname === `www.${APEX_HOST}`) {
       url.hostname = APEX_HOST;
       return Response.redirect(url.toString(), 301);
+    }
+
+    if (isReviewApi(url.pathname)) {
+      return proxyReviewApi(request, env.HMC_API_BASE_URL || "https://api.heresmychurch.com");
     }
 
     const legacy = legacyRedirect(url);
