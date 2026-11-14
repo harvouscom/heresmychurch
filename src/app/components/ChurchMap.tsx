@@ -1043,6 +1043,8 @@ export function ChurchMap({
           onEmptyMapPress: handleEmptyMapPress,
           onPlacementPinMove: handlePinMove,
           overlay: addFromMapOverlay,
+          start: () => startPickOnMap(null, (isIntl ? routeStateAbbrev : d.focusedState) ?? null),
+          cancel: cancelAddFromMap,
         }}
         selectedChurch={selectedChurch}
         onChurchDotClick={handleChurchDotClick}
@@ -1526,6 +1528,9 @@ function MapArea({
     onEmptyMapPress: (press: MapPress) => void;
     onPlacementPinMove: (press: MapPress) => void;
     overlay: ReactNode;
+    /** The map control: start picking a spot, or cancel. */
+    start: () => void;
+    cancel: () => void;
   };
   /** Remembers a name typed into search, for the add form it opens. */
   onAddChurchPrefill: (name: string | null) => void;
@@ -2171,6 +2176,8 @@ function MapArea({
             showFilterPanel={d.showFilterPanel}
             showLegend={d.showLegend}
             onZoomIn={() => mapLibreApi.current?.zoomIn()}
+            onAddChurch={addFromMap.placementMode || addFromMap.placementPin ? addFromMap.cancel : () => addFromMap.start()}
+            addingChurch={addFromMap.placementMode || !!addFromMap.placementPin}
             onZoomOut={() => mapLibreApi.current?.zoomOut()}
             onResetView={d.handleResetView}
             // MapLibre owns its own zoom and clamps internally, so d.zoom never
