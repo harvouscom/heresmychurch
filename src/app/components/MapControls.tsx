@@ -10,6 +10,7 @@ import {
   CircleHelp,
   ScrollText,
   Ellipsis,
+  MapPinPlus,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
@@ -50,6 +51,8 @@ export function MapControls({
   minZoom = 1,
   maxZoom = 500,
   compact = false,
+  onAddChurch,
+  addingChurch = false,
 }: {
   focusedState: string | null;
   showFilterPanel: boolean;
@@ -67,6 +70,9 @@ export function MapControls({
   minZoom?: number;
   maxZoom?: number;
   compact?: boolean;
+  /** Turns on "pick a spot" mode for adding a church; shown inside a region. */
+  onAddChurch?: () => void;
+  addingChurch?: boolean;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const zoomInDisabled = zoom >= maxZoom;
@@ -118,6 +124,19 @@ export function MapControls({
       >
         <RotateCcw size={iconSize} />
       </button>
+
+      {focusedState && onAddChurch && (
+        <button
+          type="button"
+          onClick={onAddChurch}
+          aria-pressed={addingChurch}
+          title={addingChurch ? "Cancel adding a church" : "Add a church on the map"}
+          aria-label={addingChurch ? "Cancel adding a church" : "Add a church on the map"}
+          className={controlClass(addingChurch)}
+        >
+          <MapPinPlus size={iconSize} />
+        </button>
+      )}
 
       {/* More trigger: expand/collapse extra controls; chevron rotates like header pill / filters */}
       <button

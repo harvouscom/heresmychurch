@@ -638,6 +638,8 @@ const VIEW_TRANSITION_MS = 800;
  * essentially the selected church and its street rather than its whole town.
  */
 const CHURCH_VIEW_ZOOM = 16;
+/** From city level in, empty ground is a place to add a church, not a county to open. */
+export const ADD_HERE_ZOOM = 11;
 /** Matches the app's existing zoom-button transition feel. */
 const ZOOM_STEP_MS = 320;
 
@@ -1743,6 +1745,8 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       }
       return { lng: lngLat.lng, lat: lngLat.lat, x: point.x, y: point.y, region, nearbyPlaces };
     };
+    /** Zoomed into a region at city level or closer, where a click means "this spot". */
+    const atPlaceLevel = () => viewLevelRef.current !== "world" && !!focusedStateRef.current && map.getZoom() >= ADD_HERE_ZOOM;
     /** True when a church dot is under the point (that gesture opens the church instead). */
     const churchUnder = (point: Point) => !!topmost(hitTest(point), "churches");
     let lastLongPressAt = 0;
@@ -1790,7 +1794,15 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
         const found = churchByIdRef.current.get(String(church.properties?.id));
         if (found) return h.onChurchClick?.(found);
       }
+      // Zoomed in this far, jumping out to the whole county would lose the spot someone is
+      // pointing at. Offer "Add a church here?" instead; zoomed out, a click still opens a county.
+      if (atPlaceLevel()) return h.onEmptyMapPress?.(pressAt(e.point, e.lngLat));
       const county = topmost(feats, "counties-fill");
+      // Inside the county already open, a click has nothing else to do: offer to add a church there.
+      const countyId = county ? propStr(county.properties?.fips) ?? propStr(county.properties?.id) : null;
+      if (countyId && focusedCountyRef.current && countyId === focusedCountyRef.current) {
+        return h.onEmptyMapPress?.(pressAt(e.point, e.lngLat));
+      }
       if (county) {
         const admin2Id = propStr(county.properties?.fips) ?? propStr(county.properties?.id);
         if (admin2Id) return h.onCountyClick?.(admin2Id);
@@ -1837,12 +1849,17 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       const feats = hitTest(point);
 
       const church = topmost(feats, "churches");
-      const county = topmost(feats, "counties-fill");
+      const countyHit = topmost(feats, "counties-fill");
+      const countyHitId = countyHit ? propStr(countyHit.properties?.fips) ?? propStr(countyHit.properties?.id) : null;
+      // Zoomed in, or inside the county already open, a click adds a church here, so the county
+      // isn't highlighted as if a click would open it.
+      const placeLevel = atPlaceLevel() || (!!countyHitId && countyHitId === focusedCountyRef.current);
+      const county = placeLevel ? undefined : countyHit;
       const state = topmost(feats, "states-fill");
 
       const worldClickable =
         viewLevelRef.current === "world" && state && propTruthy(state.properties?.clickable);
-      map.getCanvas().style.cursor = placementModeRef.current && !church
+      map.getCanvas().style.cursor = (placementModeRef.current || placeLevel) && !church
         ? "crosshair"
         : church || county || (viewLevelRef.current === "world" ? worldClickable : state)
           ? "pointer"
