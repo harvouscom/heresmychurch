@@ -510,7 +510,7 @@ interface MapLibreCanvasProps {
    * the basemap shows nearby (zoom 14+).
    */
   onEmptyMapPress?: (press: MapPress) => void;
-  /** Placement mode: clicks drop the pin instead of navigating; crosshair cursor. */
+  /** Placement mode: clicks drop the pin instead of navigating; the cursor is the pin. */
   placementMode?: boolean;
   /** Draggable "new church" pin. */
   placementPin?: { lng: number; lat: number } | null;
@@ -640,6 +640,8 @@ const VIEW_TRANSITION_MS = 800;
 const CHURCH_VIEW_ZOOM = 16;
 /** From city level in, empty ground is a place to add a church, not a county to open. */
 export const ADD_HERE_ZOOM = 11;
+/** The add-a-church pin as a cursor (a pin with a round cutout), tip on the spot; crosshair if unsupported. */
+const PIN_CURSOR = `url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2724%27%20height%3D%2731%27%20viewBox%3D%270%200%2028%2036%27%3E%3Cpath%20fill-rule%3D%27evenodd%27%20d%3D%27M14%2035s12-12.2%2012-21A12%2012%200%200%200%202%2014c0%208.8%2012%2021%2012%2021zm0-25.5a4.5%204.5%200%201%201%200%209%204.5%204.5%200%200%201%200-9z%27%20fill%3D%27%237c3aed%27%20stroke%3D%27white%27%20stroke-width%3D%272%27%20stroke-linejoin%3D%27round%27%2F%3E%3C%2Fsvg%3E") 12 30, crosshair`;
 /** Matches the app's existing zoom-button transition feel. */
 const ZOOM_STEP_MS = 320;
 
@@ -1860,7 +1862,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       const worldClickable =
         viewLevelRef.current === "world" && state && propTruthy(state.properties?.clickable);
       map.getCanvas().style.cursor = (placementModeRef.current || placeLevel) && !church
-        ? "crosshair"
+        ? PIN_CURSOR
         : church || county || (viewLevelRef.current === "world" ? worldClickable : state)
           ? "pointer"
           : "";
@@ -2066,7 +2068,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   }, [placementPin?.lng, placementPin?.lat]);
   useEffect(() => {
     const canvas = mapRef.current?.getCanvas();
-    if (canvas) canvas.style.cursor = placementMode ? "crosshair" : "";
+    if (canvas) canvas.style.cursor = placementMode ? PIN_CURSOR : "";
   }, [placementMode]);
 
 

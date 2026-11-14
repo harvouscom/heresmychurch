@@ -10,7 +10,7 @@ import {
   CircleHelp,
   ScrollText,
   Ellipsis,
-  MapPinPlus,
+  MapPin,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
@@ -134,7 +134,7 @@ export function MapControls({
           aria-label={addingChurch ? "Cancel adding a church" : "Add a church on the map"}
           className={controlClass(addingChurch)}
         >
-          <MapPinPlus size={iconSize} />
+          <MapPin size={iconSize} />
         </button>
       )}
 
