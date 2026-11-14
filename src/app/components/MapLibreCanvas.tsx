@@ -22,6 +22,7 @@ import {
   setWorkerUrl,
   type GeoJSONSource,
   type MapMouseEvent,
+  type MapTouchEvent,
   type Point,
   type StyleSpecification,
 } from "maplibre-gl";
@@ -337,6 +338,18 @@ const BASEMAP_STYLE: StyleSpecification = {
 // Streets are invisible below STREET_FADE_START, but MapLibre still fetches and parses their
 // tiles unless the layers say so: about 1MB per state transition, parsed while the camera
 // is flying. A layer below its minzoom marks the source unused, so nothing is requested.
+// Invisible layer of the basemap's named places of worship, so an "add a church here" press can
+// offer them ("Is it one of these?"). Opacity 0 keeps them hit-testable without drawing anything.
+BASEMAP_STYLE.layers.push({
+  id: "worship-poi",
+  type: "circle",
+  source: "streets",
+  "source-layer": "poi",
+  minzoom: 14,
+  filter: ["==", ["get", "class"], "place_of_worship"],
+  paint: { "circle-radius": 8, "circle-opacity": 0 },
+});
+
 for (const layer of BASEMAP_STYLE.layers) {
   if ("source" in layer && layer.source === "streets") {
     layer.minzoom = Math.max(layer.minzoom ?? 0, STREET_FADE_START);
@@ -491,7 +504,27 @@ interface MapLibreCanvasProps {
    * instead of writing a zoom number.
    */
   apiRef?: MutableRefObject<MapLibreHandle | null>;
+  /**
+   * Right-click, long-press, or (in placement mode) a click on a spot with no church dot: the
+   * "add a church here" gesture. Carries the region under the point and named places of worship
+   * the basemap shows nearby (zoom 14+).
+   */
+  onEmptyMapPress?: (press: MapPress) => void;
+  /** Placement mode: clicks drop the pin instead of navigating; crosshair cursor. */
+  placementMode?: boolean;
+  /** Draggable "new church" pin. */
+  placementPin?: { lng: number; lat: number } | null;
+  onPlacementPinMove?: (press: MapPress) => void;
 }
+
+export type MapPress = {
+  lng: number; lat: number;
+  /** Pixel position inside the map container. */
+  x: number; y: number;
+  /** Region code under the point (states-fill abbrev), if any. */
+  region: string | null;
+  nearbyPlaces: { name: string; lng: number; lat: number }[];
+};
 
 /** Imperative controls exposed via `apiRef`. */
 export interface MapLibreHandle {
@@ -1453,6 +1486,10 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   onResetView,
   onZoomedOutPastRegion,
   apiRef,
+  onEmptyMapPress,
+  placementMode = false,
+  placementPin = null,
+  onPlacementPinMove,
 }: MapLibreCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
@@ -1523,12 +1560,15 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
   selectedChurchIdRef.current = selectedChurchId;
   const handlersRef = useRef({
     onStateClick, onCountryClick, onStateHover, onCountyClick, onCountyHover,
-    onChurchClick, onChurchHover, onResetView, onMoveEnd, onZoomedOutPastRegion,
+    onChurchClick, onChurchHover, onResetView, onMoveEnd, onZoomedOutPastRegion, onEmptyMapPress, onPlacementPinMove,
   });
   handlersRef.current = {
     onStateClick, onCountryClick, onStateHover, onCountyClick, onCountyHover,
-    onChurchClick, onChurchHover, onResetView, onMoveEnd, onZoomedOutPastRegion,
+    onChurchClick, onChurchHover, onResetView, onMoveEnd, onZoomedOutPastRegion, onEmptyMapPress, onPlacementPinMove,
   };
+
+  const placementModeRef = useRef(placementMode);
+  placementModeRef.current = placementMode;
 
   // Initialize the map once.
   useEffect(() => {
@@ -1550,7 +1590,14 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       // it stays visible (OSM's ODbL and CARTO's terms require it) without a
       // badge pinned over the corner of the map.
       attributionControl: false,
+      // No rotation: the app has no compass to undo it, and right-click is the
+      // "add a church here" gesture rather than rotate-drag.
+      dragRotate: false,
+      pitchWithRotate: false,
+      touchPitch: false,
     });
+    map.touchZoomRotate.disableRotation();
+    map.keyboard.disableRotation();
     // No NavigationControl: the app has its own zoom buttons bottom-left, which
     // drive the map through apiRef. MapLibre's default pair would duplicate them
     // in the opposite corner and in someone else's visual style.
@@ -1672,9 +1719,71 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     const topmost = (feats: ReturnType<typeof hitTest>, layerId: string) =>
       feats.find((f) => f.layer.id === layerId);
 
+    const pressAt = (point: Point, lngLat: { lng: number; lat: number }): MapPress => {
+      const feats = hitTest(point);
+      const region = propStr(topmost(feats, "states-fill")?.properties?.abbrev) ?? null;
+      let nearbyPlaces: MapPress["nearbyPlaces"] = [];
+      if (map.getLayer("worship-poi")) {
+        try {
+          const pad = 60;
+          const found = map.queryRenderedFeatures(
+            [[point.x - pad, point.y - pad], [point.x + pad, point.y + pad]],
+            { layers: ["worship-poi"] },
+          );
+          const seen = new Set<string>();
+          nearbyPlaces = found.flatMap((f) => {
+            const name = propStr(f.properties?.name);
+            const g = f.geometry;
+            if (!name || seen.has(name) || g.type !== "Point") return [];
+            seen.add(name);
+            const [lng, lat] = g.coordinates as [number, number];
+            return [{ name, lng, lat }];
+          }).slice(0, 5);
+        } catch { /* the basemap may not carry POIs here */ }
+      }
+      return { lng: lngLat.lng, lat: lngLat.lat, x: point.x, y: point.y, region, nearbyPlaces };
+    };
+    /** True when a church dot is under the point (that gesture opens the church instead). */
+    const churchUnder = (point: Point) => !!topmost(hitTest(point), "churches");
+    let lastLongPressAt = 0;
+    const handleContextMenu = (e: MapMouseEvent) => {
+      e.preventDefault();
+      // Android fires contextmenu after our own long-press; don't open the popover twice.
+      if (Date.now() - lastLongPressAt < 1000) return;
+      if (churchUnder(e.point) || viewLevelRef.current === "world") return;
+      handlersRef.current.onEmptyMapPress?.(pressAt(e.point, e.lngLat));
+    };
+    let pressTimer: number | null = null;
+    let pressStart: { x: number; y: number } | null = null;
+    const cancelPress = () => { if (pressTimer != null) window.clearTimeout(pressTimer); pressTimer = null; pressStart = null; };
+    const handleTouchStart = (e: MapTouchEvent) => {
+      cancelPress();
+      if (e.originalEvent.touches.length !== 1 || viewLevelRef.current === "world") return;
+      pressStart = { x: e.point.x, y: e.point.y };
+      const point = e.point, lngLat = e.lngLat;
+      pressTimer = window.setTimeout(() => {
+        pressTimer = null;
+        if (churchUnder(point)) return;
+        lastLongPressAt = Date.now();
+        handlersRef.current.onEmptyMapPress?.(pressAt(point, lngLat));
+      }, 550);
+    };
+    const handleTouchMove = (e: MapTouchEvent) => {
+      if (!pressStart) return;
+      if (e.originalEvent.touches.length !== 1 || Math.hypot(e.point.x - pressStart.x, e.point.y - pressStart.y) > 10) cancelPress();
+    };
+
     const handleClick = (e: MapMouseEvent) => {
       const h = handlersRef.current;
+      // A long-press just opened the popover; its trailing click must not navigate away.
+      if (Date.now() - lastLongPressAt < 700) return;
       const feats = hitTest(e.point);
+      if (placementModeRef.current) {
+        const hit = topmost(feats, "churches");
+        const found = hit ? churchByIdRef.current.get(String(hit.properties?.id)) : undefined;
+        if (found) return h.onChurchClick?.(found);
+        return h.onEmptyMapPress?.(pressAt(e.point, e.lngLat));
+      }
 
       const church = topmost(feats, "churches");
       if (church) {
@@ -1733,8 +1842,9 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
 
       const worldClickable =
         viewLevelRef.current === "world" && state && propTruthy(state.properties?.clickable);
-      map.getCanvas().style.cursor =
-        church || county || (viewLevelRef.current === "world" ? worldClickable : state)
+      map.getCanvas().style.cursor = placementModeRef.current && !church
+        ? "crosshair"
+        : church || county || (viewLevelRef.current === "world" ? worldClickable : state)
           ? "pointer"
           : "";
 
@@ -1790,6 +1900,12 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
     map.on("click", handleClick);
     map.on("mousemove", handleMouseMove);
     map.on("mouseout", handleMouseOut);
+    map.on("contextmenu", handleContextMenu);
+    map.on("touchstart", handleTouchStart);
+    map.on("touchmove", handleTouchMove);
+    map.on("touchend", cancelPress);
+    map.on("touchcancel", cancelPress);
+    map.on("dragstart", cancelPress);
 
     // The map can be constructed before its container has a measured size
     // (MapLibre then falls back to a 400×300 canvas that never grows).
@@ -1820,6 +1936,7 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       window.clearTimeout(revealTimer);
       if (resizeSettleTimer) window.clearTimeout(resizeSettleTimer);
       if (hoverFrame != null) cancelAnimationFrame(hoverFrame);
+      cancelPress();
       map.off("moveend", handleMoveEnd);
       map.remove();
       mapRef.current = null;
@@ -1903,6 +2020,37 @@ export const MapLibreCanvas = memo(function MapLibreCanvas({
       .addTo(map);
     return () => { marker.remove(); };
   }, [selectedChurchId, selectedLng, selectedLat]);
+
+  // The draggable pin for a church being added from the map.
+  const hasPin = placementPin != null;
+  const pinMarkerRef = useRef<Marker | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !placementPin) return;
+    const element = document.createElement("div");
+    element.className = "add-church-pin";
+    element.setAttribute("aria-label", "New church location. Drag to adjust.");
+    const marker = new Marker({ element, anchor: "bottom", draggable: true }).setLngLat([placementPin.lng, placementPin.lat]).addTo(map);
+    marker.on("dragend", () => {
+      const ll = marker.getLngLat();
+      const pt = map.project(ll);
+      const layers = ["states-fill"].filter((id) => map.getLayer(id));
+      const feats = layers.length ? map.queryRenderedFeatures(pt, { layers }) : [];
+      const region = propStr(feats[0]?.properties?.abbrev) ?? null;
+      handlersRef.current.onPlacementPinMove?.({ lng: ll.lng, lat: ll.lat, x: pt.x, y: pt.y, region, nearbyPlaces: [] });
+    });
+    pinMarkerRef.current = marker;
+    return () => { marker.remove(); pinMarkerRef.current = null; };
+    // Recreated only when the pin appears or disappears; moves update it below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasPin]);
+  useEffect(() => {
+    if (placementPin && pinMarkerRef.current) pinMarkerRef.current.setLngLat([placementPin.lng, placementPin.lat]);
+  }, [placementPin?.lng, placementPin?.lat]);
+  useEffect(() => {
+    const canvas = mapRef.current?.getCanvas();
+    if (canvas) canvas.style.cursor = placementMode ? "crosshair" : "";
+  }, [placementMode]);
 
 
   // Prefer the route-derived region so the camera moves the moment a state is
