@@ -183,6 +183,25 @@ export function HelpModal({
                 building data is not available.
               </AccordionContent>
             </AccordionItem>
+            <AccordionItem value="lookup" className="border-white/10">
+              <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/60">
+                Can I use this church directory in my app?
+              </AccordionTrigger>
+              <AccordionContent className="text-white/70 space-y-2">
+                <p>
+                  Lookup uses the Here&apos;s My Church directory to add church search and autofill to
+                  your app or form. It offers an embeddable widget, an SDK, and an API.
+                </p>
+                <a
+                  href="https://lookup.heresmychurch.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 underline hover:text-white transition-colors"
+                >
+                  Explore Lookup <ExternalLink size={12} aria-hidden />
+                </a>
+              </AccordionContent>
+            </AccordionItem>
             <AccordionItem value="methodology-numbers" className="border-white/10">
               <AccordionTrigger className="text-white/90 hover:text-white hover:no-underline [&>svg]:text-white/60">
                 How are the numbers calculated and presented?

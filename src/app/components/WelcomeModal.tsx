@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Map as MapIcon, Search, Clock, PlusCircle, PencilLine } from "lucide-react";
+import { Map as MapIcon, Search, Clock, PlusCircle, PencilLine, ArrowUpRight } from "lucide-react";
 import { HmcDialog, HmcDialogBody, HmcDialogTitle } from "./ui/hmc-dialog";
 import { CloseButton } from "./ui/close-button";
 import { Button } from "./ui/button";
@@ -247,6 +247,16 @@ export function WelcomeModal({ onClose }: { onClose: () => void }) {
             <a href="https://harvous.com/about" target="_blank" rel="noopener noreferrer" className="underline hover:text-white transition-colors">Harvous</a>
             . Need help?{" "}
             <a href="mailto:hey@heresmychurch.com" className="underline hover:text-white transition-colors">hey@heresmychurch.com</a>
+            <span className="block mt-1">
+              <a
+                href="https://lookup.heresmychurch.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-0.5 text-hmc-text-muted underline hover:text-white transition-colors"
+              >
+                Lookup for developers <ArrowUpRight size={12} aria-hidden />
+              </a>
+            </span>
             <span className="block mt-1 opacity-70">Version {__APP_VERSION__}</span>
           </p>
         </div>
